@@ -3,15 +3,17 @@ name = "vectraudit"
 version = "0.1.0"
 description = "See inside your FAISS index: debug retrieval, tune recall."
 readme = "README.md"
-license = "MIT"
+license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
 authors = [
-    { name = "rmnvg", email = "ramanjotsingh247@gmail.com" }
+    { name = "Ramanjot Singh", email = "ramanjotsingh247@gmail.com" }
 ]
 requires-python = ">=3.10"
 keywords = ["faiss", "vector-search", "ann", "rag", "retrieval", "visualization", "debugging"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    # PyPI rejects any upload carrying this classifier: a guard against publishing by mistake.
+    "Private :: Do Not Upload",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",

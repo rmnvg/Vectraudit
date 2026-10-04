@@ -5,7 +5,7 @@ colorFrom: blue
 colorTo: gray
 sdk: docker
 app_port: 7860
-license: mit
+license: other
 short_description: See inside a FAISS index and debug why retrieval missed.
 ---
 
