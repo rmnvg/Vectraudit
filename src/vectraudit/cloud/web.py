@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from vectraudit import __version__
-from vectraudit.cloud import repo, service
+from vectraudit.cloud import quotas, repo, service
 from vectraudit.cloud.auth import Principal, authenticate
 from vectraudit.cloud.deps import SessionDep, SettingsDep
 from vectraudit.cloud.errors import CloudError
@@ -431,10 +431,19 @@ def workspace_page(
         for p in repo.projects(session, ws)
     ]
     members = [[e(u.email), e(m.role)] for u, m in repo.members(session, ws)]
+    q = quotas.status(session, ws)
+    lim, used = q["limits"], q["usage"]
+    plan = (
+        f'<div class="card">Plan <strong>{e(ws.plan)}</strong> · '
+        f"{used['runs']:,} / {lim['runs_per_month']:,} runs this month · "
+        f"{used['stored_runs']:,} / {lim['stored_runs']:,} runs stored · "
+        f"up to {lim['queries_per_run']:,} queries per run · runs kept "
+        f"{lim['retention_days']} days (pinned baselines are kept)</div>"
+    )
     body = (
         f'<div class="crumbs"><a href="/app">Workspaces</a> / {e(ws.slug)}</div>'
-        f'<h1>{e(ws.name)}</h1><p class="muted">Your role: {e(access.role)} · plan '
-        f"{e(ws.plan)}</p><h2>Projects</h2>"
+        f'<h1>{e(ws.name)}</h1><p class="muted">Your role: {e(access.role)}</p>{plan}'
+        "<h2>Projects</h2>"
         + _table(["Project", "Slug", "Created"], projects, "No projects yet.")
         + "<h2>Members</h2>"
         + _table(["Email", "Role"], members, "No members.")

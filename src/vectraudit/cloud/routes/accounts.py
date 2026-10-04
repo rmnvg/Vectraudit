@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+import csv
+import io
+from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Response
 
-from vectraudit.cloud import repo
+from vectraudit.cloud import quotas, repo
 from vectraudit.cloud.auth import Principal
 from vectraudit.cloud.deps import PrincipalDep, SessionDep
-from vectraudit.cloud.errors import forbidden
+from vectraudit.cloud.errors import CloudError, forbidden
 from vectraudit.cloud.models import ApiToken, User, utcnow
 from vectraudit.cloud.schemas import (
     AuditOut,
@@ -228,3 +231,35 @@ def audit_log(
         AuditOut.model_validate(e, from_attributes=True)
         for e in repo.audit_events(session, access.workspace, min(max(limit, 1), 500))
     ]
+
+
+@router.get("/workspaces/{workspace}/usage")
+def workspace_usage(workspace: str, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
+    """Plan limits and this month's usage."""
+    access = repo.authorize(session, principal, workspace, "read")
+    if access.role == "runner":
+        raise forbidden("Runner tokens can't read usage.")
+    return quotas.status(session, access.workspace)
+
+
+@router.get("/admin/usage")
+def admin_usage(session: SessionDep, principal: PrincipalDep, month: str = "") -> Response:
+    """Usage per workspace for one month (YYYY-MM, default this month) as CSV."""
+    user = _user(session, principal)
+    if not user.is_admin:
+        raise forbidden("Only platform administrators can export usage.")
+    try:
+        start = datetime.strptime(month, "%Y-%m") if month else quotas.month_start()
+    except ValueError as e:
+        raise CloudError(422, "invalid_month", "month must look like 2026-10.") from e
+    rows = quotas.usage_rows(session, start.year, start.month)
+    out = io.StringIO()
+    fields = ["workspace", "plan", "month", "runs", "queries", "checks", "stored_runs", "members"]
+    writer = csv.DictWriter(out, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        out.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="usage-{start:%Y-%m}.csv"'},
+    )

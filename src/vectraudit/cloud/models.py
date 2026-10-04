@@ -81,6 +81,8 @@ class Workspace(Base):
     slug: Mapped[str] = mapped_column(String(64), unique=True)
     name: Mapped[str] = mapped_column(String(200))
     plan: Mapped[str] = mapped_column(String(32), default="pilot")
+    limits: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+    """Per-workspace overrides of the plan's limits (custom pilot deals)."""
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 

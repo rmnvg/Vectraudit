@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from vectraudit.cloud import repo
+from vectraudit.cloud import quotas, repo
 from vectraudit.cloud.deps import PrincipalDep, SessionDep, SettingsDep
 from vectraudit.cloud.errors import CloudError
 from vectraudit.cloud.models import Run, Workspace
@@ -128,6 +128,8 @@ async def upload_run(
             )
         response.status_code = 200
         return run_out(existing, access.workspace, project, settings.public_url)
+    # After the idempotency check: retrying a stored run never trips a quota.
+    quotas.check_upload(session, access.workspace, n_queries)
     backend = record.get("backend") or {}
     run = Run(
         workspace_id=access.workspace.id,
