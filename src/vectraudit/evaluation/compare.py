@@ -374,7 +374,13 @@ class _Check:
             return
         for p, limit in (("p50", rule.p50_max_increase_pct), ("p95", rule.p95_max_increase_pct)):
             pct = change[p]
-            if limit is not None and pct is not None and pct > limit + EPS:
+            rise_ms = cl[p] - bl[p]
+            if (
+                limit is not None
+                and pct is not None
+                and pct > limit + EPS
+                and rise_ms > rule.min_increase_ms + EPS
+            ):
                 self.flag(
                     Verdict.FAIL,
                     f"{p} latency rose {pct:.1f}% ({bl[p]:.2f} → {cl[p]:.2f} ms); "

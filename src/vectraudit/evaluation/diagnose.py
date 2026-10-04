@@ -428,6 +428,9 @@ def _latency(result: Mapping[str, Any], diff: Mapping[str, Any]) -> list[dict[st
     change = latency.get("p95_change_pct")
     if not latency.get("compared") or change is None or abs(change) < 20:
         return []
+    floor = ((result.get("policy") or {}).get("latency") or {}).get("min_increase_ms", 0.1)
+    if abs(latency["candidate"]["p95"] - latency["baseline"]["p95"]) <= floor:
+        return []  # sub-floor changes are timer noise, not a finding
     direction = "rose" if change > 0 else "fell"
     facts = [
         f"p95 latency {direction} {abs(change):.0f}% "

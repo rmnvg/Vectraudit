@@ -4,7 +4,7 @@ A policy is JSON::
 
     {"version": 1,
      "metrics": {"ndcg": {"max_drop": 0.02}, "ann_recall": {"min": 0.9}},
-     "latency": {"p95_max_increase_pct": 25, "p95_max_ms": 80},
+     "latency": {"p95_max_increase_pct": 25, "p95_max_ms": 80, "min_increase_ms": 0.1},
      "min_queries": 30,
      "max_regressed_queries": 10,
      "primary_metric": "ndcg",
@@ -41,6 +41,7 @@ _LATENCY_KEYS = {
     "p50_max_increase_pct",
     "p95_max_increase_pct",
     "p95_max_ms",
+    "min_increase_ms",
     "require_same_environment",
 }
 
@@ -66,6 +67,8 @@ class LatencyRule:
     p50_max_increase_pct: float | None = None
     p95_max_increase_pct: float | None = None
     p95_max_ms: float | None = None
+    min_increase_ms: float = 0.1
+    """Percentage rules ignore rises smaller than this in absolute terms: timer noise."""
     require_same_environment: bool = True
 
 
@@ -131,6 +134,9 @@ def parse_policy(raw: Any) -> Policy:
         p50_max_increase_pct=_number(latency_raw, "p50_max_increase_pct"),
         p95_max_increase_pct=_number(latency_raw, "p95_max_increase_pct"),
         p95_max_ms=_number(latency_raw, "p95_max_ms"),
+        min_increase_ms=_number(latency_raw, "min_increase_ms") or 0.0
+        if "min_increase_ms" in latency_raw
+        else LatencyRule.min_increase_ms,
         require_same_environment=_bool(latency_raw, "require_same_environment", True),
     )
     cohorts_raw = raw.get("cohorts", {})

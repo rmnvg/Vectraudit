@@ -380,3 +380,18 @@ def test_policy_file_errors(tmp_path) -> None:
     (tmp_path / "bad.json").write_text("{")
     with pytest.raises(PolicyError, match="not valid JSON"):
         load_policy(tmp_path / "bad.json")
+
+
+def test_tiny_latency_rises_are_noise() -> None:
+    base = fake_run([1.0] * 40, latency=0.02)
+    jitter = fake_run([1.0] * 40, latency=0.06)  # +200%, but only 0.04 ms
+    assert compare_runs(base, jitter)["verdict"] == "pass"
+    strict = parse_policy(
+        {
+            "metrics": {"ndcg": {"max_drop": 0}},
+            "latency": {"p95_max_increase_pct": 50, "min_increase_ms": 0},
+        }
+    )
+    assert compare_runs(base, jitter, strict)["verdict"] == "fail"
+    assert strict.latency.min_increase_ms == 0
+    assert DEFAULT_POLICY.latency.min_increase_ms == 0.1
