@@ -26,7 +26,7 @@ from vectraudit.evaluation.dataset import DatasetError, load_dataset
 from vectraudit.evaluation.policy import DEFAULT_POLICY, PolicyError, load_policy
 from vectraudit.evaluation.report import render_html, render_markdown
 from vectraudit.evaluation.runfile import RunFileError, load_run, save_run
-from vectraudit.evaluation.runner import RunOptions, TextEmbedder, execute_run
+from vectraudit.evaluation.runner import RunOptions, TextEmbedder, execute_run, failed_run
 
 EXIT_CODES = {Verdict.PASS: 0, Verdict.ERROR: 1, Verdict.FAIL: 3, Verdict.NOT_COMPARABLE: 4}
 _VERDICT_STYLE = {
@@ -172,7 +172,11 @@ def record(
     try:
         connector = open_connector(cfg)
     except ConnectorError as e:
-        raise _fail(e.message, e.hint) from e
+        # Still write a (failed) run file, so `check` reports the error on the release.
+        run = failed_run(ds, e, options, connection=cfg.public())
+        save_run(run, out)
+        _print_run(run, out)
+        raise typer.Exit(code=1) from e
     with connector, console.status("Running queries…") as status:
 
         def progress(done: int, total: int) -> None:
@@ -197,10 +201,11 @@ def record(
 
 def _print_run(run: dict[str, Any], out: Path) -> None:
     s = run["summary"]
+    backend = (run.get("backend") or {}).get("backend") or run["connection"].get("backend")
     style = "green" if run["status"] == "complete" else "red"
     console.print(
         f"[{style}]{escape(run['status'])}[/]: {s['n_ok']:,} of {s['n_queries']:,} queries "
-        f"on {escape(str((run.get('backend') or {}).get('backend')))} → {escape(str(out))}"
+        f"on {escape(str(backend))} → {escape(str(out))}"
     )
     if run["error"]:
         err_console.print(

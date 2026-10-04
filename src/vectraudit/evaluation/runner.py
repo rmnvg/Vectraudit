@@ -130,6 +130,21 @@ def execute_run(
     return record
 
 
+def failed_run(
+    dataset: Dataset,
+    error: ConnectorError,
+    options: RunOptions | None = None,
+    *,
+    connection: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The run record for a backend that could not even be opened (status ``failed``)."""
+    record = _skeleton(dataset, options or RunOptions(), connection, None)
+    record["error"] = error.as_dict()
+    record["timing"]["wall_s"] = 0.0
+    record["summary"] = summarize([], len(dataset))
+    return record
+
+
 def _skeleton(
     dataset: Dataset,
     options: RunOptions,
