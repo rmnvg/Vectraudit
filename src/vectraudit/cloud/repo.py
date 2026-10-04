@@ -41,6 +41,7 @@ EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]+$")
 
 ACTION_ROLE = {
     "read": "viewer",
+    "read_baselines": "viewer",
     "write_runs": "engineer",
     "write_checks": "engineer",
     "pin_baseline": "engineer",

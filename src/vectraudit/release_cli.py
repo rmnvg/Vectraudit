@@ -522,15 +522,31 @@ def check(
     check_name: Annotated[
         str, typer.Option(help="Check run name, e.g. one per backend.")
     ] = "Retrieval check",
+    project: Annotated[
+        str | None,
+        typer.Option(help="Cloud workspace/project for cloud:<baseline> or --upload."),
+    ] = None,
+    upload: Annotated[
+        bool,
+        typer.Option(help="Upload the candidate and record the check on the hosted service."),
+    ] = False,
 ) -> None:
     """Compare a candidate run with a baseline and decide.
 
     Exit codes: 0 pass, 1 error (a run is incomplete or a file is invalid), 3 fail
     (a policy rule is broken), 4 not comparable (different data or missing metrics).
     """
+    cloud_baseline = str(baseline).startswith("cloud:")
+    client = _cloud_client(project) if cloud_baseline or upload else None
+    if upload and not cloud_baseline:
+        raise _fail("--upload compares with a pinned baseline: pass cloud:<name> as baseline.")
     try:
-        pol = DEFAULT_POLICY if policy is None else load_policy(policy)
-        base, cand = load_run(baseline), load_run(candidate)
+        cand = load_run(candidate)
+        if cloud_baseline:
+            base, pol = _cloud_baseline_and_policy(client, str(baseline)[6:], policy)
+        else:
+            pol = DEFAULT_POLICY if policy is None else load_policy(policy)
+            base = load_run(baseline)
     except (PolicyError, RunFileError) as e:
         raise _fail(str(e)) from e
     result = compare_runs(base, cand, pol)
@@ -550,6 +566,8 @@ def check(
         with open(summary_path, "a", encoding="utf-8") as f:
             f.write(md)
     _print_check(result, verdict)
+    if upload:
+        _record_cloud_check(client, cand, str(baseline)[6:], verdict)
     if github_check or github_comment:
         _publish_github(result, md, github_check, github_comment, check_name, report_url)
     raise typer.Exit(code=EXIT_CODES[verdict])
@@ -599,6 +617,82 @@ def _publish_github(
             err_console.print(f"[yellow]Warning:[/] {what} not published{hint}: {escape(str(e))}")
         else:
             console.print(f"Published {what}" + (f": {escape(url)}" if url else "."))
+
+
+def _cloud_baseline_and_policy(
+    client: Any, name: str, policy: Path | None
+) -> tuple[dict[str, Any], Any]:
+    """The pinned baseline run, and the project's policy unless --policy overrides it."""
+    from vectraudit.evaluation.policy import parse_policy
+    from vectraudit.evaluation.runfile import check_run
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        base = check_run(client.get_baseline_file(name))
+        if policy is not None:
+            return base, load_policy(policy)
+        remote = client.get_policy()["policy"]
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    return base, DEFAULT_POLICY if remote is None else parse_policy(remote)
+
+
+def _record_cloud_check(client: Any, cand: dict[str, Any], baseline: str, verdict: Verdict) -> None:
+    """Upload the candidate and store the hosted check; a mismatch is reported loudly."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    if not _upload(client, cand):
+        raise typer.Exit(code=1)
+    try:
+        stored = client.create_check(cand["run_id"], baseline)
+    except CloudClientError as e:
+        err_console.print(f"[bold red]Hosted check failed:[/] {escape(e.message)}")
+        raise typer.Exit(code=1) from e
+    console.print(f"Hosted check: {escape(stored['url'])}")
+    if stored["verdict"] != verdict.value:
+        err_console.print(
+            f"[bold red]Warning:[/] the hosted verdict is {stored['verdict']} but the local one "
+            f"is {verdict.value} (different policy or baseline?)."
+        )
+
+
+@cloud_app.command("pin")
+def cloud_pin(
+    run_id: Annotated[str, typer.Argument(help="Uploaded run id to pin.")],
+    name: Annotated[str, typer.Option(help="Baseline name, e.g. main.")] = "main",
+    note: Annotated[str, typer.Option(help="Why this run is the new baseline.")] = "",
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """Pin an uploaded, complete run as a baseline (engineer or owner; audited)."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    client = _cloud_client(project)
+    try:
+        b = client.pin_baseline(name, run_id, note)
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    console.print(f"Baseline {escape(b['name'])} → run {escape(b['run_id'])}")
+
+
+@cloud_app.command("baselines")
+def cloud_baselines(
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """List the project's pinned baselines."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        rows = _cloud_client(project).list_baselines()
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    if not rows:
+        console.print("No baselines pinned yet: `vectraudit cloud pin RUN_ID --name main`.")
+    for b in rows:
+        console.print(
+            f"{escape(b['name'])}: run {escape(b['run_id'])} "
+            f"({escape(b['run_label'] or '')}), pinned by {escape(b['pinned_by'])} "
+            f"at {b['pinned_at']}"
+        )
 
 
 def _print_check(result: dict[str, Any], verdict: Verdict) -> None:

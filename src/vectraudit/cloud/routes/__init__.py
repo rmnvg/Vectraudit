@@ -7,7 +7,8 @@ from fastapi import FastAPI
 
 def register(app: FastAPI) -> None:
     """Mount every router on the app."""
-    from vectraudit.cloud.routes import accounts, runs
+    from vectraudit.cloud.routes import accounts, checks, runs
 
     app.include_router(accounts.router)
     app.include_router(runs.router)
+    app.include_router(checks.router)

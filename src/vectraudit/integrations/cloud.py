@@ -143,3 +143,30 @@ class CloudClient:
     def get_run_file(self, run_id: str) -> dict[str, Any]:
         result: dict[str, Any] = self._call("GET", f"{self.project_path}/runs/{quote(run_id)}/file")
         return result
+
+    def get_policy(self) -> dict[str, Any]:
+        """``{"policy": <raw or None>, "effective": {...}, "is_default": bool}``."""
+        result: dict[str, Any] = self._call("GET", f"{self.project_path}/policy")
+        return result
+
+    def get_baseline_file(self, name: str) -> dict[str, Any]:
+        result: dict[str, Any] = self._call(
+            "GET", f"{self.project_path}/baselines/{quote(name)}/file"
+        )
+        return result
+
+    def list_baselines(self) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = self._call("GET", f"{self.project_path}/baselines")
+        return result
+
+    def pin_baseline(self, name: str, run_id: str, note: str = "") -> dict[str, Any]:
+        body = json.dumps({"run_id": run_id, "note": note}).encode()
+        result: dict[str, Any] = self._call(
+            "PUT", f"{self.project_path}/baselines/{quote(name)}", body
+        )
+        return result
+
+    def create_check(self, candidate_run_id: str, baseline: str = "main") -> dict[str, Any]:
+        body = json.dumps({"candidate_run_id": candidate_run_id, "baseline": baseline}).encode()
+        result: dict[str, Any] = self._call("POST", f"{self.project_path}/checks", body)
+        return result
