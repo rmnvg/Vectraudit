@@ -171,6 +171,8 @@ vectraudit/
   - `vectraudit[umap]` → `umap-learn` (heavy; PCA is the default projection).
   - `vectraudit[text]` → `sentence-transformers` (text queries).
   - `vectraudit[parquet]` → `pyarrow`.
+  - `vectraudit[qdrant]` → `qdrant-client` (Phase 14 connector).
+  - `vectraudit[pgvector]` → `psycopg[binary]` (Phase 14 connector; LGPL, used unmodified).
   - `vectraudit[all]` → everything above.
   - `vectraudit[dev]` → test/lint tools.
 
@@ -404,6 +406,59 @@ Layout: left sidebar (index info card + nav), main panel (active view). Light an
 3. Uses the Python interpreter from the VS Code Python extension, checks `vectraudit` is installed (offer `pip install` if not), spawns `vectraudit serve FILE --no-browser --port <free>`, and shows the UI in a webview panel.
 4. Kill the process when the panel closes.
 5. Publish to VS Code Marketplace and Open VSX.
+
+### Phase 14: Release-check core (FAISS, Qdrant, pgvector)
+Goal: the customer-side half of the product. A team runs `vectraudit run` against a baseline
+and a candidate retrieval setup in its own CI, then `vectraudit check` decides pass / fail /
+error / not comparable under a policy and writes a report. No hosted service yet.
+New code lives in `vectraudit.connectors` (backend access) and `vectraudit.evaluation`
+(datasets, runs, metrics, comparison, policy, reports); both are strict-typed and web-free.
+
+1. **Dataset format.** JSONL, one query per line: `query_id` (string, unique), `vector`,
+   optional `text`, `relevant` (`{doc_id: grade}`, grades >= 0), `filter` (portable:
+   field -> scalar equality, AND-ed), `tags` (cohorts). Validation with line numbers; the
+   dataset version is the SHA-256 of its canonical form, so any edit is a new version.
+2. **Connector interface + FAISS connector.** `Connector` protocol: `describe()` (backend,
+   versions, metric, dimension, count, configuration, snapshot id), `capabilities()`
+   (search, filters, exact reference, config inspection, query plans, tuning params; each
+   declared separately), `search(vector, k, filter, params, exact)` returning ranked
+   user-facing ids as strings. Errors are typed (`config`, `connection`, `auth`, `timeout`,
+   `unsupported`, `query`) and never look like empty results. Connection files are JSON;
+   secrets only through `*_env` references. FAISS: index file + optional raw vectors for the
+   exact reference; filters unsupported.
+3. **Runner + run format.** Execute a dataset against a connection: warm-up, repeats,
+   per-query latency, exact reference when available, per-query errors kept apart from
+   results, status `complete | partial | failed | cancelled` (Ctrl-C writes a cancelled run).
+   Run JSON stores dataset hash, backend description, capabilities, k, params, timing
+   protocol, metric contract version, provenance (commit SHA, CI run, runner environment,
+   user labels such as embedding revision and chunking version) and per-query ranks and
+   metrics. Semantic metrics (recall, precision, MRR, nDCG@k) only with labels; ANN recall
+   only with an exact reference, marked separately.
+4. **Comparison + policy.** Refuse with reasons when dataset hash, k, metric contract or
+   query set differ; incomplete runs give `error`. Paired per-query deltas, seeded bootstrap
+   95% intervals, cohorts by tag, latency p50/p95 deltas with an environment-mismatch
+   warning. JSON policy: per-metric max drop / minimum, latency limits, minimum queries,
+   max regressed queries, max error rate, cohort rules. Verdict `pass | fail | error |
+   not_comparable` with every reason listed.
+5. **Reports.** Self-contained escaped HTML (no scripts), JSON, and a Markdown summary for
+   `$GITHUB_STEP_SUMMARY`: verdict, reasons, aggregate table with intervals, worst regressed
+   queries with rank changes, cohorts, configuration and provenance diff.
+6. **CLI + CI.** `vectraudit dataset validate`, `vectraudit run`, `vectraudit check`
+   (exit 0 pass, 1 error, 3 fail, 4 not comparable, matching `sweep --baseline`). Example
+   GitHub Actions workflow and a README section.
+7. **Qdrant connector** (`vectraudit[qdrant]`): named vectors, payload filters, `hnsw_ef`,
+   exact search reference, collection config. Tests use qdrant-client's local mode.
+8. **pgvector connector** (`vectraudit[pgvector]`): table, id and vector columns; cosine,
+   L2, inner product; read-only transactions with `statement_timeout`; validated
+   identifiers; `hnsw.ef_search` / `ivfflat.probes`; exact reference by disabling index
+   scans; index definitions and extension version. Integration tests against
+   `pgvector/pgvector` (Docker locally, a service container in CI), skipped without a DSN.
+9. **End-to-end acceptance.** One labelled fixture on every backend: baseline passes against
+   itself; a controlled quality regression fails; a latency regression fails; a broken
+   connection gives error; a different dataset gives not comparable.
+
+**Acceptance:** all of step 9 passes in CI; `vectraudit check` exit codes and reports match
+the fixture; no secret appears in run files or logs.
 
 ---
 
