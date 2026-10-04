@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -136,3 +137,44 @@ def cloud_app(cloud_settings):
     app = create_app(cloud_settings)
     yield app
     app.state.engine.dispose()
+
+
+@dataclass
+class World:
+    client: Any
+    tokens: dict[str, str]
+    """Name -> secret: admin, acme_owner, acme_engineer, acme_viewer, globex_owner,
+    acme_runner (project acme/search), globex_runner (project globex/search)."""
+
+    def as_(self, who: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.tokens[who]}"}
+
+
+@pytest.fixture
+def world(cloud_app) -> World:
+    """Two tenants (acme, globex) with members, projects and runner tokens."""
+    from fastapi.testclient import TestClient
+
+    from vectraudit.cloud import repo
+    from vectraudit.cloud.auth import Principal
+    from vectraudit.cloud.db import transaction
+
+    tokens: dict[str, str] = {}
+    with transaction(cloud_app.state.sessions) as s:
+        admin = repo.get_or_create_user(s, "ops@vectraudit.test")
+        admin.is_admin = True
+        tokens["admin"] = repo.create_personal_token(s, admin, "admin", "test")[1].token
+        for slug in ("acme", "globex"):
+            _, owner = repo.create_workspace(s, "test", slug, slug.title(), f"owner@{slug}.test")
+            tokens[f"{slug}_owner"] = repo.create_personal_token(s, owner, "o", "test")[1].token
+            owner_p = Principal("user", None, None, user_id=owner.id)
+            access = repo.authorize(s, owner_p, slug, "manage_project")
+            repo.create_project(s, access, "search", "Search")
+            if slug == "acme":
+                repo.create_project(s, access, "chat", "Chat")
+                for role in ("engineer", "viewer"):
+                    user, _ = repo.add_member(s, access, f"{role}@acme.test", role)
+                    tokens[f"acme_{role}"] = repo.create_personal_token(s, user, role, "t")[1].token
+            proj = repo.authorize(s, owner_p, slug, "manage_runner_tokens", "search")
+            tokens[f"{slug}_runner"] = repo.create_runner_token(s, proj, "ci")[1].token
+    return World(TestClient(cloud_app), tokens)

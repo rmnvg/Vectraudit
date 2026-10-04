@@ -20,6 +20,7 @@ class Settings:
     """Signs share links and sessions. At least 32 characters; rotate to invalidate them."""
     public_url: str = "http://localhost:8800"
     max_upload_bytes: int = 20 * 1024 * 1024
+    max_queries_per_run: int = 10_000
     share_links: bool = False
     """Signed public report links are off unless explicitly enabled."""
     environment: str = "production"
@@ -44,8 +45,13 @@ class Settings:
             max_upload = int(get("MAX_UPLOAD_BYTES") or cls.max_upload_bytes)
         except ValueError as e:
             raise SettingsError("VECTRAUDIT_CLOUD_MAX_UPLOAD_BYTES must be an integer.") from e
+        try:
+            max_queries = int(get("MAX_QUERIES_PER_RUN") or cls.max_queries_per_run)
+        except ValueError as e:
+            raise SettingsError("VECTRAUDIT_CLOUD_MAX_QUERIES_PER_RUN must be an integer.") from e
         return cls(
             database_url=normalize_database_url(url),
+            max_queries_per_run=max_queries,
             secret_key=secret,
             public_url=(get("PUBLIC_URL") or cls.public_url).rstrip("/"),
             max_upload_bytes=max_upload,

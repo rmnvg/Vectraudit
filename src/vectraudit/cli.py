@@ -926,9 +926,10 @@ def cache_clear(
 
 
 # Release checks (backend-neutral): defined in release_cli to keep this module FAISS-focused.
-from vectraudit.release_cli import check, dataset_app, init, record  # noqa: E402
+from vectraudit.release_cli import check, cloud_app, dataset_app, init, record  # noqa: E402
 
 app.add_typer(dataset_app, name="dataset")
+app.add_typer(cloud_app, name="cloud")
 app.command()(record)
 app.command()(check)
 app.command()(init)

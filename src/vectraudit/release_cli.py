@@ -42,6 +42,58 @@ err_console = Console(stderr=True)
 dataset_app = typer.Typer(help="Work with evaluation datasets (JSONL).", no_args_is_help=True)
 
 
+cloud_app = typer.Typer(
+    help="Work with the hosted Vectraudit service (VECTRAUDIT_CLOUD_URL / _TOKEN).",
+    no_args_is_help=True,
+)
+
+
+def _cloud_client(project: str | None) -> Any:
+    from vectraudit.integrations.cloud import CloudClient, CloudClientError, CloudTarget
+
+    try:
+        return CloudClient(CloudTarget.from_env(project))
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+
+
+def _upload(client: Any, run: dict[str, Any]) -> bool:
+    """Upload one run; report the outcome. Returns False on failure."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        stored = client.upload_run(run)
+    except CloudClientError as e:
+        err_console.print(f"[bold red]Upload failed:[/] {escape(e.message)}")
+        if e.hint:
+            err_console.print(f"[dim]Hint: {escape(e.hint)}[/]")
+        return False
+    console.print(f"Uploaded run {escape(stored['run_id'])} ({escape(stored['status'])})")
+    return True
+
+
+@cloud_app.command("push")
+def cloud_push(
+    runs: Annotated[list[Path], typer.Argument(help="Run files to upload.")],
+    project: Annotated[
+        str | None, typer.Option(help="workspace/project (or VECTRAUDIT_CLOUD_PROJECT).")
+    ] = None,
+) -> None:
+    """Upload run files. Retrying is safe: a run is stored once."""
+    client = _cloud_client(project)
+    ok = True
+    for path in runs:
+        try:
+            run = load_run(path)
+        except RunFileError as e:
+            err_console.print(f"[bold red]Error:[/] {escape(str(e))}")
+            ok = False
+            continue
+        ok = _upload(client, run) and ok
+    if not ok:
+        raise typer.Exit(code=1)
+
+
 def _fail(message: str, hint: str | None = None) -> typer.Exit:
     err_console.print(f"[bold red]Error:[/] {escape(message)}")
     if hint:
@@ -332,6 +384,13 @@ def record(
             help="Record per-query backend evidence (IVF miss reasons, query plans).",
         ),
     ] = True,
+    upload: Annotated[
+        bool, typer.Option(help="Also upload the run to the hosted service.")
+    ] = False,
+    project: Annotated[
+        str | None,
+        typer.Option(help="Cloud workspace/project for --upload (or VECTRAUDIT_CLOUD_PROJECT)."),
+    ] = None,
     normalize_text: Annotated[
         bool, typer.Option(help="L2-normalise text embeddings (for cosine / IP corpora).")
     ] = False,
@@ -366,6 +425,7 @@ def record(
         },
         evidence=evidence,
     )
+    client = _cloud_client(project) if upload else None  # fail on bad config before running
     dataset_model = ds.meta.get("embedding_model")
     if embedder and dataset_model and embedder != dataset_model:
         err_console.print(
@@ -380,6 +440,8 @@ def record(
         run = failed_run(ds, e, options, connection=cfg.public())
         save_run(run, out)
         _print_run(run, out)
+        if client is not None:
+            _upload(client, run)
         raise typer.Exit(code=1) from e
     with connector, console.status("Running queries…") as status:
 
@@ -397,9 +459,10 @@ def record(
         )
     save_run(run, out)
     _print_run(run, out)
+    uploaded = _upload(client, run) if client is not None else True
     if run["status"] == "cancelled":
         raise typer.Exit(code=130)
-    if run["status"] != "complete":
+    if run["status"] != "complete" or not uploaded:
         raise typer.Exit(code=1)
 
 
