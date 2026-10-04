@@ -34,7 +34,8 @@ def test_ivf_unprobed_lists(uniform_ivf) -> None:
     assert ids(result)[:3] == ["approximation-loss", "ivf-unprobed", "approximation-config"]
     unprobed = finding(result, "ivf-unprobed")
     assert unprobed["level"] == "verified"
-    assert "Raise nprobe towards" in unprobed["suggestion"]
+    assert "Raise nprobe to" in unprobed["suggestion"]
+    assert unprobed["data"]["recommended_nprobe"] > 1
     assert "list not probed" in unprobed["facts"][0]
     assert "nprobe: 16 → 1" in finding(result, "approximation-config")["facts"][0]
     assert finding(result, "approximation-config")["level"] == "supported"
@@ -167,3 +168,31 @@ def test_findings_in_reports() -> None:
     md = render_markdown(result)
     assert "**Diagnosis**" in md
     assert "_supported_: Relevance fell" in md
+
+
+def test_shared_misses_are_not_blamed_on_the_change(uniform_ivf, tmp_path) -> None:
+    """Both runs miss unprobed neighbours at nprobe 4; only PQ's new misses count."""
+    import faiss
+    import numpy as np
+
+    index, vectors, ds = uniform_ivf
+    x = np.load(vectors)
+    flat = faiss.read_index(str(index))
+    pq = faiss.IndexIVFPQ(faiss.IndexFlatL2(16), 16, 16, 4, 8)
+    pq.train(x)
+    pq.add(x)
+    faiss.write_index(pq, str(tmp_path / "pq.index"))
+    assert flat.nlist == pq.nlist
+    base = execute_run(
+        ds, FaissConnector(index, vectors=vectors), RunOptions(k=10, params={"nprobe": 4})
+    )
+    cand = execute_run(
+        ds,
+        FaissConnector(tmp_path / "pq.index", vectors=vectors),
+        RunOptions(k=10, params={"nprobe": 4}),
+    )
+    result = compare_runs(base, cand, ANN_POLICY)
+    q = finding(result, "ivf-quantization")
+    assert "the baseline found were missed by the candidate" in q["facts"][0]
+    assert "predate this change" in q["facts"][1]
+    assert "ivf-unprobed" not in ids(result)

@@ -172,11 +172,13 @@ class FaissConnector(Connector):
         found_set = set(found)
         probed_miss = probed_miss_reason(li).value
         missed: dict[str, str] = {}
+        ranks: dict[str, int] = {}
         worst = 0
         for nid, list_no in zip(exact, lists, strict=True):
             rank = int(probe_rank[list_no]) if list_no >= 0 else nlist
             worst = max(worst, rank)
             if nid not in found_set:
+                ranks[nid] = rank
                 missed[nid] = MissReason.CELL_NOT_PROBED.value if rank >= nprobe else probed_miss
         counts: dict[str, int] = {}
         for reason in missed.values():
@@ -189,6 +191,8 @@ class FaissConnector(Connector):
             "min_nprobe_for_all": min(nlist, worst + 1),
             "missed": missed,
             "missed_by_reason": counts,
+            # Position of each missed neighbour's list in the probe order (0 = probed first).
+            "probe_rank": ranks,
         }
 
     def _assignments(self) -> Assignments:

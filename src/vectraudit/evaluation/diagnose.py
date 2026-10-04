@@ -39,6 +39,7 @@ def _finding(
         "title": title,
         "facts": list(facts),
         "suggestion": suggestion,
+        "data": {},
     }
 
 
@@ -90,6 +91,15 @@ def diagnose(
     return sorted(findings, key=lambda f: order[f["level"]])
 
 
+def _change(name: str, d: Mapping[str, Any]) -> str:
+    """``name: a → b`` for short values, ``name changed`` otherwise."""
+    a, b = d["baseline"], d["candidate"]
+    scalar = all(isinstance(v, (str, int, float, bool)) or v is None for v in (a, b))
+    if scalar and len(str(a)) + len(str(b)) <= 60:
+        return f"{name}: {a} → {b}"
+    return f"{name} changed"
+
+
 def _search_changes(diff: Mapping[str, Any]) -> list[str]:
     return [
         f"{path.removeprefix('search.params.')}: {d['baseline']} → {d['candidate']}"
@@ -116,9 +126,13 @@ def _approximation(
         )
     ]
     changes = _search_changes(diff)
-    index_changes = [p for p in diff if p.startswith("backend.config.")]
+    index_changes = [
+        _change(p.removeprefix("backend.config."), diff[p])
+        for p in diff
+        if p.startswith("backend.config.")
+    ]
     if changes or index_changes:
-        what = changes + [f"{p.removeprefix('backend.config.')} changed" for p in index_changes]
+        what = changes + index_changes
         out.append(
             _finding(
                 "approximation-config",
@@ -127,57 +141,86 @@ def _approximation(
                 ["Changed: " + "; ".join(what[:6]) + "."],
             )
         )
-    reasons: dict[str, int] = {}
-    min_nprobe: list[int] = []
-    nprobe = None
-    for _, c in pairs:
-        ev = c.get("evidence") or {}
-        if ev.get("kind") != "faiss_ivf":
-            continue
-        nprobe = ev.get("nprobe")
-        min_nprobe.append(int(ev["min_nprobe_for_all"]))
-        for reason, n in (ev.get("missed_by_reason") or {}).items():
-            reasons[reason] = reasons.get(reason, 0) + int(n)
-    total = sum(reasons.values())
-    if total:
-        unprobed = reasons.get("CELL_NOT_PROBED", 0)
-        facts = [
-            f"{total} exact neighbours missed across the candidate's queries: "
-            + ", ".join(
-                f"{n} {REASON_TEXT.get(r, r)}"
-                for r, n in sorted(reasons.items(), key=lambda x: -x[1])
-            )
-            + " (replayed from the IVF probe order)."
-        ]
-        if unprobed >= total / 2:
-            p95 = math.ceil(float(np.percentile(min_nprobe, 95)))
-            out.append(
-                _finding(
-                    "ivf-unprobed",
-                    "verified",
-                    "Most missed neighbours were in inverted lists the search did not probe",
-                    [
-                        *facts,
-                        f"nprobe {nprobe}; nprobe {p95} reaches every exact neighbour "
-                        "for 95% of queries.",
-                    ],
-                    f"Raise nprobe towards {p95} and measure the latency cost "
-                    "(vectraudit sweep shows the curve).",
-                )
-            )
-        else:
-            out.append(
-                _finding(
-                    "ivf-quantization",
-                    "verified",
-                    "Most missed neighbours were in probed lists but ranked out by compressed "
-                    "distances",
-                    facts,
-                    "Raising nprobe will not recover these. Re-rank candidates with exact "
-                    "distances, or use more bytes per vector (PQ m / SQ type).",
-                )
-            )
+    out += _ivf_attribution(pairs)
     return out
+
+
+def _ivf_attribution(pairs: Sequence[Pair]) -> list[dict[str, Any]]:
+    """Why the candidate's IVF search missed neighbours, counting only new misses.
+
+    With baseline IVF evidence, neighbours both runs missed are excluded: they existed
+    before the change and say nothing about it.
+    """
+    reasons: dict[str, int] = {}
+    needed: list[int] = []
+    already = 0
+    nprobe = None
+    compared = False
+    for b, c in pairs:
+        ce = c.get("evidence") or {}
+        if ce.get("kind") != "faiss_ivf":
+            continue
+        nprobe = ce.get("nprobe")
+        be = b.get("evidence") or {}
+        before = set(be.get("missed") or {}) if be.get("kind") == "faiss_ivf" else None
+        compared = compared or before is not None
+        ranks = ce.get("probe_rank") or {}
+        for nid, reason in (ce.get("missed") or {}).items():
+            if before is not None and nid in before:
+                already += 1
+                continue
+            reasons[reason] = reasons.get(reason, 0) + 1
+            if reason == "CELL_NOT_PROBED" and nid in ranks:
+                needed.append(int(ranks[nid]) + 1)
+    total = sum(reasons.values())
+    if not total:
+        return []
+    breakdown = ", ".join(
+        f"{n} {REASON_TEXT.get(r, r)}" for r, n in sorted(reasons.items(), key=lambda x: -x[1])
+    )
+    if compared:
+        facts = [
+            f"{total} exact neighbours the baseline found were missed by the candidate: "
+            f"{breakdown} (replayed from the IVF probe order)."
+        ]
+        if already:
+            facts.append(f"{already} other misses occur in both runs and predate this change.")
+    else:
+        facts = [
+            f"{total} exact neighbours missed across the candidate's queries: {breakdown} "
+            "(replayed from the IVF probe order)."
+        ]
+    unprobed = reasons.get("CELL_NOT_PROBED", 0)
+    if unprobed >= total / 2 and needed:
+        target = math.ceil(float(np.percentile(needed, 95)))
+        whom = "the neighbours the baseline found" if compared else "the missed neighbours"
+        facts.append(f"At nprobe {nprobe}; nprobe {target} reaches 95% of {whom}.")
+        finding = _finding(
+            "ivf-unprobed",
+            "verified",
+            "Most newly missed neighbours were in inverted lists the search did not probe"
+            if compared
+            else "Most missed neighbours were in inverted lists the search did not probe",
+            facts,
+            f"Raise nprobe to {target} and measure the latency cost "
+            "(vectraudit sweep shows the curve).",
+        )
+        finding["data"] = {"recommended_nprobe": target}
+        return [finding]
+    return [
+        _finding(
+            "ivf-quantization",
+            "verified",
+            "Most newly missed neighbours were in probed lists but ranked out by compressed "
+            "distances"
+            if compared
+            else "Most missed neighbours were in probed lists but ranked out by compressed "
+            "distances",
+            facts,
+            "Raising nprobe will not recover these. Re-rank candidates with exact distances, "
+            "or use more bytes per vector (PQ m / SQ type).",
+        )
+    ]
 
 
 def _relevance(
