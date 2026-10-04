@@ -1,0 +1,41 @@
+name: Security
+
+# Known-vulnerability scans of the locked dependencies: on every pull request and push to
+# main, and weekly, because new advisories appear without any change here.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python dependencies (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Export the locked runtime dependencies (all extras, with hashes)
+        run: uv export --all-extras --no-dev --no-emit-project --format requirements-txt -q > requirements.txt
+      - name: Audit
+        run: uvx pip-audit==2.10.1 -r requirements.txt --disable-pip --require-hashes --progress-spinner off
+
+  frontend:
+    name: Frontend dependencies (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=moderate
