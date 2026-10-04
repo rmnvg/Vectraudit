@@ -75,6 +75,169 @@ def dataset_validate(
     console.print(table)
 
 
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+@dataset_app.command("import")
+def dataset_import(
+    source: Annotated[Path, typer.Argument(help="CSV (with a header row) or JSONL file.")],
+    out: Annotated[Path, typer.Option(help="Dataset JSONL to write.")],
+    id_column: Annotated[str, typer.Option(help="Column with the query id.")] = "query_id",
+    text_column: Annotated[str, typer.Option(help="Column with the query text.")] = "text",
+    vector_column: Annotated[
+        str | None, typer.Option(help="Column with the vector as a JSON list.")
+    ] = None,
+    relevant_column: Annotated[
+        str,
+        typer.Option(help='Relevant documents: "doc-1:2; doc-7" (grade defaults to 1).'),
+    ] = "relevant",
+    tags_column: Annotated[str | None, typer.Option(help='Cohort tags, ";"-separated.')] = None,
+    filter_column: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--filter",
+            help="Filter column, optionally typed: lang, year:int, price:float, public:bool.",
+        ),
+    ] = None,
+    name: Annotated[str | None, typer.Option(help="Dataset name for the header.")] = None,
+) -> None:
+    """Convert a CSV or JSONL file of queries and labels into a dataset."""
+    from vectraudit.evaluation.dataset_tools import (
+        ColumnMap,
+        import_rows,
+        read_records,
+        render_dataset,
+    )
+
+    filters = {}
+    for spec in filter_column or []:
+        col, _, kind = spec.partition(":")
+        filters[col.strip()] = kind.strip() or "str"
+    columns = ColumnMap(
+        query_id=id_column,
+        text=text_column,
+        vector=vector_column,
+        relevant=relevant_column,
+        tags=tags_column,
+        filters=filters,
+    )
+    try:
+        rows = import_rows(read_records(source), columns)
+        text = render_dataset(rows, {"name": name} if name else None)
+    except DatasetError as e:
+        raise _fail(str(e)) from e
+    _write_text(out, text)
+    ds = load_dataset(out)
+    console.print(
+        f"Wrote {len(ds):,} queries ({ds.n_labelled:,} labelled) to {escape(str(out))}, "
+        f"version {ds.sha256[:12]}"
+    )
+
+
+@dataset_app.command("embed")
+def dataset_embed(
+    path: Annotated[Path, typer.Argument(help="Dataset JSONL.")],
+    model: Annotated[str, typer.Option(help="sentence-transformers model of the corpus.")],
+    out: Annotated[Path | None, typer.Option(help="Output (default: overwrite input).")] = None,
+    normalize: Annotated[
+        bool, typer.Option(help="L2-normalise vectors (cosine / inner-product corpora).")
+    ] = False,
+    overwrite: Annotated[bool, typer.Option(help="Re-embed queries that have vectors.")] = False,
+) -> None:
+    """Add query vectors from text, and record the model in the dataset header."""
+    from vectraudit.evaluation.dataset_tools import embed_dataset
+
+    embed = _embedder(model, normalize)
+    assert embed is not None
+    try:
+        text = embed_dataset(
+            load_dataset(path), embed, model=model, normalized=normalize, overwrite=overwrite
+        )
+    except DatasetError as e:
+        raise _fail(str(e)) from e
+    target = out or path
+    _write_text(target, text)
+    ds = load_dataset(target)
+    console.print(
+        f"Embedded with {escape(model)}: {len(ds):,} queries, dimension {ds.dim}, "
+        f"version {ds.sha256[:12]} → {escape(str(target))}"
+    )
+
+
+@dataset_app.command("diff")
+def dataset_diff(
+    old: Annotated[Path, typer.Argument(help="Earlier dataset.")],
+    new: Annotated[Path, typer.Argument(help="Later dataset.")],
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+) -> None:
+    """Show queries added, removed and changed between two dataset versions."""
+    from vectraudit.evaluation.dataset_tools import diff_datasets
+
+    try:
+        diff = diff_datasets(load_dataset(old), load_dataset(new))
+    except DatasetError as e:
+        raise _fail(str(e)) from e
+    if as_json:
+        typer.echo(json.dumps(diff, indent=2))
+        return
+    if diff["same"]:
+        console.print(f"Identical: version {diff['from'][:12]}")
+        return
+    console.print(f"{diff['from'][:12]} → {diff['to'][:12]}")
+    console.print(
+        f"Added {len(diff['added'])}, removed {len(diff['removed'])}, "
+        f"changed {len(diff['changed'])}"
+    )
+    for qid, fields in list(diff["changed"].items())[:20]:
+        console.print(f"  ~ {escape(qid)}: {', '.join(fields)}")
+    for qid in diff["added"][:10]:
+        console.print(f"  + {escape(qid)}")
+    for qid in diff["removed"][:10]:
+        console.print(f"  - {escape(qid)}")
+    if diff["meta_changed"]:
+        console.print(f"Header changed: {', '.join(diff['meta_changed'])}")
+
+
+@dataset_app.command("stats")
+def dataset_stats_cmd(
+    path: Annotated[Path, typer.Argument(help="Dataset JSONL.")],
+    policy: Annotated[
+        Path | None, typer.Option(help="Policy file, to check cohort sizes against it.")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+) -> None:
+    """Label coverage, grades, cohorts and readiness warnings."""
+    from vectraudit.evaluation.dataset_tools import dataset_stats
+
+    try:
+        ds = load_dataset(path)
+        minimum = load_policy(policy).cohorts.min_queries if policy else None
+    except (DatasetError, PolicyError) as e:
+        raise _fail(str(e)) from e
+    stats = dataset_stats(ds, cohort_minimum=minimum)
+    if as_json:
+        typer.echo(json.dumps(stats, indent=2))
+        return
+    rel = stats["relevant_per_query"]
+    console.print(
+        f"Version {stats['sha256'][:12]} · {stats['n_queries']:,} queries · "
+        f"{stats['n_labelled']:,} labelled · {stats['n_filtered']:,} filtered"
+    )
+    console.print(
+        f"Relevant per labelled query: min {rel['min']}, mean {rel['mean']:.1f}, max {rel['max']}"
+    )
+    if stats["grades"]:
+        console.print("Grades: " + ", ".join(f"{g}: {n}" for g, n in stats["grades"].items()))
+    if stats["tags"]:
+        console.print(
+            "Cohorts: " + ", ".join(f"{escape(t)} ({n})" for t, n in stats["tags"].items())
+        )
+    for w in stats["warnings"]:
+        console.print(f"[yellow]Warning:[/] {escape(w)}")
+
+
 def _parse_pairs(values: Sequence[str], what: str) -> dict[str, str]:
     out = {}
     for item in values:
@@ -173,9 +336,22 @@ def record(
         repeats=repeats,
         exact=exact,
         label=label,
-        labels=_parse_pairs(tag or [], "--tag"),
+        labels={
+            **(
+                {"dataset_embedding_model": ds.meta["embedding_model"]}
+                if ds.meta.get("embedding_model")
+                else {}
+            ),
+            **_parse_pairs(tag or [], "--tag"),
+        },
         evidence=evidence,
     )
+    dataset_model = ds.meta.get("embedding_model")
+    if embedder and dataset_model and embedder != dataset_model:
+        err_console.print(
+            f"[yellow]Warning:[/] the dataset's vectors come from {escape(dataset_model)}, "
+            f"but text queries will be embedded with {escape(embedder)}."
+        )
     embed = _embedder(embedder, normalize_text)
     try:
         connector = open_connector(cfg)

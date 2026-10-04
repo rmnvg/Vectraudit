@@ -57,6 +57,25 @@ One query per line:
 | `filter` | no | Portable filter: field → string / number / boolean, all AND-ed. |
 | `tags` | no | Cohorts, judged separately when the policy has cohort rules. |
 
+An optional first line `{"dataset": {"name": ..., "description": ..., "embedding_model": ...,
+"normalized": ...}}` holds metadata; it is part of the version.
+
+Building one:
+
+```bash
+# From a spreadsheet export: query_id, text, relevant ("doc-1:2; doc-7"), tags, filters
+vectraudit dataset import questions.csv --out retrieval/dataset.jsonl \
+  --tags-column segment --filter lang --filter year:int --name support-faq
+# Add vectors with the corpus's embedding model (recorded in the header)
+vectraudit dataset embed retrieval/dataset.jsonl --model BAAI/bge-small-en-v1.5 --normalize
+vectraudit dataset stats retrieval/dataset.jsonl --policy retrieval/policy.json
+vectraudit dataset diff old.jsonl retrieval/dataset.jsonl   # review label changes
+```
+
+`stats` warns about too few labelled queries, unlabelled queries, cohorts below the
+policy minimum, duplicate texts and missing vectors. `record` adds the dataset's embedding
+model to the run's provenance and warns if `--embedder` differs from it.
+
 The dataset **version** is the SHA-256 of its content (line order and formatting don't
 matter). Runs on different versions are never compared. Label documents by stable ids that
 survive re-chunking; if chunk ids change between baseline and candidate, map the labels to

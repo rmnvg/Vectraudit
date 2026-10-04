@@ -10,8 +10,12 @@ run time), or both. ``relevant`` maps document ids to non-negative grades; a que
 it is unlabelled and only contributes ANN recall and latency. ``filter`` is a portable
 filter: field -> scalar, all conditions AND-ed. ``tags`` name the cohorts a query belongs to.
 
+An optional first line ``{"dataset": {...}}`` holds metadata: ``name``, ``description``,
+``embedding_model`` (set by ``vectraudit dataset embed``) and ``normalized``.
+
 The dataset version is the SHA-256 of a canonical form that ignores line order and JSON
-formatting, so any change to the content is a new version and nothing else is.
+formatting, so any change to the content (metadata included) is a new version and nothing
+else is.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ MAX_QUERIES = 100_000
 MAX_ID_LENGTH = 512
 FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _KEYS = {"query_id", "vector", "text", "relevant", "filter", "tags"}
+_META_KEYS = {"name", "description", "embedding_model", "normalized"}
 
 
 class DatasetError(ValueError):
@@ -64,6 +69,8 @@ class Dataset:
     sha256: str
     dim: int | None
     """Vector dimension, or ``None`` when every query is text-only."""
+    meta: dict[str, Any] = field(default_factory=dict)
+    """Header metadata (``name``, ``description``, ``embedding_model``, ``normalized``)."""
 
     def __len__(self) -> int:
         return len(self.queries)
@@ -87,6 +94,7 @@ class Dataset:
             "n_filtered": sum(bool(q.filter) for q in self.queries),
             "dim": self.dim,
             "tags": tags,
+            "meta": dict(self.meta),
         }
 
 
@@ -107,11 +115,21 @@ def parse_dataset(text: str) -> Dataset:
     queries: list[DatasetQuery] = []
     seen: set[str] = set()
     dim: int | None = None
+    meta: dict[str, Any] = {}
+    first = True
     for line_no, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
         try:
-            q = _parse_query(json.loads(line, parse_constant=_reject_constant))
+            obj = json.loads(line, parse_constant=_reject_constant)
+            if isinstance(obj, dict) and "dataset" in obj:
+                if not first:
+                    raise ValueError("the dataset header must be the first line")
+                meta = _meta(obj)
+                first = False
+                continue
+            first = False
+            q = _parse_query(obj)
             if q.query_id in seen:
                 raise ValueError(f"duplicate query_id {q.query_id!r}")
             if q.vector is not None:
@@ -127,7 +145,24 @@ def parse_dataset(text: str) -> Dataset:
             raise DatasetError(f"More than {MAX_QUERIES:,} queries; split the dataset.")
     if not queries:
         raise DatasetError("The dataset has no queries.")
-    return Dataset(tuple(queries), _fingerprint(queries), dim)
+    return Dataset(tuple(queries), _fingerprint(queries, meta), dim, meta)
+
+
+def _meta(obj: dict[str, Any]) -> dict[str, Any]:
+    if set(obj) != {"dataset"} or not isinstance(obj["dataset"], dict):
+        raise ValueError('the header must be {"dataset": {...}} and nothing else')
+    meta = obj["dataset"]
+    unknown = set(meta) - _META_KEYS
+    if unknown:
+        raise ValueError(
+            f"unknown header field(s) {sorted(unknown)}; allowed: {sorted(_META_KEYS)}"
+        )
+    for key in ("name", "description", "embedding_model"):
+        if key in meta and not isinstance(meta[key], str):
+            raise ValueError(f"header {key} must be a string")
+    if "normalized" in meta and not isinstance(meta["normalized"], bool):
+        raise ValueError("header normalized must be true or false")
+    return dict(meta)
 
 
 def _reject_constant(token: str) -> float:
@@ -220,8 +255,8 @@ def _tags(value: Any) -> tuple[str, ...]:
     return tuple(sorted(set(value)))
 
 
-def _fingerprint(queries: list[DatasetQuery]) -> str:
-    canonical = [
+def _fingerprint(queries: list[DatasetQuery], meta: dict[str, Any]) -> str:
+    rows = [
         {
             "query_id": q.query_id,
             "vector": None if q.vector is None else [float(x) for x in q.vector],
@@ -232,5 +267,7 @@ def _fingerprint(queries: list[DatasetQuery]) -> str:
         }
         for q in sorted(queries, key=lambda q: q.query_id)
     ]
+    # Without a header the canonical form is just the rows, as before headers existed.
+    canonical: Any = {"meta": meta, "queries": rows} if meta else rows
     blob = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(blob.encode()).hexdigest()

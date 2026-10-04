@@ -47,6 +47,7 @@ def test_parse_full_query() -> None:
         "n_filtered": 1,
         "dim": 3,
         "tags": ["billing", "faq"],
+        "meta": {},
     }
 
 
@@ -122,3 +123,34 @@ def test_load_dataset(tmp_path) -> None:
     ds = load_dataset(path)
     assert ds.sha256 == parse_dataset(path.read_text()).sha256
     assert len(ds.sha256) == 64
+
+
+def test_header_metadata_is_part_of_the_version() -> None:
+    row = _jsonl({"query_id": "q", "text": "hi"})
+    header = {"dataset": {"name": "support", "embedding_model": "e5", "normalized": True}}
+    ds = parse_dataset(json.dumps(header) + "\n" + row)
+    assert ds.meta == {"name": "support", "embedding_model": "e5", "normalized": True}
+    assert ds.summary()["meta"]["embedding_model"] == "e5"
+    assert ds.sha256 != parse_dataset(row).sha256
+    other = {"dataset": {"name": "support", "embedding_model": "e5-large", "normalized": True}}
+    assert parse_dataset(json.dumps(other) + "\n" + row).sha256 != ds.sha256
+
+
+@pytest.mark.parametrize(
+    ("header", "message"),
+    [
+        ({"dataset": {"colour": "red"}}, "unknown header field"),
+        ({"dataset": {"name": 3}}, "name must be a string"),
+        ({"dataset": {"normalized": "yes"}}, "true or false"),
+        ({"dataset": [], "x": 1}, "nothing else"),
+    ],
+)
+def test_invalid_headers(header, message) -> None:
+    with pytest.raises(DatasetError, match=message):
+        parse_dataset(json.dumps(header) + "\n" + _jsonl({"query_id": "q", "text": "x"}))
+
+
+def test_header_must_come_first() -> None:
+    text = _jsonl({"query_id": "q", "text": "x"}) + json.dumps({"dataset": {"name": "n"}})
+    with pytest.raises(DatasetError, match="Line 2: the dataset header must be the first line"):
+        parse_dataset(text)

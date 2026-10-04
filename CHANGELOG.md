@@ -15,6 +15,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   declared capabilities and typed errors. See `docs/release-checks.md`.
 - **Investigation:** per-query backend evidence (FAISS IVF miss reasons, pgvector query
   plans) and diagnoses with evidence levels (verified, supported, hypothesis) in every report.
+- **Datasets:** `dataset import` (CSV/JSONL with column mapping and typed filters),
+  `dataset embed` (records the model in a dataset header), `dataset diff` and `dataset stats`
+  (label coverage, cohort sizes and readiness warnings).
 - **GitHub:** `check --github-check` publishes a check run and `--github-comment` keeps one
   pull-request comment up to date, using the job's `GITHUB_TOKEN`.
 - **Connectors:** FAISS (index files; raw vectors or a flat index as exact reference),
