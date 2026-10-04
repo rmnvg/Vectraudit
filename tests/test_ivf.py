@@ -2,9 +2,9 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core import ivf
-from faissight.core.loader import load_index
 from tests.conftest import SMALL
+from vectraudit.core import ivf
+from vectraudit.core.loader import load_index
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 IVF_NAMES = ["ivf_flat", "ivf_pq", "ivf_sq8", "pca_ivf_flat", "ivf_flat_ip"]

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Smoke test against a real `faissight serve` on a small synthetic index.
+// Smoke test against a real `vectraudit serve` on a small synthetic index.
 // Needs the frontend built (npm run build) and the Python env (uv sync --extra faiss-cpu).
 const PORT = 8799
 export const HNSW_PORT = 8798
@@ -21,7 +21,7 @@ export default defineConfig({
     {
       command:
         'uv run --project .. python e2e/large_ids.py' +
-        ' && FAISSIGHT_CACHE_DIR=e2e/.data-large/cache uv run --project .. faissight serve e2e/.data-large/hnsw.index' +
+        ' && VECTRAUDIT_CACHE_DIR=e2e/.data-large/cache uv run --project .. vectraudit serve e2e/.data-large/hnsw.index' +
         ' --vectors e2e/.data-large/vectors.npy --ids e2e/.data-large/ids.npy' +
         ' --meta e2e/.data-large/metadata.jsonl --port 8797 --no-browser',
       url: 'http://127.0.0.1:8797/api/health',
@@ -31,7 +31,7 @@ export default defineConfig({
     {
       command:
         `uv run --project .. python ../examples/make_synthetic.py --out ${DATA} --n 2000 --d 32 --nlist 16` +
-        ` && FAISSIGHT_CACHE_DIR=${DATA}/cache uv run --project .. faissight serve ${DATA}/ivf_flat.index` +
+        ` && VECTRAUDIT_CACHE_DIR=${DATA}/cache uv run --project .. vectraudit serve ${DATA}/ivf_flat.index` +
         ` --vectors ${DATA}/vectors.npy --meta ${DATA}/chunks.jsonl --compare ${DATA}/ivf_pq.index` +
         ` --port ${PORT} --no-browser`,
       url: `http://127.0.0.1:${PORT}/api/health`,
@@ -43,7 +43,7 @@ export default defineConfig({
       // have written the data.
       command:
         `until [ -f ${DATA}/hnsw_flat.index ] && [ -f ${DATA}/chunks.jsonl ] && [ -f ${DATA}/queries.npy ]; do sleep 0.2; done` +
-        ` && FAISSIGHT_CACHE_DIR=${DATA}/cache uv run --project .. faissight serve ${DATA}/hnsw_flat.index` +
+        ` && VECTRAUDIT_CACHE_DIR=${DATA}/cache uv run --project .. vectraudit serve ${DATA}/hnsw_flat.index` +
         ` --vectors ${DATA}/vectors.npy --meta ${DATA}/chunks.jsonl --queries ${DATA}/queries.npy` +
         ` --port ${HNSW_PORT} --no-browser`,
       url: `http://127.0.0.1:${HNSW_PORT}/api/health`,

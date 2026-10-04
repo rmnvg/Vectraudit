@@ -1,11 +1,11 @@
-"""Build the RAG demo data into a folder you choose (``faissight demo`` does this for you).
+"""Build the RAG demo data into a folder you choose (``vectraudit demo`` does this for you).
 
     uv run python examples/make_rag_demo.py --out examples/rag_data --max-chunks 20000
-    uv run faissight serve examples/rag_data/ivf_pq.index \\
+    uv run vectraudit serve examples/rag_data/ivf_pq.index \\
         --vectors examples/rag_data/vectors.npy --meta examples/rag_data/chunks.jsonl \\
         --queries examples/rag_data/queries.npy --embedder all-MiniLM-L6-v2
 
-See ``faissight.demo`` for the data source and licence.
+See ``vectraudit.demo`` for the data source and licence.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from faissight.demo import build_demo
+from vectraudit.demo import build_demo
 
 
 def main() -> None:

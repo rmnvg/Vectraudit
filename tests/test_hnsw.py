@@ -2,9 +2,9 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core import hnsw as H
-from faissight.core.loader import load_index
 from tests.conftest import SMALL
+from vectraudit.core import hnsw as H
+from vectraudit.core.loader import load_index
 
 N, M = SMALL["n"], SMALL["hnsw_m"]
 

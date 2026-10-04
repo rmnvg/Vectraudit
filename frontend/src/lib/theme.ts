@@ -57,7 +57,7 @@ export function rampColor(mode: ThemeMode, t: number, alpha = 220): RGBA {
   return hex(ramp[i], alpha)
 }
 
-const STORAGE_KEY = 'faissight-theme'
+const STORAGE_KEY = 'vectraudit-theme'
 
 function readPref(): ThemePref {
   try {

@@ -584,7 +584,7 @@ function Results({
                 className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:text-ink"
                 onClick={() =>
                   downloadCSV(
-                    `faissight-sweep-${result.param}.csv`,
+                    `vectraudit-sweep-${result.param}.csv`,
                     pts.map((p) => ({
                       value: p.value,
                       recall: p.recall,
@@ -602,7 +602,7 @@ function Results({
               </button>
               <button
                 className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:text-ink"
-                onClick={() => downloadJSON(`faissight-sweep-${result.param}.json`, {
+                onClick={() => downloadJSON(`vectraudit-sweep-${result.param}.json`, {
                     ...result,
                     target_recall: target,
                     recommendation_rule: confident ? 'ci_low' : 'mean',

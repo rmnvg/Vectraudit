@@ -64,13 +64,13 @@ export default function Compare({ info, params }: { info: Info; params: URLSearc
         <Header />
         <Card>
           <EmptyState title="No other index to compare with">
-            Start faissight with one or more <code>--compare</code> indexes built from the same vectors, for
+            Start vectraudit with one or more <code>--compare</code> indexes built from the same vectors, for
             example an IVF-PQ and an HNSW version of this index:
             <pre className="mt-3 overflow-auto rounded-lg bg-surface-2 p-3 text-left text-xs text-ink">
-              {`faissight serve ${info.name} --vectors vectors.npy \\\n  --compare ivf_pq.index --compare hnsw.index`}
+              {`vectraudit serve ${info.name} --vectors vectors.npy \\\n  --compare ivf_pq.index --compare hnsw.index`}
             </pre>
             <p className="mt-2">
-              In Python: <code>faissight.launch(index, vectors, compare=[other_index])</code>. Raw vectors are
+              In Python: <code>vectraudit.launch(index, vectors, compare=[other_index])</code>. Raw vectors are
               needed so both indexes are scored against the same exact ground truth.
             </p>
           </EmptyState>
@@ -304,7 +304,7 @@ function Results({ result, leftParam }: { result: CompareResult; leftParam: Swee
           actions={
             <button
               className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:text-ink print:hidden"
-              onClick={() => downloadJSON('faissight-compare.json', result)}
+              onClick={() => downloadJSON('vectraudit-compare.json', result)}
             >
               JSON
             </button>
@@ -346,7 +346,7 @@ function Results({ result, leftParam }: { result: CompareResult; leftParam: Swee
                 className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:text-ink print:hidden"
                 onClick={() =>
                   downloadCSV(
-                    'faissight-compare-changes.csv',
+                    'vectraudit-compare-changes.csv',
                     result.changes.map((c) => ({
                       query_no: c.query_no,
                       id: c.id,

@@ -22,7 +22,7 @@ def test_notebook_runs_top_to_bottom(tmp_path) -> None:
     source = "\n\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
     script = tmp_path / "notebook.py"
     script.write_text(source)
-    env = {**os.environ, "FAISSIGHT_NO_BROWSER": "1", "FAISSIGHT_CACHE_DIR": str(tmp_path)}
+    env = {**os.environ, "VECTRAUDIT_NO_BROWSER": "1", "VECTRAUDIT_CACHE_DIR": str(tmp_path)}
     r = subprocess.run(
         [sys.executable, str(script)], capture_output=True, text=True, env=env, timeout=120
     )

@@ -106,7 +106,7 @@ export default function ClusterMap({
           onChange={setMethod}
           options={[
             { value: 'pca', label: 'PCA' },
-            { value: 'umap', label: 'UMAP', title: 'Slower; needs faissight[umap]' },
+            { value: 'umap', label: 'UMAP', title: 'Slower; needs vectraudit[umap]' },
           ]}
         />
         <Segmented

@@ -14,7 +14,7 @@ const INPUT =
 export function SaveRunButton({ jobId, param, decision }: { jobId: string; param: SweepParam; decision: RunDecision }) {
   const save = useMutation({
     mutationFn: () => api.sweepRun(jobId, decision),
-    onSuccess: (run) => downloadJSON(`faissight-run-${param}-${new Date().toISOString().slice(0, 10)}.json`, run),
+    onSuccess: (run) => downloadJSON(`vectraudit-run-${param}-${new Date().toISOString().slice(0, 10)}.json`, run),
   })
   return (
     <button
@@ -84,7 +84,7 @@ export function BaselineCompare({ jobId, param, decision }: { jobId: string; par
   return (
     <Card
       title="Compare with a saved run"
-      subtitle="Load a run saved earlier (Save run, or faissight sweep --save) to see what changed since"
+      subtitle="Load a run saved earlier (Save run, or vectraudit sweep --save) to see what changed since"
     >
       <div className="flex flex-wrap items-end gap-3 text-xs text-ink-2">
         <label className={`${BUTTON} cursor-pointer`}>

@@ -36,7 +36,7 @@ jobs:
       - name: Typecheck
         run: uv run mypy
       - name: Test
-        run: uv run pytest -m "slow or not slow" --cov=faissight --cov-report=term-missing
+        run: uv run pytest -m "slow or not slow" --cov=vectraudit --cov-report=term-missing
 
   frontend:
     name: Frontend build
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: static
-          path: src/faissight/static
+          path: src/vectraudit/static
 
   package:
     name: Build wheel
@@ -70,11 +70,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: static
-          path: src/faissight/static
+          path: src/vectraudit/static
       - uses: astral-sh/setup-uv@v6
       - run: uv build
       - name: Wheel contains the built UI
-        run: unzip -l dist/*.whl | grep -q "faissight/static/index.html"
+        run: unzip -l dist/*.whl | grep -q "vectraudit/static/index.html"
       - name: Test installed wheel in an isolated environment
         run: |
           uv venv "$RUNNER_TEMP/wheel-smoke"

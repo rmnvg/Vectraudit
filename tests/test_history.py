@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from faissight.core.history import RunHistory
+from vectraudit.core.history import RunHistory
 
 
 def test_archive_restart_rename_delete_and_lossless_ids(tmp_path):

@@ -4,7 +4,7 @@ import types
 import numpy as np
 import pytest
 
-from faissight.core import embed as E
+from vectraudit.core import embed as E
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def test_missing_sentence_transformers(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "sentence_transformers", None)
     with pytest.raises(E.EmbedderUnavailableError) as e:
         E.sentence_transformer_embedder("m", normalize=True)
-    assert "faissight[text]" in e.value.hint
+    assert "vectraudit[text]" in e.value.hint
 
 
 def test_looks_normalized() -> None:

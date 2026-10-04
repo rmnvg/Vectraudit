@@ -3,11 +3,11 @@ import threading
 import numpy as np
 import pytest
 
-from faissight.core import ivf
-from faissight.core import projection as P
-from faissight.core import vectors as V
-from faissight.core.jobs import JobCancelledError, JobCapacityError, JobRunner, JobStatus
-from faissight.core.loader import load_index
+from vectraudit.core import ivf
+from vectraudit.core import projection as P
+from vectraudit.core import vectors as V
+from vectraudit.core.jobs import JobCancelledError, JobCapacityError, JobRunner, JobStatus
+from vectraudit.core.loader import load_index
 
 
 def test_job_runs_in_background_with_progress() -> None:
@@ -196,7 +196,7 @@ def test_completed_jobs_are_evicted_and_expire(monkeypatch) -> None:
     assert runner.get("b") is None
     assert runner.get("a") is not None
     future = runner.get("c").finished_at + 11
-    monkeypatch.setattr("faissight.core.jobs.time.monotonic", lambda: future)
+    monkeypatch.setattr("vectraudit.core.jobs.time.monotonic", lambda: future)
     assert runner.get("a") is None
     assert runner.get("c") is None
 

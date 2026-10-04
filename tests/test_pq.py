@@ -2,12 +2,12 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core import ivf
-from faissight.core import pq as P
-from faissight.core import vectors as V
-from faissight.core.loader import load_index
-from faissight.core.types import Metric
 from tests.conftest import SMALL
+from vectraudit.core import ivf
+from vectraudit.core import pq as P
+from vectraudit.core import vectors as V
+from vectraudit.core.loader import load_index
+from vectraudit.core.types import Metric
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 

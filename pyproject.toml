@@ -1,5 +1,5 @@
 [project]
-name = "faissight"
+name = "vectraudit"
 version = "0.1.0"
 description = "See inside your FAISS index: debug retrieval, tune recall."
 readme = "README.md"
@@ -37,7 +37,7 @@ faiss-cpu = ["faiss-cpu>=1.8"]
 umap = ["umap-learn>=0.5"]
 text = ["sentence-transformers>=2.2"]
 parquet = ["pyarrow>=14"]
-all = ["faissight[faiss-cpu,umap,text,parquet]"]
+all = ["vectraudit[faiss-cpu,umap,text,parquet]"]
 dev = [
     "ruff>=0.5",
     "mypy>=1.10",
@@ -48,13 +48,13 @@ dev = [
 ]
 
 [project.scripts]
-faissight = "faissight.cli:app"
+vectraudit = "vectraudit.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/rmnvg/faissight"
-Repository = "https://github.com/rmnvg/faissight"
-Issues = "https://github.com/rmnvg/faissight/issues"
-Changelog = "https://github.com/rmnvg/faissight/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/rmnvg/Vectraudit"
+Repository = "https://github.com/rmnvg/Vectraudit"
+Issues = "https://github.com/rmnvg/Vectraudit/issues"
+Changelog = "https://github.com/rmnvg/Vectraudit/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
@@ -62,15 +62,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 # static/ is gitignored (it's a build output) but must ship, so force-include it.
-artifacts = ["src/faissight/static/**"]
+artifacts = ["src/vectraudit/static/**"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/faissight"]
+packages = ["src/vectraudit"]
 
 [tool.hatch.build.targets.sdist]
 # Anchored paths; the tests need examples/ (fixtures, notebook) and benchmarks/ to run from the sdist.
 include = [
-    "/src/faissight",
+    "/src/vectraudit",
     "/tests",
     "/examples/*.py",
     "/examples/*.ipynb",
@@ -85,20 +85,20 @@ include = [
 line-length = 100
 target-version = "py310"
 src = ["src", "tests"]
-extend-exclude = ["frontend", "src/faissight/static"]
+extend-exclude = ["frontend", "src/vectraudit/static"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "NPY", "PT"]
 
 [tool.mypy]
-files = ["src/faissight"]
+files = ["src/vectraudit"]
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["faissight.core.*"]
+module = ["vectraudit.core.*"]
 strict = true
 
 [tool.pytest.ini_options]
@@ -107,5 +107,5 @@ addopts = "-ra --strict-markers -m 'not slow'"
 markers = ["slow: needs heavy optional deps (e.g. UMAP/numba); CI runs them with -m 'slow or not slow'"]
 
 [tool.coverage.run]
-source = ["faissight"]
+source = ["vectraudit"]
 branch = true

@@ -4,11 +4,11 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core import hnsw as H
-from faissight.core import hnsw_trace as T
-from faissight.core.loader import load_index
-from faissight.core.types import Metric
 from tests.conftest import SMALL
+from vectraudit.core import hnsw as H
+from vectraudit.core import hnsw_trace as T
+from vectraudit.core.loader import load_index
+from vectraudit.core.types import Metric
 
 D = SMALL["d"]
 
@@ -119,8 +119,8 @@ def test_higher_ef_visits_more(hnsw, hard_queries) -> None:
 
 def test_neighbour_outcomes(hnsw, synthetic, hard_queries) -> None:
     li, g, x = hnsw
-    from faissight.core import search as S
-    from faissight.core import vectors as V
+    from vectraudit.core import search as S
+    from vectraudit.core import vectors as V
 
     gt = S.GroundTruth(V.from_arrays(li, np.load(synthetic["vectors"])), li.metric)
     seen = set()

@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from faissight.core.jobs import JobCancelledError
-from faissight.core.relevance import evaluate_relevance, parse_judgements
-from faissight.server.app import create_app
-from faissight.session import Session
+from vectraudit.core.jobs import JobCancelledError
+from vectraudit.core.relevance import evaluate_relevance, parse_judgements
+from vectraudit.server.app import create_app
+from vectraudit.session import Session
 
 
 def make_session(tmp_path, **kwargs):
@@ -108,7 +108,7 @@ def test_cancel_evaluation_job_does_not_archive(tmp_path, monkeypatch):
         progress(0.5, "checkpoint")
         raise AssertionError("Cancelled work must not continue")
 
-    monkeypatch.setattr("faissight.session.evaluate_relevance", blocked)
+    monkeypatch.setattr("vectraudit.session.evaluate_relevance", blocked)
     with TestClient(create_app(session)) as client:
         job_id = client.post("/api/evaluation", json=payload()).json()["job_id"]
         assert entered.wait(5)

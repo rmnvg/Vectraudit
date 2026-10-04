@@ -24,7 +24,7 @@ function HistoryRow({ run, onChanged }: { run: HistorySummary; onChanged: () => 
   const remove = useMutation({ mutationFn: () => api.deleteRun(run.id), onSuccess: onChanged })
   const download = useMutation({
     mutationFn: () => api.historyRecord(run.id),
-    onSuccess: (record) => downloadJSON(`faissight-${run.kind}-${run.id.slice(0, 8)}.json`, record.data),
+    onSuccess: (record) => downloadJSON(`vectraudit-${run.kind}-${run.id.slice(0, 8)}.json`, record.data),
   })
   const error = rename.error ?? remove.error ?? download.error
   return (

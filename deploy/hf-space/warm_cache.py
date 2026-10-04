@@ -4,7 +4,7 @@ can serve UMAP (which it won't compute on the fly)."""
 import sys
 from pathlib import Path
 
-from faissight.session import Session
+from vectraudit.session import Session
 
 data = Path(sys.argv[1])
 for name in ("ivf_pq", "ivf_flat", "hnsw_flat"):

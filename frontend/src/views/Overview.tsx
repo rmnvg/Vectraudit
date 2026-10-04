@@ -34,7 +34,7 @@ export function Overview({ info }: { info: Info }) {
 
       {!info.supported && (
         <Banner tone="warning">
-          <strong>Unsupported index.</strong> {info.unsupported_reason} faissight can only show the
+          <strong>Unsupported index.</strong> {info.unsupported_reason} vectraudit can only show the
           basic stats below.
         </Banner>
       )}
@@ -297,7 +297,7 @@ function InputsCard({ info }: { info: Info }) {
     ['Query set', i.queries === null ? 'not given' : `${fmtNum(i.queries)} queries`],
   ]
   return (
-    <Card title="Inputs" subtitle="What faissight was started with">
+    <Card title="Inputs" subtitle="What vectraudit was started with">
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
         {rows.map(([k, v]) => (
           <div key={k} className="contents">

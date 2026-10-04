@@ -69,7 +69,7 @@ export default function Quantization({ info }: { info: Info }) {
           <EmptyState title={data.reason ?? 'Not available'}>
             <p>{data.hint}</p>
             <pre className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-left text-xs text-ink">
-              faissight serve {info.name} --vectors vectors.npy
+              vectraudit serve {info.name} --vectors vectors.npy
             </pre>
           </EmptyState>
         </Card>
@@ -341,13 +341,13 @@ function WorstTable({ data }: { data: PqError }) {
         <div className="flex gap-2 print:hidden">
           <button
             className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:text-ink"
-            onClick={() => downloadCSV('faissight-quantization-worst.csv', rows as never)}
+            onClick={() => downloadCSV('vectraudit-quantization-worst.csv', rows as never)}
           >
             CSV
           </button>
           <button
             className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:text-ink"
-            onClick={() => downloadJSON('faissight-quantization.json', data)}
+            onClick={() => downloadJSON('vectraudit-quantization.json', data)}
           >
             JSON
           </button>

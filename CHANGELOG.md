@@ -1,10 +1,18 @@
 # Changelog
 
-All notable changes to faissight are documented here. The format follows
+All notable changes to Vectraudit (formerly faissight) are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
+
+### Changed
+
+- Renamed the project from faissight to Vectraudit. The Python package, CLI command,
+  environment variables (`VECTRAUDIT_*`) and cache directory (`~/.cache/vectraudit/`) all
+  use the new name. Projections and run history cached under `~/.cache/faissight/` are not
+  migrated; move that directory to keep them.
+- Vectraudit is now distributed privately; it is no longer published to PyPI.
 
 ## [0.1.0] - 2026-10-03
 

@@ -83,13 +83,13 @@ async function request<T>(
     throw new ApiError(0, timedOut
       ? {
           error_code: 'TIMEOUT',
-          message: `The faissight server did not answer within ${timeoutMs / 1000} s.`,
-          hint: 'Check the terminal running `faissight serve`; try a smaller k or nprobe.',
+          message: `The vectraudit server did not answer within ${timeoutMs / 1000} s.`,
+          hint: 'Check the terminal running `vectraudit serve`; try a smaller k or nprobe.',
         }
       : {
           error_code: 'NETWORK_ERROR',
-          message: 'Could not reach the faissight server.',
-          hint: 'Is `faissight serve` still running?',
+          message: 'Could not reach the vectraudit server.',
+          hint: 'Is `vectraudit serve` still running?',
         })
   } finally {
     clearTimeout(timer)
@@ -108,8 +108,8 @@ async function request<T>(
     // or login wall, an empty body) would otherwise be cast to the expected type and fail later.
     throw new ApiError(res.status, {
       error_code: 'INVALID_RESPONSE',
-      message: `The server's answer to ${path.split('?')[0]} was not faissight JSON.`,
-      hint: 'A proxy or login page may be answering instead of `faissight serve`; check the URL.',
+      message: `The server's answer to ${path.split('?')[0]} was not vectraudit JSON.`,
+      hint: 'A proxy or login page may be answering instead of `vectraudit serve`; check the URL.',
     })
   }
   if (!res.ok) {

@@ -108,9 +108,14 @@ def measure(repeats: int = 3) -> dict[str, Any]:
     import faiss
     import numpy as np
 
-    import faissight
-    from faissight.core.projection import ProjectionMethod
-    from faissight.session import Session
+    try:
+        import vectraudit
+        from vectraudit.core.projection import ProjectionMethod
+        from vectraudit.session import Session
+    except ModuleNotFoundError:  # baselines from before the rename ship the package as faissight
+        import faissight as vectraudit
+        from faissight.core.projection import ProjectionMethod
+        from faissight.session import Session
 
     faiss.omp_set_num_threads(1)
     with tempfile.TemporaryDirectory() as tmp:
@@ -160,7 +165,7 @@ def measure(repeats: int = 3) -> dict[str, Any]:
                 _close(session)
 
     return {
-        "faissight": getattr(faissight, "__version__", "unknown"),
+        "vectraudit": getattr(vectraudit, "__version__", "unknown"),
         "faiss": faiss.__version__,
         "numpy": np.__version__,
         "python": platform.python_version(),
@@ -202,7 +207,7 @@ def check(current: dict[str, float], baseline: dict[str, float] | None = None) -
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    m = sub.add_parser("measure", help="Measure this interpreter's faissight.")
+    m = sub.add_parser("measure", help="Measure this interpreter's vectraudit.")
     m.add_argument("--output", type=Path, required=True)
     m.add_argument("--repeats", type=int, default=3)
     d = sub.add_parser("dataset", help="Write the benchmark inputs (used by measure).")

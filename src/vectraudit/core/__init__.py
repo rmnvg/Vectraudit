@@ -1,0 +1,177 @@
+"""Core library: FAISS inspection with no web dependencies.
+
+Typical flow::
+
+    from vectraudit import core
+
+    li = core.load_index("my.index")                   # detect kind, unwrap wrappers
+    source = core.from_arrays(li, raw_vectors)          # or core.reconstruct_all(li)
+    gt = core.GroundTruth(source, li.metric)
+    q = core.resolve_query(li, id=123, source=source)   # or vector=..., text=... + embedder
+    report = core.explain_query(
+        li, q, k=10, nprobe=8, ground_truth=gt, assignments=core.assignments(li)
+    )
+    report.recall, report.ivf_trace.min_nprobe_for_all
+
+A bare search is ``core.search.search(li, vector, k, nprobe=...)`` and a sweep is
+``core.sweep.sweep(li, queries, truth, ...)``. Neither function is re-exported here because
+it would shadow its module.
+
+FAISS is imported lazily, so importing this package works without FAISS installed.
+"""
+
+from vectraudit.core._faiss import FaissNotInstalledError
+from vectraudit.core.advice import Evidence, Suggestion, SuggestionKind, advise
+from vectraudit.core.comparison import ComparisonResult, changed_queries, compare_indexes
+from vectraudit.core.embed import Embedder, EmbedderUnavailableError
+from vectraudit.core.ivf import (
+    Assignments,
+    ListStats,
+    NotAnIVFIndexError,
+    assignments,
+    centroids,
+    imbalance_factor,
+    list_members,
+    list_sizes,
+    list_stats,
+)
+from vectraudit.core.jobs import Job, JobRunner, JobStatus
+from vectraudit.core.loader import IndexLoadError, load_index
+from vectraudit.core.metadata import Metadata, MetadataError, load_metadata
+from vectraudit.core.projection import (
+    PcaModel,
+    Projection,
+    ProjectionCache,
+    ProjectionMethod,
+    ProjectionUnavailableError,
+    compute_projection,
+    fit_pca,
+    index_fingerprint,
+    place_points,
+    stratified_sample,
+)
+from vectraudit.core.relevance import (
+    RelevanceMetrics,
+    evaluate_relevance,
+    load_judgements,
+    relevance_metrics,
+)
+from vectraudit.core.runs import (
+    RunComparison,
+    RunFormatError,
+    compare_runs,
+    load_run,
+    run_record,
+    save_run,
+)
+from vectraudit.core.search import (
+    GroundTruth,
+    IvfTrace,
+    MissReason,
+    NeighbourTrace,
+    QueryError,
+    QueryKind,
+    QueryReport,
+    ResolvedQuery,
+    SearchResult,
+    explain_query,
+    recall_at_k,
+    rerank,
+    resolve_query,
+    trace_ivf,
+)
+from vectraudit.core.sweep import (
+    QuerySet,
+    SweepParam,
+    SweepPoint,
+    SweepResult,
+    WorstQuery,
+    default_values,
+    given_queries,
+    ground_truth_ids,
+    sample_queries,
+)
+from vectraudit.core.types import IndexKind, IndexParams, LoadedIndex, Metric, TransformInfo
+from vectraudit.core.vectors import VectorMismatchError, VectorSource, from_arrays, reconstruct_all
+
+__all__ = [
+    "Assignments",
+    "ComparisonResult",
+    "Embedder",
+    "EmbedderUnavailableError",
+    "Evidence",
+    "FaissNotInstalledError",
+    "GroundTruth",
+    "IndexKind",
+    "IndexLoadError",
+    "IndexParams",
+    "IvfTrace",
+    "Job",
+    "JobRunner",
+    "JobStatus",
+    "ListStats",
+    "LoadedIndex",
+    "Metadata",
+    "MetadataError",
+    "Metric",
+    "MissReason",
+    "NeighbourTrace",
+    "NotAnIVFIndexError",
+    "PcaModel",
+    "Projection",
+    "ProjectionCache",
+    "ProjectionMethod",
+    "ProjectionUnavailableError",
+    "QueryError",
+    "QueryKind",
+    "QueryReport",
+    "QuerySet",
+    "RelevanceMetrics",
+    "ResolvedQuery",
+    "RunComparison",
+    "RunFormatError",
+    "SearchResult",
+    "Suggestion",
+    "SuggestionKind",
+    "SweepParam",
+    "SweepPoint",
+    "SweepResult",
+    "TransformInfo",
+    "VectorMismatchError",
+    "VectorSource",
+    "WorstQuery",
+    "advise",
+    "assignments",
+    "centroids",
+    "changed_queries",
+    "compare_indexes",
+    "compare_runs",
+    "compute_projection",
+    "default_values",
+    "evaluate_relevance",
+    "explain_query",
+    "fit_pca",
+    "from_arrays",
+    "given_queries",
+    "ground_truth_ids",
+    "imbalance_factor",
+    "index_fingerprint",
+    "list_members",
+    "list_sizes",
+    "list_stats",
+    "load_index",
+    "load_judgements",
+    "load_metadata",
+    "load_run",
+    "place_points",
+    "recall_at_k",
+    "reconstruct_all",
+    "relevance_metrics",
+    "rerank",
+    "resolve_query",
+    "run_record",
+    "sample_queries",
+    "save_run",
+    "stratified_sample",
+    "trace_ivf",
+]

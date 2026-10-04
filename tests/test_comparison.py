@@ -3,13 +3,13 @@ import numpy as np
 import pytest
 from typer.testing import CliRunner
 
-from faissight.cli import app
-from faissight.core import sweep as W
-from faissight.core.comparison import changed_queries, compare_indexes
-from faissight.core.loader import load_index
-from faissight.core.search import GroundTruth
-from faissight.core.sweep import given_queries, ground_truth_ids, sample_queries
-from faissight.core.vectors import from_arrays, reconstruct_all
+from vectraudit.cli import app
+from vectraudit.core import sweep as W
+from vectraudit.core.comparison import changed_queries, compare_indexes
+from vectraudit.core.loader import load_index
+from vectraudit.core.search import GroundTruth
+from vectraudit.core.sweep import given_queries, ground_truth_ids, sample_queries
+from vectraudit.core.vectors import from_arrays, reconstruct_all
 
 
 def test_compare_exact_and_approximate(synthetic) -> None:

@@ -1,9 +1,9 @@
-# Using faissight from Python and notebooks
+# Using vectraudit from Python and notebooks
 
 ```python
-import faissight
+import vectraudit
 
-viewer = faissight.launch(index, vectors=xb, metadata=chunks)
+viewer = vectraudit.launch(index, vectors=xb, metadata=chunks)
 viewer  # in a notebook: embeds the UI; elsewhere: opens your browser
 viewer.url  # http://127.0.0.1:<port>/
 viewer.stop()  # shuts the server down and frees the port
@@ -23,7 +23,7 @@ viewer.stop()  # shuts the server down and frees the port
 | `compare` | other indexes (`faiss.Index` or paths) over the same vectors, for the Compare view; needs `vectors` |
 
 Each call starts its own server on its own port, so you can compare two indexes side by
-side. The viewer also works as a context manager (`with faissight.launch(...) as v:`).
+side. The viewer also works as a context manager (`with vectraudit.launch(...) as v:`).
 
 `viewer.session` gives the same analyses as the UI, from Python:
 
@@ -45,7 +45,7 @@ See [examples/notebook_demo.ipynb](../examples/notebook_demo.ipynb).
 | JupyterLab / Jupyter Notebook (local) | iframe pointing at `http://127.0.0.1:<port>/` |
 | VS Code notebooks (local) | same iframe |
 | Google Colab | detected automatically; uses `google.colab.output.serve_kernel_port_as_iframe`, since Colab can't reach the kernel's localhost |
-| JupyterHub / remote Jupyter | install `jupyter-server-proxy` and set `FAISSIGHT_PROXY_URL=/proxy/{port}/` so the iframe goes through the proxy |
+| JupyterHub / remote Jupyter | install `jupyter-server-proxy` and set `VECTRAUDIT_PROXY_URL=/proxy/{port}/` so the iframe goes through the proxy |
 | Plain Python script | opens the default browser; call `viewer.stop()` or let the process exit |
 
 If the iframe stays blank, open `viewer.url` in a new tab (the link under the iframe does
@@ -53,8 +53,8 @@ that). A notebook on a remote machine can't load `127.0.0.1` from your laptop's 
 the proxy setting above, or forward the port (`ssh -L 8765:127.0.0.1:8765 host` together
 with `launch(..., port=8765)`).
 
-Set `FAISSIGHT_NO_BROWSER=1` to never open a browser (CI, scripts, doc builds).
+Set `VECTRAUDIT_NO_BROWSER=1` to never open a browser (CI, scripts, doc builds).
 
 ## GPU indexes
 
-Convert first: `faissight.launch(faiss.index_gpu_to_cpu(gpu_index), ...)`.
+Convert first: `vectraudit.launch(faiss.index_gpu_to_cpu(gpu_index), ...)`.

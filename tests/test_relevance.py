@@ -6,12 +6,12 @@ import numpy as np
 import pytest
 from typer.testing import CliRunner
 
-from faissight.cli import app
-from faissight.core.loader import load_index
-from faissight.core.relevance import evaluate_relevance, load_judgements, relevance_metrics
-from faissight.core.search import SearchResult, rerank
-from faissight.core.types import Metric
-from faissight.core.vectors import VectorSource, from_arrays
+from vectraudit.cli import app
+from vectraudit.core.loader import load_index
+from vectraudit.core.relevance import evaluate_relevance, load_judgements, relevance_metrics
+from vectraudit.core.search import SearchResult, rerank
+from vectraudit.core.types import Metric
+from vectraudit.core.vectors import VectorSource, from_arrays
 
 
 def test_graded_metrics_and_duplicates():

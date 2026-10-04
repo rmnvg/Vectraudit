@@ -18,7 +18,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
-    console.error('faissight view crashed:', error, info.componentStack)
+    console.error('vectraudit view crashed:', error, info.componentStack)
   }
 
   render() {
@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
       <div className="flex flex-col items-start gap-3 p-8">
         <Banner tone="error">
           {chunk
-            ? 'This view could not be loaded from the faissight server. Is `faissight serve` still running?'
+            ? 'This view could not be loaded from the vectraudit server. Is `vectraudit serve` still running?'
             : `This view hit an error: ${error instanceof Error ? error.message : String(error)}`}
         </Banner>
         <div className="flex gap-2">

@@ -43,7 +43,7 @@ def synthetic(
 
 @pytest.fixture(scope="session")
 def binary_index_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """A binary index file (unsupported by faissight)."""
+    """A binary index file (unsupported by vectraudit)."""
     path = tmp_path_factory.mktemp("binary") / "binary_flat.index"
     faiss.write_index_binary(faiss.IndexBinaryFlat(64), str(path))
     return path
@@ -56,5 +56,5 @@ def _isolated_cache(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     Session-scoped so it is active before any module-scoped fixture creates a Session.
     """
     with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("FAISSIGHT_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
+        mp.setenv("VECTRAUDIT_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
         yield

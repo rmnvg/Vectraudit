@@ -1,11 +1,11 @@
-# faissight: Build Plan
+# vectraudit: Build Plan
 
-> **faissight** (FAISS + insight): see inside your FAISS index, debug retrieval, tune recall.
+> **vectraudit** (FAISS + insight): see inside your FAISS index, debug retrieval, tune recall.
 >
-> - PyPI package: `faissight`
-> - Import name: `faissight`
-> - CLI command: `faissight`
-> - Repo: `github.com/rmnvg/faissight`
+> - PyPI package: `vectraudit`
+> - Import name: `vectraudit`
+> - CLI command: `vectraudit`
+> - Repo: `github.com/rmnvg/Vectraudit`
 > - License: MIT
 
 ---
@@ -15,7 +15,7 @@
 - Work **phase by phase, in order**. Do not start a phase until the previous phase's acceptance criteria pass.
 - At the start, create a `CLAUDE.md` in the repo root summarising: project goal, repo layout, commands (`uv run pytest`, `uv run ruff check`, `npm run build`), and coding conventions from section 5.
 - Make **one git commit per completed step** with a conventional commit message (`feat:`, `fix:`, `test:`, `docs:`, `chore:`).
-- Write tests alongside code, not after. Every public function in `faissight.core` needs at least one test.
+- Write tests alongside code, not after. Every public function in `vectraudit.core` needs at least one test.
 - Before adding any dependency not listed in section 4, stop and ask.
 - When a FAISS API behaves differently than this plan assumes, trust the installed FAISS version, adapt, and leave a short comment explaining why.
 - Keep a `docs/DECISIONS.md` log: one line per non-obvious technical decision.
@@ -36,7 +36,7 @@ FAISS is the default vector index in countless RAG systems, but it has **no UI**
 - **Feder** (zilliztech/feder): JS visualizer for Faiss IVF_Flat and HNSWlib indexes. Educational, shows clusters and search process. Limitations: Faiss support only for IVF_Flat, parses index files in JavaScript (memory-heavy), no recall/tuning or RAG debugging.
 - **Embedding projectors** (TensorFlow Projector, Nomic Atlas, Renumics Spotlight, Arize Phoenix): visualise embeddings, not index internals.
 
-### faissight's angle
+### vectraudit's angle
 A **Python-first retrieval debugger for FAISS**:
 1. Works on real indexes (IVF-Flat, IVF-PQ, IVF-SQ, HNSW, Flat, with IDMap/PreTransform wrappers).
 2. Explains **misses** against exact ground truth, not just shows pictures.
@@ -44,8 +44,8 @@ A **Python-first retrieval debugger for FAISS**:
 4. Attaches **chunk text** so it doubles as a RAG debugging tool.
 
 ### Goals (v0.1.0)
-- `pip install "faissight[faiss-cpu]"` then `faissight serve my.index` opens a local web UI.
-- `faissight.launch(index, ...)` works from Python and renders inline in Jupyter.
+- `pip install "vectraudit[faiss-cpu]"` then `vectraudit serve my.index` opens a local web UI.
+- `vectraudit.launch(index, ...)` works from Python and renders inline in Jupyter.
 - IVF overview + query explorer + recall tuner + RAG text panel.
 - HNSW graph view with animated search trace.
 - PQ reconstruction-error view.
@@ -62,10 +62,10 @@ A **Python-first retrieval debugger for FAISS**:
 ## 2. Architecture
 
 ```
-┌────────────────────────────── faissight (Python package) ──────────────────────────────┐
+┌────────────────────────────── vectraudit (Python package) ──────────────────────────────┐
 │                                                                                         │
 │  CLI (Typer)            Python API                    Jupyter helper                    │
-│  faissight serve/info   faissight.launch(...)         IFrame to local server            │
+│  vectraudit serve/info   vectraudit.launch(...)         IFrame to local server            │
 │        │                       │                             │                          │
 │        └───────────────┬───────┴─────────────────────────────┘                          │
 │                        ▼                                                                │
@@ -96,7 +96,7 @@ Key principle: **all FAISS work happens in Python.** The frontend only receives 
 ## 3. Repository layout
 
 ```
-faissight/
+vectraudit/
 ├── CLAUDE.md
 ├── README.md
 ├── LICENSE
@@ -105,7 +105,7 @@ faissight/
 ├── .github/workflows/
 │   ├── ci.yml                # lint, typecheck, test (py 3.10–3.12), frontend build
 │   └── release.yml           # build frontend → build wheel → publish to PyPI (trusted publishing)
-├── src/faissight/
+├── src/vectraudit/
 │   ├── __init__.py           # exports launch, Session, __version__
 │   ├── cli.py                # Typer app: serve, info, sweep
 │   ├── session.py            # Session class holding loaded state
@@ -129,7 +129,7 @@ faissight/
 │   └── static/               # built frontend (gitignored, produced by build)
 ├── frontend/
 │   ├── package.json
-│   ├── vite.config.ts        # build output → ../src/faissight/static
+│   ├── vite.config.ts        # build output → ../src/vectraudit/static
 │   └── src/
 │       ├── api/              # typed fetch client
 │       ├── views/            # Overview, ClusterMap, QueryExplorer, Tuner, HnswGraph, Quantization
@@ -162,15 +162,15 @@ faissight/
 ## 4. Tech stack & dependencies
 
 **Python (3.10+)**
-- Tooling: `uv` (env + build), `hatchling` (build backend), `ruff` (lint + format), `mypy` (strict on `faissight.core`), `pytest`, `pytest-cov`, `pre-commit`.
+- Tooling: `uv` (env + build), `hatchling` (build backend), `ruff` (lint + format), `mypy` (strict on `vectraudit.core`), `pytest`, `pytest-cov`, `pre-commit`.
 - Core deps: `numpy`, `fastapi`, `uvicorn[standard]`, `pydantic>=2`, `typer`, `rich`.
 - Extras:
-  - `faissight[faiss-cpu]` → `faiss-cpu>=1.8`. FAISS is **not** a hard dependency, because conda and GPU users install FAISS differently and a pip `faiss-cpu` would clash. On import failure, raise a clear error telling the user how to install it.
-  - `faissight[umap]` → `umap-learn` (heavy; PCA is the default projection).
-  - `faissight[text]` → `sentence-transformers` (text queries).
-  - `faissight[parquet]` → `pyarrow`.
-  - `faissight[all]` → everything above.
-  - `faissight[dev]` → test/lint tools.
+  - `vectraudit[faiss-cpu]` → `faiss-cpu>=1.8`. FAISS is **not** a hard dependency, because conda and GPU users install FAISS differently and a pip `faiss-cpu` would clash. On import failure, raise a clear error telling the user how to install it.
+  - `vectraudit[umap]` → `umap-learn` (heavy; PCA is the default projection).
+  - `vectraudit[text]` → `sentence-transformers` (text queries).
+  - `vectraudit[parquet]` → `pyarrow`.
+  - `vectraudit[all]` → everything above.
+  - `vectraudit[dev]` → test/lint tools.
 
 **Frontend**
 - React 18 + TypeScript + Vite.
@@ -185,11 +185,11 @@ faissight/
 ## 5. Conventions
 
 - `src/` layout; type hints everywhere; docstrings on public functions.
-- `faissight.core` must **not** import FastAPI or anything web-related. It's a plain library usable without the server.
+- `vectraudit.core` must **not** import FastAPI or anything web-related. It's a plain library usable without the server.
 - All IDs exposed to the UI are the **user-facing ids** (after IDMap), never internal offsets. Keep a mapping in the Session.
 - Distances: always report the metric (`L2` or `IP`) alongside values. For IP, "closer" = larger.
 - Large arrays: never return more than `max_points` (default 50,000) points to the frontend; sample deterministically (seeded) and stratified by IVF list when applicable.
-- Every expensive computation (projection, ground truth, sweep) is cached on the Session, and projections are also cached on disk at `~/.cache/faissight/<index_sha1>/`.
+- Every expensive computation (projection, ground truth, sweep) is cached on the Session, and projections are also cached on disk at `~/.cache/vectraudit/<index_sha1>/`.
 - Errors surface to the UI as structured JSON `{error_code, message, hint}`.
 
 ---
@@ -238,14 +238,14 @@ Everything else (`/`, `/assets/*`) serves the built frontend.
 ## 8. Phases & steps
 
 ### Phase 0: Scaffold & reserve the name
-1. `uv init --lib faissight` with `src/` layout; configure `pyproject.toml` (hatchling, metadata, extras from section 4, `[project.scripts] faissight = "faissight.cli:app"`).
+1. `uv init --lib vectraudit` with `src/` layout; configure `pyproject.toml` (hatchling, metadata, extras from section 4, `[project.scripts] vectraudit = "vectraudit.cli:app"`).
 2. Add ruff, mypy, pytest config; `.pre-commit-config.yaml`.
-3. Scaffold `frontend/` with Vite React-TS + Tailwind; set Vite `build.outDir` to `../src/faissight/static` and `emptyOutDir: true`; add `static/` to `.gitignore` but include it in wheel via hatch `artifacts`.
-4. Minimal `cli.py` with `faissight --version`.
+3. Scaffold `frontend/` with Vite React-TS + Tailwind; set Vite `build.outDir` to `../src/vectraudit/static` and `emptyOutDir: true`; add `static/` to `.gitignore` but include it in wheel via hatch `artifacts`.
+4. Minimal `cli.py` with `vectraudit --version`.
 5. CI workflow: Python 3.10/3.11/3.12 matrix, `uv sync --all-extras`, ruff, mypy, pytest; separate job builds the frontend.
 6. **Manual step for the human** (note it in README TODO, do not attempt): publish a `0.0.1` placeholder to PyPI to reserve the name, and set up PyPI trusted publishing for `release.yml`.
 
-**Acceptance:** `uv run faissight --version` works; CI green; `uv build` produces a wheel that contains `faissight/static/index.html`.
+**Acceptance:** `uv run vectraudit --version` works; CI green; `uv build` produces a wheel that contains `vectraudit/static/index.html`.
 
 ### Phase 1: Test fixtures & loader
 1. `examples/make_synthetic.py`: generate `n=20_000, d=64` gaussian blobs (seeded, 50 centres) and save indexes: `IndexFlatL2`, `IndexIVFFlat(nlist=128)`, `IndexIVFPQ(nlist=128, m=8, nbits=8)`, `IndexIVFScalarQuantizer(QT_8bit)`, `IndexHNSWFlat(M=16)`, `IndexIDMap(IndexFlatL2)`, an `IndexPreTransform(PCA→IVFFlat)`, plus an IP-metric IVFFlat on normalised vectors. Also save the raw vectors `.npy` and a fake `chunks.jsonl`.
@@ -257,7 +257,7 @@ Everything else (`/`, `/assets/*`) serves the built frontend.
    - Detect `IndexKind`: `FLAT`, `IVF_FLAT`, `IVF_PQ`, `IVF_SQ`, `HNSW_FLAT`, `HNSW_OTHER`, `UNSUPPORTED`.
    - Read params: `d`, `ntotal`, `metric_type`, `nlist`, `nprobe`, `pq.M`, `pq.nbits`, `hnsw.efSearch`, `hnsw.efConstruction`, M.
    - Id mapping: if IDMap, `faiss.vector_to_array(index.id_map)`.
-4. `faissight info my.index` prints a rich table of the above.
+4. `vectraudit info my.index` prints a rich table of the above.
 
 **Acceptance:** loader tests pass for every synthetic index type; `info` output is correct and readable; unsupported types (e.g. a binary index) produce a clear message rather than a crash.
 
@@ -286,7 +286,7 @@ Everything else (`/`, `/assets/*`) serves the built frontend.
      - `QUANTIZATION` (its cell was probed but approximate distance pushed it out of top-k; applies to PQ/SQ)
      - `FOUND`
    - Return "minimum nprobe to find all true top-k" as a headline number.
-3. `faissight.core` public API summary in `__init__` of core.
+3. `vectraudit.core` public API summary in `__init__` of core.
 
 **Acceptance:** on IVFFlat with nprobe=nlist, recall@10 == 1.0 against ground truth; miss reasons are correct on a hand-constructed test where a neighbour is placed in a far cell; self-exclusion works.
 
@@ -304,11 +304,11 @@ Everything else (`/`, `/assets/*`) serves the built frontend.
 ### Phase 5: Server & CLI serve
 1. `server/app.py` app factory taking a `Session`; mount `static/` with SPA fallback to `index.html`.
 2. Implement endpoints from section 7 that are backed by phases 1–4 (`info`, `ivf/*`, `projection`, `search`, `trace/ivf`, `metadata`, `health`).
-3. `faissight serve INDEX [--vectors v.npy] [--ids ids.npy] [--meta chunks.jsonl] [--embedder all-MiniLM-L6-v2] [--queries q.npy] [--host 127.0.0.1] [--port 8765] [--no-browser] [--max-points 50000]`. Opens the browser unless `--no-browser`.
+3. `vectraudit serve INDEX [--vectors v.npy] [--ids ids.npy] [--meta chunks.jsonl] [--embedder all-MiniLM-L6-v2] [--queries q.npy] [--host 127.0.0.1] [--port 8765] [--no-browser] [--max-points 50000]`. Opens the browser unless `--no-browser`.
 4. Validate inputs up front with actionable errors (dimension mismatch between vectors and index, metadata missing `id` column, etc.).
 5. `tests/test_api.py` using FastAPI `TestClient`.
 
-**Acceptance:** `faissight serve examples/data/ivfflat.index --vectors ... --meta ...` starts, `/api/info` and `/api/search` return correct data; API tests pass.
+**Acceptance:** `vectraudit serve examples/data/ivfflat.index --vectors ... --meta ...` starts, `/api/info` and `/api/search` return correct data; API tests pass.
 
 ### Phase 6: Frontend MVP
 Layout: left sidebar (index info card + nav), main panel (active view). Light and dark theme.
@@ -331,12 +331,12 @@ Layout: left sidebar (index info card + nav), main panel (active view). Light an
 1. `core/sweep.py`: for each value in the sweep (default nprobe `[1,2,4,8,16,32,64,128,…≤nlist]`, efSearch `[16,32,64,128,256,512]`) run the query set, measure recall@k against cached ground truth and latency (warm-up run first; `time.perf_counter`; report mean and p95 per query; pin `faiss.omp_set_num_threads(1)` during timing and restore afterwards so numbers are stable and comparable).
 2. Endpoint `/sweep` runs in a background thread with progress polling.
 3. **Tuner view**: recall@k vs param line chart, latency vs param chart, and a recall-vs-latency Pareto chart; "target recall" input highlights the cheapest value meeting it; a copyable code snippet: `index.nprobe = 24` / `faiss.SearchParametersIVF(nprobe=24)`.
-4. CLI: `faissight sweep INDEX --vectors ... --queries ... --param nprobe` prints a rich table (useful without the UI and in CI).
+4. CLI: `vectraudit sweep INDEX --vectors ... --queries ... --param nprobe` prints a rich table (useful without the UI and in CI).
 
 **Acceptance:** recall is monotonic non-decreasing in nprobe on IVFFlat (test); recommended value meets target recall on the test set.
 
 ### Phase 8: Python API & Jupyter
-1. `faissight.launch(index, vectors=None, ids=None, metadata=None, embedder=None, port=None, open_browser=None) -> Viewer`:
+1. `vectraudit.launch(index, vectors=None, ids=None, metadata=None, embedder=None, port=None, open_browser=None) -> Viewer`:
    - Accepts in-memory `faiss.Index`, `np.ndarray`, pandas DataFrame or list of dicts for metadata, a callable embedder.
    - Starts uvicorn in a daemon thread on a free port.
    - In Jupyter: returns an object whose `_repr_html_` renders an `IFrame` of the UI (height 800). Outside Jupyter: opens the browser.
@@ -390,16 +390,16 @@ Layout: left sidebar (index info card + nav), main panel (active view). Light an
 ### Phase 12: Docs, demo deployment, release 0.1.0
 1. README:
    - One-line pitch, animated GIF of Query Explorer + HNSW animation, install, 3-command quick start, Python/Jupyter usage, supported index types table, "How it compares" section (Feder, embedding projectors, honest and short), limitations, roadmap, contributing.
-2. `deploy/hf-space/Dockerfile`: Python slim, install `faissight[all]` from the repo, bake in the RAG demo artifacts, `CMD faissight serve ... --host 0.0.0.0 --port 7860 --no-browser`. Include a read-only "demo mode" flag that disables uploads and heavy sweeps beyond a query cap.
+2. `deploy/hf-space/Dockerfile`: Python slim, install `vectraudit[all]` from the repo, bake in the RAG demo artifacts, `CMD vectraudit serve ... --host 0.0.0.0 --port 7860 --no-browser`. Include a read-only "demo mode" flag that disables uploads and heavy sweeps beyond a query cap.
 3. `release.yml`: on tag `v*`, build frontend, `uv build`, publish via PyPI trusted publishing, create GitHub release with changelog.
 4. Tag `v0.1.0`.
 
-**Acceptance:** `pip install "faissight[all]"` in a clean venv + README quick start works; HF Space loads and runs a query; PyPI page renders README correctly.
+**Acceptance:** `pip install "vectraudit[all]"` in a clean venv + README quick start works; HF Space loads and runs a query; PyPI page renders README correctly.
 
 ### Phase 13 (optional, after 0.1.0): VS Code extension wrapper
 1. Separate folder `vscode-extension/` (TypeScript, `yo code` scaffold).
-2. Command + explorer context menu on `*.index` / `*.faiss` files: "Open in faissight".
-3. Uses the Python interpreter from the VS Code Python extension, checks `faissight` is installed (offer `pip install` if not), spawns `faissight serve FILE --no-browser --port <free>`, and shows the UI in a webview panel.
+2. Command + explorer context menu on `*.index` / `*.faiss` files: "Open in vectraudit".
+3. Uses the Python interpreter from the VS Code Python extension, checks `vectraudit` is installed (offer `pip install` if not), spawns `vectraudit serve FILE --no-browser --port <free>`, and shows the UI in a webview panel.
 4. Kill the process when the panel closes.
 5. Publish to VS Code Marketplace and Open VSX.
 
@@ -411,7 +411,7 @@ Layout: left sidebar (index info card + nav), main panel (active view). Light an
 - **Correctness anchors**: recall=1.0 at nprobe=nlist; Σ list sizes = ntotal; HNSW trace overlap ≥ 95%; PQ error ordering (Flat < SQ8 < PQ).
 - **API**: `TestClient` covering each endpoint, including error cases (bad id, dimension mismatch, unsupported index).
 - **Frontend**: Vitest for API client and pure helpers; one Playwright smoke test (load app → run query → results visible) in CI against the synthetic index.
-- **Coverage target**: ≥ 85% on `faissight.core`.
+- **Coverage target**: ≥ 85% on `vectraudit.core`.
 
 ---
 
@@ -419,7 +419,7 @@ Layout: left sidebar (index info card + nav), main panel (active view). Light an
 
 | Operation | Target (20k × 384, laptop CPU) |
 |---|---|
-| `faissight serve` to UI visible | < 3 s (projection may still be computing) |
+| `vectraudit serve` to UI visible | < 3 s (projection may still be computing) |
 | PCA projection | < 2 s |
 | UMAP projection | < 60 s, cached afterwards |
 | Single query with IVF trace + ground truth | < 150 ms |

@@ -4,12 +4,12 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core import ivf
-from faissight.core import search as S
-from faissight.core import sweep as W
-from faissight.core import vectors as V
-from faissight.core.loader import load_index
 from tests.conftest import SMALL
+from vectraudit.core import ivf
+from vectraudit.core import search as S
+from vectraudit.core import sweep as W
+from vectraudit.core import vectors as V
+from vectraudit.core.loader import load_index
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 K = 10

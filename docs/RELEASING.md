@@ -1,6 +1,6 @@
-# Releasing faissight
+# Releasing vectraudit
 
-faissight is distributed privately. Nothing is published to PyPI; release builds are
+vectraudit is distributed privately. Nothing is published to PyPI; release builds are
 attached to a GitHub release in this private repository, so only people with access to the
 repository can download them.
 
@@ -11,7 +11,7 @@ repository can download them.
 2. Commit, then tag and push:
 
    ```bash
-   git tag -a vX.Y.Z -m "faissight X.Y.Z"
+   git tag -a vX.Y.Z -m "vectraudit X.Y.Z"
    git push origin main vX.Y.Z
    ```
 
@@ -24,8 +24,8 @@ repository can download them.
 Install a release wheel from the private release:
 
 ```bash
-gh release download vX.Y.Z --repo rmnvg/faissight --pattern '*.whl'
-pip install ./faissight-X.Y.Z-py3-none-any.whl
+gh release download vX.Y.Z --repo rmnvg/Vectraudit --pattern '*.whl'
+pip install ./vectraudit-X.Y.Z-py3-none-any.whl
 ```
 
 ## Hugging Face Space

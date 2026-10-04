@@ -1,22 +1,22 @@
-# faissight demo for Hugging Face Spaces (Docker SDK).
+# vectraudit demo for Hugging Face Spaces (Docker SDK).
 #
 # In a Space repo (just this Dockerfile + README.md) the source is cloned from GitHub at
-# FAISSIGHT_REF. From a faissight checkout the local source is used instead:
-#   docker build -f deploy/hf-space/Dockerfile -t faissight-space .
-#   docker run --rm -p 7860:7860 faissight-space
+# VECTRAUDIT_REF. From a vectraudit checkout the local source is used instead:
+#   docker build -f deploy/hf-space/Dockerfile -t vectraudit-space .
+#   docker run --rm -p 7860:7860 vectraudit-space
 
-ARG FAISSIGHT_REPO=https://github.com/rmnvg/faissight.git
-ARG FAISSIGHT_REF=main
+ARG VECTRAUDIT_REPO=https://github.com/rmnvg/Vectraudit.git
+ARG VECTRAUDIT_REF=main
 
 # --- 1. source + built UI -----------------------------------------------------------------
 FROM node:22-slim AS ui
-ARG FAISSIGHT_REPO
-ARG FAISSIGHT_REF
+ARG VECTRAUDIT_REPO
+ARG VECTRAUDIT_REF
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY . /context
 RUN if [ -f /context/pyproject.toml ]; then cp -r /context /src; \
-    else git clone --depth 1 --branch "$FAISSIGHT_REF" "$FAISSIGHT_REPO" /src; fi
+    else git clone --depth 1 --branch "$VECTRAUDIT_REF" "$VECTRAUDIT_REPO" /src; fi
 WORKDIR /src/frontend
 RUN npm ci --no-audit --no-fund && npm run build
 
@@ -30,22 +30,22 @@ ENV HOME=/home/user \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HF_HOME=/home/user/.cache/huggingface \
-    FAISSIGHT_CACHE_DIR=/home/user/.cache/faissight \
+    VECTRAUDIT_CACHE_DIR=/home/user/.cache/vectraudit \
     TOKENIZERS_PARALLELISM=false
 WORKDIR /home/user
 
 # CPU-only torch keeps the image ~1.5 GB smaller than the default CUDA build.
 RUN pip install --user torch --index-url https://download.pytorch.org/whl/cpu
-COPY --from=ui --chown=user /src /home/user/faissight-src
-RUN pip install --user "/home/user/faissight-src[all]"
+COPY --from=ui --chown=user /src /home/user/vectraudit-src
+RUN pip install --user "/home/user/vectraudit-src[all]"
 
 # Bake the demo: data, embedding model and projections (PCA 2D/3D, UMAP 2D).
-RUN python -c "from pathlib import Path; from faissight.demo import build_demo; build_demo(Path('/home/user/demo'))" \
-    && python /home/user/faissight-src/deploy/hf-space/warm_cache.py /home/user/demo \
+RUN python -c "from pathlib import Path; from vectraudit.demo import build_demo; build_demo(Path('/home/user/demo'))" \
+    && python /home/user/vectraudit-src/deploy/hf-space/warm_cache.py /home/user/demo \
     && rm -rf /home/user/demo/raw
 
 EXPOSE 7860
-CMD ["faissight", "serve", "/home/user/demo/ivf_pq.index", \
+CMD ["vectraudit", "serve", "/home/user/demo/ivf_pq.index", \
      "--vectors", "/home/user/demo/vectors.npy", \
      "--meta", "/home/user/demo/chunks.jsonl", \
      "--queries", "/home/user/demo/queries.npy", \

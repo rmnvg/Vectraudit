@@ -2,9 +2,9 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core import vectors as V
-from faissight.core.loader import load_index
 from tests.conftest import SMALL
+from vectraudit.core import vectors as V
+from vectraudit.core.loader import load_index
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 

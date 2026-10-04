@@ -13,7 +13,7 @@ coverage.xml
 htmlcov/
 
 # Built frontend (produced by `npm run build`, shipped in the wheel via hatch artifacts)
-src/faissight/static/
+src/vectraudit/static/
 
 # Frontend
 frontend/node_modules/

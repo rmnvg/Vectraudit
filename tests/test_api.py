@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from faissight import __version__
-from faissight.server.app import create_app
-from faissight.session import Session
 from tests.conftest import SMALL
+from vectraudit import __version__
+from vectraudit.server.app import create_app
+from vectraudit.session import Session
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 
@@ -150,7 +150,7 @@ def test_projection_3d(ivf_client) -> None:
 
 
 def test_failed_projection_stays_failed_until_retried(synthetic, monkeypatch) -> None:
-    import faissight.session as session_mod
+    import vectraudit.session as session_mod
 
     real = session_mod.compute_projection
     calls = []
@@ -185,13 +185,13 @@ def test_projection_first_call_is_202(synthetic) -> None:
 def test_projection_errors(hnsw_client, monkeypatch) -> None:
     _assert_error(hnsw_client.get("/api/projection", params={"kind": "centroids"}), 400, "NOT_IVF")
     _assert_error(hnsw_client.get("/api/projection", params={"dims": 4}), 422, "VALIDATION_ERROR")
-    import faissight.session as session_mod
+    import vectraudit.session as session_mod
 
     monkeypatch.setattr(session_mod.importlib.util, "find_spec", lambda name: None)
     body = _assert_error(
         hnsw_client.get("/api/projection", params={"method": "umap"}), 400, "UMAP_UNAVAILABLE"
     )
-    assert "faissight[umap]" in body["hint"]
+    assert "vectraudit[umap]" in body["hint"]
 
 
 # --- search ------------------------------------------------------------------------------
@@ -368,7 +368,7 @@ def test_frontend_not_built(synthetic, tmp_path) -> None:
 
 
 def test_openapi_docs(ivf_client) -> None:
-    assert ivf_client.get("/api/openapi.json").json()["info"]["title"] == "faissight"
+    assert ivf_client.get("/api/openapi.json").json()["info"]["title"] == "vectraudit"
 
 
 def test_search_by_evaluation_row(ivf_client, hnsw_client, synthetic) -> None:
@@ -547,7 +547,7 @@ def test_save_a_run_and_compare_with_it(ivf_client) -> None:
     run = ivf_client.get(
         f"/api/sweep/{job_id}/run", params={"target": 0.9, "max_p95_ms": 50, "label": "nightly"}
     ).json()
-    assert (run["format"], run["label"]) == ("faissight.sweep-run", "nightly")
+    assert (run["format"], run["label"]) == ("vectraudit.sweep-run", "nightly")
     assert run["index"]["name"] == "ivf_flat.index"
     assert run["decision"]["max_p95_ms"] == 50
     assert run["queries"]["origin"] == "given"
@@ -621,7 +621,7 @@ def test_sweep_advice_hnsw(hnsw_client) -> None:
 
 
 def test_sweep_advice_needs_a_finished_sweep(ivf_client, monkeypatch) -> None:
-    from faissight.core.jobs import Job
+    from vectraudit.core.jobs import Job
 
     session = ivf_client.app.state.session
     monkeypatch.setattr(session, "get_sweep_job", lambda job_id: Job(key="running"))
@@ -874,11 +874,11 @@ def test_demo_umap_only_when_precomputed(synthetic, demo_client, monkeypatch) ->
     client, cache = demo_client
     # Pretend umap-learn is installed, so the demo limit (not UMAP_UNAVAILABLE) is what's
     # tested even where the [umap] extra isn't, e.g. tests run from the sdist.
-    monkeypatch.setattr("faissight.session.importlib.util.find_spec", lambda name: object())
+    monkeypatch.setattr("vectraudit.session.importlib.util.find_spec", lambda name: object())
     _assert_error(client.get("/api/projection", params={"method": "umap"}), 403, "DEMO_LIMIT")
     # Precompute (as the Docker build does) with a normal session sharing the cache; fake
     # the UMAP fit so the test stays fast.
-    import faissight.core.projection as P
+    import vectraudit.core.projection as P
 
     def fake_umap(x, dims, seed):
         class Model:
@@ -971,7 +971,7 @@ def test_int64_ids_remain_exact_across_api(kind) -> None:
 def test_sweep_capacity_and_cancellation_api(synthetic) -> None:
     import threading
 
-    from faissight.core.jobs import JobRunner
+    from vectraudit.core.jobs import JobRunner
 
     session = Session(synthetic["ivf_flat"], vectors=synthetic["vectors"], disk_cache=False)
     session.jobs = JobRunner(max_workers=1, max_pending=1)
@@ -1098,7 +1098,7 @@ def test_compare_without_candidates_and_unknown_job(ivf_client) -> None:
 def test_compare_cancel(synthetic) -> None:
     import threading
 
-    from faissight.core.jobs import JobRunner
+    from vectraudit.core.jobs import JobRunner
 
     session = Session(
         synthetic["ivf_flat"], vectors=synthetic["vectors"], compare=[synthetic["ivf_pq"]]

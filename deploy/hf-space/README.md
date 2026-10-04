@@ -1,5 +1,5 @@
 ---
-title: faissight
+title: vectraudit
 emoji: 🔎
 colorFrom: blue
 colorTo: gray
@@ -9,9 +9,9 @@ license: mit
 short_description: See inside a FAISS index and debug why retrieval missed.
 ---
 
-# faissight demo
+# vectraudit demo
 
-A live [faissight](https://github.com/rmnvg/faissight) instance on a real RAG corpus: 10,000
+A live [vectraudit](https://github.com/rmnvg/Vectraudit) instance on a real RAG corpus: 10,000
 passage chunks embedded with `all-MiniLM-L6-v2`, indexed as `IVF256,PQ48x8` (inner product).
 
 Try it:
@@ -21,7 +21,7 @@ Try it:
 - **Tuner:** sweep `nprobe` and find the cheapest setting for your target recall.
 - **Quantization:** how much the 48-byte PQ codes distort distances.
 
-This Space runs `faissight serve --demo-mode`: read-only, with capped `k`, sweep sizes and
+This Space runs `vectraudit serve --demo-mode`: read-only, with capped `k`, sweep sizes and
 `efSearch`, and UMAP served from a precomputed cache.
 
 **Data:** "RAG Dataset 12000" by Neural Bridge AI
@@ -31,14 +31,14 @@ Apache-2.0. Passages from Falcon RefinedWeb (ODC-By 1.0).
 ## Deploying this Space
 
 The Space repo needs only two files: this `README.md` and
-[`Dockerfile`](Dockerfile), both copied from `deploy/hf-space/` in the faissight repo. The
-image clones faissight from GitHub at `FAISSIGHT_REF` (default `main`; pin a tag such as
+[`Dockerfile`](Dockerfile), both copied from `deploy/hf-space/` in the vectraudit repo. The
+image clones vectraudit from GitHub at `VECTRAUDIT_REF` (default `main`; pin a tag such as
 `v0.1.0` for reproducible builds), builds the UI, bakes the demo data, model and
 projections, and serves on port 7860.
 
-To test the image locally from a faissight checkout:
+To test the image locally from a vectraudit checkout:
 
 ```bash
-docker build -f deploy/hf-space/Dockerfile -t faissight-space .
-docker run --rm -p 7860:7860 faissight-space   # open http://localhost:7860
+docker build -f deploy/hf-space/Dockerfile -t vectraudit-space .
+docker run --rm -p 7860:7860 vectraudit-space   # open http://localhost:7860
 ```

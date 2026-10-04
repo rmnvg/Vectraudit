@@ -7,12 +7,12 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight import session as session_mod
-from faissight.core import hnsw_trace
-from faissight.core import vectors as V
-from faissight.core.projection import ProjectionUnavailableError
-from faissight.session import InputError, Session
 from tests.conftest import SMALL
+from vectraudit import session as session_mod
+from vectraudit.core import hnsw_trace
+from vectraudit.core import vectors as V
+from vectraudit.core.projection import ProjectionUnavailableError
+from vectraudit.session import InputError, Session
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 
@@ -305,7 +305,7 @@ def test_sweep_cache_reuses_ground_truth_and_bounds_entries(synthetic) -> None:
 
 
 def test_sweep_cache_does_not_retain_oversized_arrays(synthetic, monkeypatch) -> None:
-    monkeypatch.setattr("faissight.session._SWEEP_CACHE_BYTES", 1)
+    monkeypatch.setattr("vectraudit.session._SWEEP_CACHE_BYTES", 1)
     session = Session(synthetic["ivf_flat"], vectors=synthetic["vectors"], disk_cache=False)
     queries, truth = session._sweep_data(10, 3, 0)
     assert len(queries) == 10
