@@ -551,6 +551,9 @@ def check(
         raise _fail(str(e)) from e
     result = compare_runs(base, cand, pol)
     verdict = Verdict(result["verdict"])
+    if upload:
+        hosted = _record_cloud_check(client, cand, str(baseline)[6:], verdict)
+        report_url = report_url or hosted
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
@@ -566,8 +569,6 @@ def check(
         with open(summary_path, "a", encoding="utf-8") as f:
             f.write(md)
     _print_check(result, verdict)
-    if upload:
-        _record_cloud_check(client, cand, str(baseline)[6:], verdict)
     if github_check or github_comment:
         _publish_github(result, md, github_check, github_comment, check_name, report_url)
     raise typer.Exit(code=EXIT_CODES[verdict])
@@ -637,8 +638,10 @@ def _cloud_baseline_and_policy(
     return base, DEFAULT_POLICY if remote is None else parse_policy(remote)
 
 
-def _record_cloud_check(client: Any, cand: dict[str, Any], baseline: str, verdict: Verdict) -> None:
-    """Upload the candidate and store the hosted check; a mismatch is reported loudly."""
+def _record_cloud_check(
+    client: Any, cand: dict[str, Any], baseline: str, verdict: Verdict
+) -> str | None:
+    """Upload the candidate and store the hosted check; returns the hosted report URL."""
     from vectraudit.integrations.cloud import CloudClientError
 
     if not _upload(client, cand):
@@ -654,6 +657,8 @@ def _record_cloud_check(client: Any, cand: dict[str, Any], baseline: str, verdic
             f"[bold red]Warning:[/] the hosted verdict is {stored['verdict']} but the local one "
             f"is {verdict.value} (different policy or baseline?)."
         )
+    report: str | None = stored.get("report_url")
+    return report
 
 
 @cloud_app.command("pin")
@@ -672,6 +677,36 @@ def cloud_pin(
     except CloudClientError as e:
         raise _fail(e.message, e.hint) from e
     console.print(f"Baseline {escape(b['name'])} → run {escape(b['run_id'])}")
+
+
+@cloud_app.command("runs")
+def cloud_runs(
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+    status: Annotated[str | None, typer.Option(help="complete, partial, failed...")] = None,
+    commit: Annotated[str | None, typer.Option(help="Commit SHA or prefix.")] = None,
+    label: Annotated[str | None, typer.Option(help="Run label.")] = None,
+    limit: Annotated[int, typer.Option(min=1, max=100)] = 20,
+) -> None:
+    """Recent uploaded runs, newest first."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        page = _cloud_client(project).list_runs(
+            limit, status=status or "", commit=commit or "", label=label or ""
+        )
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    table = Table("Run", "Status", "Label", "Commit", "Backend", "Uploaded")
+    for r in page["runs"]:
+        table.add_row(
+            r["run_id"][:12],
+            r["status"],
+            r["label"] or "",
+            (r["commit_sha"] or "")[:10],
+            r["backend"] or "",
+            str(r["uploaded_at"])[:19],
+        )
+    console.print(table)
 
 
 @cloud_app.command("baselines")

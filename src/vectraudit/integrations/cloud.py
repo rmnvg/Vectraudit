@@ -170,3 +170,11 @@ class CloudClient:
         body = json.dumps({"candidate_run_id": candidate_run_id, "baseline": baseline}).encode()
         result: dict[str, Any] = self._call("POST", f"{self.project_path}/checks", body)
         return result
+
+    def list_runs(self, limit: int = 20, **filters: str) -> dict[str, Any]:
+        """``{"runs": [...], "next_cursor": ...}``, newest first."""
+        from urllib.parse import urlencode
+
+        query = urlencode({"limit": limit, **{k: v for k, v in filters.items() if v}})
+        result: dict[str, Any] = self._call("GET", f"{self.project_path}/runs?{query}")
+        return result

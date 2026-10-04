@@ -162,10 +162,22 @@ def test_cli_cloud_baseline_workflow(world, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("VECTRAUDIT_CLOUD_TOKEN", world.tokens["acme_runner"])
     result = runner.invoke(cli, ["check", "cloud:main", str(base), "--no-github-summary"])
     assert result.exit_code == 0, result.output
+    md = tmp_path / "summary.md"
     result = runner.invoke(
-        cli, ["check", "cloud:main", str(worse), "--upload", "--no-github-summary"]
+        cli,
+        [
+            "check",
+            "cloud:main",
+            str(worse),
+            "--upload",
+            "--no-github-summary",
+            "--markdown",
+            str(md),
+        ],
     )
     assert result.exit_code == 3, result.output
+    assert "/checks/" in md.read_text()
+    assert "/report)" in md.read_text()  # the summary links to the hosted report
     assert "Uploaded run cli-worse" in result.output
     flat = "".join(result.output.split())
     # Links use the service's configured public URL.

@@ -60,6 +60,7 @@ class CheckOut(BaseModel):
     created_by: str | None
     result: dict[str, Any]
     url: str
+    report_url: str
 
 
 def _policy(project: Project) -> Policy:
@@ -93,6 +94,7 @@ def _check_out(c: Check, base: Run, cand: Run, url: str) -> CheckOut:
         created_by=c.created_by,
         result=c.result,
         url=url,
+        report_url=f"{url}/report",
     )
 
 

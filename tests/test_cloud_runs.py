@@ -45,8 +45,8 @@ def client_for(world, who: str, project: str = "acme/search") -> CloudClient:
     return CloudClient(target, via(world.client))
 
 
-def a_run(run_id: str = "run-1", **overrides):
-    run = fake_run([1.0, 0.5] * 10, run_id=run_id, label="main", **overrides)
+def a_run(run_id: str = "run-1", label: str = "main", **overrides):
+    run = fake_run([1.0, 0.5] * 10, run_id=run_id, label=label, **overrides)
     run["provenance"]["commit_sha"] = "abc123"
     return run
 
