@@ -345,11 +345,21 @@ def place_points(
 
 def default_cache_root() -> Path:
     """Cache root: ``$VECTRAUDIT_CACHE_DIR``, else ``$XDG_CACHE_HOME/vectraudit``,
-    else ``~/.cache/vectraudit``."""
+    else ``~/.cache/vectraudit``.
+
+    A cache left under the pre-rename default (``<base>/faissight``) is moved to the new
+    default the first time it is resolved, keeping projections and run history.
+    """
     if env := os.environ.get("VECTRAUDIT_CACHE_DIR"):
         return Path(env)
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "vectraudit"
+    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    root = base / "vectraudit"
+    legacy = base / "faissight"
+    if legacy.is_dir() and not root.exists():
+        # If this fails (e.g. a concurrent process won the race) a fresh cache is used.
+        with contextlib.suppress(OSError):
+            legacy.rename(root)
+    return root
 
 
 def index_fingerprint(li: LoadedIndex) -> str:

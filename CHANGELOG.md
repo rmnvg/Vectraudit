@@ -10,8 +10,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 - Renamed the project from faissight to Vectraudit. The Python package, CLI command,
   environment variables (`VECTRAUDIT_*`) and cache directory (`~/.cache/vectraudit/`) all
-  use the new name. Projections and run history cached under `~/.cache/faissight/` are not
-  migrated; move that directory to keep them.
+  use the new name. An existing `~/.cache/faissight/` (or `$XDG_CACHE_HOME/faissight/`) is
+  moved to the new location on first use, keeping projections and run history.
 - Vectraudit is now distributed privately; it is no longer published to PyPI.
 - Licence changed from MIT to proprietary (all rights reserved). The wheel carries the
   `Private :: Do Not Upload` classifier and ships `THIRD_PARTY_NOTICES.txt` for the open-source

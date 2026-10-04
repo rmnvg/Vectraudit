@@ -251,6 +251,32 @@ def test_default_cache_root(monkeypatch, tmp_path) -> None:
     assert P.default_cache_root() == tmp_path / "vectraudit"
 
 
+def test_default_cache_root_migrates_faissight_cache(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("VECTRAUDIT_CACHE_DIR", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    (tmp_path / "faissight" / "history").mkdir(parents=True)
+    (tmp_path / "faissight" / "history" / "run.json").write_text("{}")
+
+    root = P.default_cache_root()
+
+    assert root == tmp_path / "vectraudit"
+    assert (root / "history" / "run.json").read_text() == "{}"
+    assert not (tmp_path / "faissight").exists()
+
+
+def test_default_cache_root_keeps_existing_cache(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("VECTRAUDIT_CACHE_DIR", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    (tmp_path / "faissight").mkdir()
+    (tmp_path / "vectraudit").mkdir()
+    (tmp_path / "vectraudit" / "new.json").write_text("{}")
+
+    assert P.default_cache_root() == tmp_path / "vectraudit"
+    # Both exist: the new cache wins and the old one is left alone, never merged or deleted.
+    assert (tmp_path / "vectraudit" / "new.json").exists()
+    assert (tmp_path / "faissight").is_dir()
+
+
 # --- UMAP --------------------------------------------------------------------------------
 
 
