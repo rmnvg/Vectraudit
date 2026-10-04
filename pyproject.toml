@@ -39,7 +39,9 @@ faiss-cpu = ["faiss-cpu>=1.8"]
 umap = ["umap-learn>=0.5"]
 text = ["sentence-transformers>=2.2"]
 parquet = ["pyarrow>=14"]
-all = ["vectraudit[faiss-cpu,umap,text,parquet]"]
+qdrant = ["qdrant-client>=1.13"]
+pgvector = ["psycopg[binary]>=3.1"]
+all = ["vectraudit[faiss-cpu,umap,text,parquet,qdrant,pgvector]"]
 dev = [
     "ruff>=0.5",
     "mypy>=1.10",
@@ -100,7 +102,7 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["vectraudit.core.*"]
+module = ["vectraudit.core.*", "vectraudit.evaluation.*", "vectraudit.connectors.*"]
 strict = true
 
 [tool.pytest.ini_options]

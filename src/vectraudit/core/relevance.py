@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -14,6 +15,8 @@ import numpy.typing as npt
 from vectraudit.core.search import rerank, search
 from vectraudit.core.types import LoadedIndex
 from vectraudit.core.vectors import VectorSource, validate_ids
+
+H = TypeVar("H", bound=Hashable)
 
 
 @dataclass(frozen=True)
@@ -23,8 +26,10 @@ class RelevanceMetrics:
     ndcg: float
 
 
-def relevance_metrics(found: list[int], labels: dict[int, float], k: int) -> RelevanceMetrics:
+def relevance_metrics(found: Sequence[H], labels: Mapping[H, float], k: int) -> RelevanceMetrics:
     """Recall/MRR/nDCG@k; positive grades are relevant, nDCG uses linear gains.
+
+    Ids may be any hashable type (int ids here, string ids in :mod:`vectraudit.evaluation`).
 
     Unjudged results count as non-relevant. Duplicate hits receive no extra credit.
     Every query must have at least one positive judgement.
@@ -38,7 +43,7 @@ def relevance_metrics(found: list[int], labels: dict[int, float], k: int) -> Rel
         raise ValueError("Each query needs at least one positively labelled chunk.")
     scale = max(labels.values())
     gains: list[float] = []
-    seen: set[int] = set()
+    seen: set[H] = set()
     first = 0.0
     hits = 0
     for rank, i in enumerate(found[:k], 1):

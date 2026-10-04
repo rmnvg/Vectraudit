@@ -39,6 +39,25 @@ Only need FAISS support? The `[faiss-cpu]` extra is enough; `[all]` adds text qu
 (sentence-transformers), UMAP and Parquet metadata. Conda or GPU users with FAISS already
 installed can install the wheel without extras.
 
+## Release checks
+
+Measure a baseline and a candidate retrieval setup on the same labelled queries, and let CI
+decide: pass, fail, error or not comparable.
+
+```bash
+vectraudit record --connection main.json --dataset dataset.jsonl --out baseline.json --label main
+vectraudit record --connection pr.json   --dataset dataset.jsonl --out candidate.json --label pr-42
+vectraudit check baseline.json candidate.json --policy policy.json --html report.html
+```
+
+`check` exits 0 (pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job
+summary, and the HTML report lists the regressed queries with the ids they lost. Semantic
+metrics (recall, precision, MRR, nDCG) need relevance labels; ANN recall needs an exact
+reference; neither is ever substituted for the other. See
+[docs/release-checks.md](docs/release-checks.md) for the dataset, connection and policy
+formats, and [examples/github/retrieval-check.yml](examples/github/retrieval-check.yml) for
+a pull-request workflow.
+
 ## From Python and Jupyter
 
 ```python
