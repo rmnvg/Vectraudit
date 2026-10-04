@@ -13,6 +13,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
   JSON and Markdown reports and a GitHub job summary. Connectors share one contract with
   declared capabilities and typed errors. See `docs/release-checks.md`.
+- **Vectraudit Cloud** (`vectraudit[cloud]`, `vectraudit-cloud`): the hosted control plane.
+  Workspaces with owner, engineer and viewer roles; project-scoped runner tokens; run upload
+  (idempotent); pinned baselines and project policies; server-side checks with the CLI's
+  verdict; run and check history; private reports and optional signed share links; a
+  dashboard with GitHub or token sign-in; plans, quotas, retention and usage export; Docker
+  Compose deployment with backup and restore scripts. See `docs/cloud-operations.md`.
 - **Investigation:** per-query backend evidence (FAISS IVF miss reasons, pgvector query
   plans) and diagnoses with evidence levels (verified, supported, hypothesis) in every report.
 - **Datasets:** `dataset import` (CSV/JSONL with column mapping and typed filters),

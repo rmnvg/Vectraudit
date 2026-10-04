@@ -43,11 +43,23 @@ def serve(
     host: Annotated[str, typer.Option(help="Interface to bind.")] = "0.0.0.0",
     port: Annotated[int, typer.Option(help="Port.")] = 8800,
     workers: Annotated[int, typer.Option(min=1, help="Worker processes.")] = 1,
+    migrate_first: Annotated[
+        bool,
+        typer.Option("--migrate", help="Apply migrations before serving (single instance)."),
+    ] = False,
+    log_format: Annotated[str, typer.Option(help="json or text.")] = "json",
 ) -> None:
-    """Serve the API (run `migrate` first)."""
+    """Serve the API. Run `migrate` first (or pass --migrate on a single instance)."""
     import uvicorn
 
-    _settings()  # fail fast on bad configuration
+    from vectraudit.cloud.logs import configure
+
+    settings = _settings()  # fail fast on bad configuration
+    configure(log_format)
+    if migrate_first:
+        from vectraudit.cloud.migrate import upgrade
+
+        upgrade(settings.database_url)
     uvicorn.run(
         "vectraudit.cloud.cli:asgi_app",
         factory=True,
@@ -55,6 +67,8 @@ def serve(
         port=port,
         workers=workers,
         proxy_headers=True,
+        access_log=False,  # our access log omits query strings, which can carry secrets
+        log_config=None,
     )
 
 
@@ -211,5 +225,7 @@ def set_plan(
 def asgi_app() -> object:
     """ASGI factory for uvicorn workers."""
     from vectraudit.cloud.app import create_app
+    from vectraudit.cloud.logs import configure
 
+    configure()
     return create_app(Settings.from_env())

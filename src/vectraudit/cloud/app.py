@@ -13,6 +13,7 @@ from sqlalchemy import Engine, text
 from vectraudit import __version__
 from vectraudit.cloud.db import make_engine, session_factory
 from vectraudit.cloud.errors import CloudError
+from vectraudit.cloud.logs import access_log
 from vectraudit.cloud.migrate import current_revision, head_revision
 from vectraudit.cloud.settings import Settings
 
@@ -39,6 +40,22 @@ def create_app(settings: Settings, engine: Engine | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessions = factory
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        if settings.public_url.startswith("https://"):
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
+
+    app.middleware("http")(access_log)
 
     @app.middleware("http")
     async def limit_body(

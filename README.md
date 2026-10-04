@@ -60,6 +60,8 @@ each finding is marked verified, supported or hypothesis, with the facts behind 
 - [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
 - [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
 - [Pull-request workflow](examples/github/retrieval-check.yml) with check runs and comments
+- [Running Vectraudit Cloud](docs/cloud-operations.md): hosted baselines, history,
+  reports and the dashboard (`vectraudit record --upload`, `check cloud:main --upload`)
 
 ## From Python and Jupyter
 

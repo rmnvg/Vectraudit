@@ -1,0 +1,51 @@
+# Vectraudit Cloud on one host: PostgreSQL, a migration job and the API.
+#   cp .env.example .env   # then edit it
+#   docker compose up -d --build
+#   docker compose run --rm api create-workspace acme --name "Acme" --owner-email you@acme.com
+# Put a TLS-terminating reverse proxy (Caddy, nginx, a cloud load balancer) in front of :8800.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vectraudit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: vectraudit
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vectraudit"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/cloud/Dockerfile
+    image: vectraudit-cloud:local
+    command: ["migrate"]
+    env_file: .env
+    environment:
+      VECTRAUDIT_CLOUD_DATABASE_URL: postgresql://vectraudit:${POSTGRES_PASSWORD}@db:5432/vectraudit
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: vectraudit-cloud:local
+    command: ["serve", "--port", "8800", "--workers", "2"]
+    env_file: .env
+    environment:
+      VECTRAUDIT_CLOUD_DATABASE_URL: postgresql://vectraudit:${POSTGRES_PASSWORD}@db:5432/vectraudit
+    ports:
+      - "127.0.0.1:8800:8800"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  pgdata:
