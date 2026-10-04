@@ -13,3 +13,14 @@ def register(app: FastAPI) -> None:
     app.include_router(runs.router)
     app.include_router(checks.router)
     app.include_router(history.router)
+
+    from fastapi import Request
+    from fastapi.responses import RedirectResponse, Response
+
+    from vectraudit.cloud import web
+
+    app.include_router(web.router)
+
+    @app.exception_handler(web._Redirect)
+    async def redirect(_: Request, exc: web._Redirect) -> Response:
+        return RedirectResponse(exc.location, status_code=303)

@@ -214,3 +214,18 @@ class AuditEvent(Base):
     target_id: Mapped[str] = mapped_column(String(64))
     details: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class WebSession(Base):
+    """A signed-in browser. The cookie holds a random id; only its SHA-256 is stored."""
+
+    __tablename__ = "web_sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    session_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    method: Mapped[str] = mapped_column(String(16))
+    """How the user signed in: ``github`` or ``token``."""
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

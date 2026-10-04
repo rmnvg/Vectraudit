@@ -33,7 +33,19 @@ SessionDep = Annotated[Session, Depends(db_session)]
 
 
 def get_principal(request: Request, session: SessionDep) -> Principal:
-    return authenticate(session, request.headers.get("authorization"))
+    """Bearer token; or, for reads only, a dashboard session cookie.
+
+    Cookies never authorize API writes: those need an explicit token, which rules out
+    cross-site request forgery against the JSON API.
+    """
+    header = request.headers.get("authorization")
+    if header is None and request.method in ("GET", "HEAD"):
+        from vectraudit.cloud.web_auth import SESSION_COOKIE, resolve_session, session_principal
+
+        found = resolve_session(session, request.cookies.get(SESSION_COOKIE))
+        if found is not None:
+            return session_principal(found[1])
+    return authenticate(session, header)
 
 
 def get_settings(request: Request) -> Settings:

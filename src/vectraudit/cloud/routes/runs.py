@@ -19,8 +19,9 @@ from sqlalchemy.exc import IntegrityError
 
 from vectraudit.cloud import repo
 from vectraudit.cloud.deps import PrincipalDep, SessionDep, SettingsDep
-from vectraudit.cloud.errors import CloudError, not_found
+from vectraudit.cloud.errors import CloudError
 from vectraudit.cloud.models import Run, Workspace
+from vectraudit.cloud.service import find_run
 from vectraudit.evaluation.runfile import RunFileError, check_run
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace}/projects/{project}", tags=["runs"])
@@ -160,17 +161,6 @@ async def upload_run(
         response.status_code = 200
         return run_out(winner, access.workspace, project, settings.public_url)
     return run_out(run, access.workspace, project, settings.public_url)
-
-
-def find_run(session: SessionDep, workspace_id: str, project_id: str, run_id: str) -> Run:
-    run = session.scalars(
-        select(Run).where(
-            Run.workspace_id == workspace_id, Run.project_id == project_id, Run.run_id == run_id
-        )
-    ).first()
-    if run is None:
-        raise not_found("Run")
-    return run
 
 
 @router.get("/runs/{run_id}")

@@ -24,6 +24,9 @@ class Settings:
     share_links: bool = False
     """Signed public report links are off unless explicitly enabled."""
     environment: str = "production"
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    """GitHub OAuth app for dashboard sign-in; without it, members sign in with a token."""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -57,6 +60,8 @@ class Settings:
             max_upload_bytes=max_upload,
             share_links=(get("SHARE_LINKS") or "false").lower() in ("1", "true", "yes"),
             environment=get("ENVIRONMENT") or cls.environment,
+            github_client_id=get("GITHUB_CLIENT_ID") or None,
+            github_client_secret=get("GITHUB_CLIENT_SECRET") or None,
         )
 
 
