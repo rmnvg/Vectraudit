@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "metrics": {
+    "ndcg": {"max_drop": 0.02},
+    "recall": {"max_drop": 0.02}
+  },
+  "latency": {"p95_max_increase_pct": 30},
+  "min_queries": 30,
+  "max_regressed_queries": 10,
+  "cohorts": {"min_queries": 15, "metrics": {"ndcg": {"max_drop": 0.05}}},
+  "require_significance": false
+}

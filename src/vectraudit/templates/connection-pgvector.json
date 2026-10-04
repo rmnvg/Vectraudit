@@ -1,0 +1,11 @@
+{
+  "backend": "pgvector",
+  "name": "production table",
+  "dsn_env": "RETRIEVAL_PG_DSN",
+  "table": "public.chunks",
+  "id_column": "id",
+  "vector_column": "embedding",
+  "distance": "cosine",
+  "filter_columns": [],
+  "params": {"hnsw.ef_search": 100}
+}

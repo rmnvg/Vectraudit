@@ -75,6 +75,26 @@ def dataset_validate(
     console.print(table)
 
 
+def init(
+    backend: Annotated[str, typer.Option(help="faiss, qdrant or pgvector.")] = "faiss",
+    directory: Annotated[
+        Path, typer.Option("--dir", help="Repository root to scaffold into.")
+    ] = Path(),
+    force: Annotated[bool, typer.Option(help="Overwrite files that already exist.")] = False,
+) -> None:
+    """Scaffold retrieval/ (connection, policy, queries) and a GitHub workflow."""
+    from vectraudit.scaffold import BACKENDS, init_project
+
+    if backend not in BACKENDS:
+        raise _fail(f"Unknown backend {backend!r}.", f"Use one of: {', '.join(BACKENDS)}.")
+    written, skipped = init_project(directory, backend, force=force)
+    for path in written:
+        console.print(f"  [green]created[/] {escape(str(path))}")
+    for path in skipped:
+        console.print(f"  [yellow]kept[/]    {escape(str(path))} (exists; --force overwrites)")
+    console.print("Next: follow retrieval/README.md.")
+
+
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
