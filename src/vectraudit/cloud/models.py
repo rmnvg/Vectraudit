@@ -231,3 +231,18 @@ class WebSession(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class Invite(Base):
+    """A single-use sign-in link for an invited member; only its SHA-256 is stored."""
+
+    __tablename__ = "invites"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

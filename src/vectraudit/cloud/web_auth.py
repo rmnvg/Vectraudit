@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from vectraudit.cloud.auth import Principal
-from vectraudit.cloud.models import User, WebSession, utcnow
+from vectraudit.cloud.models import Invite, User, WebSession, utcnow
 
 SESSION_COOKIE = "va_session"
 SESSION_DAYS = 14
@@ -72,3 +72,33 @@ def csrf_ok(secret: str, raw_session: str | None, submitted: str | None) -> bool
     if not raw_session or not submitted:
         return False
     return hmac.compare_digest(csrf_token(secret, raw_session), submitted)
+
+
+INVITE_HOURS = 72
+
+
+def create_invite(session: Session, workspace_id: str, user: User, actor: str) -> str:
+    """A single-use sign-in link token for ``user``; returns the raw token (shown once)."""
+    raw = secrets.token_urlsafe(32)
+    session.add(
+        Invite(
+            token_hash=_hash(raw),
+            workspace_id=workspace_id,
+            user_id=user.id,
+            created_by=actor,
+            expires_at=utcnow() + timedelta(hours=INVITE_HOURS),
+        )
+    )
+    return raw
+
+
+def redeem_invite(session: Session, raw: str) -> tuple[User, str] | None:
+    """Use an invite once: returns (user, workspace id), or ``None`` if invalid."""
+    row = session.scalars(select(Invite).where(Invite.token_hash == _hash(raw))).first()
+    if row is None or row.used_at is not None or row.expires_at <= utcnow():
+        return None
+    user = session.get(User, row.user_id)
+    if user is None or user.disabled:
+        return None
+    row.used_at = utcnow()
+    return user, row.workspace_id

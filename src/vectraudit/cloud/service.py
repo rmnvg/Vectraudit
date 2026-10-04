@@ -19,6 +19,7 @@ from vectraudit.cloud.models import (
     AuditEvent,
     Baseline,
     Check,
+    Invite,
     Membership,
     Project,
     Run,
@@ -367,6 +368,7 @@ def delete_workspace(session: Session, access: repo.Access, confirm: str | None)
         or 0
     )
     session.execute(delete(ApiToken).where(ApiToken.workspace_id == ws.id))
+    session.execute(delete(Invite).where(Invite.workspace_id == ws.id))
     session.execute(delete(AuditEvent).where(AuditEvent.workspace_id == ws.id))
     session.execute(delete(Workspace).where(Workspace.id == ws.id))
     repo.audit(
@@ -414,6 +416,7 @@ def delete_user(session: Session, user: User, actor: str) -> list[str]:
     session.execute(delete(Membership).where(Membership.user_id == user.id))
     session.execute(delete(ApiToken).where(ApiToken.user_id == user.id))
     session.execute(delete(WebSession).where(WebSession.user_id == user.id))
+    session.execute(delete(Invite).where(Invite.user_id == user.id))
     repo.audit(session, None, actor, "user.delete", "user", user.id, email=user.email)
     session.delete(user)
     return left

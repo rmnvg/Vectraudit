@@ -38,6 +38,10 @@ UNSCOPED = {
     ("POST", "/api/v1/workspaces"): "platform admins only",
     ("GET", "/api/v1/admin/usage"): "platform admins only",
     ("GET", "/r/{check_id}"): "HMAC-signed share link",
+    ("GET", "/invite/{token}"): "single-use sign-in link (hashed, expiring)",
+    ("GET", "/account"): "the caller's own settings",
+    ("POST", "/account/tokens"): "the caller's own tokens",
+    ("POST", "/account/tokens/{token_id}/revoke"): "the caller's own tokens (owner-scoped query)",
 }
 DOCS = {"/api/docs", "/api/openapi.json", "/api/docs/oauth2-redirect"}
 
