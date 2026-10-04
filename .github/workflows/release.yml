@@ -1,5 +1,8 @@
 name: Release
 
+# Private distribution only: the wheel and sdist go to a GitHub release in this private
+# repository. Nothing is published to PyPI.
+
 on:
   push:
     tags: ["v*"]
@@ -51,25 +54,9 @@ jobs:
           name: dist
           path: dist/
 
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/faissight
-    permissions:
-      id-token: write  # PyPI trusted publishing: no API token stored in GitHub
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-
   github-release:
     name: GitHub release
-    needs: publish-pypi
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write

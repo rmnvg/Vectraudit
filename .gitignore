@@ -27,3 +27,6 @@ examples/data/
 .idea/
 .vscode/
 examples/rag_data/
+
+# Business documents (kept out of the repository)
+*.docx

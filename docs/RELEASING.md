@@ -1,14 +1,8 @@
 # Releasing faissight
 
-## One-time setup (maintainer)
-
-1. **PyPI trusted publishing.** On PyPI, add a trusted publisher for the `faissight` project
-   (or a "pending publisher" if the project doesn't exist yet): owner `rmnvg`, repository
-   `faissight`, workflow `release.yml`, environment `pypi`.
-2. **GitHub environment.** In the repository settings, create an environment named `pypi`
-   (optionally with required reviewers so each publish needs approval).
-
-No API tokens are stored anywhere: the workflow authenticates to PyPI with OIDC.
+faissight is distributed privately. Nothing is published to PyPI; release builds are
+attached to a GitHub release in this private repository, so only people with access to the
+repository can download them.
 
 ## Each release
 
@@ -24,11 +18,20 @@ No API tokens are stored anywhere: the workflow authenticates to PyPI with OIDC.
 3. `release.yml` runs the reusable CI workflow against the tagged commit (Python checks,
    frontend checks, browser tests and an installed-wheel smoke test). It then builds the UI,
    sdist and release wheel, checks the tag matches the version, and installs the release
-   wheel in a fresh environment to verify its UI, API and CLI. Publishing to PyPI and the
-   GitHub release both depend on these checks succeeding.
+   wheel in a fresh environment to verify its UI, API and CLI. The private GitHub release
+   is created only if these checks succeed.
+
+Install a release wheel from the private release:
+
+```bash
+gh release download vX.Y.Z --repo rmnvg/faissight --pattern '*.whl'
+pip install ./faissight-X.Y.Z-py3-none-any.whl
+```
 
 ## Hugging Face Space
 
-Create a Docker Space and copy `deploy/hf-space/Dockerfile` and `deploy/hf-space/README.md`
-into it. Set the build argument `FAISSIGHT_REF` to the release tag for a reproducible build
-(the default builds `main`). See [deploy/hf-space/README.md](../deploy/hf-space/README.md).
+`deploy/hf-space/Dockerfile` clones the repository anonymously when it runs in a Space repo,
+which fails now that the repository is private. Build the image from a checkout instead
+(`docker build -f deploy/hf-space/Dockerfile .`), and keep any Space private unless a
+public demo is a deliberate decision. See
+[deploy/hf-space/README.md](../deploy/hf-space/README.md).
