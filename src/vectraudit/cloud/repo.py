@@ -48,6 +48,8 @@ ACTION_ROLE = {
     "manage_project": "engineer",
     "manage_runner_tokens": "engineer",
     "manage_members": "owner",
+    "export": "owner",
+    "delete": "owner",
     "read_audit": "owner",
 }
 RUNNER_ACTION_SCOPE = {

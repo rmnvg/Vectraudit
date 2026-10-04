@@ -460,8 +460,38 @@ def workspace_page(
         + _table(["Project", "Slug", "Created"], projects, "No projects yet.")
         + "<h2>Members</h2>"
         + _table(["Email", "Role"], members, "No members.")
+        + (_danger_zone(ws.slug, web) if access.role == "owner" else "")
     )
     return page(ws.name, body, web)
+
+
+def _danger_zone(slug: str, web: Web) -> str:
+    return (
+        "<h2>Data</h2>"
+        f'<p><a href="/api/v1/workspaces/{quote(slug)}/export">Download everything (JSON)</a>'
+        " · projects, runs, checks, baselines, members and the audit log.</p>"
+        '<div class="card"><strong>Delete this workspace</strong><p class="muted">Removes every '
+        "project, run, check, baseline, token and membership. It can't be undone; backups "
+        "expire on their own schedule.</p>"
+        f'<form method="post" action="/app/{quote(slug)}/delete">{_csrf_field(web)}'
+        f'<input name="confirm" placeholder="type {e(slug)} to confirm" required> '
+        "<button>Delete workspace</button></form></div>"
+    )
+
+
+@router.post("/app/{workspace}/delete")
+async def delete_workspace_action(
+    workspace: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        access = repo.authorize(session, web.principal, workspace, "delete")
+        _require_csrf(web, form, settings)
+        service.delete_workspace(session, access, form.get("confirm"))
+    except CloudError as err:
+        return _error_page(err, web)
+    return RedirectResponse("/app", status_code=303)
 
 
 def _project_access(

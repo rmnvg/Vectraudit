@@ -144,8 +144,8 @@ def create_token(
 
 @app.command()
 def purge() -> None:
-    """Delete runs past their workspace's retention (pinned baselines are kept)."""
-    from vectraudit.cloud import quotas, repo
+    """Delete runs past retention (pinned baselines are kept) and old sessions."""
+    from vectraudit.cloud import quotas, repo, service
     from vectraudit.cloud.db import transaction
 
     with transaction(_sessions()) as session:
@@ -153,7 +153,9 @@ def purge() -> None:
         for slug, n in deleted.items():
             ws_id = session.scalars(select(Workspace.id).where(Workspace.slug == slug)).first()
             repo.audit(session, ws_id, "cli", "retention.purge", "workspace", ws_id or slug, runs=n)
+        sessions = service.purge_sessions(session)
     total = sum(deleted.values())
+    console.print(f"Purged {sessions:,} old sessions.")
     console.print(
         f"Purged {total:,} expired runs"
         + (": " + ", ".join(f"{k} {v}" for k, v in deleted.items()) if deleted else ".")
@@ -220,6 +222,37 @@ def set_plan(
         )
         effective = quotas.limits_for(ws)
     console.print(f"{escape(slug)}: plan {plan}, limits {effective}")
+
+
+@app.command("delete-user")
+def delete_user(
+    email: Annotated[str, typer.Argument(help="The person to remove.")],
+    yes: Annotated[bool, typer.Option("--yes", help="Confirm: this can't be undone.")] = False,
+) -> None:
+    """Remove a person: memberships, tokens and sessions (workspace data stays)."""
+    from vectraudit.cloud import repo, service
+    from vectraudit.cloud.db import transaction
+    from vectraudit.cloud.errors import CloudError
+    from vectraudit.cloud.models import User
+
+    if not yes:
+        err_console.print("[bold red]Error:[/] pass --yes to confirm the deletion.")
+        raise typer.Exit(code=1)
+    try:
+        with transaction(_sessions()) as session:
+            user = session.scalars(
+                select(User).where(User.email == repo.normalize_email(email))
+            ).first()
+            if user is None:
+                err_console.print(f"[bold red]Error:[/] no user {escape(email)}.")
+                raise typer.Exit(code=1)
+            left = service.delete_user(session, user, "cli")
+    except CloudError as e:
+        err_console.print(f"[bold red]Error:[/] {escape(e.message)}")
+        if e.hint:
+            err_console.print(f"[dim]Hint: {escape(e.hint)}[/]")
+        raise typer.Exit(code=1) from e
+    console.print(f"Deleted {escape(email)}; removed from: {', '.join(left) or 'no workspaces'}.")
 
 
 def asgi_app() -> object:
