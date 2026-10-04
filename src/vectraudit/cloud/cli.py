@@ -255,6 +255,104 @@ def delete_user(
     console.print(f"Deleted {escape(email)}; removed from: {', '.join(left) or 'no workspaces'}.")
 
 
+@app.command("revoke-access")
+def revoke_access(
+    workspace: Annotated[
+        str | None, typer.Option(help="Only this workspace (default: everything).")
+    ] = None,
+    yes: Annotated[bool, typer.Option("--yes", help="Confirm.")] = False,
+) -> None:
+    """Incident containment: revoke runner tokens, personal tokens and sessions.
+
+    With --workspace, revokes that workspace's runner tokens and the personal tokens and
+    sessions of its members (which also ends their access elsewhere). Without it, revokes
+    every token and session on the service.
+    """
+    from sqlalchemy import ColumnElement, update
+
+    from vectraudit.cloud import repo
+    from vectraudit.cloud.db import transaction
+    from vectraudit.cloud.models import ApiToken, Membership, WebSession, utcnow
+
+    if not yes:
+        err_console.print("[bold red]Error:[/] pass --yes to confirm.")
+        raise typer.Exit(code=1)
+    now = utcnow()
+    with transaction(_sessions()) as session:
+        ws_id = None
+        token_scope: ColumnElement[bool]
+        session_scope: ColumnElement[bool]
+        if workspace is not None:
+            ws_id = session.scalar(select(Workspace.id).where(Workspace.slug == workspace))
+            if ws_id is None:
+                err_console.print(f"[bold red]Error:[/] no workspace {escape(workspace)}.")
+                raise typer.Exit(code=1)
+            users = select(Membership.user_id).where(Membership.workspace_id == ws_id)
+            token_scope = (ApiToken.workspace_id == ws_id) | ApiToken.user_id.in_(users)
+            session_scope = WebSession.user_id.in_(users)
+        else:
+            token_scope = ApiToken.id.is_not(None)
+            session_scope = WebSession.id.is_not(None)
+        tokens = session.execute(
+            update(ApiToken)
+            .where(token_scope, ApiToken.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        sessions = session.execute(
+            update(WebSession)
+            .where(session_scope, WebSession.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        counts = {
+            "tokens": int(getattr(tokens, "rowcount", 0) or 0),
+            "sessions": int(getattr(sessions, "rowcount", 0) or 0),
+        }
+        repo.audit(
+            session, ws_id, "cli", "incident.revoke_access", "workspace", ws_id or "*", **counts
+        )
+    scope = f"workspace {workspace}" if workspace else "the whole service"
+    console.print(
+        f"Revoked {counts['tokens']} tokens and {counts['sessions']} sessions for {escape(scope)}."
+    )
+
+
+@app.command()
+def audit(
+    workspace: Annotated[str, typer.Argument(help="Workspace slug.")],
+    limit: Annotated[int, typer.Option(min=1, max=100_000)] = 1000,
+) -> None:
+    """Print a workspace's audit log as JSON lines, newest first (investigations)."""
+    import json
+
+    from vectraudit.cloud.models import AuditEvent
+
+    with _sessions()() as session:
+        ws_id = session.scalar(select(Workspace.id).where(Workspace.slug == workspace))
+        if ws_id is None:
+            err_console.print(f"[bold red]Error:[/] no workspace {escape(workspace)}.")
+            raise typer.Exit(code=1)
+        events = session.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.workspace_id == ws_id)
+            .order_by(AuditEvent.created_at.desc())
+            .limit(limit)
+        )
+        for e in events:
+            print(
+                json.dumps(
+                    {
+                        "at": e.created_at.isoformat(),
+                        "actor": e.actor,
+                        "action": e.action,
+                        "target_type": e.target_type,
+                        "target_id": e.target_id,
+                        "details": e.details,
+                    },
+                    default=str,
+                )
+            )
+
+
 def asgi_app() -> object:
     """ASGI factory for uvicorn workers."""
     from vectraudit.cloud.app import create_app
