@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from vectraudit import __version__
 from vectraudit.cloud import quotas, repo, service
 from vectraudit.cloud.auth import Principal, authenticate
-from vectraudit.cloud.deps import SessionDep, SettingsDep
+from vectraudit.cloud.deps import SessionDep, SettingsDep, client_key, record_failure
 from vectraudit.cloud.errors import CloudError
 from vectraudit.cloud.models import Run, User
 from vectraudit.cloud.settings import Settings
@@ -242,6 +242,11 @@ def login_page(
 
 @router.post("/login/token")
 async def login_token(request: Request, session: SessionDep, settings: SettingsDep) -> Response:
+    retry = request.app.state.auth_failures.retry_after(client_key(request))
+    if retry is not None:
+        return RedirectResponse(
+            "/login?error=" + quote(f"Too many attempts; wait {retry} seconds."), status_code=303
+        )
     form = await _form(request)
     expected = request.cookies.get(LOGIN_CSRF)
     if not expected or not secrets.compare_digest(expected, form.get("csrf", "")):
@@ -251,6 +256,7 @@ async def login_token(request: Request, session: SessionDep, settings: SettingsD
     try:
         principal = authenticate(session, f"Bearer {form.get('token', '').strip()}")
     except CloudError:
+        record_failure(request, "sign-in")
         return RedirectResponse(
             "/login?error=" + quote("That token is not valid."), status_code=303
         )
@@ -314,7 +320,14 @@ def github_callback(
     """Exchange the code, read the verified emails, and sign in an invited user."""
 
     def fail(message: str) -> Response:
+        record_failure(request, "github")
         return RedirectResponse("/login?error=" + quote(message), status_code=303)
+
+    retry = request.app.state.auth_failures.retry_after(client_key(request))
+    if retry is not None:
+        return RedirectResponse(
+            "/login?error=" + quote(f"Too many attempts; wait {retry} seconds."), status_code=303
+        )
 
     stored, _, next_path = (request.cookies.get(OAUTH_STATE) or "").partition("|")
     if not settings.github_client_id or not settings.github_client_secret:
