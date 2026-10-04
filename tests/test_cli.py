@@ -12,9 +12,9 @@ import numpy as np
 import pytest
 from typer.testing import CliRunner
 
-from faissight import __version__
-from faissight.cli import app
 from tests.conftest import SMALL
+from vectraudit import __version__
+from vectraudit.cli import app
 
 runner = CliRunner()
 
@@ -22,7 +22,7 @@ runner = CliRunner()
 def test_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.output.strip() == f"faissight {__version__}"
+    assert result.output.strip() == f"vectraudit {__version__}"
 
 
 def test_no_args_shows_help() -> None:
@@ -76,7 +76,7 @@ class FakeServer:
 
 @pytest.fixture
 def fake_uvicorn(monkeypatch):
-    import faissight.cli as cli_mod
+    import vectraudit.cli as cli_mod
 
     FakeServer.instances.clear()
     opened = []
@@ -251,7 +251,7 @@ def test_serve_port_in_use(synthetic, fake_uvicorn) -> None:
 def test_serve_reports_bind_errors_accurately(
     synthetic, fake_uvicorn, monkeypatch, code, port, message, hint
 ) -> None:
-    import faissight.cli as cli_mod
+    import vectraudit.cli as cli_mod
 
     class RefusingSocket(socket.socket):
         def bind(self, address) -> None:
@@ -275,16 +275,16 @@ def test_serve_unresolvable_host(synthetic, fake_uvicorn) -> None:
 
 
 def test_serve_real_subprocess(synthetic, tmp_path) -> None:
-    # Acceptance: `faissight serve` starts and answers /api/info and /api/search.
+    # Acceptance: `vectraudit serve` starts and answers /api/info and /api/search.
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    env = {**os.environ, "FAISSIGHT_CACHE_DIR": str(tmp_path)}
+    env = {**os.environ, "VECTRAUDIT_CACHE_DIR": str(tmp_path)}
     proc = subprocess.Popen(
         [
             sys.executable,
             "-m",
-            "faissight",
+            "vectraudit",
             "serve",
             str(synthetic["ivf_flat"]),
             "--vectors",
@@ -460,7 +460,7 @@ def test_error_hints_keep_brackets(synthetic, monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "faiss", None)
     result = runner.invoke(app, ["info", str(synthetic["ivf_flat"])])
     assert result.exit_code == 1
-    assert "faissight[faiss-cpu]" in result.output
+    assert "vectraudit[faiss-cpu]" in result.output
 
 
 def test_serve_demo_mode_flag(synthetic, fake_uvicorn) -> None:
@@ -474,7 +474,7 @@ def test_serve_demo_mode_flag(synthetic, fake_uvicorn) -> None:
 
 
 def test_cache_info_and_clear(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("FAISSIGHT_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("VECTRAUDIT_CACHE_DIR", str(tmp_path))
     assert "Empty." in runner.invoke(app, ["cache", "info"]).output
     for sha, size in (("a" * 40, 3000), ("b" * 40, 5000)):
         (tmp_path / sha).mkdir()
@@ -523,7 +523,7 @@ def test_sweep_save_baseline_and_runs_diff(synthetic, tmp_path) -> None:
     (tmp_path / "bad.json").write_text("{}")
     bad = runner.invoke(app, [*args, "--baseline", str(tmp_path / "bad.json")])
     assert bad.exit_code == 1
-    assert "Not a faissight sweep run" in bad.output
+    assert "Not a vectraudit sweep run" in bad.output
 
 
 def test_sweep_diff_incomparable_runs_exits_4(synthetic, tmp_path) -> None:
@@ -556,7 +556,7 @@ def test_sweep_diff_incomparable_runs_exits_4(synthetic, tmp_path) -> None:
 
 
 def test_sweep_only_builds_a_run_record_when_needed(synthetic, monkeypatch) -> None:
-    from faissight.session import Session
+    from vectraudit.session import Session
 
     def boom(self, *a, **k):
         raise AssertionError("sweep_run was called without --save or --baseline")

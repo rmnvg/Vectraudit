@@ -70,7 +70,7 @@ export function Sidebar({
   return (
     <aside className="flex w-64 shrink-0 flex-col gap-4 overflow-auto border-r border-line bg-surface p-4 print:hidden">
       <div>
-        <div className="text-base font-semibold tracking-tight text-ink">faissight</div>
+        <div className="text-base font-semibold tracking-tight text-ink">vectraudit</div>
         <div className="text-xs text-muted">see inside your FAISS index</div>
       </div>
 
@@ -149,7 +149,7 @@ export function Sidebar({
           ]}
         />
         <div className="flex items-center justify-between text-[11px] text-muted">
-          {info && <span>faissight {info.version}</span>}
+          {info && <span>vectraudit {info.version}</span>}
           <button onClick={onFocus} className="hover:text-ink" title="Hide the sidebar (\)">
             Hide sidebar
           </button>

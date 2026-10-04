@@ -1,13 +1,16 @@
-# faissight
+# Vectraudit
 
 **See inside your FAISS index: debug retrieval, tune recall.**
 
-[![CI](https://github.com/rmnvg/faissight/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/faissight/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/faissight)](https://pypi.org/project/faissight/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/rmnvg/faissight/blob/main/LICENSE)
+[![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+> **Private repository.** Vectraudit (formerly faissight) is distributed privately and is
+> not published to PyPI. It is the foundation for a retrieval release-check product that will
+> add Qdrant and pgvector support; this README documents the current FAISS debugger.
 
 FAISS is the default vector index in countless RAG systems, but it has no UI. When retrieval
-goes wrong, faissight answers the questions you can't easily ask FAISS directly:
+goes wrong, vectraudit answers the questions you can't easily ask FAISS directly:
 
 - Which cells did my query probe, and were the true nearest neighbours even in them?
 - Why did this irrelevant chunk rank first, and where did the relevant one go?
@@ -15,37 +18,40 @@ goes wrong, faissight answers the questions you can't easily ask FAISS directly:
 - How much accuracy did PQ compression cost me?
 - Which `nprobe` / `efSearch` gives 95% recall at the lowest latency?
 
-![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](https://raw.githubusercontent.com/rmnvg/faissight/main/docs/screenshots/query-explorer.png)
+![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](docs/screenshots/query-explorer.png)
 
 ## Quick start
 
+Install a wheel from a private release (see [docs/RELEASING.md](docs/RELEASING.md)), or
+from a checkout with `uv sync --all-extras` and prefix the commands below with `uv run`:
+
 ```bash
-pip install "faissight[all]"
-faissight demo                       # builds a real RAG demo once (~1 min), opens the UI
-faissight serve my.index --vectors vectors.npy --meta chunks.jsonl   # your own index
+pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
+vectraudit demo                       # builds a real RAG demo once (~1 min), opens the UI
+vectraudit serve my.index --vectors vectors.npy --meta chunks.jsonl   # your own index
 ```
 
-`faissight demo` downloads 12,000 public passages, embeds them with `all-MiniLM-L6-v2` and
+`vectraudit demo` downloads 12,000 public passages, embeds them with `all-MiniLM-L6-v2` and
 builds IVF-Flat, IVF-PQ and HNSW indexes. Type a question and see which true neighbours
 the index missed, and why.
 
-Only need FAISS support? `pip install "faissight[faiss-cpu]"` is enough; `[all]` adds text
-queries (sentence-transformers), UMAP and Parquet metadata. Conda or GPU users with FAISS
-already installed can `pip install faissight`.
+Only need FAISS support? The `[faiss-cpu]` extra is enough; `[all]` adds text queries
+(sentence-transformers), UMAP and Parquet metadata. Conda or GPU users with FAISS already
+installed can install the wheel without extras.
 
 ## From Python and Jupyter
 
 ```python
-import faissight
+import vectraudit
 
-viewer = faissight.launch(index, vectors=xb, metadata=chunks)  # any faiss.Index
+viewer = vectraudit.launch(index, vectors=xb, metadata=chunks)  # any faiss.Index
 viewer  # in a notebook: the UI appears inline; elsewhere your browser opens
 viewer.stop()
 ```
 
 `metadata` can be a list of dicts, a DataFrame or a `.jsonl`/`.csv`/`.parquet` file with an
 `id` column. `embedder` can be any `str -> vector` function. It works in JupyterLab, VS Code
-notebooks and Colab (detected automatically); see [Jupyter notes](https://github.com/rmnvg/faissight/blob/main/docs/jupyter.md).
+notebooks and Colab (detected automatically); see [Jupyter notes](docs/jupyter.md).
 
 The same analyses are available without the UI:
 
@@ -68,16 +74,16 @@ report.recall, report.ivf_trace.min_nprobe_for_all
 | **Relevance** | Labelled judgements against your held-out queries: recall, MRR and nDCG@k before and after exact reranking, worst queries first. See [below](#labelled-relevance-and-reranking). |
 | **Run history** | Finished sweeps, comparisons and evaluations kept across restarts; rename, download, or diff two saved sweeps. |
 
-![Animated HNSW search: greedy descent through the upper layers, then candidate expansion on level 0](https://raw.githubusercontent.com/rmnvg/faissight/main/docs/screenshots/hnsw-search.png)
+![Animated HNSW search: greedy descent through the upper layers, then candidate expansion on level 0](docs/screenshots/hnsw-search.png)
 
 <table>
 <tr>
-<td><img alt="Tuner: no nprobe reaches 0.95 recall on IVF-PQ; the suggested next step explains that compression caps recall near 0.62 and to re-rank with exact distances" src="https://raw.githubusercontent.com/rmnvg/faissight/main/docs/screenshots/tuner.png"></td>
-<td><img alt="Quantization: PQ error, compression and distance fidelity" src="https://raw.githubusercontent.com/rmnvg/faissight/main/docs/screenshots/quantization.png"></td>
+<td><img alt="Tuner: no nprobe reaches 0.95 recall on IVF-PQ; the suggested next step explains that compression caps recall near 0.62 and to re-rank with exact distances" src="docs/screenshots/tuner.png"></td>
+<td><img alt="Quantization: PQ error, compression and distance fidelity" src="docs/screenshots/quantization.png"></td>
 </tr>
 <tr>
-<td><img alt="Cluster map with one inverted list selected" src="https://raw.githubusercontent.com/rmnvg/faissight/main/docs/screenshots/cluster-map.png"></td>
-<td><img alt="Overview: list balance and sizes" src="https://raw.githubusercontent.com/rmnvg/faissight/main/docs/screenshots/overview.png"></td>
+<td><img alt="Cluster map with one inverted list selected" src="docs/screenshots/cluster-map.png"></td>
+<td><img alt="Overview: list balance and sizes" src="docs/screenshots/overview.png"></td>
 </tr>
 </table>
 
@@ -92,7 +98,7 @@ report.recall, report.ivf_trace.min_nprobe_for_all
 | Embedder | optional | sentence-transformers model name, or a Python callable | text queries |
 | Query vectors | optional | `.npy` | sweeps on your own queries |
 
-Without raw vectors, faissight reconstructs them from the index; the UI then warns that
+Without raw vectors, vectraudit reconstructs them from the index; the UI then warns that
 ground truth is computed on reconstructed vectors, so PQ/SQ error isn't measured.
 
 ## Labelled relevance and reranking
@@ -113,7 +119,7 @@ The summary is the arithmetic mean across queries, so each query has equal weigh
 Incomplete judgements can underestimate relevance. These metrics are separate from ANN recall.
 
 ```bash
-faissight evaluate index.faiss --vectors vectors.npy --queries queries.npy \
+vectraudit evaluate index.faiss --vectors vectors.npy --queries queries.npy \
   --labels judgements.jsonl --k 10 --candidates 100 --mmap --json > relevance.json
 ```
 
@@ -134,14 +140,14 @@ The same evaluation runs in the UI: start with `--vectors` and `--queries`, open
 before and after optional exact reranking, every query's scores (worst first, or most
 helped by reranking) with a link that explains the query in the Query Explorer, and CSV or
 JSON exports. The web view takes up to 10,000 queries and 5 MB of judgements; use
-`faissight evaluate` for more.
+`vectraudit evaluate` for more.
 
 **Run history** keeps the newest 100 finished sweeps, index comparisons and relevance
-evaluations in `~/.cache/faissight/history/` (or `$FAISSIGHT_CACHE_DIR/history/`), so they
+evaluations in `~/.cache/vectraudit/history/` (or `$VECTRAUDIT_CACHE_DIR/history/`), so they
 survive restarts. Rename, download or delete them, or compare two saved sweeps with the same
-query-set and corpus checks as `faissight runs diff`. Saved sweeps record the decision for a
+query-set and corpus checks as `vectraudit runs diff`. Saved sweeps record the decision for a
 0.95 recall target; use **Save run** in the Tuner for your own target and latency budget.
-`faissight cache clear` leaves history alone. It is off in `--demo-mode` and for sessions
+`vectraudit cache clear` leaves history alone. It is off in `--demo-mode` and for sessions
 created with `disk_cache=False`.
 
 The Overview's **Diagnose my index** guide connects input checks, representative queries,
@@ -160,37 +166,37 @@ tuning, and baseline verification.
 ## Command line
 
 ```text
-faissight serve INDEX [--vectors v.npy] [--ids ids.npy] [--meta chunks.jsonl]
+vectraudit serve INDEX [--vectors v.npy] [--ids ids.npy] [--meta chunks.jsonl]
                       [--embedder all-MiniLM-L6-v2] [--queries q.npy]
                       [--host 127.0.0.1] [--port 8765] [--no-browser] [--max-points 50000]
                       [--compare other.index ...] [--mmap]
-faissight info INDEX                          # kind, wrappers, parameters
-faissight sweep INDEX --vectors v.npy [--param nprobe] [--target 0.95]
+vectraudit info INDEX                          # kind, wrappers, parameters
+vectraudit sweep INDEX --vectors v.npy [--param nprobe] [--target 0.95]
                       [--max-p95-ms 10] [--repeats 3] [--seed 0] [--json]
                       [--save run.json] [--baseline earlier.json]
-faissight runs diff EARLIER.json LATER.json   # regressions between saved runs
-faissight compare LEFT RIGHT --vectors v.npy [--queries q.npy] [--ids ids.npy]
+vectraudit runs diff EARLIER.json LATER.json   # regressions between saved runs
+vectraudit compare LEFT RIGHT --vectors v.npy [--queries q.npy] [--ids ids.npy]
                       [--left-nprobe 4] [--right-ef-search 64] [--json]
-faissight evaluate INDEX --vectors v.npy --queries q.npy --labels judgements.jsonl
+vectraudit evaluate INDEX --vectors v.npy --queries q.npy --labels judgements.jsonl
                       [--k 10] [--candidates 100] [--json]   # labelled relevance
-faissight demo [--index ivf_pq|ivf_flat|hnsw]
-faissight cache info | clear [--older-than-days 30] [--max-mb 500]
+vectraudit demo [--index ivf_pq|ivf_flat|hnsw]
+vectraudit cache info | clear [--older-than-days 30] [--max-mb 500]
 ```
 
-`faissight sweep` exits with code 2 when no value reaches `--target` (within the p95 budget
+`vectraudit sweep` exits with code 2 when no value reaches `--target` (within the p95 budget
 of `--max-p95-ms`, if given), 3 when `--baseline` shows a regression, and 4 when `--baseline`
 couldn't be compared at all (different query sets, no overlapping values, ...) &mdash; that is
-not a pass, and CI should treat it as a failure, not silently skip the check. `faissight runs
+not a pass, and CI should treat it as a failure, not silently skip the check. `vectraudit runs
 diff` uses the same three failure codes.
 
 ### Saved runs and baselines
 
-`faissight sweep --save run.json` (or **Save run** in the Tuner) keeps a sweep as JSON: the
+`vectraudit sweep --save run.json` (or **Save run** in the Tuner) keeps a sweep as JSON: the
 index's sha1, parameters and distance metric, the query set's fingerprint, a fingerprint of
 the raw `--vectors` corpus ground truth was computed on, the settings, the environment,
 every measurement, the recommendation for your target, and the worst queries. Compare a
 later sweep with it using `--baseline run.json`, the Tuner's **Compare with a saved run**, or
-`faissight runs diff`. A setting regresses when its recall drops by more than
+`vectraudit runs diff`. A setting regresses when its recall drops by more than
 `--max-recall-drop` (0.01), or when its p95 grows by more than `--max-p95-increase` (20%)
 *and* by more than `--min-p95-increase-ms` (0.05 ms): sub-millisecond timings vary between
 runs, and the floor keeps that noise from failing CI.
@@ -204,9 +210,9 @@ the identifying fingerprints must be present, so a corrupted or hand-edited file
 rather than silently compared against.
 
 ```bash
-faissight sweep index.faiss --vectors v.npy --queries eval.npy --save baseline.json
+vectraudit sweep index.faiss --vectors v.npy --queries eval.npy --save baseline.json
 # ... rebuild or retrain the index ...
-faissight sweep new.faiss --vectors v.npy --queries eval.npy --baseline baseline.json
+vectraudit sweep new.faiss --vectors v.npy --queries eval.npy --baseline baseline.json
 ```
 
 ## Reproducible tuning and index comparison
@@ -228,7 +234,7 @@ the best recall the budget allows, instead of reporting "not reached".
 
 ### Suggested next steps
 
-The Tuner, `faissight sweep` and `GET /api/sweep/{job_id}/advice?target=0.95` turn a sweep
+The Tuner, `vectraudit sweep` and `GET /api/sweep/{job_id}/advice?target=0.95` turn a sweep
 into next steps, each with the measurements behind it. For IVF sweeps, every setting also
 reports the share of true neighbours in the probed lists. That share caps recall, so the gap
 between them tells the two failure modes apart:
@@ -250,24 +256,24 @@ the same embeddings. It is not answer quality: if the exact neighbours are poor 
 embedding model or chunking is at fault, not the index.
 
 ```bash
-faissight compare exact.index compressed.index --vectors vectors.npy \
+vectraudit compare exact.index compressed.index --vectors vectors.npy \
   --queries queries.npy --right-nprobe 16 --repeats 5 --seed 42 --json > comparison.json
 ```
 
 Comparison uses the same raw ground truth and queries for both indexes, reports recall,
 mean/p95 latency and serialized index size, and lists neighbours unique to either index
 for each query. Serialized size is not process RAM. Both indexes must use the same metric,
-input dimension and user IDs. Python users can call `faissight.core.compare_indexes` with
+input dimension and user IDs. Python users can call `vectraudit.core.compare_indexes` with
 loaded indexes, a `VectorSource`, and a `QuerySet`.
 
 To compare in the UI, pass the other indexes to `serve` (or `launch(..., compare=[...])`);
 they must be built from the same `--vectors`:
 
 ```bash
-faissight serve ivf_flat.index --vectors vectors.npy --compare ivf_pq.index --compare hnsw.index
+vectraudit serve ivf_flat.index --vectors vectors.npy --compare ivf_pq.index --compare hnsw.index
 ```
 
-The **Compare** view runs the same paired measurement as `faissight compare`, with each
+The **Compare** view runs the same paired measurement as `vectraudit compare`, with each
 index's own nprobe/efSearch, and links changed queries to the Query Explorer.
 
 Raw-vector IDs are checked against index IDs before analysis. Supply `--ids` for custom
@@ -281,22 +287,22 @@ checkpoint. A native FAISS call already running must finish first. Sessions reta
 32 completed jobs for one hour, with expired entries removed on the next access; query and
 ground-truth caches are limited to four entries and 64 MiB. An evicted sweep can be rerun.
 
-Projections are cached on disk under `~/.cache/faissight/<index sha1>/` (or
-`$FAISSIGHT_CACHE_DIR`). The cache only saves time: if it can't be written (a read-only home
+Projections are cached on disk under `~/.cache/vectraudit/<index sha1>/` (or
+`$VECTRAUDIT_CACHE_DIR`). The cache only saves time: if it can't be written (a read-only home
 or a full disk), the projection is still shown, with a warning in the Cluster map and the
-server log. `faissight cache info` shows usage per index. `faissight cache clear` removes
+server log. `vectraudit cache info` shows usage per index. `vectraudit cache clear` removes
 everything, or only entries unused for `--older-than-days`, or least recently used entries
 beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the disk cache.
 
 ## How it compares
 
 - **[Feder](https://github.com/zilliztech/feder)** (Zilliz) visualises FAISS IVF-Flat and
-  hnswlib indexes in JavaScript and is great for learning how they search. faissight does
+  hnswlib indexes in JavaScript and is great for learning how they search. vectraudit does
   all FAISS work in Python, supports PQ/SQ, HNSW and wrapper indexes, and focuses on
   debugging: exact ground truth, per-neighbour miss reasons, recall/latency tuning and
   chunk text.
 - **Embedding projectors** (TensorFlow Projector, Nomic Atlas, Renumics Spotlight, Arize
-  Phoenix) visualise embeddings. faissight visualises the *index*: what it probes, stores and
+  Phoenix) visualise embeddings. vectraudit visualises the *index*: what it probes, stores and
   loses.
 
 ## Limitations
@@ -305,9 +311,9 @@ beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the 
 - The HNSW trace is reconstructed in Python. It matches FAISS's own results in our tests
   (100% overlap across efSearch 4–256, L2 and IP), but FAISS internals can change.
 - Memory is roughly index size + n × d × 4 bytes (about 0.6 GB for 1M × 64, measured);
-  see [performance and memory](https://github.com/rmnvg/faissight/blob/main/docs/performance.md).
-- A local, single-user tool: no authentication. Use `--demo-mode` for a read-only public
-  deployment ([Hugging Face Space setup](https://github.com/rmnvg/faissight/blob/main/deploy/hf-space/README.md)).
+  see [performance and memory](docs/performance.md).
+- A local, single-user tool: no authentication. Use `--demo-mode` for a read-only shared
+  deployment ([Hugging Face Space setup](deploy/hf-space/README.md)).
 
 ## Roadmap
 
@@ -315,22 +321,22 @@ beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the 
 - Load FAISS stores directly from LangChain / LlamaIndex save folders
 - VS Code extension
 
-## Contributing
+## Development
 
 ```bash
-git clone https://github.com/rmnvg/faissight && cd faissight
+git clone https://github.com/rmnvg/Vectraudit && cd Vectraudit
 uv sync --all-extras
 cd frontend && npm install && npm run build && cd ..
 uv run pytest && uv run ruff check . && uv run mypy
-uv run python examples/make_synthetic.py && uv run faissight serve examples/data/ivf_pq.index --vectors examples/data/vectors.npy
+uv run python examples/make_synthetic.py && uv run vectraudit serve examples/data/ivf_pq.index --vectors examples/data/vectors.npy
 ```
 
-Frontend development: run `npm run dev` in `frontend/` next to a running `faissight serve`.
+Frontend development: run `npm run dev` in `frontend/` next to a running `vectraudit serve`.
 The frontend's API types are generated from the server's OpenAPI schema; after changing
 `server/schemas.py`, run `uv run python scripts/generate_api_types.py` (CI fails on drift).
 Browser tests run on Chromium, Firefox and WebKit: `npx playwright install chromium firefox
 webkit`, build the UI, then `npm run e2e` in `frontend/`.
-Design decisions are logged in [docs/DECISIONS.md](https://github.com/rmnvg/faissight/blob/main/docs/DECISIONS.md).
+Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
 

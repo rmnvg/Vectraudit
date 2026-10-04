@@ -5,10 +5,10 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core._faiss import FaissNotInstalledError, import_faiss
-from faissight.core.loader import IndexLoadError, load_index
-from faissight.core.types import IndexKind, Metric
 from tests.conftest import SMALL
+from vectraudit.core._faiss import FaissNotInstalledError, import_faiss
+from vectraudit.core.loader import IndexLoadError, load_index
+from vectraudit.core.types import IndexKind, Metric
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 
@@ -179,5 +179,5 @@ def test_wrong_type() -> None:
 
 def test_faiss_missing(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "faiss", None)
-    with pytest.raises(FaissNotInstalledError, match="faissight\\[faiss-cpu\\]"):
+    with pytest.raises(FaissNotInstalledError, match="vectraudit\\[faiss-cpu\\]"):
         import_faiss()

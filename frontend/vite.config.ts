@@ -8,7 +8,7 @@ export default defineConfig({
   // Relative asset URLs so the UI works behind path-prefixing proxies (Jupyter, Colab, HF Spaces).
   base: './',
   build: {
-    outDir: '../src/faissight/static',
+    outDir: '../src/vectraudit/static',
     emptyOutDir: true,
     // deck.gl (lazy map chunk) and recharts (overview) are each ~550 kB minified, ~170 kB gzip.
     chunkSizeWarningLimit: 700,
@@ -16,7 +16,7 @@ export default defineConfig({
   // Unit tests only; e2e/*.spec.ts belong to Playwright.
   test: { include: ['src/**/*.test.ts'] },
   server: {
-    // `npm run dev` talks to a running `faissight serve` on the default port.
+    // `npm run dev` talks to a running `vectraudit serve` on the default port.
     proxy: { '/api': 'http://127.0.0.1:8765' },
   },
 })

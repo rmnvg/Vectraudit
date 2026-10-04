@@ -1,12 +1,12 @@
-"""The RAG demo builder's pure parts and ``faissight demo`` (download/embedding need the
+"""The RAG demo builder's pure parts and ``vectraudit demo`` (download/embedding need the
 network, so the build itself is stubbed out)."""
 
 import pytest
 from typer.testing import CliRunner
 
-import faissight.cli as cli_mod
-from faissight import demo as demo_mod
-from faissight.cli import app
+import vectraudit.cli as cli_mod
+from vectraudit import demo as demo_mod
+from vectraudit.cli import app
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ def test_is_built_and_default_dir(tmp_path, monkeypatch) -> None:
     for f in (*demo_mod.INDEX_FILES, "vectors.npy", "chunks.jsonl", "queries.npy"):
         (tmp_path / f).write_text("x")
     assert demo_mod.is_built(tmp_path)
-    monkeypatch.setenv("FAISSIGHT_CACHE_DIR", str(tmp_path / "c"))
+    monkeypatch.setenv("VECTRAUDIT_CACHE_DIR", str(tmp_path / "c"))
     assert demo_mod.default_dir() == tmp_path / "c" / "demo-rag"
 
 
@@ -86,7 +86,7 @@ def test_demo_missing_extras(tmp_path, monkeypatch, fake_serve) -> None:
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
     result = CliRunner().invoke(app, ["demo", "--data-dir", str(tmp_path)])
     assert result.exit_code == 1
-    assert "faissight[all]" in result.output
+    assert "vectraudit[all]" in result.output
     assert fake_serve == []
 
 
@@ -142,8 +142,8 @@ def _fake_embed(texts, batch_size=256):
 
 
 def test_build_demo_end_to_end_offline(tmp_path, monkeypatch, rag) -> None:
-    from faissight.core.loader import load_index
-    from faissight.core.types import IndexKind, Metric
+    from vectraudit.core.loader import load_index
+    from vectraudit.core.types import IndexKind, Metric
 
     raw = tmp_path / "raw"
     raw.mkdir()

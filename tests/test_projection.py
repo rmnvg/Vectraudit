@@ -5,11 +5,11 @@ import time
 import numpy as np
 import pytest
 
-from faissight.core import ivf
-from faissight.core import projection as P
-from faissight.core import vectors as V
-from faissight.core.loader import load_index
 from tests.conftest import SMALL
+from vectraudit.core import ivf
+from vectraudit.core import projection as P
+from vectraudit.core import vectors as V
+from vectraudit.core.loader import load_index
 
 N, D, NLIST = SMALL["n"], SMALL["d"], SMALL["nlist"]
 
@@ -244,11 +244,11 @@ def test_index_fingerprint(synthetic) -> None:
 
 
 def test_default_cache_root(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("FAISSIGHT_CACHE_DIR", str(tmp_path / "c"))
+    monkeypatch.setenv("VECTRAUDIT_CACHE_DIR", str(tmp_path / "c"))
     assert P.default_cache_root() == tmp_path / "c"
-    monkeypatch.delenv("FAISSIGHT_CACHE_DIR")
+    monkeypatch.delenv("VECTRAUDIT_CACHE_DIR")
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    assert P.default_cache_root() == tmp_path / "faissight"
+    assert P.default_cache_root() == tmp_path / "vectraudit"
 
 
 # --- UMAP --------------------------------------------------------------------------------
@@ -257,7 +257,7 @@ def test_default_cache_root(monkeypatch, tmp_path) -> None:
 def test_umap_missing(ivf_flat, monkeypatch) -> None:
     li, src, _ = ivf_flat
     monkeypatch.setitem(sys.modules, "umap", None)
-    with pytest.raises(P.ProjectionUnavailableError, match="faissight\\[umap\\]"):
+    with pytest.raises(P.ProjectionUnavailableError, match="vectraudit\\[umap\\]"):
         P.compute_projection(li, src, method="umap")
 
 

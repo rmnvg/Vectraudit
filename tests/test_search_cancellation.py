@@ -6,12 +6,12 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 
-from faissight.core.jobs import JobRunner, JobStatus
-from faissight.server.app import create_app
-from faissight.server.routes.common import ApiError
-from faissight.server.routes.search import search
-from faissight.server.schemas import SearchRequest
 from tests.test_evaluation_api import make_session
+from vectraudit.core.jobs import JobRunner, JobStatus
+from vectraudit.server.app import create_app
+from vectraudit.server.routes.common import ApiError
+from vectraudit.server.routes.search import search
+from vectraudit.server.schemas import SearchRequest
 
 
 def test_disconnected_search_stops_at_next_checkpoint(tmp_path, monkeypatch):

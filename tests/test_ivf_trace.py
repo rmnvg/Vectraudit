@@ -2,12 +2,12 @@ import faiss
 import numpy as np
 import pytest
 
-from faissight.core import ivf
-from faissight.core import search as S
-from faissight.core import vectors as V
-from faissight.core.loader import load_index
-from faissight.core.search import MissReason
 from tests.conftest import SMALL
+from vectraudit.core import ivf
+from vectraudit.core import search as S
+from vectraudit.core import vectors as V
+from vectraudit.core.loader import load_index
+from vectraudit.core.search import MissReason
 
 D, NLIST = SMALL["d"], SMALL["nlist"]
 

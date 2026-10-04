@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in faissight is wrong or crashes
+description: Something in vectraudit is wrong or crashes
 labels: [bug]
 body:
   - type: textarea
@@ -13,14 +13,14 @@ body:
     id: index
     attributes:
       label: Index
-      description: Output of `faissight info YOUR.index` (kind, wrappers, parameters).
+      description: Output of `vectraudit info YOUR.index` (kind, wrappers, parameters).
       render: text
   - type: input
     id: versions
     attributes:
       label: Versions
-      description: "`faissight --version`, FAISS version, Python version and OS"
-      placeholder: faissight 0.1.0, faiss-cpu 1.15.1, Python 3.12, macOS 15
+      description: "`vectraudit --version`, FAISS version, Python version and OS"
+      placeholder: vectraudit 0.1.0, faiss-cpu 1.15.1, Python 3.12, macOS 15
     validations:
       required: true
   - type: textarea

@@ -8,9 +8,9 @@ import faiss
 import numpy as np
 import pytest
 
-import faissight
-from faissight import jupyter
-from faissight import viewer as viewer_mod
+import vectraudit
+from vectraudit import jupyter
+from vectraudit import viewer as viewer_mod
 
 D = 16
 
@@ -48,8 +48,8 @@ def _port_free(port: int) -> bool:
 def test_launch_twice_uses_different_ports_and_stop_frees_them(data, no_browser) -> None:
     # Acceptance: two viewers in one process coexist; stop() frees each port.
     index, x = data
-    a = faissight.launch(index, vectors=x, open_browser=False)
-    b = faissight.launch(index, open_browser=False)
+    a = vectraudit.launch(index, vectors=x, open_browser=False)
+    b = vectraudit.launch(index, open_browser=False)
     try:
         assert a.port != b.port
         assert _get(a.url + "api/info")["inputs"]["raw_vectors"] is True
@@ -70,19 +70,19 @@ def test_explicit_port_and_port_in_use(data, no_browser) -> None:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    v = faissight.launch(index, port=port, open_browser=False)
+    v = vectraudit.launch(index, port=port, open_browser=False)
     try:
         assert v.port == port
         assert v.url == f"http://127.0.0.1:{port}/"
         with pytest.raises(OSError, match="Try another port"):
-            faissight.launch(index, port=port, open_browser=False)
+            vectraudit.launch(index, port=port, open_browser=False)
     finally:
         v.stop()
 
 
 def test_context_manager_and_repr(data, no_browser) -> None:
     index, _ = data
-    with faissight.launch(index, open_browser=False) as v:
+    with vectraudit.launch(index, open_browser=False) as v:
         assert "(running)" in repr(v)
         html = v._repr_html_()
         assert f'src="{v.url}"' in html
@@ -98,7 +98,7 @@ def test_in_memory_inputs_end_to_end(data, no_browser) -> None:
         def to_dict(self, orient):
             return [{"id": i, "text": f"chunk {i}"} for i in range(len(x))]
 
-    with faissight.launch(
+    with vectraudit.launch(
         index, vectors=x, metadata=Frame(), embedder=lambda t: np.ones(D), open_browser=False
     ) as v:
         info = _get(v.url + "api/info")
@@ -118,7 +118,7 @@ def test_browser_opens_outside_notebooks(data, no_browser, monkeypatch) -> None:
     index, _ = data
     monkeypatch.delenv(viewer_mod.NO_BROWSER_ENV, raising=False)
     monkeypatch.setattr(jupyter, "in_notebook", lambda: False)
-    with faissight.launch(index) as v:
+    with vectraudit.launch(index) as v:
         assert no_browser == [v.url]
 
 
@@ -130,7 +130,7 @@ def test_browser_suppressed(data, no_browser, monkeypatch, reason) -> None:
     if reason == "env":
         monkeypatch.setenv(viewer_mod.NO_BROWSER_ENV, "1")
     kwargs = {"open_browser": False} if reason == "explicit" else {}
-    with faissight.launch(index, **kwargs):
+    with vectraudit.launch(index, **kwargs):
         pass
     assert no_browser == []
 
@@ -138,7 +138,7 @@ def test_browser_suppressed(data, no_browser, monkeypatch, reason) -> None:
 def test_proxy_url_template(data, no_browser, monkeypatch) -> None:
     index, _ = data
     monkeypatch.setenv(jupyter.PROXY_ENV, "/proxy/{port}/")
-    with faissight.launch(index, open_browser=False) as v:
+    with vectraudit.launch(index, open_browser=False) as v:
         assert f'src="/proxy/{v.port}/"' in v._repr_html_()
 
 
@@ -150,7 +150,7 @@ def test_ipython_display_uses_iframe(data, no_browser, monkeypatch) -> None:
     display_mod.display = shown.append
     monkeypatch.setitem(sys.modules, "IPython", types.ModuleType("IPython"))
     monkeypatch.setitem(sys.modules, "IPython.display", display_mod)
-    with faissight.launch(index, open_browser=False, height=500) as v:
+    with vectraudit.launch(index, open_browser=False, height=500) as v:
         v._ipython_display_()
     assert shown[0][0] == "HTML"
     assert 'height="500"' in shown[0][1]
@@ -167,7 +167,7 @@ def test_colab_display(data, no_browser, monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "google.colab", colab)
     assert jupyter.in_colab()
     assert jupyter.in_notebook()
-    with faissight.launch(index, height=600) as v:  # in Colab: no local browser
+    with vectraudit.launch(index, height=600) as v:  # in Colab: no local browser
         v._ipython_display_()
     assert calls == [(v.port, "600")]
     assert no_browser == []
@@ -198,4 +198,4 @@ def test_iframe_html_escapes() -> None:
 
 
 def test_top_level_exports() -> None:
-    assert set(faissight.__all__) == {"Session", "Viewer", "__version__", "launch"}
+    assert set(vectraudit.__all__) == {"Session", "Viewer", "__version__", "launch"}

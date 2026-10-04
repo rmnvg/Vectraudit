@@ -222,10 +222,10 @@ function Results({ result }: { result: EvaluationResultOut }) {
         }`}
         actions={
           <div className="flex gap-2">
-            <button type="button" className={BUTTON} onClick={() => downloadCSV('faissight-relevance.csv', csvRows)}>
+            <button type="button" className={BUTTON} onClick={() => downloadCSV('vectraudit-relevance.csv', csvRows)}>
               CSV
             </button>
-            <button type="button" className={BUTTON} onClick={() => downloadJSON('faissight-relevance.json', result)}>
+            <button type="button" className={BUTTON} onClick={() => downloadJSON('vectraudit-relevance.json', result)}>
               JSON
             </button>
           </div>

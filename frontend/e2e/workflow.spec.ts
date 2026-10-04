@@ -56,7 +56,7 @@ test('relevance evaluation loads judgements, reranks, exports, and archives the 
   await expect(page.getByRole('button', { name: 'Explain query row 0' })).toBeVisible()
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'JSON', exact: true }).click()
-  expect((await download).suggestedFilename()).toBe('faissight-relevance.json')
+  expect((await download).suggestedFilename()).toBe('vectraudit-relevance.json')
 
   await page.goto(`${base}/#/history`)
   const name = await runName(page, new RegExp(`^Relevance@10, rerank ${candidates} `))

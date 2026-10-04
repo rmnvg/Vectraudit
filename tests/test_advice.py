@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-from faissight.core import advice as A
-from faissight.core import ivf
-from faissight.core.advice import SuggestionKind as K
-from faissight.core.loader import load_index
-from faissight.core.sweep import SweepParam, SweepPoint, SweepResult, WorstQuery
 from tests.conftest import SMALL
+from vectraudit.core import advice as A
+from vectraudit.core import ivf
+from vectraudit.core.advice import SuggestionKind as K
+from vectraudit.core.loader import load_index
+from vectraudit.core.sweep import SweepParam, SweepPoint, SweepResult, WorstQuery
 
 NLIST = SMALL["nlist"]
 

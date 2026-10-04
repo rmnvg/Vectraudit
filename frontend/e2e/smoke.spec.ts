@@ -57,7 +57,7 @@ test('a view that fails to load shows a recoverable error, not a blank page', as
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   await page.route(/assets\/Tuner-[^/]+\.js$/, (route) => route.abort())
   await page.getByRole('button', { name: /Tuner/ }).click()
-  await expect(page.getByText('This view could not be loaded from the faissight server')).toBeVisible()
+  await expect(page.getByText('This view could not be loaded from the vectraudit server')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reload page' })).toBeVisible()
   // The rest of the app still works.
   await page.getByRole('button', { name: /Overview/ }).click()
@@ -208,9 +208,9 @@ test('tuner: save a run, then compare later sweeps with it', async ({ page }) =>
   const downloading = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Save run' }).click()
   const saved = await downloading
-  expect(saved.suggestedFilename()).toMatch(/^faissight-run-nprobe-\d{4}-\d{2}-\d{2}\.json$/)
+  expect(saved.suggestedFilename()).toMatch(/^vectraudit-run-nprobe-\d{4}-\d{2}-\d{2}\.json$/)
   const run = JSON.parse(await readFile(await saved.path(), 'utf8'))
-  expect(run.format).toBe('faissight.sweep-run')
+  expect(run.format).toBe('vectraudit.sweep-run')
 
   const card = page.locator('section', { hasText: 'Compare with a saved run' })
   const file = card.getByLabel('Saved run file')
@@ -231,7 +231,7 @@ test('tuner: save a run, then compare later sweeps with it', async ({ page }) =>
 
   // A malformed file must clear that regression verdict, not leave it looking current.
   await file.setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"format": "x"}') })
-  await expect(card.getByText(/Not a faissight sweep run/)).toBeVisible()
+  await expect(card.getByText(/Not a vectraudit sweep run/)).toBeVisible()
   await expect(card.getByText(/Regressed at 2 of 2 settings/)).toHaveCount(0)
   await expect(card.locator('tbody tr')).toHaveCount(0)
 

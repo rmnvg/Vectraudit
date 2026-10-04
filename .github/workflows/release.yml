@@ -1,5 +1,8 @@
 name: Release
 
+# Private distribution only: the wheel and sdist go to a GitHub release in this private
+# repository. Nothing is published to PyPI.
+
 on:
   push:
     tags: ["v*"]
@@ -39,8 +42,8 @@ jobs:
       - run: uv build
       - name: Wheel and sdist contain the built UI
         run: |
-          unzip -l dist/*.whl | grep -q "faissight/static/index.html"
-          tar tzf dist/*.tar.gz | grep -q "src/faissight/static/index.html"
+          unzip -l dist/*.whl | grep -q "vectraudit/static/index.html"
+          tar tzf dist/*.tar.gz | grep -q "src/vectraudit/static/index.html"
       - name: Test release wheel in an isolated environment
         run: |
           uv venv "$RUNNER_TEMP/release-smoke"
@@ -51,25 +54,9 @@ jobs:
           name: dist
           path: dist/
 
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/faissight
-    permissions:
-      id-token: write  # PyPI trusted publishing: no API token stored in GitHub
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-
   github-release:
     name: GitHub release
-    needs: publish-pypi
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -91,4 +78,4 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "faissight $GITHUB_REF_NAME" --notes-file notes.md
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "vectraudit $GITHUB_REF_NAME" --notes-file notes.md

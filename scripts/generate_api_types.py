@@ -12,8 +12,8 @@ from typing import Any
 
 from fastapi import FastAPI
 
-from faissight.server.routes import router
-from faissight.server.schemas import ErrorResponse
+from vectraudit.server.routes import router
+from vectraudit.server.schemas import ErrorResponse
 
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "frontend/src/api/schema.generated.ts"

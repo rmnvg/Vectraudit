@@ -99,8 +99,8 @@ def build(out: Path, n: int, d: int, m: int) -> None:
 
 
 def run(out: Path, scenario: str) -> dict[str, float | str]:
-    from faissight.core import hnsw as H
-    from faissight.session import Session
+    from vectraudit.core import hnsw as H
+    from vectraudit.session import Session
 
     s = Session(out / "hnsw.index", vectors=out / "vectors.npy", mmap=True, disk_cache=False)
     _ = s.li

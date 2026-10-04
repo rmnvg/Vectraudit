@@ -4,8 +4,8 @@ import sys
 import numpy as np
 import pytest
 
-from faissight.core.metadata import Metadata, MetadataError, load_metadata
 from tests.conftest import SMALL
+from vectraudit.core.metadata import Metadata, MetadataError, load_metadata
 
 
 def test_load_jsonl(synthetic) -> None:
@@ -60,7 +60,7 @@ def test_parquet_without_pyarrow(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "pyarrow.parquet", None)
     with pytest.raises(MetadataError, match="pyarrow") as e:
         load_metadata(p)
-    assert "faissight[parquet]" in e.value.hint
+    assert "vectraudit[parquet]" in e.value.hint
 
 
 def test_from_records_and_dataframe_like() -> None:

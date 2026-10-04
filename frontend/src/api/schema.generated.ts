@@ -656,7 +656,7 @@ export type SweepRunOut = {
   "version": number;
   "label": (string | null);
   "created_at": string;
-  "faissight": string;
+  "vectraudit": string;
   "index": RunIndexOut;
   "queries": RunQueriesOut;
   "settings": RunSettingsOut;

@@ -39,7 +39,7 @@ export function QueryForm({ info, runner }: { info: Info; runner: QueryRunner })
                 value: 'text',
                 label: 'Text',
                 disabled: !hasEmbedder,
-                title: hasEmbedder ? undefined : 'Start faissight with --embedder to query by text',
+                title: hasEmbedder ? undefined : 'Start vectraudit with --embedder to query by text',
               },
               { value: 'id', label: 'Stored id' },
               {
@@ -49,7 +49,7 @@ export function QueryForm({ info, runner }: { info: Info; runner: QueryRunner })
                 title:
                   nEval > 0
                     ? `A row of the ${nEval} queries given with --queries, as sweeps number them`
-                    : 'Start faissight with --queries to explain held-out queries',
+                    : 'Start vectraudit with --queries to explain held-out queries',
               },
               { value: 'vector', label: 'Vector' },
             ]}

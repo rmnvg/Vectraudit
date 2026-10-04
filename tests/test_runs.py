@@ -5,12 +5,12 @@ import math
 import numpy as np
 import pytest
 
-from faissight.core import runs as R
-from faissight.core import search as S
-from faissight.core import sweep as W
-from faissight.core import vectors as V
-from faissight.core.loader import load_index
-from faissight.core.projection import index_fingerprint
+from vectraudit.core import runs as R
+from vectraudit.core import search as S
+from vectraudit.core import sweep as W
+from vectraudit.core import vectors as V
+from vectraudit.core.loader import load_index
+from vectraudit.core.projection import index_fingerprint
 
 
 @pytest.fixture(scope="module")
@@ -81,7 +81,7 @@ def test_corpus_fingerprint_is_stable_and_sensitive(src) -> None:
 @pytest.mark.parametrize(
     ("mutate", "match"),
     [
-        (lambda r: r.update(format="other"), "Not a faissight sweep run"),
+        (lambda r: r.update(format="other"), "Not a vectraudit sweep run"),
         (lambda r: r.update(version=99), "version 99"),
         (lambda r: r.pop("index"), "'index'"),
         (lambda r: r["points"][0].pop("recall"), "'recall'"),

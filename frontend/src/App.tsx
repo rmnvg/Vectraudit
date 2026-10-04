@@ -126,12 +126,12 @@ export default function App() {
         )}
         {info.isPending ? (
           <div className="p-8">
-            <Spinner label="Connecting to faissight…" />
+            <Spinner label="Connecting to vectraudit…" />
           </div>
         ) : info.isError ? (
           <div className="p-8">
             <Banner tone="error">
-              Could not load the index: {info.error.message}. Is <code>faissight serve</code>{' '}
+              Could not load the index: {info.error.message}. Is <code>vectraudit serve</code>{' '}
               running?
             </Banner>
           </div>

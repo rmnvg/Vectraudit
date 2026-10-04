@@ -9,8 +9,8 @@ import sys
 
 import numpy as np
 
-from faissight.core.pq import reconstruction_errors
-from faissight.core.vectors import VectorSource
+from vectraudit.core.pq import reconstruction_errors
+from vectraudit.core.vectors import VectorSource
 
 rng = np.random.default_rng(0)
 x = rng.standard_normal((100_000, 128), dtype=np.float32)

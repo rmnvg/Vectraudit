@@ -1,12 +1,12 @@
 # Performance and memory
 
-Measured on an Apple M-series laptop (CPU only) with faissight 0.1 and faiss-cpu 1.15.
+Measured on an Apple M-series laptop (CPU only) with vectraudit 0.1 and faiss-cpu 1.15.
 
 ## 1M vectors (synthetic, 1,000,000 × 64, `IVF1024,Flat`)
 
 | Operation | Time |
 |---|---|
-| `faissight serve` until the UI answers | 0.7 s |
+| `vectraudit serve` until the UI answers | 0.7 s |
 | PCA projection ready (50k-point stratified sample) | 0.3 s |
 | `GET /api/projection` (50k points, 1.3 MB JSON) | 10 ms |
 | `POST /api/search` with exact ground truth and IVF trace | 7–9 ms |
@@ -30,7 +30,7 @@ Measured on an Apple M-series laptop (CPU only) with faissight 0.1 and faiss-cpu
 RAM ≈ index size + n × d × 4 bytes + ~100 MB
 ```
 
-- **With `--vectors`:** the raw vectors are the n × d × 4 term. faissight doesn't copy them when their ids are already in order, and exact search runs directly over them with `faiss.knn` (no second copy).
+- **With `--vectors`:** the raw vectors are the n × d × 4 term. vectraudit doesn't copy them when their ids are already in order, and exact search runs directly over them with `faiss.knn` (no second copy).
 - **Without `--vectors`:** the same term comes from vectors reconstructed from the index, the first time ground truth or a projection needs them.
 - **Projections** hold at most `--max-points` points (50k by default), so they cost a few MB whatever the index size.
 
@@ -50,7 +50,7 @@ Rough guide:
 `--mmap` (or `launch(..., mmap=True)`) maps the `--vectors` file instead of reading it into
 RAM. Exact search, sweeps, comparisons and quantization analysis read the mapped file
 directly. The pages still show up in RSS, but they are file-backed and clean, so the OS can
-drop them under memory pressure instead of swapping. faissight keeps the mapping only if the
+drop them under memory pressure instead of swapping. vectraudit keeps the mapping only if the
 file holds C-ordered float32 rows sorted by id. Otherwise it copies the vectors into memory
 and says why, both at startup and in the Overview.
 
@@ -93,7 +93,7 @@ operation after loading):
 The PCA layout is fitted on the projection's 50k-point sample. Without `--vectors`, that
 sample comes from decoding the index, which costs the n × d × 4 term above.
 
-For very large indexes, lower `--max-points` to keep the browser light. Projections are cached on disk under `~/.cache/faissight/`, so restarts are fast.
+For very large indexes, lower `--max-points` to keep the browser light. Projections are cached on disk under `~/.cache/vectraudit/`, so restarts are fast.
 
 ### Quantization analysis workspace
 

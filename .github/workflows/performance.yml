@@ -46,7 +46,7 @@ jobs:
           fi
           git worktree add "$RUNNER_TEMP/baseline" "$ref"
           (cd "$RUNNER_TEMP/baseline" && uv sync --extra faiss-cpu --locked)
-          # This commit's script, the baseline's faissight: measure() uses only the public Session API.
+          # This commit's script, the baseline's vectraudit: measure() uses only the public Session API.
           "$RUNNER_TEMP/baseline/.venv/bin/python" benchmarks/regression.py measure --output baseline.json
           echo "file=baseline.json" >> "$GITHUB_OUTPUT"
           echo "Baseline: $ref" >> "$GITHUB_STEP_SUMMARY"
