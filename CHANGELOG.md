@@ -18,6 +18,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 - **Datasets:** `dataset import` (CSV/JSONL with column mapping and typed filters),
   `dataset embed` (records the model in a dataset header), `dataset diff` and `dataset stats`
   (label coverage, cohort sizes and readiness warnings).
+- **Pilot kit:** `vectraudit init --backend faiss|qdrant|pgvector` scaffolds `retrieval/`
+  and a pull-request workflow; a 15-minute guide; a reproducible before/after case study on a
+  real RAG corpus (`examples/release_check_demo.py`).
 - **GitHub:** `check --github-check` publishes a check run and `--github-comment` keeps one
   pull-request comment up to date, using the job's `GITHUB_TOKEN`.
 - **Connectors:** FAISS (index files; raw vectors or a flat index as exact reference),
