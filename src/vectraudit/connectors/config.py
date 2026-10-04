@@ -146,6 +146,28 @@ def _open_faiss(cfg: ConnectionConfig) -> Connector:
     )
 
 
+def _open_qdrant(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.qdrant import QdrantConnector
+
+    _reject_unknown(cfg, {"url", "path", "api_key_env", "collection", "vector_name", "timeout_s"})
+    path = _optional_path(cfg, "path")
+    return QdrantConnector(
+        require(cfg.options, "collection", str),
+        url=option(cfg.options, "url", str),
+        path=None if path is None else str(path),
+        api_key=secret(cfg.options, "api_key", required=False),
+        vector_name=option(cfg.options, "vector_name", str),
+        timeout_s=_positive_int(cfg, "timeout_s", 10),
+    )
+
+
+def _positive_int(cfg: ConnectionConfig, key: str, default: int) -> int:
+    value: int = option(cfg.options, key, int, default)
+    if value < 1:
+        raise ConnectorError(ErrorCode.CONFIG, f"{key} must be >= 1.")
+    return value
+
+
 def _reject_unknown(cfg: ConnectionConfig, known: set[str]) -> None:
     unknown = set(cfg.options) - known
     if unknown:
@@ -156,7 +178,10 @@ def _reject_unknown(cfg: ConnectionConfig, known: set[str]) -> None:
         )
 
 
-BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {"faiss": _open_faiss}
+BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
+    "faiss": _open_faiss,
+    "qdrant": _open_qdrant,
+}
 
 
 def open_connector(cfg: ConnectionConfig) -> Connector:

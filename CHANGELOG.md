@@ -12,7 +12,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   `vectraudit check` compare a baseline and a candidate retrieval setup on a versioned,
   labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
   JSON and Markdown reports and a GitHub job summary. Connectors share one contract with
-  declared capabilities and typed errors; FAISS is the first. See `docs/release-checks.md`.
+  declared capabilities and typed errors. See `docs/release-checks.md`.
+- **Connectors:** FAISS (index files; raw vectors or a flat index as exact reference) and
+  Qdrant (`vectraudit[qdrant]`: named vectors, payload filters, `hnsw_ef`, exact reference).
 
 ### Changed
 

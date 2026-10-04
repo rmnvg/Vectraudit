@@ -64,6 +64,9 @@ parameters (`--param key=value` overrides them). **Secrets never go in the file:
 | Backend | Fields | Tuning params | Exact reference |
 |---|---|---|---|
 | `faiss` | `index`, optional `vectors` (+ `ids`), `reconstructed_reference` | `nprobe` (IVF), `ef_search` (HNSW) | Raw `vectors`, or a flat index itself. `reconstructed_reference` decodes vectors from the index and is marked as a weaker reference. |
+| `qdrant` (`vectraudit[qdrant]`) | `url` (or `path` for embedded local mode), `collection`, optional `api_key_env`, `vector_name` (required when the collection has several named vectors), `timeout_s` | `hnsw_ef` | Qdrant's exact search over the same collection. |
+
+Qdrant filters map to `must` conditions (`match` for strings, integers and booleans; an equal-bounds `range` for floats). Qdrant has no immutable snapshot id, so reports warn that concurrent updates can't be ruled out: freeze the collection, or point both runs at a versioned collection or alias.
 
 Each connector declares its capabilities (filters, exact reference, configuration,
 tuning parameters). An unsupported request, such as a filter on FAISS, is a per-query error,
