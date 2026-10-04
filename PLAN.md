@@ -543,6 +543,35 @@ produce the same verdict as the CLI; every endpoint and object type rejects othe
 workspaces' credentials; a viewer can read but not pin baselines; revoked tokens fail;
 retries never duplicate runs or checks.
 
+### Phase 17: Security hardening before the first paid customer
+Goal: the PRD's launch security requirements for the hosted service, plus the account
+management a pilot needs, before real customer data arrives.
+
+1. **Threat model and route audit.** `docs/threat-model.md` (assets, actors, trust
+   boundaries, threats and mitigations, residual risks). An automated test enumerates every
+   route with a `{workspace}` parameter and proves another tenant's token and session get
+   404 (or 401/403), so new routes can't skip authorization unnoticed.
+2. **Brute-force protection.** Rate limits on sign-in, token authentication failures and
+   the GitHub callback: per client IP and per token prefix, sliding window, 429 with
+   `Retry-After`; failed attempts are logged without secrets.
+3. **Deletion and export.** Owners export a workspace (JSON: projects, runs, baselines,
+   checks, audit log) and delete a project or the whole workspace (typed confirmation;
+   audited outside the deleted workspace). Operators delete a user (memberships, tokens,
+   sessions). Expired sessions and old revoked tokens are purged.
+4. **Members and tokens in the dashboard.** Owners invite members, change roles and
+   remove them; every user manages their personal tokens on a settings page. CSRF and
+   last-owner rules as in the API.
+5. **Supply chain.** `pip-audit` and `npm audit` in CI against the locked dependencies;
+   documented process for advisories.
+6. **Incident response.** `docs/incident-response.md`: severity levels, containment
+   (token and session revocation, secret rotation), customer notification, restore from
+   backup, post-incident review; operator commands to revoke all tokens/sessions of a
+   workspace.
+
+**Acceptance:** the route audit covers every workspace route; brute-force attempts hit 429;
+a deleted workspace leaves no rows behind; exports contain everything the owner can see and
+nothing else; CI fails on known-vulnerable dependencies.
+
 ---
 
 ## 9. Testing strategy
