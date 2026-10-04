@@ -6,6 +6,14 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ## [Unreleased]
 
+### Added
+
+- **Release checks:** `vectraudit dataset validate`, `vectraudit record` and
+  `vectraudit check` compare a baseline and a candidate retrieval setup on a versioned,
+  labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
+  JSON and Markdown reports and a GitHub job summary. Connectors share one contract with
+  declared capabilities and typed errors; FAISS is the first. See `docs/release-checks.md`.
+
 ### Changed
 
 - Renamed the project from faissight to Vectraudit. The Python package, CLI command,

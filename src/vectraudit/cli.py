@@ -1,4 +1,5 @@
-"""Command-line interface: ``vectraudit serve | info | sweep | compare | demo | cache``."""
+"""Command-line interface: ``vectraudit serve | info | sweep | compare | demo | cache``,
+plus the release-check commands ``dataset | record | check`` (see :mod:`vectraudit.release_cli`)."""
 
 from __future__ import annotations
 
@@ -37,7 +38,7 @@ from vectraudit.session import InputError, Session, fmt_bytes
 
 app = typer.Typer(
     name="vectraudit",
-    help="See inside your FAISS index: debug retrieval, tune recall.",
+    help="Retrieval release checks and FAISS debugging: catch regressions before you deploy.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -62,7 +63,7 @@ def main(
         ),
     ] = False,
 ) -> None:
-    """See inside your FAISS index: debug retrieval, tune recall."""
+    """Retrieval release checks and FAISS debugging: catch regressions before you deploy."""
 
 
 _PARAM_LABELS = {
@@ -923,6 +924,13 @@ def cache_clear(
     freed = sum(e.bytes for e in removed)
     console.print(f"Removed {len(removed)} cached projections ({fmt_bytes(freed)}).")
 
+
+# Release checks (backend-neutral): defined in release_cli to keep this module FAISS-focused.
+from vectraudit.release_cli import check, dataset_app, record  # noqa: E402
+
+app.add_typer(dataset_app, name="dataset")
+app.command()(record)
+app.command()(check)
 
 runs_app = typer.Typer(
     help="Compare saved sweep runs (vectraudit sweep --save).", no_args_is_help=True
