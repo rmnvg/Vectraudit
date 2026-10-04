@@ -103,6 +103,17 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     ]
     if result["reasons"]:
         out += [f"- {_md(r['message'])}" for r in result["reasons"]] + [""]
+    findings = result.get("findings") or []
+    if findings:
+        out += ["**Diagnosis**", ""]
+        for f in findings[:3]:
+            line = f"- _{_md(f['level'])}_: {_md(f['title'])}"
+            if f.get("suggestion"):
+                line += f". {_md(f['suggestion'])}"
+            out.append(line)
+        if len(findings) > 3:
+            out.append(f"- …and {len(findings) - 3} more in the full report")
+        out.append("")
     if result["metrics"]:
         out += [
             _md_table(
@@ -171,8 +182,14 @@ th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line);
   vertical-align:top; }
 th { color:var(--muted); font-weight:600; }
 td.ids { font-family:ui-monospace,monospace; font-size:12px; overflow-wrap:anywhere; }
-ul.reasons li { margin:4px 0; } pre { background:var(--card); padding:12px; border-radius:8px;
-  overflow-x:auto; font-size:12px; }
+ul.reasons li { margin:4px 0; }
+.finding { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:8px 0; }
+.finding ul { margin:6px 0 0; padding-left:20px; } .finding .tip { margin:6px 0 0; }
+.level { display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase;
+  letter-spacing:.04em; padding:1px 8px; border-radius:999px; border:1px solid currentColor; }
+.level.verified { color:var(--pass); } .level.supported { color:var(--error); }
+.level.hypothesis { color:var(--nc); }
+pre { background:var(--card); padding:12px; border-radius:8px; overflow-x:auto; font-size:12px; }
 """
 
 
@@ -234,6 +251,22 @@ def render_html(result: Mapping[str, Any]) -> str:
             for r in result["reasons"]
         )
         parts.append(f'<h2>Why</h2><ul class="reasons">{items}</ul>')
+    if result.get("findings"):
+        parts.append("<h2>Diagnosis</h2>")
+        parts.append(
+            '<p class="muted">Verified: measured in these runs. Supported: consistent with a '
+            "measured change. Hypothesis: worth checking, not confirmed.</p>"
+        )
+        cards = []
+        for f in result["findings"]:
+            facts = "".join(f"<li>{_e(x)}</li>" for x in f["facts"])
+            tip = f'<p class="tip">→ {_e(f["suggestion"])}</p>' if f.get("suggestion") else ""
+            cards.append(
+                f'<div class="finding"><span class="level {_e(f["level"])}">'
+                f"{_e(f['level'])}</span> <strong>{_e(f['title'])}</strong>"
+                f"<ul>{facts}</ul>{tip}</div>"
+            )
+        parts.append("".join(cards))
     if result["metrics"]:
         parts.append("<h2>Quality</h2>")
         parts.append(

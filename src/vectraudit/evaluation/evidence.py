@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-_REASONS = {
+REASON_TEXT = {
     "CELL_NOT_PROBED": "list not probed",
     "QUANTIZATION": "ranked out by quantization",
     "TRANSFORM": "ranked out by the PreTransform",
@@ -23,7 +23,7 @@ def describe_evidence(evidence: Mapping[str, Any] | None) -> str | None:
         missed = evidence.get("missed_by_reason") or {}
         if not missed:
             return f"nprobe {evidence['nprobe']}: no exact neighbour missed"
-        parts = ", ".join(f"{n} {_REASONS.get(r, r.lower())}" for r, n in sorted(missed.items()))
+        parts = ", ".join(f"{n} {REASON_TEXT.get(r, r.lower())}" for r, n in sorted(missed.items()))
         hint = ""
         if "CELL_NOT_PROBED" in missed:
             hint = f"; all found from nprobe {evidence['min_nprobe_for_all']}"

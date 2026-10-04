@@ -331,24 +331,6 @@ def test_load_run_errors(tmp_path) -> None:
 # --- evidence ----------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def uniform_ivf(tmp_path_factory) -> tuple[Path, Path, Dataset]:
-    """IVF-Flat over unclustered data, where a low nprobe really misses neighbours."""
-    import faiss
-
-    out = tmp_path_factory.mktemp("uniform")
-    rng = np.random.default_rng(0)
-    x = rng.normal(size=(2_000, 16)).astype(np.float32)
-    queries = rng.normal(size=(20, 16)).astype(np.float32)
-    index = faiss.IndexIVFFlat(faiss.IndexFlatL2(16), 16, 16)
-    index.train(x)
-    index.add(x)
-    faiss.write_index(index, str(out / "ivf.index"))
-    np.save(out / "x.npy", x)
-    rows = [{"query_id": f"q{i}", "vector": q.tolist()} for i, q in enumerate(queries)]
-    return out / "ivf.index", out / "x.npy", parse_dataset("\n".join(map(json.dumps, rows)))
-
-
 def test_faiss_ivf_evidence_explains_misses(uniform_ivf) -> None:
     index, vectors, ds = uniform_ivf
     conn = FaissConnector(index, vectors=vectors)

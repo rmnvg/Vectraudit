@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from vectraudit.evaluation.diagnose import diagnose
 from vectraudit.evaluation.metrics import QUALITY_METRICS, SEMANTIC_METRICS
 from vectraudit.evaluation.policy import DEFAULT_POLICY, MetricRule, Policy
 
@@ -83,6 +84,7 @@ class _Check:
             "latency": None,
             "cohorts": {},
             "queries": None,
+            "findings": [],
             "config_diff": config_diff(base, cand),
         }
 
@@ -90,6 +92,7 @@ class _Check:
         self.reasons.append({"verdict": verdict.value, "message": message})
 
     def result(self) -> dict[str, Any]:
+        pairs: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
         if self._runs_complete() and self._comparable():
             pairs = self._pairs()
             self.out["n_queries"] = len(pairs)
@@ -99,6 +102,8 @@ class _Check:
         verdicts = {Verdict(r["verdict"]) for r in self.reasons}
         verdict = next((v for v in _PRECEDENCE if v in verdicts), Verdict.PASS)
         self.out["verdict"] = verdict.value
+        if self.out["metrics"]:
+            self.out["findings"] = diagnose(self.out, self.base, self.cand, pairs)
         return self.out
 
     # --- gates -----------------------------------------------------------------------
@@ -284,6 +289,7 @@ class _Check:
                 {
                     "query_id": b["query_id"],
                     "tags": b.get("tags", []),
+                    "filtered": bool(b.get("filtered")),
                     "baseline": bv,
                     "candidate": cv,
                     "delta": cv - bv,

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
+import numpy as np
 import pytest
 
 faiss = pytest.importorskip("faiss")
@@ -58,3 +61,21 @@ def _isolated_cache(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("VECTRAUDIT_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
         yield
+
+
+@pytest.fixture(scope="session")
+def uniform_ivf(tmp_path_factory) -> tuple[Path, Path, Any]:
+    """IVF-Flat over unclustered data, where a low nprobe really misses neighbours."""
+    from vectraudit.evaluation.dataset import parse_dataset
+
+    out = tmp_path_factory.mktemp("uniform")
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=(2_000, 16)).astype(np.float32)
+    queries = rng.normal(size=(20, 16)).astype(np.float32)
+    index = faiss.IndexIVFFlat(faiss.IndexFlatL2(16), 16, 16)
+    index.train(x)
+    index.add(x)
+    faiss.write_index(index, str(out / "ivf.index"))
+    np.save(out / "x.npy", x)
+    rows = [{"query_id": f"q{i}", "vector": q.tolist()} for i, q in enumerate(queries)]
+    return out / "ivf.index", out / "x.npy", parse_dataset("\n".join(map(json.dumps, rows)))

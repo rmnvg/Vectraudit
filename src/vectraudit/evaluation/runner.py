@@ -236,6 +236,7 @@ def _run_query(
     entry: dict[str, Any] = {
         "query_id": q.query_id,
         "tags": list(q.tags),
+        "filtered": bool(q.filter),
         "ids": None,
         "exact_ids": None,
         "latency_ms": None,

@@ -113,6 +113,30 @@ the report warns that one query moves the mean noticeably.
 - Without `--policy`, a built-in policy allows drops of 0.01 in nDCG, recall and ANN recall
   (0.02 in MRR) and a 50% p95 rise, judged on whatever both runs measured.
 
+## Evidence and diagnosis
+
+`record` asks each backend for per-query evidence (turn it off with `--no-evidence`):
+
+- **FAISS IVF**: for every exact neighbour the search missed, whether its inverted list was
+  not probed or it was ranked out by compressed distances, and the nprobe that would find
+  them all. Replayed from the coarse quantizer's probe order, and labelled as a replay.
+- **pgvector**: the planner's plan (scan types, index used, cost) from `EXPLAIN` without
+  `ANALYZE`, so nothing extra executes.
+
+`check` turns the comparison and the evidence into findings, each with a level:
+
+| Level | Meaning |
+|---|---|
+| verified | Measured in these runs: a metric change, evidence counts, plan changes. |
+| supported | Consistent with a measured change, e.g. a configuration difference that coincides with the effect. A likely cause, not proof. |
+| hypothesis | Worth checking; nothing in the runs confirms it. |
+
+Examples: approximation loss and whether raising nprobe would recover it; relevance falling
+while ANN recall holds (an embedding, chunking or corpus change, which index tuning can't
+fix); plans that stopped using the vector index; filtered queries returning fewer than k
+results; regressions concentrated in one cohort; latency moving with search parameters;
+nondeterministic results.
+
 ## Reports
 
 `--html` writes a self-contained report (no scripts or external assets): verdict and
