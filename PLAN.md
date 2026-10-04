@@ -460,6 +460,45 @@ New code lives in `vectraudit.connectors` (backend access) and `vectraudit.evalu
 **Acceptance:** all of step 9 passes in CI; `vectraudit check` exit codes and reports match
 the fixture; no secret appears in run files or logs.
 
+### Phase 15: Investigation evidence, diagnoses, GitHub checks, dataset tooling
+Goal: make a failing check explain itself and land where engineers look (the pull request),
+and make building a labelled dataset easy enough for a two-week pilot. Still customer-side
+only; the hosted control plane comes after this.
+
+1. **Backend evidence per query.** Optional `Connector.evidence(request, found, exact)`:
+   FAISS IVF explains each exact neighbour the search missed (list not probed vs ranked out
+   by quantization), FAISS HNSW reports efSearch; pgvector records the query plan (scan
+   types, index used, cost) via EXPLAIN without ANALYZE; Qdrant reports the indexing state.
+   `record --evidence` (default on for regressed-query investigation: stored per query, kept
+   small). Evidence is labelled as measured or replayed/simulated.
+2. **Diagnoses.** `check` derives findings from the comparison, each with an evidence level
+   (`verified`: directly measured; `supported`: consistent with a measured experiment;
+   `hypothesis`) and links to the facts behind it. Rules include: approximation loss
+   (ANN recall fell with config change), relevance change without approximation loss
+   (embedding / corpus / chunking change), filter-related losses, plan changes (index ->
+   sequential scan), latency attributable to search parameters, nondeterminism, corpus
+   drift. Shown first in reports; never stated as certain without measurement.
+3. **GitHub check runs and PR comments.** `check --github-check` creates a check run on
+   the pull request head commit with the verdict, summary and regressed queries using the
+   workflow's `GITHUB_TOKEN` (`checks: write`); `--github-comment` upserts one PR comment.
+   Error, fail and not comparable all conclude as failure; fork pull requests without
+   write tokens degrade to the job summary with a warning, never an error.
+4. **Dataset tooling.** `dataset import` from CSV or JSONL with column mapping (query id,
+   text, relevant ids with optional grades, tags, filter columns); `dataset embed` adds
+   vectors with a sentence-transformers model and records the model in the dataset;
+   `dataset diff` lists added, removed and changed queries between versions;
+   `dataset stats` reports label coverage, grade distribution and per-tag counts with
+   warnings (too few labels, cohorts below the policy minimum).
+5. **Pilot kit.** `vectraudit init` scaffolds `retrieval/` (connection, policy, dataset
+   template, workflow) for a chosen backend; a "first check in 15 minutes" guide; a
+   reproducible before/after investigation demo (`examples/release_check_demo.py`) that
+   produces a real report for sales and docs.
+
+**Acceptance:** a regressed FAISS IVF candidate's report attributes lost neighbours to
+unprobed lists with `verified` evidence; a pgvector candidate whose plan stops using the
+index is diagnosed; a check run payload is produced and posted against a mocked GitHub API;
+CSV import + embed + record + check works end to end from a fresh `vectraudit init`.
+
 ---
 
 ## 9. Testing strategy
