@@ -33,6 +33,7 @@ UV_PROJECT_ENVIRONMENT=/tmp/vectraudit-py310 UV_PYTHON=3.10 uv run mypy
 cd frontend && npm install && npm run build   # builds into src/vectraudit/static
 cd frontend && npm run dev        # Vite dev server; proxies /api to `vectraudit serve` on :8765
 cd frontend && npx tsc -p tsconfig.app.json --noEmit && npx oxlint src
+cd frontend && node scripts/third-party-notices.mjs   # after changing frontend runtime deps (CI checks)
 
 # Visual checks: headless Chrome needs --enable-gpu (deck.gl requires WebGL2; the SwiftShader
 # flags disable it). --virtual-time-budget screenshots can fire before deck.gl's first frame;
@@ -51,6 +52,6 @@ uv build                          # wheel + sdist (build the frontend first)
 - API errors are structured JSON: `{error_code, message, hint}`.
 - FAISS is an optional extra (`vectraudit[faiss-cpu]`); import it lazily and raise a clear install hint on failure.
 - If the installed FAISS API differs from the plan, trust FAISS, adapt, and leave a short comment.
-- Don't add dependencies outside PLAN.md section 4 without asking.
+- Don't add dependencies outside PLAN.md section 4 without asking. The product is proprietary (see `LICENSE`): new dependencies must have permissive licences (MIT, BSD, Apache-2.0, ISC); flag anything GPL/AGPL/LGPL, and MPL only as an unmodified dependency.
 - One git commit per completed step, conventional messages (`feat:`, `fix:`, `test:`, `docs:`, `chore:`). Never push; the maintainer pushes.
 - Write tests alongside code; every public function in `vectraudit.core` gets a test.

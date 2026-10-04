@@ -3,11 +3,11 @@
 **See inside your FAISS index: debug retrieval, tune recall.**
 
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> **Private repository.** Vectraudit (formerly faissight) is distributed privately and is
-> not published to PyPI. It is the foundation for a retrieval release-check product that will
-> add Qdrant and pgvector support; this README documents the current FAISS debugger.
+> **Proprietary and confidential.** Vectraudit (formerly faissight) is a commercial product,
+> distributed privately and not published to PyPI. It is the foundation for a retrieval
+> release-check platform that will add Qdrant and pgvector support; this README documents the
+> current FAISS debugger.
 
 FAISS is the default vector index in countless RAG systems, but it has no UI. When retrieval
 goes wrong, vectraudit answers the questions you can't easily ask FAISS directly:
@@ -334,11 +334,15 @@ uv run python examples/make_synthetic.py && uv run vectraudit serve examples/dat
 Frontend development: run `npm run dev` in `frontend/` next to a running `vectraudit serve`.
 The frontend's API types are generated from the server's OpenAPI schema; after changing
 `server/schemas.py`, run `uv run python scripts/generate_api_types.py` (CI fails on drift).
+After adding or upgrading a frontend runtime dependency, run
+`node scripts/third-party-notices.mjs` in `frontend/` to refresh
+`src/vectraudit/THIRD_PARTY_NOTICES.txt`, which ships in the wheel (CI fails on drift).
 Browser tests run on Chromium, Firefox and WebKit: `npx playwright install chromium firefox
 webkit`, build the UI, then `npm run e2e` in `frontend/`.
 Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
 
-MIT. The demo corpus is "RAG Dataset 12000" by Neural Bridge AI (Apache-2.0), with passages
-from Falcon RefinedWeb (ODC-By 1.0).
+Proprietary. Copyright (c) 2026 Ramanjot Singh. All rights reserved; use requires a written
+agreement. See [LICENSE](LICENSE). The demo corpus is "RAG Dataset 12000" by Neural Bridge AI
+(Apache-2.0), with passages from Falcon RefinedWeb (ODC-By 1.0).

@@ -30,8 +30,7 @@ pip install ./vectraudit-X.Y.Z-py3-none-any.whl
 
 ## Hugging Face Space
 
-`deploy/hf-space/Dockerfile` clones the repository anonymously when it runs in a Space repo,
-which fails now that the repository is private. Build the image from a checkout instead
-(`docker build -f deploy/hf-space/Dockerfile .`), and keep any Space private unless a
-public demo is a deliberate decision. See
-[deploy/hf-space/README.md](../deploy/hf-space/README.md).
+Copy `deploy/hf-space/Dockerfile` and `deploy/hf-space/README.md` into a Docker Space (private
+unless a public demo is a deliberate decision) and add a `GITHUB_TOKEN` Space secret with
+read-only access to this repository. Set `VECTRAUDIT_REF` to the release tag for a
+reproducible build. See [deploy/hf-space/README.md](../deploy/hf-space/README.md).
