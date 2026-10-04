@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -79,3 +80,59 @@ def uniform_ivf(tmp_path_factory) -> tuple[Path, Path, Any]:
     np.save(out / "x.npy", x)
     rows = [{"query_id": f"q{i}", "vector": q.tolist()} for i, q in enumerate(queries)]
     return out / "ivf.index", out / "x.npy", parse_dataset("\n".join(map(json.dumps, rows)))
+
+
+SECRET = "test-secret-key-0123456789-abcdefghijklmnop"
+
+
+def _cloud_databases() -> list[str]:
+    dbs = ["sqlite"]
+    if os.environ.get("VECTRAUDIT_TEST_PG_DSN"):
+        dbs.append("postgresql")
+    return dbs
+
+
+@pytest.fixture(params=_cloud_databases())
+def cloud_url(request, tmp_path) -> Iterator[str]:
+    """An empty database (not migrated): SQLite file, or a fresh PostgreSQL database."""
+    pytest.importorskip("sqlalchemy")
+    if request.param == "sqlite":
+        yield f"sqlite:///{tmp_path / 'cloud.db'}"
+        return
+    import uuid
+
+    import psycopg
+    from psycopg import sql
+
+    admin = os.environ["VECTRAUDIT_TEST_PG_DSN"]
+    name = f"va_cloud_{uuid.uuid4().hex[:12]}"
+    with psycopg.connect(admin, autocommit=True) as conn:
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+    url = psycopg.conninfo.make_conninfo(admin, dbname=name)
+    info = psycopg.conninfo.conninfo_to_dict(url)
+    yield (
+        f"postgresql+psycopg://{info['user']}:{info.get('password', '')}@"
+        f"{info.get('host', 'localhost')}:{info.get('port', 5432)}/{name}"
+    )
+    with psycopg.connect(admin, autocommit=True) as conn:
+        drop = sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)")
+        conn.execute(drop.format(sql.Identifier(name)))
+
+
+@pytest.fixture
+def cloud_settings(cloud_url):
+    from vectraudit.cloud.settings import Settings
+
+    return Settings(database_url=cloud_url, secret_key=SECRET, max_upload_bytes=200_000)
+
+
+@pytest.fixture
+def cloud_app(cloud_settings):
+    """A migrated database and its app."""
+    from vectraudit.cloud.app import create_app
+    from vectraudit.cloud.migrate import upgrade
+
+    upgrade(cloud_settings.database_url)
+    app = create_app(cloud_settings)
+    yield app
+    app.state.engine.dispose()
