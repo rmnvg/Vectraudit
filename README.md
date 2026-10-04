@@ -1,10 +1,13 @@
-# vectraudit
+# Vectraudit
 
 **See inside your FAISS index: debug retrieval, tune recall.**
 
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/vectraudit)](https://pypi.org/project/vectraudit/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/rmnvg/Vectraudit/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+> **Private repository.** Vectraudit (formerly faissight) is distributed privately and is
+> not published to PyPI. It is the foundation for a retrieval release-check product that will
+> add Qdrant and pgvector support; this README documents the current FAISS debugger.
 
 FAISS is the default vector index in countless RAG systems, but it has no UI. When retrieval
 goes wrong, vectraudit answers the questions you can't easily ask FAISS directly:
@@ -15,12 +18,15 @@ goes wrong, vectraudit answers the questions you can't easily ask FAISS directly
 - How much accuracy did PQ compression cost me?
 - Which `nprobe` / `efSearch` gives 95% recall at the lowest latency?
 
-![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](https://raw.githubusercontent.com/rmnvg/Vectraudit/main/docs/screenshots/query-explorer.png)
+![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](docs/screenshots/query-explorer.png)
 
 ## Quick start
 
+Install a wheel from a private release (see [docs/RELEASING.md](docs/RELEASING.md)), or
+from a checkout with `uv sync --all-extras` and prefix the commands below with `uv run`:
+
 ```bash
-pip install "vectraudit[all]"
+pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
 vectraudit demo                       # builds a real RAG demo once (~1 min), opens the UI
 vectraudit serve my.index --vectors vectors.npy --meta chunks.jsonl   # your own index
 ```
@@ -29,9 +35,9 @@ vectraudit serve my.index --vectors vectors.npy --meta chunks.jsonl   # your own
 builds IVF-Flat, IVF-PQ and HNSW indexes. Type a question and see which true neighbours
 the index missed, and why.
 
-Only need FAISS support? `pip install "vectraudit[faiss-cpu]"` is enough; `[all]` adds text
-queries (sentence-transformers), UMAP and Parquet metadata. Conda or GPU users with FAISS
-already installed can `pip install vectraudit`.
+Only need FAISS support? The `[faiss-cpu]` extra is enough; `[all]` adds text queries
+(sentence-transformers), UMAP and Parquet metadata. Conda or GPU users with FAISS already
+installed can install the wheel without extras.
 
 ## From Python and Jupyter
 
@@ -45,7 +51,7 @@ viewer.stop()
 
 `metadata` can be a list of dicts, a DataFrame or a `.jsonl`/`.csv`/`.parquet` file with an
 `id` column. `embedder` can be any `str -> vector` function. It works in JupyterLab, VS Code
-notebooks and Colab (detected automatically); see [Jupyter notes](https://github.com/rmnvg/Vectraudit/blob/main/docs/jupyter.md).
+notebooks and Colab (detected automatically); see [Jupyter notes](docs/jupyter.md).
 
 The same analyses are available without the UI:
 
@@ -68,16 +74,16 @@ report.recall, report.ivf_trace.min_nprobe_for_all
 | **Relevance** | Labelled judgements against your held-out queries: recall, MRR and nDCG@k before and after exact reranking, worst queries first. See [below](#labelled-relevance-and-reranking). |
 | **Run history** | Finished sweeps, comparisons and evaluations kept across restarts; rename, download, or diff two saved sweeps. |
 
-![Animated HNSW search: greedy descent through the upper layers, then candidate expansion on level 0](https://raw.githubusercontent.com/rmnvg/Vectraudit/main/docs/screenshots/hnsw-search.png)
+![Animated HNSW search: greedy descent through the upper layers, then candidate expansion on level 0](docs/screenshots/hnsw-search.png)
 
 <table>
 <tr>
-<td><img alt="Tuner: no nprobe reaches 0.95 recall on IVF-PQ; the suggested next step explains that compression caps recall near 0.62 and to re-rank with exact distances" src="https://raw.githubusercontent.com/rmnvg/Vectraudit/main/docs/screenshots/tuner.png"></td>
-<td><img alt="Quantization: PQ error, compression and distance fidelity" src="https://raw.githubusercontent.com/rmnvg/Vectraudit/main/docs/screenshots/quantization.png"></td>
+<td><img alt="Tuner: no nprobe reaches 0.95 recall on IVF-PQ; the suggested next step explains that compression caps recall near 0.62 and to re-rank with exact distances" src="docs/screenshots/tuner.png"></td>
+<td><img alt="Quantization: PQ error, compression and distance fidelity" src="docs/screenshots/quantization.png"></td>
 </tr>
 <tr>
-<td><img alt="Cluster map with one inverted list selected" src="https://raw.githubusercontent.com/rmnvg/Vectraudit/main/docs/screenshots/cluster-map.png"></td>
-<td><img alt="Overview: list balance and sizes" src="https://raw.githubusercontent.com/rmnvg/Vectraudit/main/docs/screenshots/overview.png"></td>
+<td><img alt="Cluster map with one inverted list selected" src="docs/screenshots/cluster-map.png"></td>
+<td><img alt="Overview: list balance and sizes" src="docs/screenshots/overview.png"></td>
 </tr>
 </table>
 
@@ -305,9 +311,9 @@ beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the 
 - The HNSW trace is reconstructed in Python. It matches FAISS's own results in our tests
   (100% overlap across efSearch 4–256, L2 and IP), but FAISS internals can change.
 - Memory is roughly index size + n × d × 4 bytes (about 0.6 GB for 1M × 64, measured);
-  see [performance and memory](https://github.com/rmnvg/Vectraudit/blob/main/docs/performance.md).
-- A local, single-user tool: no authentication. Use `--demo-mode` for a read-only public
-  deployment ([Hugging Face Space setup](https://github.com/rmnvg/Vectraudit/blob/main/deploy/hf-space/README.md)).
+  see [performance and memory](docs/performance.md).
+- A local, single-user tool: no authentication. Use `--demo-mode` for a read-only shared
+  deployment ([Hugging Face Space setup](deploy/hf-space/README.md)).
 
 ## Roadmap
 
@@ -315,10 +321,10 @@ beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the 
 - Load FAISS stores directly from LangChain / LlamaIndex save folders
 - VS Code extension
 
-## Contributing
+## Development
 
 ```bash
-git clone https://github.com/rmnvg/Vectraudit && cd vectraudit
+git clone https://github.com/rmnvg/Vectraudit && cd Vectraudit
 uv sync --all-extras
 cd frontend && npm install && npm run build && cd ..
 uv run pytest && uv run ruff check . && uv run mypy
@@ -330,7 +336,7 @@ The frontend's API types are generated from the server's OpenAPI schema; after c
 `server/schemas.py`, run `uv run python scripts/generate_api_types.py` (CI fails on drift).
 Browser tests run on Chromium, Firefox and WebKit: `npx playwright install chromium firefox
 webkit`, build the UI, then `npm run e2e` in `frontend/`.
-Design decisions are logged in [docs/DECISIONS.md](https://github.com/rmnvg/Vectraudit/blob/main/docs/DECISIONS.md).
+Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
 

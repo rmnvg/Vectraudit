@@ -1,6 +1,6 @@
-# Releasing vectraudit
+# Releasing Vectraudit
 
-vectraudit is distributed privately. Nothing is published to PyPI; release builds are
+Vectraudit is distributed privately. Nothing is published to PyPI; release builds are
 attached to a GitHub release in this private repository, so only people with access to the
 repository can download them.
 

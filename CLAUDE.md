@@ -1,6 +1,8 @@
-# vectraudit
+# Vectraudit
 
-A Python-first retrieval debugger for FAISS: a local web UI (FastAPI backend + React frontend) that shows index internals, explains missed neighbours against exact ground truth, and tunes recall vs latency. The full build plan is in `PLAN.md`; work through it phase by phase and stop after each phase for review.
+A Python-first retrieval debugger for FAISS: a local web UI (FastAPI backend + React frontend) that shows index internals, explains missed neighbours against exact ground truth, and tunes recall vs latency. Formerly named faissight.
+
+**Product direction:** this is now a private commercial product, the foundation for a multi-backend retrieval release-check platform (FAISS, Qdrant, pgvector at MVP; private runner, hosted control plane, GitHub checks). The requirements live in `RetrievalScope_Product_Requirements.docx` at the repo root (gitignored; never commit it). Nothing is published to PyPI; don't add public-distribution steps. `PLAN.md` is the original, completed build plan; work through new phases one at a time and stop after each for review.
 
 ## Repo layout
 

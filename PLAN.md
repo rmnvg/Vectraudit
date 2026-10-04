@@ -1,12 +1,14 @@
-# vectraudit: Build Plan
+# Vectraudit: Build Plan
 
-> **vectraudit** (FAISS + insight): see inside your FAISS index, debug retrieval, tune recall.
+> **Status (2026-10-04):** this is the original build plan for the FAISS debugger (released
+> internally as 0.1.0 under the name faissight). Its phases are complete. The project is now a
+> private commercial product: steps below that publish to PyPI or set up public distribution
+> no longer apply. The next phases come from the product requirements, not this file.
 >
-> - PyPI package: `vectraudit`
 > - Import name: `vectraudit`
 > - CLI command: `vectraudit`
-> - Repo: `github.com/rmnvg/Vectraudit`
-> - License: MIT
+> - Repo: `github.com/rmnvg/Vectraudit` (private)
+> - Distribution: private GitHub releases (no PyPI)
 
 ---
 
