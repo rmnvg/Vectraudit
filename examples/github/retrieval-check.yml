@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: read
+  checks: write          # --github-check: the verdict as a check on the pull request
+  pull-requests: write   # --github-comment: one summary comment, updated on each push
 
 jobs:
   retrieval-check:
@@ -71,10 +73,15 @@ jobs:
 
       - name: Check
         # Exit codes: 0 pass, 1 error, 3 fail, 4 not comparable. Writes the job summary.
+        # Publishing is best effort: fork pull requests get a read-only token and only
+        # the job summary, never a broken check.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           vectraudit check runs/baseline.json runs/candidate.json \
             --policy retrieval/policy.json \
-            --html runs/report.html --json runs/result.json
+            --html runs/report.html --json runs/result.json \
+            --github-check --github-comment
 
       - name: Keep the report
         if: always()

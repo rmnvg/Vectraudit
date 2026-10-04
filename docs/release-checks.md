@@ -25,7 +25,19 @@ vectraudit check baseline.json candidate.json --policy retrieval/policy.json --h
 
 For GitHub Actions, start from
 [examples/github/retrieval-check.yml](../examples/github/retrieval-check.yml). `check`
-appends a Markdown summary to the job summary automatically.
+appends a Markdown summary to the job summary automatically, and with the job's
+`GITHUB_TOKEN`:
+
+- `--github-check` publishes a check run on the pull request's head commit (permission
+  `checks: write`). Pass maps to success; fail, error and not comparable all map to failure,
+  so a required check never lets an unverified change through. `--check-name` keeps one
+  check per backend apart.
+- `--github-comment` creates one pull-request comment and updates it on later pushes
+  (permission `pull-requests: write`).
+
+Publishing never changes the exit code. Pull requests from forks get a read-only token, so
+publishing is skipped with a warning and the job summary still carries the result. Never
+use `pull_request_target` to work around this: it would expose your secrets to fork code.
 
 ## Dataset (JSONL)
 

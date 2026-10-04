@@ -13,6 +13,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
   JSON and Markdown reports and a GitHub job summary. Connectors share one contract with
   declared capabilities and typed errors. See `docs/release-checks.md`.
+- **Investigation:** per-query backend evidence (FAISS IVF miss reasons, pgvector query
+  plans) and diagnoses with evidence levels (verified, supported, hypothesis) in every report.
+- **GitHub:** `check --github-check` publishes a check run and `--github-comment` keeps one
+  pull-request comment up to date, using the job's `GITHUB_TOKEN`.
 - **Connectors:** FAISS (index files; raw vectors or a flat index as exact reference),
   Qdrant (`vectraudit[qdrant]`: named vectors, payload filters, `hnsw_ef`, exact reference)
   and PostgreSQL + pgvector (`vectraudit[pgvector]`: read-only sessions, statement timeouts,

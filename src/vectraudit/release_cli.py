@@ -252,6 +252,17 @@ def check(
     report_url: Annotated[
         str | None, typer.Option(help="Link to the full report, shown in the summary.")
     ] = None,
+    github_check: Annotated[
+        bool,
+        typer.Option(help="Publish a check run on the commit (needs checks: write)."),
+    ] = False,
+    github_comment: Annotated[
+        bool,
+        typer.Option(help="Create or update one PR comment (needs pull-requests: write)."),
+    ] = False,
+    check_name: Annotated[
+        str, typer.Option(help="Check run name, e.g. one per backend.")
+    ] = "Retrieval check",
 ) -> None:
     """Compare a candidate run with a baseline and decide.
 
@@ -280,7 +291,55 @@ def check(
         with open(summary_path, "a", encoding="utf-8") as f:
             f.write(md)
     _print_check(result, verdict)
+    if github_check or github_comment:
+        _publish_github(result, md, github_check, github_comment, check_name, report_url)
     raise typer.Exit(code=EXIT_CODES[verdict])
+
+
+def _publish_github(
+    result: dict[str, Any],
+    markdown: str,
+    check_run: bool,
+    comment: bool,
+    name: str,
+    report_url: str | None,
+) -> None:
+    """Publishing problems are warnings: they must never change the check's exit code."""
+    from vectraudit.integrations.github import (
+        GitHubContext,
+        GitHubError,
+        publish_check_run,
+        upsert_pr_comment,
+    )
+
+    try:
+        ctx = GitHubContext.from_env()
+    except GitHubError as e:
+        err_console.print(f"[yellow]Warning:[/] not published to GitHub: {escape(str(e))}")
+        return
+    actions: list[tuple[str, Any]] = []
+    if check_run:
+        actions.append(
+            (
+                "check run",
+                lambda: publish_check_run(ctx, result, markdown, name=name, details_url=report_url),
+            )
+        )
+    if comment:
+        actions.append(("pull request comment", lambda: upsert_pr_comment(ctx, markdown)))
+    for what, publish in actions:
+        try:
+            url = publish()
+        except GitHubError as e:
+            hint = (
+                " (read-only token: pull requests from forks can't publish; the job summary "
+                "still has the result)"
+                if e.forbidden
+                else ""
+            )
+            err_console.print(f"[yellow]Warning:[/] {what} not published{hint}: {escape(str(e))}")
+        else:
+            console.print(f"Published {what}" + (f": {escape(url)}" if url else "."))
 
 
 def _print_check(result: dict[str, Any], verdict: Verdict) -> None:

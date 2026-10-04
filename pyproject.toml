@@ -102,7 +102,12 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["vectraudit.core.*", "vectraudit.evaluation.*", "vectraudit.connectors.*"]
+module = [
+    "vectraudit.core.*",
+    "vectraudit.evaluation.*",
+    "vectraudit.connectors.*",
+    "vectraudit.integrations.*",
+]
 strict = true
 
 [tool.pytest.ini_options]
