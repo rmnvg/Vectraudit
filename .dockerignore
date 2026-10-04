@@ -13,3 +13,6 @@ frontend/playwright-report
 src/vectraudit/static
 examples/data
 examples/rag_data
+
+# Business documents stay out of images (see .gitignore)
+*.docx

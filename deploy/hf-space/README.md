@@ -30,13 +30,18 @@ Apache-2.0. Passages from Falcon RefinedWeb (ODC-By 1.0).
 
 ## Deploying this Space
 
-The Space repo needs only two files: this `README.md` and
-[`Dockerfile`](Dockerfile), both copied from `deploy/hf-space/` in the vectraudit repo. The
-image clones vectraudit from GitHub at `VECTRAUDIT_REF` (default `main`; pin a tag such as
-`v0.1.0` for reproducible builds), builds the UI, bakes the demo data, model and
-projections, and serves on port 7860.
+Vectraudit is proprietary. Create the Space as **private** unless a public demo is a deliberate
+launch decision; a public Space exposes the running app (not the Python source).
 
-To test the image locally from a vectraudit checkout:
+The Space repo needs only two files: this `README.md` and [`Dockerfile`](Dockerfile), both
+copied from `deploy/hf-space/` in the Vectraudit repo. Add a Space secret named
+`GITHUB_TOKEN`: a fine-grained GitHub token with read-only **Contents** access to
+`rmnvg/Vectraudit` only. The image clones the repository at `VECTRAUDIT_REF` (default `main`;
+pin a release tag for reproducible builds), builds the UI, bakes the demo data, model and
+projections, and serves on port 7860. The token is mounted only during the clone; the `.git`
+directory is removed so it never reaches an image layer.
+
+To test the image locally from a Vectraudit checkout (no token needed):
 
 ```bash
 docker build -f deploy/hf-space/Dockerfile -t vectraudit-space .
