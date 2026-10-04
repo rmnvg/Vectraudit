@@ -65,8 +65,11 @@ parameters (`--param key=value` overrides them). **Secrets never go in the file:
 |---|---|---|---|
 | `faiss` | `index`, optional `vectors` (+ `ids`), `reconstructed_reference` | `nprobe` (IVF), `ef_search` (HNSW) | Raw `vectors`, or a flat index itself. `reconstructed_reference` decodes vectors from the index and is marked as a weaker reference. |
 | `qdrant` (`vectraudit[qdrant]`) | `url` (or `path` for embedded local mode), `collection`, optional `api_key_env`, `vector_name` (required when the collection has several named vectors), `timeout_s` | `hnsw_ef` | Qdrant's exact search over the same collection. |
+| `pgvector` (`vectraudit[pgvector]`) | `dsn_env`, `table` (`schema.table`), `id_column` (default `id`), `vector_column` (default `embedding`), `distance` (`cosine`, `l2`, `ip`: match your index's operator class), `filter_columns`, `statement_timeout_ms`, `connect_timeout_s` | `hnsw.ef_search`, `ivfflat.probes` | A sequential scan with index scans disabled for that query. |
 
 Qdrant filters map to `must` conditions (`match` for strings, integers and booleans; an equal-bounds `range` for floats). Qdrant has no immutable snapshot id, so reports warn that concurrent updates can't be ruled out: freeze the collection, or point both runs at a versioned collection or alias.
+
+pgvector sessions are read-only (`default_transaction_read_only`) with a `statement_timeout`; identifiers are validated and quoted and every value is a bound parameter. Filters work only on columns listed in `filter_columns`. The evaluation role needs `SELECT` on the table and `USAGE` on its schema, nothing more; the connector checks this before searching. `describe` lists the vector indexes and whether one matches the configured distance (a mismatch means PostgreSQL scans every row).
 
 Each connector declares its capabilities (filters, exact reference, configuration,
 tuning parameters). An unsupported request, such as a filter on FAISS, is a per-query error,

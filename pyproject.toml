@@ -40,7 +40,8 @@ umap = ["umap-learn>=0.5"]
 text = ["sentence-transformers>=2.2"]
 parquet = ["pyarrow>=14"]
 qdrant = ["qdrant-client>=1.13"]
-all = ["vectraudit[faiss-cpu,umap,text,parquet,qdrant]"]
+pgvector = ["psycopg[binary]>=3.1"]
+all = ["vectraudit[faiss-cpu,umap,text,parquet,qdrant,pgvector]"]
 dev = [
     "ruff>=0.5",
     "mypy>=1.10",

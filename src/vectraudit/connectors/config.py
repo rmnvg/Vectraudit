@@ -161,6 +161,39 @@ def _open_qdrant(cfg: ConnectionConfig) -> Connector:
     )
 
 
+def _open_pgvector(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.pgvector import PgvectorConnector
+
+    _reject_unknown(
+        cfg,
+        {
+            "dsn_env",
+            "table",
+            "id_column",
+            "vector_column",
+            "distance",
+            "filter_columns",
+            "statement_timeout_ms",
+            "connect_timeout_s",
+        },
+    )
+    filter_columns = option(cfg.options, "filter_columns", list, [])
+    if any(not isinstance(c, str) for c in filter_columns):
+        raise ConnectorError(ErrorCode.CONFIG, "filter_columns must be a list of column names.")
+    dsn = secret(cfg.options, "dsn")
+    assert dsn is not None
+    return PgvectorConnector(
+        dsn,
+        table=require(cfg.options, "table", str),
+        id_column=option(cfg.options, "id_column", str, "id"),
+        vector_column=option(cfg.options, "vector_column", str, "embedding"),
+        distance=option(cfg.options, "distance", str, "cosine"),
+        filter_columns=filter_columns,
+        statement_timeout_ms=_positive_int(cfg, "statement_timeout_ms", 10_000),
+        connect_timeout_s=_positive_int(cfg, "connect_timeout_s", 10),
+    )
+
+
 def _positive_int(cfg: ConnectionConfig, key: str, default: int) -> int:
     value: int = option(cfg.options, key, int, default)
     if value < 1:
@@ -181,6 +214,7 @@ def _reject_unknown(cfg: ConnectionConfig, known: set[str]) -> None:
 BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
     "faiss": _open_faiss,
     "qdrant": _open_qdrant,
+    "pgvector": _open_pgvector,
 }
 
 
