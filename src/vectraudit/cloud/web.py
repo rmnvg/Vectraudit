@@ -12,6 +12,7 @@ import json
 import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 from urllib.parse import parse_qs, quote, urlencode
 
@@ -23,16 +24,19 @@ from sqlalchemy.orm import Session
 from vectraudit import __version__
 from vectraudit.cloud import quotas, repo, service
 from vectraudit.cloud.auth import Principal, authenticate
-from vectraudit.cloud.deps import SessionDep, SettingsDep
+from vectraudit.cloud.deps import SessionDep, SettingsDep, client_key, record_failure
 from vectraudit.cloud.errors import CloudError
-from vectraudit.cloud.models import Run, User
+from vectraudit.cloud.models import Run, User, Workspace, utcnow
 from vectraudit.cloud.settings import Settings
 from vectraudit.cloud.web_auth import (
+    INVITE_HOURS,
     SESSION_COOKIE,
     SESSION_DAYS,
+    create_invite,
     create_session,
     csrf_ok,
     csrf_token,
+    redeem_invite,
     resolve_session,
     revoke_session,
     session_principal,
@@ -111,7 +115,7 @@ def page(title: str, body: str, web: Web | None = None, status: int = 200) -> HT
     nav = ""
     if web is not None:
         nav = (
-            f'<span class="muted">{e(web.user.email)}</span>'
+            f'<a href="/account">Settings</a><span class="muted">{e(web.user.email)}</span>'
             f'<form class="inline" method="post" action="/logout">'
             f'<input type="hidden" name="csrf" value="{e(web.csrf)}">'
             f"<button>Sign out</button></form>"
@@ -242,6 +246,11 @@ def login_page(
 
 @router.post("/login/token")
 async def login_token(request: Request, session: SessionDep, settings: SettingsDep) -> Response:
+    retry = request.app.state.auth_failures.retry_after(client_key(request))
+    if retry is not None:
+        return RedirectResponse(
+            "/login?error=" + quote(f"Too many attempts; wait {retry} seconds."), status_code=303
+        )
     form = await _form(request)
     expected = request.cookies.get(LOGIN_CSRF)
     if not expected or not secrets.compare_digest(expected, form.get("csrf", "")):
@@ -251,6 +260,7 @@ async def login_token(request: Request, session: SessionDep, settings: SettingsD
     try:
         principal = authenticate(session, f"Bearer {form.get('token', '').strip()}")
     except CloudError:
+        record_failure(request, "sign-in")
         return RedirectResponse(
             "/login?error=" + quote("That token is not valid."), status_code=303
         )
@@ -314,7 +324,14 @@ def github_callback(
     """Exchange the code, read the verified emails, and sign in an invited user."""
 
     def fail(message: str) -> Response:
+        record_failure(request, "github")
         return RedirectResponse("/login?error=" + quote(message), status_code=303)
+
+    retry = request.app.state.auth_failures.retry_after(client_key(request))
+    if retry is not None:
+        return RedirectResponse(
+            "/login?error=" + quote(f"Too many attempts; wait {retry} seconds."), status_code=303
+        )
 
     stored, _, next_path = (request.cookies.get(OAUTH_STATE) or "").partition("|")
     if not settings.github_client_id or not settings.github_client_secret:
@@ -430,7 +447,8 @@ def workspace_page(
         ]
         for p in repo.projects(session, ws)
     ]
-    members = [[e(u.email), e(m.role)] for u, m in repo.members(session, ws)]
+    owner = access.role == "owner"
+    members = [_member_row(ws.slug, u, m.role, web, owner) for u, m in repo.members(session, ws)]
     q = quotas.status(session, ws)
     lim, used = q["limits"], q["usage"]
     plan = (
@@ -446,9 +464,276 @@ def workspace_page(
         "<h2>Projects</h2>"
         + _table(["Project", "Slug", "Created"], projects, "No projects yet.")
         + "<h2>Members</h2>"
-        + _table(["Email", "Role"], members, "No members.")
+        + _table(["Email", "Role", ""] if owner else ["Email", "Role"], members, "No members.")
+        + (_invite_form(ws.slug, web) + _danger_zone(ws.slug, web) if owner else "")
     )
     return page(ws.name, body, web)
+
+
+ROLE_OPTIONS = ("viewer", "engineer", "owner")
+
+
+def _member_row(slug: str, user: User, role: str, web: Web, owner: bool) -> list[str]:
+    if not owner:
+        return [e(user.email), e(role)]
+    base = f"/app/{quote(slug)}/members/{quote(user.id)}"
+    options = "".join(
+        f'<option value="{r}"{" selected" if r == role else ""}>{r}</option>' for r in ROLE_OPTIONS
+    )
+    return [
+        e(user.email),
+        f'<form class="inline" method="post" action="{base}/role">{_csrf_field(web)}'
+        f'<select name="role">{options}</select> <button>Change</button></form>',
+        f'<form class="inline" method="post" action="{base}/invite">{_csrf_field(web)}'
+        "<button>New sign-in link</button></form> "
+        f'<form class="inline" method="post" action="{base}/remove">{_csrf_field(web)}'
+        "<button>Remove</button></form>",
+    ]
+
+
+def _invite_form(slug: str, web: Web) -> str:
+    options = "".join(f'<option value="{r}">{r}</option>' for r in ROLE_OPTIONS)
+    return (
+        f'<form method="post" action="/app/{quote(slug)}/members">{_csrf_field(web)}'
+        '<input type="email" name="email" placeholder="colleague@company.com" required '
+        f'maxlength="320"> <select name="role">{options}</select> '
+        "<button>Invite</button></form>"
+    )
+
+
+def _invite_page(
+    settings: Settings, web: Web, slug: str, email: str, raw: str, status: int = 200
+) -> HTMLResponse:
+    link = f"{settings.public_url}/invite/{raw}"
+    github = (
+        f"<p>They can also sign in with GitHub if <strong>{e(email)}</strong> is a verified "
+        "email on their account.</p>"
+        if settings.github_client_id
+        else ""
+    )
+    body = (
+        f"<h1>Sign-in link for {e(email)}</h1>"
+        "<p>Send this link to them privately. It works once and expires in "
+        f"{INVITE_HOURS} hours; it's not shown again.</p>"
+        f'<p class="secret">{e(link)}</p>{github}'
+        f'<p><a href="/app/{quote(slug)}">Back to the workspace</a></p>'
+    )
+    return page("Invite", body, web, status=status)
+
+
+@router.post("/app/{workspace}/members")
+async def invite_member(
+    workspace: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        access = repo.authorize(session, web.principal, workspace, "manage_members")
+        _require_csrf(web, form, settings)
+        user, _ = repo.add_member(
+            session, access, form.get("email", ""), form.get("role", "viewer")
+        )
+        raw = create_invite(session, access.workspace.id, user, web.principal.actor)
+    except CloudError as err:
+        return _error_page(err, web)
+    return _invite_page(settings, web, workspace, user.email, raw, status=201)
+
+
+@router.post("/app/{workspace}/members/{user_id}/invite")
+async def reinvite_member(
+    workspace: str, user_id: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        access = repo.authorize(session, web.principal, workspace, "manage_members")
+        _require_csrf(web, form, settings)
+        user = next(
+            (u for u, _ in repo.members(session, access.workspace) if u.id == user_id), None
+        )
+        if user is None:
+            raise CloudError(404, "not_found", "Member not found.")
+        raw = create_invite(session, access.workspace.id, user, web.principal.actor)
+        repo.audit(
+            session, access.workspace.id, web.principal.actor, "member.invite_link", "user", user.id
+        )
+    except CloudError as err:
+        return _error_page(err, web)
+    return _invite_page(settings, web, workspace, user.email, raw)
+
+
+@router.post("/app/{workspace}/members/{user_id}/role")
+async def change_member_role(
+    workspace: str, user_id: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        access = repo.authorize(session, web.principal, workspace, "manage_members")
+        _require_csrf(web, form, settings)
+        repo.change_role(session, access, user_id, form.get("role", ""))
+    except CloudError as err:
+        return _error_page(err, web)
+    return RedirectResponse(f"/app/{quote(workspace)}", status_code=303)
+
+
+@router.post("/app/{workspace}/members/{user_id}/remove")
+async def remove_member_action(
+    workspace: str, user_id: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        access = repo.authorize(session, web.principal, workspace, "manage_members")
+        _require_csrf(web, form, settings)
+        repo.remove_member(session, access, user_id)
+    except CloudError as err:
+        return _error_page(err, web)
+    return RedirectResponse(f"/app/{quote(workspace)}", status_code=303)
+
+
+@router.get("/invite/{token}")
+def accept_invite(
+    token: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    """Redeem a single-use sign-in link."""
+    retry = request.app.state.auth_failures.retry_after(client_key(request))
+    if retry is not None:
+        return RedirectResponse(
+            "/login?error=" + quote(f"Too many attempts; wait {retry} seconds."), status_code=303
+        )
+    found = redeem_invite(session, token)
+    if found is None:
+        record_failure(request, "invite")
+        return RedirectResponse(
+            "/login?error="
+            + quote(
+                "This sign-in link is invalid, used or expired. Ask the "
+                "workspace owner for a new one."
+            ),
+            status_code=303,
+        )
+    user, workspace_id = found
+    slug = session.scalar(select(Workspace.slug).where(Workspace.id == workspace_id))
+    raw = create_session(session, user, "invite")
+    response = RedirectResponse(f"/app/{quote(slug or '')}" if slug else "/app", status_code=303)
+    return _signed_in(response, raw, settings)
+
+
+# --- personal settings -------------------------------------------------------------------
+
+
+@router.get("/account")
+def settings_page(
+    request: Request, session: SessionDep, settings: SettingsDep, msg: str = ""
+) -> HTMLResponse:
+    web = _web(request, session, settings)
+    rows = []
+    for t in repo.personal_tokens(session, web.user.id):
+        action = (
+            "revoked"
+            if t.revoked_at
+            else (
+                f'<form class="inline" method="post" action="/account/tokens/{quote(t.id)}'
+                f'/revoke">{_csrf_field(web)}<button>Revoke</button></form>'
+            )
+        )
+        rows.append(
+            [
+                e(t.name),
+                f'<span class="mono">{e(t.prefix)}</span>',
+                e(t.created_at.strftime("%Y-%m-%d")),
+                e(t.last_used_at.strftime("%Y-%m-%d %H:%M") if t.last_used_at else "never"),
+                e(t.expires_at.strftime("%Y-%m-%d") if t.expires_at else "never"),
+                action,
+            ]
+        )
+    notice = f'<div class="notice">{e(msg)}</div>' if msg else ""
+    body = (
+        f'<h1>Settings</h1>{notice}<p class="muted">Signed in as {e(web.user.email)}.</p>'
+        '<h2>Personal API tokens</h2><p class="muted">They act as you in every workspace you '
+        "belong to. Use runner tokens (per project) for CI instead.</p>"
+        + _table(
+            ["Name", "Prefix", "Created", "Last used", "Expires", ""], rows, "No personal tokens."
+        )
+        + f'<form method="post" action="/account/tokens">{_csrf_field(web)}'
+        '<input name="name" placeholder="laptop" required maxlength="200"> '
+        '<select name="days"><option value="30">30 days</option>'
+        '<option value="90" selected>90 days</option><option value="365">1 year</option>'
+        "</select> <button>Create token</button></form>"
+    )
+    return page("Settings", body, web)
+
+
+@router.post("/account/tokens")
+async def create_personal_token_action(
+    request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        _require_csrf(web, form, settings)
+        days = int(form.get("days", "90")) if form.get("days", "90").isdigit() else 90
+        expires = utcnow() + timedelta(days=min(max(days, 1), 365))
+        row, new = repo.create_personal_token(
+            session,
+            web.user,
+            form.get("name", "").strip()[:200] or "token",
+            web.principal.actor,
+            expires,
+        )
+    except CloudError as err:
+        return _error_page(err, web)
+    body = (
+        "<h1>Token created</h1><p>Copy it now; it won't be shown again.</p>"
+        f'<p class="secret">{e(new.token)}</p><p class="muted">{e(row.name)} · {e(row.prefix)}'
+        f" · expires {e(row.expires_at.strftime('%Y-%m-%d') if row.expires_at else 'never')}</p>"
+        '<p><a href="/account">Back to settings</a></p>'
+    )
+    return page("Token", body, web, status=201)
+
+
+@router.post("/account/tokens/{token_id}/revoke")
+async def revoke_personal_token_action(
+    token_id: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        _require_csrf(web, form, settings)
+        row = repo.revoke_personal_token(session, web.principal, token_id)
+    except CloudError as err:
+        return _error_page(err, web)
+    return RedirectResponse("/account?msg=" + quote(f"Revoked {row.prefix}."), status_code=303)
+
+
+def _danger_zone(slug: str, web: Web) -> str:
+    return (
+        "<h2>Data</h2>"
+        f'<p><a href="/api/v1/workspaces/{quote(slug)}/export">Download everything (JSON)</a>'
+        " · projects, runs, checks, baselines, members and the audit log.</p>"
+        '<div class="card"><strong>Delete this workspace</strong><p class="muted">Removes every '
+        "project, run, check, baseline, token and membership. It can't be undone; backups "
+        "expire on their own schedule.</p>"
+        f'<form method="post" action="/app/{quote(slug)}/delete">{_csrf_field(web)}'
+        f'<input name="confirm" placeholder="type {e(slug)} to confirm" required> '
+        "<button>Delete workspace</button></form></div>"
+    )
+
+
+@router.post("/app/{workspace}/delete")
+async def delete_workspace_action(
+    workspace: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await _form(request)
+    web = _web(request, session, settings)
+    try:
+        access = repo.authorize(session, web.principal, workspace, "delete")
+        _require_csrf(web, form, settings)
+        service.delete_workspace(session, access, form.get("confirm"))
+    except CloudError as err:
+        return _error_page(err, web)
+    return RedirectResponse("/app", status_code=303)
 
 
 def _project_access(

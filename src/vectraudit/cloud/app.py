@@ -15,6 +15,7 @@ from vectraudit.cloud.db import make_engine, session_factory
 from vectraudit.cloud.errors import CloudError
 from vectraudit.cloud.logs import access_log
 from vectraudit.cloud.migrate import current_revision, head_revision
+from vectraudit.cloud.ratelimit import FailureLimiter
 from vectraudit.cloud.settings import Settings
 
 log = logging.getLogger("vectraudit.cloud")
@@ -40,6 +41,8 @@ def create_app(settings: Settings, engine: Engine | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessions = factory
+    # 20 failed authentications per client address per 5 minutes.
+    app.state.auth_failures = FailureLimiter(limit=20, window_s=300)
 
     @app.middleware("http")
     async def security_headers(
@@ -73,7 +76,9 @@ def create_app(settings: Settings, engine: Engine | None = None) -> FastAPI:
 
     @app.exception_handler(CloudError)
     async def cloud_error(_: Request, e: CloudError) -> JSONResponse:
-        return _error(e.status, e.code, e.message, e.hint)
+        response = _error(e.status, e.code, e.message, e.hint)
+        response.headers.update(e.headers)
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, e: RequestValidationError) -> JSONResponse:

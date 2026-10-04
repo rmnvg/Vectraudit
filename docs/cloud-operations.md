@@ -89,6 +89,19 @@ as a release step instead of `serve --migrate`.
   Query strings and headers are never logged, so tokens and share-link signatures stay
   out of logs. Send `X-Request-ID` to correlate with your proxy.
 
+## Customer data requests and incidents
+
+| Need | How |
+|---|---|
+| Export a workspace | Owner: dashboard "Download everything", or `GET /api/v1/workspaces/SLUG/export` |
+| Delete a workspace or project | Owner: dashboard (type the slug) or `DELETE` with `{"confirm": "SLUG"}` |
+| Delete a person | `docker compose run --rm api delete-user EMAIL --yes` (refused for the last owner of a workspace) |
+| Contain a compromise | `docker compose run --rm api revoke-access --workspace SLUG --yes`, or `--yes` alone for everything |
+| Investigate | `docker compose run --rm api audit SLUG` (JSON lines), request logs by `request_id` |
+
+See [incident-response.md](incident-response.md) for the full process and
+[threat-model.md](threat-model.md) for what the service defends against.
+
 ## Security notes
 
 - Tokens are stored as SHA-256 hashes; the plaintext is shown once. Sessions store only a
@@ -97,3 +110,5 @@ as a release step instead of `serve --migrate`.
   same 404 as missing ones.
 - Dashboard pages and reports send a strict Content-Security-Policy with no scripts.
 - Session cookies can read the JSON API but never write to it; writes need a token.
+- Failed sign-ins and token guesses are limited per address (20 per 5 minutes, then 429);
+  add a proxy-level limit for production.

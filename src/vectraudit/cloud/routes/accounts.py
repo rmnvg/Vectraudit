@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Response
+from pydantic import BaseModel
 
-from vectraudit.cloud import quotas, repo
+from vectraudit.cloud import quotas, repo, service
 from vectraudit.cloud.auth import Principal
 from vectraudit.cloud.deps import PrincipalDep, SessionDep
 from vectraudit.cloud.errors import CloudError, forbidden
@@ -263,3 +265,45 @@ def admin_usage(session: SessionDep, principal: PrincipalDep, month: str = "") -
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="usage-{start:%Y-%m}.csv"'},
     )
+
+
+class ConfirmIn(BaseModel):
+    confirm: str | None = None
+    """The slug of what is being deleted, typed by a person."""
+
+
+@router.get("/workspaces/{workspace}/export")
+def export_workspace(workspace: str, session: SessionDep, principal: PrincipalDep) -> Response:
+    """Everything stored for the workspace, as a JSON download (owners)."""
+    access = repo.authorize(session, principal, workspace, "export")
+    data = service.export_workspace(session, access.workspace)
+    filename = f"vectraudit-{access.workspace.slug}-export.json"
+    repo.audit(
+        session,
+        access.workspace.id,
+        principal.actor,
+        "workspace.export",
+        "workspace",
+        access.workspace.id,
+    )
+    return Response(
+        json.dumps(data, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.delete("/workspaces/{workspace}/projects/{project}")
+def delete_project(
+    workspace: str, project: str, body: ConfirmIn, session: SessionDep, principal: PrincipalDep
+) -> dict[str, int]:
+    access = repo.authorize(session, principal, workspace, "delete", project)
+    return service.delete_project(session, access, body.confirm)
+
+
+@router.delete("/workspaces/{workspace}")
+def delete_workspace(
+    workspace: str, body: ConfirmIn, session: SessionDep, principal: PrincipalDep
+) -> dict[str, int]:
+    access = repo.authorize(session, principal, workspace, "delete")
+    return service.delete_workspace(session, access, body.confirm)

@@ -137,6 +137,8 @@ def test_fresh_project_reaches_a_passing_check(synthetic, tmp_path, monkeypatch)
             str(dataset),
             "--out",
             str(tmp_path / "baseline.json"),
+            "--repeats",
+            "3",
         ],
         [
             "record",
@@ -146,6 +148,8 @@ def test_fresh_project_reaches_a_passing_check(synthetic, tmp_path, monkeypatch)
             str(dataset),
             "--out",
             str(tmp_path / "candidate.json"),
+            "--repeats",
+            "3",
         ],
     ]
     for args in steps:

@@ -5,15 +5,29 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from vectraudit.cloud import repo
 from vectraudit.cloud.errors import CloudError, not_found
-from vectraudit.cloud.models import Baseline, Check, Project, Run, utcnow
+from vectraudit.cloud.models import (
+    ApiToken,
+    AuditEvent,
+    Baseline,
+    Check,
+    Invite,
+    Membership,
+    Project,
+    Run,
+    User,
+    WebSession,
+    Workspace,
+    utcnow,
+)
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.policy import DEFAULT_POLICY, Policy, parse_policy
 
@@ -194,3 +208,226 @@ def recent_runs(session: Session, access: repo.Access, limit: int = 20) -> list[
             .limit(limit)
         )
     )
+
+
+# --- export and deletion -----------------------------------------------------------------
+
+
+def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
+    """Everything stored for a workspace, as JSON. Token secrets are never stored, so
+    tokens appear by prefix and name only."""
+    members = [
+        {"email": u.email, "role": m.role, "since": m.created_at.isoformat()}
+        for u, m in repo.members(session, ws)
+    ]
+    projects = []
+    for p in repo.projects(session, ws):
+        runs = list(
+            session.scalars(select(Run).where(Run.project_id == p.id).order_by(Run.uploaded_at))
+        )
+        by_pk = {r.id: r.run_id for r in runs}
+        checks = session.scalars(
+            select(Check).where(Check.project_id == p.id).order_by(Check.created_at)
+        )
+        tokens = session.scalars(select(ApiToken).where(ApiToken.project_id == p.id))
+        projects.append(
+            {
+                "slug": p.slug,
+                "name": p.name,
+                "created_at": p.created_at.isoformat(),
+                "policy": p.policy,
+                "baselines": [
+                    {
+                        "name": b.name,
+                        "run_id": r.run_id,
+                        "pinned_by": b.pinned_by,
+                        "pinned_at": b.pinned_at.isoformat(),
+                        "note": b.note,
+                    }
+                    for b, r in baselines(session, p)
+                ],
+                "runner_tokens": [
+                    {
+                        "prefix": t.prefix,
+                        "name": t.name,
+                        "scopes": t.scopes,
+                        "created_at": t.created_at.isoformat(),
+                        "revoked_at": t.revoked_at.isoformat() if t.revoked_at else None,
+                    }
+                    for t in tokens
+                ],
+                "runs": [
+                    {
+                        "uploaded_at": r.uploaded_at.isoformat(),
+                        "uploaded_by": r.uploaded_by,
+                        "run": r.data,
+                    }
+                    for r in runs
+                ],
+                "checks": [
+                    {
+                        "id": c.id,
+                        "verdict": c.verdict,
+                        "created_at": c.created_at.isoformat(),
+                        "created_by": c.created_by,
+                        "baseline_run_id": by_pk.get(c.baseline_run_pk),
+                        "candidate_run_id": by_pk.get(c.candidate_run_pk),
+                        "result": c.result,
+                    }
+                    for c in checks
+                ],
+            }
+        )
+    audit = [
+        {
+            "actor": a.actor,
+            "action": a.action,
+            "target_type": a.target_type,
+            "target_id": a.target_id,
+            "details": a.details,
+            "created_at": a.created_at.isoformat(),
+        }
+        for a in session.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.workspace_id == ws.id)
+            .order_by(AuditEvent.created_at)
+        )
+    ]
+    return {
+        "format": "vectraudit.workspace-export",
+        "format_version": 1,
+        "exported_at": utcnow().isoformat(),
+        "workspace": {
+            "slug": ws.slug,
+            "name": ws.name,
+            "plan": ws.plan,
+            "created_at": ws.created_at.isoformat(),
+        },
+        "members": members,
+        "projects": projects,
+        "audit": audit,
+    }
+
+
+def _delete_project_rows(session: Session, project_ids: list[str]) -> dict[str, int]:
+    """Delete in dependency order (baselines block deleting their runs)."""
+    counts = {}
+    for name, model, column in (
+        ("checks", Check, Check.project_id),
+        ("baselines", Baseline, Baseline.project_id),
+        ("runs", Run, Run.project_id),
+        ("runner_tokens", ApiToken, ApiToken.project_id),
+    ):
+        result = session.execute(delete(model).where(column.in_(project_ids)))
+        counts[name] = int(getattr(result, "rowcount", 0) or 0)
+    session.execute(delete(Project).where(Project.id.in_(project_ids)))
+    return counts
+
+
+def _confirm(given: str | None, expected: str, what: str) -> None:
+    if given != expected:
+        raise CloudError(
+            422,
+            "confirmation_required",
+            f"Deleting a {what} can't be undone: confirm by sending its slug.",
+            f'Send {{"confirm": "{expected}"}}.',
+        )
+
+
+def delete_project(session: Session, access: repo.Access, confirm: str | None) -> dict[str, int]:
+    assert access.project is not None
+    _confirm(confirm, access.project.slug, "project")
+    counts = _delete_project_rows(session, [access.project.id])
+    repo.audit(
+        session,
+        access.workspace.id,
+        access.principal.actor,
+        "project.delete",
+        "project",
+        access.project.id,
+        slug=access.project.slug,
+        **counts,
+    )
+    return counts
+
+
+def delete_workspace(session: Session, access: repo.Access, confirm: str | None) -> dict[str, int]:
+    """Delete a workspace and everything in it. The record of the deletion is kept outside
+    the workspace (its own audit log goes with it)."""
+    ws = access.workspace
+    _confirm(confirm, ws.slug, "workspace")
+    project_ids = [p.id for p in repo.projects(session, ws)]
+    counts = _delete_project_rows(session, project_ids) if project_ids else {}
+    counts["projects"] = len(project_ids)
+    counts["members"] = int(
+        getattr(
+            session.execute(delete(Membership).where(Membership.workspace_id == ws.id)),
+            "rowcount",
+            0,
+        )
+        or 0
+    )
+    session.execute(delete(ApiToken).where(ApiToken.workspace_id == ws.id))
+    session.execute(delete(Invite).where(Invite.workspace_id == ws.id))
+    session.execute(delete(AuditEvent).where(AuditEvent.workspace_id == ws.id))
+    session.execute(delete(Workspace).where(Workspace.id == ws.id))
+    repo.audit(
+        session,
+        None,
+        access.principal.actor,
+        "workspace.delete",
+        "workspace",
+        ws.id,
+        slug=ws.slug,
+        **counts,
+    )
+    return counts
+
+
+def delete_user(session: Session, user: User, actor: str) -> list[str]:
+    """Remove a person: memberships, tokens and sessions. Refuses if they are the last
+    owner of a workspace. Returns the workspaces they left."""
+    left = []
+    for ws, role in repo.workspaces_of(session, user.id):
+        if role == "owner":
+            owners = session.scalar(
+                select(func.count())
+                .select_from(Membership)
+                .where(Membership.workspace_id == ws.id, Membership.role == "owner")
+            )
+            if (owners or 0) <= 1:
+                raise CloudError(
+                    409,
+                    "last_owner",
+                    f"{user.email} is the last owner of {ws.slug}.",
+                    "Make someone else an owner first, or delete the workspace.",
+                )
+        repo.audit(
+            session,
+            ws.id,
+            actor,
+            "member.remove",
+            "user",
+            user.id,
+            email=user.email,
+            reason="user deleted",
+        )
+        left.append(ws.slug)
+    session.execute(delete(Membership).where(Membership.user_id == user.id))
+    session.execute(delete(ApiToken).where(ApiToken.user_id == user.id))
+    session.execute(delete(WebSession).where(WebSession.user_id == user.id))
+    session.execute(delete(Invite).where(Invite.user_id == user.id))
+    repo.audit(session, None, actor, "user.delete", "user", user.id, email=user.email)
+    session.delete(user)
+    return left
+
+
+def purge_sessions(session: Session, older_than_days: int = 30) -> int:
+    """Delete sessions that expired or were revoked more than ``older_than_days`` ago."""
+    cutoff = utcnow() - timedelta(days=older_than_days)
+    result = session.execute(
+        delete(WebSession).where(
+            (WebSession.expires_at < cutoff) | (WebSession.revoked_at < cutoff)
+        )
+    )
+    return int(getattr(result, "rowcount", 0) or 0)

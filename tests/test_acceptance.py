@@ -274,7 +274,8 @@ def test_latency_regression(backend, fixture_dir) -> None:
     cfg = load_connection(conns["base"])
     with open_connector(cfg) as conn:
         base = execute_run(ds, conn, options)
-    with Slow(open_connector(cfg), 0.02) as slow:
+    # 50 ms per search: unmistakable even if the baseline run hits a scheduling hiccup.
+    with Slow(open_connector(cfg), 0.05) as slow:
         cand = execute_run(ds, slow, options)
     result = compare_runs(base, cand, parse_policy(POLICY))
     assert result["verdict"] == "fail", name

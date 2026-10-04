@@ -13,6 +13,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
   JSON and Markdown reports and a GitHub job summary. Connectors share one contract with
   declared capabilities and typed errors. See `docs/release-checks.md`.
+- **Security hardening:** route audit test for tenant isolation, threat model, rate limits on
+  failed authentication, workspace export and deletion, user deletion, member management and
+  single-use invite links in the dashboard, personal token settings, dependency scanning in
+  CI, incident runbook with `revoke-access` and `audit` commands.
 - **Vectraudit Cloud** (`vectraudit[cloud]`, `vectraudit-cloud`): the hosted control plane.
   Workspaces with owner, engineer and viewer roles; project-scoped runner tokens; run upload
   (idempotent); pinned baselines and project policies; server-side checks with the CLI's
