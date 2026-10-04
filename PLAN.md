@@ -173,6 +173,7 @@ vectraudit/
   - `vectraudit[parquet]` → `pyarrow`.
   - `vectraudit[qdrant]` → `qdrant-client` (Phase 14 connector).
   - `vectraudit[pgvector]` → `psycopg[binary]` (Phase 14 connector; LGPL, used unmodified).
+  - `vectraudit[cloud]` → `sqlalchemy>=2`, `alembic`, `psycopg[binary]` (Phase 16 hosted service).
   - `vectraudit[all]` → everything above.
   - `vectraudit[dev]` → test/lint tools.
 
@@ -498,6 +499,49 @@ only; the hosted control plane comes after this.
 unprobed lists with `verified` evidence; a pgvector candidate whose plan stops using the
 index is diagnosed; a check run payload is produced and posted against a mocked GitHub API;
 CSV import + embed + record + check works end to end from a fresh `vectraudit init`.
+
+### Phase 16: Hosted control plane (provider-neutral)
+Goal: the hosted half of the paid MVP (PRD FR01, FR05, FR07-FR10): workspaces and roles,
+runner tokens, run upload, hosted baselines and checks, history, private reports, quotas.
+Provider-neutral: one Docker image, any PostgreSQL. New code lives in `vectraudit.cloud`
+(FastAPI app, SQLAlchemy models, Alembic migrations), separate from the local UI server and
+installed with the `vectraudit[cloud]` extra. Customer credentials never reach it; runners
+upload ids, metrics and timings only (query text and vectors are not in run files).
+
+1. **Service skeleton.** Settings from environment, SQLAlchemy 2 models, Alembic migrations,
+   app factory, health and readiness endpoints, structured `{error_code, message, hint}`
+   errors, request size limits. Tests run on SQLite and on PostgreSQL when a DSN is set.
+2. **Workspaces, members, tokens, audit.** Users, workspaces, memberships (owner, engineer,
+   viewer), projects. Personal API tokens and project-scoped runner tokens, stored as
+   SHA-256 hashes with a visible prefix, revocable, last-used tracking. Every query is
+   scoped by workspace in one repository layer; audit events for membership, token and
+   baseline changes. An admin CLI (`vectraudit-cloud`) bootstraps the first owner.
+   Cross-tenant negative tests for every object type and endpoint.
+3. **Run upload.** `POST /api/v1/projects/{id}/runs` accepts a run file validated with
+   `check_run`, with a SHA-256 content digest header; idempotent on run id (same content:
+   200, different content: 409). Size and per-run query limits. Client: `vectraudit record
+   --upload` and `vectraudit cloud push`.
+4. **Hosted baselines, policies and checks.** Pin a baseline per project and branch name
+   (owner or engineer; audited, never automatic); store the project policy; server-side
+   `POST /checks` compares a candidate run with the pinned baseline and stores the result.
+   Client: `vectraudit check --baseline cloud:main`; failed/partial runs can never become
+   baselines.
+5. **History and private reports.** Search runs and checks by commit, dataset version,
+   backend, status and label, paginated. HTML reports rendered from stored results behind
+   workspace auth, plus signed expiring share links (off by default).
+6. **Dashboard.** Server-rendered pages (no tokens in browser storage): projects, run
+   history, checks with verdicts and findings, baselines with their audit trail, tokens.
+   Browser sign-in through a pluggable identity provider (OIDC) with secure session cookies.
+7. **Quotas, retention and usage.** Per-workspace plan limits (runs per month, queries per
+   run, stored runs, concurrent uploads), 30-day default retention with a purge command,
+   usage export (CSV) for manual pilot invoicing.
+8. **Operations.** Dockerfile and docker-compose (API + PostgreSQL), configuration and
+   backup/restore docs, structured logs, readiness that checks the database and migrations.
+
+**Acceptance:** a runner token uploads two runs, a pinned baseline and a server-side check
+produce the same verdict as the CLI; every endpoint and object type rejects other
+workspaces' credentials; a viewer can read but not pin baselines; revoked tokens fail;
+retries never duplicate runs or checks.
 
 ---
 
