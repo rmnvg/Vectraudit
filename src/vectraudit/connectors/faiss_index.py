@@ -18,8 +18,9 @@ from vectraudit.connectors.base import (
     SearchRequest,
 )
 from vectraudit.core._faiss import FaissNotInstalledError, import_faiss
+from vectraudit.core.ivf import Assignments, assignments
 from vectraudit.core.loader import IndexLoadError, load_index
-from vectraudit.core.search import GroundTruth, search
+from vectraudit.core.search import GroundTruth, MissReason, probed_miss_reason, search
 from vectraudit.core.types import IndexKind, LoadedIndex, Metric
 from vectraudit.core.vectors import VectorMismatchError, VectorSource, from_arrays, reconstruct_all
 
@@ -55,6 +56,7 @@ class FaissConnector(Connector):
             raise ConnectorError(ErrorCode.CONFIG, "ids needs vectors.")
         self.path = Path(index)
         self._sha256: str | None = None
+        self._assign: Assignments | None = None
         self._truth: GroundTruth | None = None
         self._reconstruct = False
         self._note: str | None = None
@@ -150,6 +152,49 @@ class FaissConnector(Connector):
         except ValueError as e:
             raise ConnectorError(ErrorCode.QUERY, str(e)) from e
         return [str(i) for i in result.valid_ids]
+
+    def evidence(
+        self, request: SearchRequest, found: list[str], exact: list[str] | None
+    ) -> dict[str, Any] | None:
+        """IVF: replay the probe order and say why each missed exact neighbour was missed."""
+        li = self.li
+        if li.ivf is None or exact is None:
+            return None
+        nprobe = _int_param(request.params, "nprobe") or int(li.ivf.nprobe)
+        nlist = int(li.ivf.nlist)
+        q = li.to_core_space(np.asarray(request.vector, dtype=np.float32).reshape(1, -1))
+        _, order = li.ivf.quantizer.search(q, nlist)
+        probe_rank = np.full(nlist, nlist, dtype=np.int64)
+        valid = order[0] >= 0
+        probe_rank[order[0][valid]] = np.arange(nlist)[valid]
+        exact_ids = np.array([int(i) for i in exact], dtype=np.int64)
+        lists = self._assignments().lookup(exact_ids)
+        found_set = set(found)
+        probed_miss = probed_miss_reason(li).value
+        missed: dict[str, str] = {}
+        worst = 0
+        for nid, list_no in zip(exact, lists, strict=True):
+            rank = int(probe_rank[list_no]) if list_no >= 0 else nlist
+            worst = max(worst, rank)
+            if nid not in found_set:
+                missed[nid] = MissReason.CELL_NOT_PROBED.value if rank >= nprobe else probed_miss
+        counts: dict[str, int] = {}
+        for reason in missed.values():
+            counts[reason] = counts.get(reason, 0) + 1
+        return {
+            "kind": "faiss_ivf",
+            "source": "replayed: coarse-quantizer probe order and list assignments",
+            "nprobe": nprobe,
+            "nlist": nlist,
+            "min_nprobe_for_all": min(nlist, worst + 1),
+            "missed": missed,
+            "missed_by_reason": counts,
+        }
+
+    def _assignments(self) -> Assignments:
+        if self._assign is None:
+            self._assign = assignments(self.li)
+        return self._assign
 
 
 def _int_param(params: Any, key: str) -> int | None:

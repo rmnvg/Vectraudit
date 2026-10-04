@@ -142,6 +142,13 @@ def record(
     embedder: Annotated[
         str | None, typer.Option(help="sentence-transformers model for text-only queries.")
     ] = None,
+    evidence: Annotated[
+        bool,
+        typer.Option(
+            "--evidence/--no-evidence",
+            help="Record per-query backend evidence (IVF miss reasons, query plans).",
+        ),
+    ] = True,
     normalize_text: Annotated[
         bool, typer.Option(help="L2-normalise text embeddings (for cosine / IP corpora).")
     ] = False,
@@ -167,6 +174,7 @@ def record(
         exact=exact,
         label=label,
         labels=_parse_pairs(tag or [], "--tag"),
+        evidence=evidence,
     )
     embed = _embedder(embedder, normalize_text)
     try:

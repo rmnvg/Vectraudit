@@ -291,6 +291,8 @@ class _Check:
                     "new_ids": [i for i in c["ids"] if i not in set(b["ids"])],
                     "baseline_ids": b["ids"],
                     "candidate_ids": c["ids"],
+                    "baseline_evidence": b.get("evidence"),
+                    "candidate_evidence": c.get("evidence"),
                 }
             )
         regressed = sorted((x for x in changes if x["delta"] < -EPS), key=lambda x: x["delta"])

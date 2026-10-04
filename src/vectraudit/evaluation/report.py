@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from vectraudit import __version__
+from vectraudit.evaluation.evidence import describe_evidence
 
 NONE = "\u2013"  # en dash for missing values
 
@@ -258,7 +259,16 @@ def render_html(result: Mapping[str, Any]) -> str:
         if queries["regressed"]:
             parts.append(
                 _html_table(
-                    ["Query", "Tags", "Baseline", "Candidate", "Change", "Lost ids", "New ids"],
+                    [
+                        "Query",
+                        "Tags",
+                        "Baseline",
+                        "Candidate",
+                        "Change",
+                        "Lost ids",
+                        "New ids",
+                        "Candidate evidence",
+                    ],
                     [
                         [
                             q["query_id"],
@@ -268,6 +278,7 @@ def render_html(result: Mapping[str, Any]) -> str:
                             _num(q["delta"], 3, signed=True),
                             _ids(q["lost_ids"], 10),
                             _ids(q["new_ids"], 10),
+                            describe_evidence(q.get("candidate_evidence")) or NONE,
                         ]
                         for q in queries["regressed"]
                     ],

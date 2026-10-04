@@ -283,6 +283,10 @@ def test_run_via_connection_file(pg, synthetic, monkeypatch, tmp_path) -> None:
         run = execute_run(ds, c, RunOptions(k=5, params=cfg.params), connection=cfg.public())
     assert run["status"] == "complete"
     assert run["summary"]["ann_recall"] > 0.8
+    evidence = run["queries"][0]["evidence"]
+    assert evidence["kind"] == "pg_plan"
+    assert evidence["source"].startswith("planner estimate")
+    assert evidence["indexes"] == ["chunks_hnsw"]
     text = json.dumps(run)
     assert READER_PASSWORD not in text
     assert "VA_PG_DSN" in text

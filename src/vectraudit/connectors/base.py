@@ -166,6 +166,18 @@ class Connector(abc.ABC):
                 f"Supported: {allowed}.",
             )
 
+    def evidence(
+        self, request: SearchRequest, found: list[str], exact: list[str] | None
+    ) -> dict[str, Any] | None:
+        """Backend-specific facts about one search (e.g. a query plan), or ``None``.
+
+        ``found`` is what :meth:`search` returned and ``exact`` the exact reference, when
+        measured. Implementations must not change results and should stay small: the
+        output is stored per query. Every dict carries ``kind`` and ``source`` (how the
+        facts were obtained, e.g. ``"replayed"`` or ``"planner estimate"``).
+        """
+        return None
+
     def close(self) -> None:  # noqa: B027 - optional hook; most connectors hold no resources
         """Release connections. Safe to call twice."""
 
