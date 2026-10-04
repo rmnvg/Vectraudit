@@ -1,0 +1,8 @@
+{
+  "backend": "qdrant",
+  "name": "production collection",
+  "url": "https://YOUR-CLUSTER.cloud.qdrant.io:6333",
+  "api_key_env": "QDRANT_API_KEY",
+  "collection": "docs",
+  "params": {"hnsw_ef": 128}
+}

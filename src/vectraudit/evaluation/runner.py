@@ -61,6 +61,8 @@ class RunOptions:
     label: str | None = None
     labels: Mapping[str, str] = field(default_factory=dict)
     """Provenance labels such as ``embedding_model`` or ``chunking_version``."""
+    evidence: bool = True
+    """Ask the connector for per-query evidence (IVF miss reasons, query plans)."""
 
     def __post_init__(self) -> None:
         if self.k < 1:
@@ -163,7 +165,12 @@ def _skeleton(
         "connection": dict(connection or {}),
         "backend": None,
         "capabilities": None,
-        "search": {"k": options.k, "params": dict(options.params), "embedder": embedder_name},
+        "search": {
+            "k": options.k,
+            "params": dict(options.params),
+            "embedder": embedder_name,
+            "evidence": options.evidence,
+        },
         "timing": {
             "scope": "connector search call, measured by the runner (client side)",
             "warmup": options.warmup,
@@ -229,12 +236,14 @@ def _run_query(
     entry: dict[str, Any] = {
         "query_id": q.query_id,
         "tags": list(q.tags),
+        "filtered": bool(q.filter),
         "ids": None,
         "exact_ids": None,
         "latency_ms": None,
         "metrics": None,
         "ann_recall": None,
         "nondeterministic": False,
+        "evidence": None,
         "error": None,
     }
     try:
@@ -253,11 +262,25 @@ def _run_query(
             exact = connector.search(_request(q, v, options, exact=True))
             entry["exact_ids"] = exact
             entry["ann_recall"] = ann_recall(ids, exact)
+        if options.evidence:
+            entry["evidence"] = _evidence(connector, _request(q, v, options, exact=False), entry)
     except ConnectorError as e:
         if e.code not in QUERY_LEVEL_ERRORS:
             raise
         entry["error"] = e.as_dict()
     return entry
+
+
+def _evidence(
+    connector: Connector, request: SearchRequest, entry: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Evidence never fails a query: a query-level problem is recorded instead."""
+    try:
+        return connector.evidence(request, entry["ids"], entry["exact_ids"])
+    except ConnectorError as e:
+        if e.code not in QUERY_LEVEL_ERRORS:
+            raise
+        return {"kind": "unavailable", "source": connector.name, "error": e.as_dict()}
 
 
 def summarize(queries: Sequence[Mapping[str, Any]], n_queries: int) -> dict[str, Any]:

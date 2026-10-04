@@ -13,6 +13,22 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
   JSON and Markdown reports and a GitHub job summary. Connectors share one contract with
   declared capabilities and typed errors. See `docs/release-checks.md`.
+- **Vectraudit Cloud** (`vectraudit[cloud]`, `vectraudit-cloud`): the hosted control plane.
+  Workspaces with owner, engineer and viewer roles; project-scoped runner tokens; run upload
+  (idempotent); pinned baselines and project policies; server-side checks with the CLI's
+  verdict; run and check history; private reports and optional signed share links; a
+  dashboard with GitHub or token sign-in; plans, quotas, retention and usage export; Docker
+  Compose deployment with backup and restore scripts. See `docs/cloud-operations.md`.
+- **Investigation:** per-query backend evidence (FAISS IVF miss reasons, pgvector query
+  plans) and diagnoses with evidence levels (verified, supported, hypothesis) in every report.
+- **Datasets:** `dataset import` (CSV/JSONL with column mapping and typed filters),
+  `dataset embed` (records the model in a dataset header), `dataset diff` and `dataset stats`
+  (label coverage, cohort sizes and readiness warnings).
+- **Pilot kit:** `vectraudit init --backend faiss|qdrant|pgvector` scaffolds `retrieval/`
+  and a pull-request workflow; a 15-minute guide; a reproducible before/after case study on a
+  real RAG corpus (`examples/release_check_demo.py`).
+- **GitHub:** `check --github-check` publishes a check run and `--github-comment` keeps one
+  pull-request comment up to date, using the job's `GITHUB_TOKEN`.
 - **Connectors:** FAISS (index files; raw vectors or a flat index as exact reference),
   Qdrant (`vectraudit[qdrant]`: named vectors, payload filters, `hnsw_ef`, exact reference)
   and PostgreSQL + pgvector (`vectraudit[pgvector]`: read-only sessions, statement timeouts,

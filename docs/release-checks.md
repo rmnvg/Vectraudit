@@ -25,7 +25,19 @@ vectraudit check baseline.json candidate.json --policy retrieval/policy.json --h
 
 For GitHub Actions, start from
 [examples/github/retrieval-check.yml](../examples/github/retrieval-check.yml). `check`
-appends a Markdown summary to the job summary automatically.
+appends a Markdown summary to the job summary automatically, and with the job's
+`GITHUB_TOKEN`:
+
+- `--github-check` publishes a check run on the pull request's head commit (permission
+  `checks: write`). Pass maps to success; fail, error and not comparable all map to failure,
+  so a required check never lets an unverified change through. `--check-name` keeps one
+  check per backend apart.
+- `--github-comment` creates one pull-request comment and updates it on later pushes
+  (permission `pull-requests: write`).
+
+Publishing never changes the exit code. Pull requests from forks get a read-only token, so
+publishing is skipped with a warning and the job summary still carries the result. Never
+use `pull_request_target` to work around this: it would expose your secrets to fork code.
 
 ## Dataset (JSONL)
 
@@ -44,6 +56,25 @@ One query per line:
 | `relevant` | no | Document id → grade (> 0 is relevant). Without it, a query only contributes ANN recall and latency. |
 | `filter` | no | Portable filter: field → string / number / boolean, all AND-ed. |
 | `tags` | no | Cohorts, judged separately when the policy has cohort rules. |
+
+An optional first line `{"dataset": {"name": ..., "description": ..., "embedding_model": ...,
+"normalized": ...}}` holds metadata; it is part of the version.
+
+Building one:
+
+```bash
+# From a spreadsheet export: query_id, text, relevant ("doc-1:2; doc-7"), tags, filters
+vectraudit dataset import questions.csv --out retrieval/dataset.jsonl \
+  --tags-column segment --filter lang --filter year:int --name support-faq
+# Add vectors with the corpus's embedding model (recorded in the header)
+vectraudit dataset embed retrieval/dataset.jsonl --model BAAI/bge-small-en-v1.5 --normalize
+vectraudit dataset stats retrieval/dataset.jsonl --policy retrieval/policy.json
+vectraudit dataset diff old.jsonl retrieval/dataset.jsonl   # review label changes
+```
+
+`stats` warns about too few labelled queries, unlabelled queries, cohorts below the
+policy minimum, duplicate texts and missing vectors. `record` adds the dataset's embedding
+model to the run's provenance and warns if `--embedder` differs from it.
 
 The dataset **version** is the SHA-256 of its content (line order and formatting don't
 matter). Runs on different versions are never compared. Label documents by stable ids that
@@ -108,10 +139,37 @@ the report warns that one query moves the mean noticeably.
 
 - `max_drop` is absolute (0.02 = two points); `min` is a floor for the candidate.
 - Every metric a policy names must be measured in both runs, or the check is not comparable.
+- `latency.min_increase_ms` (default 0.1): percentage latency rules only fail when the p50 /
+  p95 rise is also larger than this in absolute terms, so microsecond jitter on fast local
+  indexes is not a regression. Set it to 0 to judge every rise.
 - `require_significance: true` fails a `max_drop` rule only when the whole 95% interval of
   the change is beyond the limit; useful for small or noisy query sets.
 - Without `--policy`, a built-in policy allows drops of 0.01 in nDCG, recall and ANN recall
   (0.02 in MRR) and a 50% p95 rise, judged on whatever both runs measured.
+
+## Evidence and diagnosis
+
+`record` asks each backend for per-query evidence (turn it off with `--no-evidence`):
+
+- **FAISS IVF**: for every exact neighbour the search missed, whether its inverted list was
+  not probed or it was ranked out by compressed distances, and the nprobe that would find
+  them all. Replayed from the coarse quantizer's probe order, and labelled as a replay.
+- **pgvector**: the planner's plan (scan types, index used, cost) from `EXPLAIN` without
+  `ANALYZE`, so nothing extra executes.
+
+`check` turns the comparison and the evidence into findings, each with a level:
+
+| Level | Meaning |
+|---|---|
+| verified | Measured in these runs: a metric change, evidence counts, plan changes. |
+| supported | Consistent with a measured change, e.g. a configuration difference that coincides with the effect. A likely cause, not proof. |
+| hypothesis | Worth checking; nothing in the runs confirms it. |
+
+Examples: approximation loss and whether raising nprobe would recover it; relevance falling
+while ANN recall holds (an embedding, chunking or corpus change, which index tuning can't
+fix); plans that stopped using the vector index; filtered queries returning fewer than k
+results; regressions concentrated in one cohort; latency moving with search parameters;
+nondeterministic results.
 
 ## Reports
 

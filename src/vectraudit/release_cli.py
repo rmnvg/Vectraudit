@@ -42,6 +42,58 @@ err_console = Console(stderr=True)
 dataset_app = typer.Typer(help="Work with evaluation datasets (JSONL).", no_args_is_help=True)
 
 
+cloud_app = typer.Typer(
+    help="Work with the hosted Vectraudit service (VECTRAUDIT_CLOUD_URL / _TOKEN).",
+    no_args_is_help=True,
+)
+
+
+def _cloud_client(project: str | None) -> Any:
+    from vectraudit.integrations.cloud import CloudClient, CloudClientError, CloudTarget
+
+    try:
+        return CloudClient(CloudTarget.from_env(project))
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+
+
+def _upload(client: Any, run: dict[str, Any]) -> bool:
+    """Upload one run; report the outcome. Returns False on failure."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        stored = client.upload_run(run)
+    except CloudClientError as e:
+        err_console.print(f"[bold red]Upload failed:[/] {escape(e.message)}")
+        if e.hint:
+            err_console.print(f"[dim]Hint: {escape(e.hint)}[/]")
+        return False
+    console.print(f"Uploaded run {escape(stored['run_id'])} ({escape(stored['status'])})")
+    return True
+
+
+@cloud_app.command("push")
+def cloud_push(
+    runs: Annotated[list[Path], typer.Argument(help="Run files to upload.")],
+    project: Annotated[
+        str | None, typer.Option(help="workspace/project (or VECTRAUDIT_CLOUD_PROJECT).")
+    ] = None,
+) -> None:
+    """Upload run files. Retrying is safe: a run is stored once."""
+    client = _cloud_client(project)
+    ok = True
+    for path in runs:
+        try:
+            run = load_run(path)
+        except RunFileError as e:
+            err_console.print(f"[bold red]Error:[/] {escape(str(e))}")
+            ok = False
+            continue
+        ok = _upload(client, run) and ok
+    if not ok:
+        raise typer.Exit(code=1)
+
+
 def _fail(message: str, hint: str | None = None) -> typer.Exit:
     err_console.print(f"[bold red]Error:[/] {escape(message)}")
     if hint:
@@ -73,6 +125,189 @@ def dataset_validate(
     table.add_row("Dimension", str(summary["dim"] or "text only (needs --embedder)"))
     table.add_row("Tags", ", ".join(summary["tags"]) or "none")
     console.print(table)
+
+
+def init(
+    backend: Annotated[str, typer.Option(help="faiss, qdrant or pgvector.")] = "faiss",
+    directory: Annotated[
+        Path, typer.Option("--dir", help="Repository root to scaffold into.")
+    ] = Path(),
+    force: Annotated[bool, typer.Option(help="Overwrite files that already exist.")] = False,
+) -> None:
+    """Scaffold retrieval/ (connection, policy, queries) and a GitHub workflow."""
+    from vectraudit.scaffold import BACKENDS, init_project
+
+    if backend not in BACKENDS:
+        raise _fail(f"Unknown backend {backend!r}.", f"Use one of: {', '.join(BACKENDS)}.")
+    written, skipped = init_project(directory, backend, force=force)
+    for path in written:
+        console.print(f"  [green]created[/] {escape(str(path))}")
+    for path in skipped:
+        console.print(f"  [yellow]kept[/]    {escape(str(path))} (exists; --force overwrites)")
+    console.print("Next: follow retrieval/README.md.")
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+@dataset_app.command("import")
+def dataset_import(
+    source: Annotated[Path, typer.Argument(help="CSV (with a header row) or JSONL file.")],
+    out: Annotated[Path, typer.Option(help="Dataset JSONL to write.")],
+    id_column: Annotated[str, typer.Option(help="Column with the query id.")] = "query_id",
+    text_column: Annotated[str, typer.Option(help="Column with the query text.")] = "text",
+    vector_column: Annotated[
+        str | None, typer.Option(help="Column with the vector as a JSON list.")
+    ] = None,
+    relevant_column: Annotated[
+        str,
+        typer.Option(help='Relevant documents: "doc-1:2; doc-7" (grade defaults to 1).'),
+    ] = "relevant",
+    tags_column: Annotated[str | None, typer.Option(help='Cohort tags, ";"-separated.')] = None,
+    filter_column: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--filter",
+            help="Filter column, optionally typed: lang, year:int, price:float, public:bool.",
+        ),
+    ] = None,
+    name: Annotated[str | None, typer.Option(help="Dataset name for the header.")] = None,
+) -> None:
+    """Convert a CSV or JSONL file of queries and labels into a dataset."""
+    from vectraudit.evaluation.dataset_tools import (
+        ColumnMap,
+        import_rows,
+        read_records,
+        render_dataset,
+    )
+
+    filters = {}
+    for spec in filter_column or []:
+        col, _, kind = spec.partition(":")
+        filters[col.strip()] = kind.strip() or "str"
+    columns = ColumnMap(
+        query_id=id_column,
+        text=text_column,
+        vector=vector_column,
+        relevant=relevant_column,
+        tags=tags_column,
+        filters=filters,
+    )
+    try:
+        rows = import_rows(read_records(source), columns)
+        text = render_dataset(rows, {"name": name} if name else None)
+    except DatasetError as e:
+        raise _fail(str(e)) from e
+    _write_text(out, text)
+    ds = load_dataset(out)
+    console.print(
+        f"Wrote {len(ds):,} queries ({ds.n_labelled:,} labelled) to {escape(str(out))}, "
+        f"version {ds.sha256[:12]}"
+    )
+
+
+@dataset_app.command("embed")
+def dataset_embed(
+    path: Annotated[Path, typer.Argument(help="Dataset JSONL.")],
+    model: Annotated[str, typer.Option(help="sentence-transformers model of the corpus.")],
+    out: Annotated[Path | None, typer.Option(help="Output (default: overwrite input).")] = None,
+    normalize: Annotated[
+        bool, typer.Option(help="L2-normalise vectors (cosine / inner-product corpora).")
+    ] = False,
+    overwrite: Annotated[bool, typer.Option(help="Re-embed queries that have vectors.")] = False,
+) -> None:
+    """Add query vectors from text, and record the model in the dataset header."""
+    from vectraudit.evaluation.dataset_tools import embed_dataset
+
+    embed = _embedder(model, normalize)
+    assert embed is not None
+    try:
+        text = embed_dataset(
+            load_dataset(path), embed, model=model, normalized=normalize, overwrite=overwrite
+        )
+    except DatasetError as e:
+        raise _fail(str(e)) from e
+    target = out or path
+    _write_text(target, text)
+    ds = load_dataset(target)
+    console.print(
+        f"Embedded with {escape(model)}: {len(ds):,} queries, dimension {ds.dim}, "
+        f"version {ds.sha256[:12]} → {escape(str(target))}"
+    )
+
+
+@dataset_app.command("diff")
+def dataset_diff(
+    old: Annotated[Path, typer.Argument(help="Earlier dataset.")],
+    new: Annotated[Path, typer.Argument(help="Later dataset.")],
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+) -> None:
+    """Show queries added, removed and changed between two dataset versions."""
+    from vectraudit.evaluation.dataset_tools import diff_datasets
+
+    try:
+        diff = diff_datasets(load_dataset(old), load_dataset(new))
+    except DatasetError as e:
+        raise _fail(str(e)) from e
+    if as_json:
+        typer.echo(json.dumps(diff, indent=2))
+        return
+    if diff["same"]:
+        console.print(f"Identical: version {diff['from'][:12]}")
+        return
+    console.print(f"{diff['from'][:12]} → {diff['to'][:12]}")
+    console.print(
+        f"Added {len(diff['added'])}, removed {len(diff['removed'])}, "
+        f"changed {len(diff['changed'])}"
+    )
+    for qid, fields in list(diff["changed"].items())[:20]:
+        console.print(f"  ~ {escape(qid)}: {', '.join(fields)}")
+    for qid in diff["added"][:10]:
+        console.print(f"  + {escape(qid)}")
+    for qid in diff["removed"][:10]:
+        console.print(f"  - {escape(qid)}")
+    if diff["meta_changed"]:
+        console.print(f"Header changed: {', '.join(diff['meta_changed'])}")
+
+
+@dataset_app.command("stats")
+def dataset_stats_cmd(
+    path: Annotated[Path, typer.Argument(help="Dataset JSONL.")],
+    policy: Annotated[
+        Path | None, typer.Option(help="Policy file, to check cohort sizes against it.")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+) -> None:
+    """Label coverage, grades, cohorts and readiness warnings."""
+    from vectraudit.evaluation.dataset_tools import dataset_stats
+
+    try:
+        ds = load_dataset(path)
+        minimum = load_policy(policy).cohorts.min_queries if policy else None
+    except (DatasetError, PolicyError) as e:
+        raise _fail(str(e)) from e
+    stats = dataset_stats(ds, cohort_minimum=minimum)
+    if as_json:
+        typer.echo(json.dumps(stats, indent=2))
+        return
+    rel = stats["relevant_per_query"]
+    console.print(
+        f"Version {stats['sha256'][:12]} · {stats['n_queries']:,} queries · "
+        f"{stats['n_labelled']:,} labelled · {stats['n_filtered']:,} filtered"
+    )
+    console.print(
+        f"Relevant per labelled query: min {rel['min']}, mean {rel['mean']:.1f}, max {rel['max']}"
+    )
+    if stats["grades"]:
+        console.print("Grades: " + ", ".join(f"{g}: {n}" for g, n in stats["grades"].items()))
+    if stats["tags"]:
+        console.print(
+            "Cohorts: " + ", ".join(f"{escape(t)} ({n})" for t, n in stats["tags"].items())
+        )
+    for w in stats["warnings"]:
+        console.print(f"[yellow]Warning:[/] {escape(w)}")
 
 
 def _parse_pairs(values: Sequence[str], what: str) -> dict[str, str]:
@@ -142,6 +377,20 @@ def record(
     embedder: Annotated[
         str | None, typer.Option(help="sentence-transformers model for text-only queries.")
     ] = None,
+    evidence: Annotated[
+        bool,
+        typer.Option(
+            "--evidence/--no-evidence",
+            help="Record per-query backend evidence (IVF miss reasons, query plans).",
+        ),
+    ] = True,
+    upload: Annotated[
+        bool, typer.Option(help="Also upload the run to the hosted service.")
+    ] = False,
+    project: Annotated[
+        str | None,
+        typer.Option(help="Cloud workspace/project for --upload (or VECTRAUDIT_CLOUD_PROJECT)."),
+    ] = None,
     normalize_text: Annotated[
         bool, typer.Option(help="L2-normalise text embeddings (for cosine / IP corpora).")
     ] = False,
@@ -166,8 +415,23 @@ def record(
         repeats=repeats,
         exact=exact,
         label=label,
-        labels=_parse_pairs(tag or [], "--tag"),
+        labels={
+            **(
+                {"dataset_embedding_model": ds.meta["embedding_model"]}
+                if ds.meta.get("embedding_model")
+                else {}
+            ),
+            **_parse_pairs(tag or [], "--tag"),
+        },
+        evidence=evidence,
     )
+    client = _cloud_client(project) if upload else None  # fail on bad config before running
+    dataset_model = ds.meta.get("embedding_model")
+    if embedder and dataset_model and embedder != dataset_model:
+        err_console.print(
+            f"[yellow]Warning:[/] the dataset's vectors come from {escape(dataset_model)}, "
+            f"but text queries will be embedded with {escape(embedder)}."
+        )
     embed = _embedder(embedder, normalize_text)
     try:
         connector = open_connector(cfg)
@@ -176,6 +440,8 @@ def record(
         run = failed_run(ds, e, options, connection=cfg.public())
         save_run(run, out)
         _print_run(run, out)
+        if client is not None:
+            _upload(client, run)
         raise typer.Exit(code=1) from e
     with connector, console.status("Running queries…") as status:
 
@@ -193,9 +459,10 @@ def record(
         )
     save_run(run, out)
     _print_run(run, out)
+    uploaded = _upload(client, run) if client is not None else True
     if run["status"] == "cancelled":
         raise typer.Exit(code=130)
-    if run["status"] != "complete":
+    if run["status"] != "complete" or not uploaded:
         raise typer.Exit(code=1)
 
 
@@ -244,19 +511,49 @@ def check(
     report_url: Annotated[
         str | None, typer.Option(help="Link to the full report, shown in the summary.")
     ] = None,
+    github_check: Annotated[
+        bool,
+        typer.Option(help="Publish a check run on the commit (needs checks: write)."),
+    ] = False,
+    github_comment: Annotated[
+        bool,
+        typer.Option(help="Create or update one PR comment (needs pull-requests: write)."),
+    ] = False,
+    check_name: Annotated[
+        str, typer.Option(help="Check run name, e.g. one per backend.")
+    ] = "Retrieval check",
+    project: Annotated[
+        str | None,
+        typer.Option(help="Cloud workspace/project for cloud:<baseline> or --upload."),
+    ] = None,
+    upload: Annotated[
+        bool,
+        typer.Option(help="Upload the candidate and record the check on the hosted service."),
+    ] = False,
 ) -> None:
     """Compare a candidate run with a baseline and decide.
 
     Exit codes: 0 pass, 1 error (a run is incomplete or a file is invalid), 3 fail
     (a policy rule is broken), 4 not comparable (different data or missing metrics).
     """
+    cloud_baseline = str(baseline).startswith("cloud:")
+    client = _cloud_client(project) if cloud_baseline or upload else None
+    if upload and not cloud_baseline:
+        raise _fail("--upload compares with a pinned baseline: pass cloud:<name> as baseline.")
     try:
-        pol = DEFAULT_POLICY if policy is None else load_policy(policy)
-        base, cand = load_run(baseline), load_run(candidate)
+        cand = load_run(candidate)
+        if cloud_baseline:
+            base, pol = _cloud_baseline_and_policy(client, str(baseline)[6:], policy)
+        else:
+            pol = DEFAULT_POLICY if policy is None else load_policy(policy)
+            base = load_run(baseline)
     except (PolicyError, RunFileError) as e:
         raise _fail(str(e)) from e
     result = compare_runs(base, cand, pol)
     verdict = Verdict(result["verdict"])
+    if upload:
+        hosted = _record_cloud_check(client, cand, str(baseline)[6:], verdict)
+        report_url = report_url or hosted
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
@@ -272,7 +569,165 @@ def check(
         with open(summary_path, "a", encoding="utf-8") as f:
             f.write(md)
     _print_check(result, verdict)
+    if github_check or github_comment:
+        _publish_github(result, md, github_check, github_comment, check_name, report_url)
     raise typer.Exit(code=EXIT_CODES[verdict])
+
+
+def _publish_github(
+    result: dict[str, Any],
+    markdown: str,
+    check_run: bool,
+    comment: bool,
+    name: str,
+    report_url: str | None,
+) -> None:
+    """Publishing problems are warnings: they must never change the check's exit code."""
+    from vectraudit.integrations.github import (
+        GitHubContext,
+        GitHubError,
+        publish_check_run,
+        upsert_pr_comment,
+    )
+
+    try:
+        ctx = GitHubContext.from_env()
+    except GitHubError as e:
+        err_console.print(f"[yellow]Warning:[/] not published to GitHub: {escape(str(e))}")
+        return
+    actions: list[tuple[str, Any]] = []
+    if check_run:
+        actions.append(
+            (
+                "check run",
+                lambda: publish_check_run(ctx, result, markdown, name=name, details_url=report_url),
+            )
+        )
+    if comment:
+        actions.append(("pull request comment", lambda: upsert_pr_comment(ctx, markdown)))
+    for what, publish in actions:
+        try:
+            url = publish()
+        except GitHubError as e:
+            hint = (
+                " (read-only token: pull requests from forks can't publish; the job summary "
+                "still has the result)"
+                if e.forbidden
+                else ""
+            )
+            err_console.print(f"[yellow]Warning:[/] {what} not published{hint}: {escape(str(e))}")
+        else:
+            console.print(f"Published {what}" + (f": {escape(url)}" if url else "."))
+
+
+def _cloud_baseline_and_policy(
+    client: Any, name: str, policy: Path | None
+) -> tuple[dict[str, Any], Any]:
+    """The pinned baseline run, and the project's policy unless --policy overrides it."""
+    from vectraudit.evaluation.policy import parse_policy
+    from vectraudit.evaluation.runfile import check_run
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        base = check_run(client.get_baseline_file(name))
+        if policy is not None:
+            return base, load_policy(policy)
+        remote = client.get_policy()["policy"]
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    return base, DEFAULT_POLICY if remote is None else parse_policy(remote)
+
+
+def _record_cloud_check(
+    client: Any, cand: dict[str, Any], baseline: str, verdict: Verdict
+) -> str | None:
+    """Upload the candidate and store the hosted check; returns the hosted report URL."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    if not _upload(client, cand):
+        raise typer.Exit(code=1)
+    try:
+        stored = client.create_check(cand["run_id"], baseline)
+    except CloudClientError as e:
+        err_console.print(f"[bold red]Hosted check failed:[/] {escape(e.message)}")
+        raise typer.Exit(code=1) from e
+    console.print(f"Hosted check: {escape(stored['url'])}")
+    if stored["verdict"] != verdict.value:
+        err_console.print(
+            f"[bold red]Warning:[/] the hosted verdict is {stored['verdict']} but the local one "
+            f"is {verdict.value} (different policy or baseline?)."
+        )
+    report: str | None = stored.get("report_url")
+    return report
+
+
+@cloud_app.command("pin")
+def cloud_pin(
+    run_id: Annotated[str, typer.Argument(help="Uploaded run id to pin.")],
+    name: Annotated[str, typer.Option(help="Baseline name, e.g. main.")] = "main",
+    note: Annotated[str, typer.Option(help="Why this run is the new baseline.")] = "",
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """Pin an uploaded, complete run as a baseline (engineer or owner; audited)."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    client = _cloud_client(project)
+    try:
+        b = client.pin_baseline(name, run_id, note)
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    console.print(f"Baseline {escape(b['name'])} → run {escape(b['run_id'])}")
+
+
+@cloud_app.command("runs")
+def cloud_runs(
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+    status: Annotated[str | None, typer.Option(help="complete, partial, failed...")] = None,
+    commit: Annotated[str | None, typer.Option(help="Commit SHA or prefix.")] = None,
+    label: Annotated[str | None, typer.Option(help="Run label.")] = None,
+    limit: Annotated[int, typer.Option(min=1, max=100)] = 20,
+) -> None:
+    """Recent uploaded runs, newest first."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        page = _cloud_client(project).list_runs(
+            limit, status=status or "", commit=commit or "", label=label or ""
+        )
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    table = Table("Run", "Status", "Label", "Commit", "Backend", "Uploaded")
+    for r in page["runs"]:
+        table.add_row(
+            r["run_id"][:12],
+            r["status"],
+            r["label"] or "",
+            (r["commit_sha"] or "")[:10],
+            r["backend"] or "",
+            str(r["uploaded_at"])[:19],
+        )
+    console.print(table)
+
+
+@cloud_app.command("baselines")
+def cloud_baselines(
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """List the project's pinned baselines."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        rows = _cloud_client(project).list_baselines()
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    if not rows:
+        console.print("No baselines pinned yet: `vectraudit cloud pin RUN_ID --name main`.")
+    for b in rows:
+        console.print(
+            f"{escape(b['name'])}: run {escape(b['run_id'])} "
+            f"({escape(b['run_label'] or '')}), pinned by {escape(b['pinned_by'])} "
+            f"at {b['pinned_at']}"
+        )
 
 
 def _print_check(result: dict[str, Any], verdict: Verdict) -> None:

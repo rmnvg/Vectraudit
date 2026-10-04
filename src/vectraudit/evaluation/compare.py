@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from vectraudit.evaluation.diagnose import diagnose
 from vectraudit.evaluation.metrics import QUALITY_METRICS, SEMANTIC_METRICS
 from vectraudit.evaluation.policy import DEFAULT_POLICY, MetricRule, Policy
 
@@ -83,6 +84,7 @@ class _Check:
             "latency": None,
             "cohorts": {},
             "queries": None,
+            "findings": [],
             "config_diff": config_diff(base, cand),
         }
 
@@ -90,6 +92,7 @@ class _Check:
         self.reasons.append({"verdict": verdict.value, "message": message})
 
     def result(self) -> dict[str, Any]:
+        pairs: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
         if self._runs_complete() and self._comparable():
             pairs = self._pairs()
             self.out["n_queries"] = len(pairs)
@@ -99,6 +102,8 @@ class _Check:
         verdicts = {Verdict(r["verdict"]) for r in self.reasons}
         verdict = next((v for v in _PRECEDENCE if v in verdicts), Verdict.PASS)
         self.out["verdict"] = verdict.value
+        if self.out["metrics"]:
+            self.out["findings"] = diagnose(self.out, self.base, self.cand, pairs)
         return self.out
 
     # --- gates -----------------------------------------------------------------------
@@ -284,6 +289,7 @@ class _Check:
                 {
                     "query_id": b["query_id"],
                     "tags": b.get("tags", []),
+                    "filtered": bool(b.get("filtered")),
                     "baseline": bv,
                     "candidate": cv,
                     "delta": cv - bv,
@@ -291,6 +297,8 @@ class _Check:
                     "new_ids": [i for i in c["ids"] if i not in set(b["ids"])],
                     "baseline_ids": b["ids"],
                     "candidate_ids": c["ids"],
+                    "baseline_evidence": b.get("evidence"),
+                    "candidate_evidence": c.get("evidence"),
                 }
             )
         regressed = sorted((x for x in changes if x["delta"] < -EPS), key=lambda x: x["delta"])
@@ -366,7 +374,13 @@ class _Check:
             return
         for p, limit in (("p50", rule.p50_max_increase_pct), ("p95", rule.p95_max_increase_pct)):
             pct = change[p]
-            if limit is not None and pct is not None and pct > limit + EPS:
+            rise_ms = cl[p] - bl[p]
+            if (
+                limit is not None
+                and pct is not None
+                and pct > limit + EPS
+                and rise_ms > rule.min_increase_ms + EPS
+            ):
                 self.flag(
                     Verdict.FAIL,
                     f"{p} latency rose {pct:.1f}% ({bl[p]:.2f} → {cl[p]:.2f} ms); "

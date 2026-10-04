@@ -108,6 +108,8 @@ def _check_query(q: Any, k: int) -> None:
         _expect(isinstance(metrics, dict), "metrics must be an object")
         for name in SEMANTIC_METRICS:
             _expect(_fraction(metrics.get(name)), f"metrics.{name} must be in [0, 1]")
+    evidence = q.get("evidence")
+    _expect(evidence is None or isinstance(evidence, dict), "evidence must be an object or null")
     recall = q.get("ann_recall")
     _expect(recall is None or _fraction(recall), "ann_recall must be in [0, 1] or null")
 

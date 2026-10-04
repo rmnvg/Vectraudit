@@ -1,0 +1,3 @@
+query_id,text,relevant,tags
+refund-1,How do I get a refund for an annual plan?,doc-142:2; doc-17,billing
+password-1,I forgot my password and the reset email never arrives,doc-9,account

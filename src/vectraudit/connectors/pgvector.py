@@ -325,6 +325,12 @@ class PgvectorConnector(Connector):
         walk(plan)
         return {"nodes": nodes, "indexes": indexes, "total_cost": plan.get("Total Cost")}
 
+    def evidence(
+        self, request: SearchRequest, found: list[str], exact: list[str] | None
+    ) -> dict[str, Any] | None:
+        """The planner's plan for this query (EXPLAIN without ANALYZE: nothing executes)."""
+        return {"kind": "pg_plan", "source": "planner estimate (EXPLAIN)", **self.explain(request)}
+
     def close(self) -> None:
         conn, self._conn = getattr(self, "_conn", None), None
         if conn is not None:

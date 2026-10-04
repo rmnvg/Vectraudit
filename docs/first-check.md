@@ -1,0 +1,65 @@
+# Your first release check in 15 minutes
+
+You need: Python 3.10+, the Vectraudit wheel, read-only access to your vector backend, and
+30 or more real questions with the ids of the documents that answer them.
+
+## 1. Install and scaffold (2 minutes)
+
+```bash
+pip install "./vectraudit-0.1.0-py3-none-any.whl[qdrant]"   # or [pgvector] / [faiss-cpu]
+vectraudit init --backend qdrant
+```
+
+This creates `retrieval/connection.json`, `retrieval/policy.json`, `retrieval/queries.csv`,
+`retrieval/README.md` and `.github/workflows/retrieval-check.yml`. Existing files are
+kept unless you pass `--force`.
+
+## 2. Connect (3 minutes)
+
+Edit `retrieval/connection.json`: the URL and collection (Qdrant), the table and columns
+(pgvector) or the index file (FAISS). Put credentials in an environment variable and name
+it in the file (`api_key_env`, `dsn_env`); a credential written into the file is rejected.
+Use a read-only key or role.
+
+## 3. Label queries (5 minutes for a first pass)
+
+Fill `retrieval/queries.csv` with real user questions: one row per question, the ids of the
+documents that answer it (`doc-42:2; doc-7` gives grades 2 and 1), and optional tags for
+cohorts. Then:
+
+```bash
+vectraudit dataset import retrieval/queries.csv --out retrieval/dataset.jsonl --tags-column tags
+vectraudit dataset embed retrieval/dataset.jsonl --model YOUR-EMBEDDING-MODEL [--normalize]
+vectraudit dataset stats retrieval/dataset.jsonl --policy retrieval/policy.json
+```
+
+Use the same embedding model as your corpus (normalised if your index uses cosine or inner
+product). `stats` tells you if the set is too small to trust; 30 labelled queries detect
+large regressions, 100+ detect subtle ones and make cohorts meaningful.
+
+## 4. Record and check (3 minutes)
+
+```bash
+vectraudit record --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --out baseline.json --label current
+# change one thing: a search parameter, an index, an embedding model, the chunking...
+vectraudit record --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --out candidate.json --label candidate --param hnsw_ef=32
+vectraudit check baseline.json candidate.json --policy retrieval/policy.json --html report.html
+```
+
+Open `report.html`: the verdict, why, the diagnosis (each finding marked verified,
+supported or hypothesis), quality with confidence intervals, latency, and the queries that
+got worse with the documents they lost.
+
+## 5. Put it in CI (2 minutes)
+
+Commit `retrieval/` and the workflow. Add repository secrets: `VECTRAUDIT_DOWNLOAD_TOKEN`
+(read access to the Vectraudit release) and your backend credential. Every pull request
+that touches retrieval now gets a check run and a summary comment. Fork pull requests get no
+secrets by design; they are reported in the job summary only.
+
+## Tune the policy
+
+Start from the scaffolded `policy.json` (nDCG and recall may drop by 0.02, p95 latency may
+rise 30%, at most 10 queries may regress, cohorts of 15+ queries may drop by 0.05). Tighten
+it once you have seen a few real checks. See [release-checks.md](release-checks.md) for
+every option.

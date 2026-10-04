@@ -1,0 +1,7 @@
+{
+  "backend": "faiss",
+  "name": "production index",
+  "index": "../indexes/prod.index",
+  "vectors": "../indexes/vectors.npy",
+  "params": {"nprobe": 16}
+}

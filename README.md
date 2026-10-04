@@ -53,10 +53,15 @@ vectraudit check baseline.json candidate.json --policy policy.json --html report
 `check` exits 0 (pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job
 summary, and the HTML report lists the regressed queries with the ids they lost. Semantic
 metrics (recall, precision, MRR, nDCG) need relevance labels; ANN recall needs an exact
-reference; neither is ever substituted for the other. See
-[docs/release-checks.md](docs/release-checks.md) for the dataset, connection and policy
-formats, and [examples/github/retrieval-check.yml](examples/github/retrieval-check.yml) for
-a pull-request workflow.
+reference; neither is ever substituted for the other. Failing checks explain themselves:
+each finding is marked verified, supported or hypothesis, with the facts behind it.
+
+- [Your first release check in 15 minutes](docs/first-check.md) (`vectraudit init`)
+- [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
+- [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
+- [Pull-request workflow](examples/github/retrieval-check.yml) with check runs and comments
+- [Running Vectraudit Cloud](docs/cloud-operations.md): hosted baselines, history,
+  reports and the dashboard (`vectraudit record --upload`, `check cloud:main --upload`)
 
 ## From Python and Jupyter
 

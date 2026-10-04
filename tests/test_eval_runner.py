@@ -94,6 +94,7 @@ def test_complete_run_on_faiss(synthetic) -> None:
         "k": 5,
         "params": {"nprobe": 16},
         "embedder": None,
+        "evidence": True,
         "exact_reference": True,
         "exact_reference_note": None,
     }
@@ -325,3 +326,57 @@ def test_load_run_errors(tmp_path) -> None:
         load_run(tmp_path / "list.json")
     with pytest.raises(ValueError, match="Out of range float"):
         save_run({"x": float("nan")}, tmp_path / "out.json")
+
+
+# --- evidence ----------------------------------------------------------------------------
+
+
+def test_faiss_ivf_evidence_explains_misses(uniform_ivf) -> None:
+    index, vectors, ds = uniform_ivf
+    conn = FaissConnector(index, vectors=vectors)
+    low = execute_run(ds, conn, RunOptions(k=10, params={"nprobe": 1}))
+    full = execute_run(ds, conn, RunOptions(k=10, params={"nprobe": 16}))
+    ev = [q["evidence"] for q in low["queries"]]
+    assert all(e["kind"] == "faiss_ivf" for e in ev)
+    assert all(e["source"].startswith("replayed") for e in ev)
+    assert all(e["nprobe"] == 1 for e in ev)
+    # IVF-Flat codes are exact: every miss at nprobe=1 is an unprobed list.
+    missed = [e for e in ev if e["missed"]]
+    assert missed, "nprobe=1 should miss some neighbours"
+    for e, q in zip(ev, low["queries"], strict=True):
+        assert set(e["missed"]) == set(q["exact_ids"]) - set(q["ids"])
+        assert set(e["missed_by_reason"]) <= {"CELL_NOT_PROBED"}
+        assert 1 <= e["min_nprobe_for_all"] <= 16
+        if e["missed"]:
+            assert e["min_nprobe_for_all"] > 1
+    assert all(not q["evidence"]["missed"] for q in full["queries"])
+
+
+def test_pq_misses_in_probed_lists_are_quantization(synthetic) -> None:
+    ds = make_dataset(synthetic, n=20)
+    conn = FaissConnector(synthetic["ivf_pq"], vectors=synthetic["vectors"])
+    run = execute_run(ds, conn, RunOptions(k=10, params={"nprobe": 16}))
+    reasons = {r for q in run["queries"] for r in q["evidence"]["missed_by_reason"]}
+    assert reasons == {"QUANTIZATION"}
+
+
+def test_evidence_is_optional(synthetic) -> None:
+    ds = make_dataset(synthetic, n=3)
+    ivf = FaissConnector(synthetic["ivf_flat"], vectors=synthetic["vectors"])
+    off = execute_run(ds, ivf, RunOptions(evidence=False))
+    assert all(q["evidence"] is None for q in off["queries"])
+    no_exact = execute_run(ds, FaissConnector(synthetic["ivf_flat"]), RunOptions())
+    assert all(q["evidence"] is None for q in no_exact["queries"])
+    hnsw = execute_run(ds, FaissConnector(synthetic["hnsw_flat"]), RunOptions())
+    assert all(q["evidence"] is None for q in hnsw["queries"])
+
+
+def test_evidence_errors_do_not_fail_queries() -> None:
+    class Flaky(Scripted):
+        def evidence(self, request, found, exact):
+            raise ConnectorError(ErrorCode.QUERY, "plan unavailable")
+
+    run = execute_run(_two_dim(2), Flaky(lambda call, request: ["a"]), RunOptions(warmup=0))
+    assert run["status"] == "complete"
+    assert run["queries"][0]["evidence"]["kind"] == "unavailable"
+    assert run["queries"][0]["evidence"]["error"]["message"] == "plan unavailable"
