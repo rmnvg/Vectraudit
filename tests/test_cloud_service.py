@@ -66,10 +66,12 @@ def test_migrations_match_the_models(cloud_url) -> None:
     engine = make_engine(cloud_url)
     assert current_revision(engine) == head_revision()
     with engine.connect() as conn:
-        diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+        context = MigrationContext.configure(conn, opts={"compare_type": True})
+        diff = compare_metadata(context, Base.metadata)
     engine.dispose()
-    # JSON vs JSONB variants and UTCDateTime vs DateTime render identically in the DB.
-    assert [d for d in diff if d[0] not in ("modify_type",)] == []
+    # Strict, column types and lengths included: a VARCHAR(32) migration for a
+    # VARCHAR(64) model column once passed SQLite and failed on PostgreSQL.
+    assert diff == []
 
 
 def test_readiness_tracks_migrations(cloud_settings) -> None:

@@ -128,7 +128,7 @@ class ApiToken(Base):
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
     scopes: Mapped[list[str]] = mapped_column(JSONType, default=list)
-    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
@@ -158,7 +158,8 @@ class Run(Base):
     n_queries: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
-    uploaded_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    uploaded_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """Actor (``token:<prefix>`` or ``user:<id>``)."""
     summary: Mapped[dict[str, Any]] = mapped_column(JSONType)
     data: Mapped[dict[str, Any]] = mapped_column(JSONType)
 

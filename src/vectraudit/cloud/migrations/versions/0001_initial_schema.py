@@ -104,7 +104,7 @@ def upgrade() -> None:
             sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
             nullable=False,
         ),
-        sa.Column("created_by", sa.String(length=32), nullable=True),
+        sa.Column("created_by", sa.String(length=64), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
@@ -131,7 +131,7 @@ def upgrade() -> None:
         sa.Column("n_queries", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("uploaded_by", sa.String(length=32), nullable=True),
+        sa.Column("uploaded_by", sa.String(length=64), nullable=True),
         sa.Column(
             "summary",
             sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),

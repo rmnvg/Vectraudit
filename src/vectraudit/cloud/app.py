@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import Engine, text
-from sqlalchemy.orm import Session, sessionmaker
 
 from vectraudit import __version__
 from vectraudit.cloud.db import make_engine, session_factory
@@ -98,17 +97,3 @@ def create_app(settings: Settings, engine: Engine | None = None) -> FastAPI:
 
     register(app)
     return app
-
-
-def db_session(request: Request) -> Iterator[Session]:
-    """Request-scoped session: commit on success, roll back on error."""
-    factory: sessionmaker[Session] = request.app.state.sessions
-    session = factory()
-    try:
-        yield session
-        session.commit()
-    except BaseException:
-        session.rollback()
-        raise
-    finally:
-        session.close()
