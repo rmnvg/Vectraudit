@@ -282,3 +282,83 @@ def test_import_format_dispatch(tmp_path) -> None:
         import_format("trec", tmp_path / "topics.tsv")
     with pytest.raises(DatasetError, match="Unknown format 'phoenix'"):
         import_format("phoenix", testset)
+
+
+def test_cli_import_formats(tmp_path) -> None:
+    from typer.testing import CliRunner
+
+    from vectraudit.cli import app
+    from vectraudit.evaluation.dataset import load_dataset
+
+    runner = CliRunner()
+    corpus = _corpus(tmp_path)
+    testset = _jsonl(
+        tmp_path / "ragas.jsonl",
+        [
+            {"user_input": "Refunds?", "reference_contexts": [REFUND]},
+            {
+                "user_input": "Missing",
+                "reference_contexts": ["Not anywhere in this corpus, sorry."],
+            },
+        ],
+    )
+    out = tmp_path / "dataset.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "dataset",
+            "import",
+            str(testset),
+            "--format",
+            "ragas",
+            "--corpus",
+            str(corpus),
+            "--out",
+            str(out),
+            "--name",
+            "support",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    assert "Wrote 1 queries (1 labelled)" in flat
+    assert "1 of 2 reference passages could not be located" in flat
+    ds = load_dataset(out)
+    assert ds.meta["name"] == "support"
+    assert ds.meta["provenance"]["source_format"] == "ragas"
+    assert ds.meta["provenance"]["corpus_file"] == "corpus.jsonl"
+
+    (tmp_path / "topics.tsv").write_text("q1\tRefunds\n")
+    (tmp_path / "qrels.txt").write_text("q1 0 doc-refund 1\n")
+    result = runner.invoke(
+        app,
+        [
+            "dataset",
+            "import",
+            str(tmp_path / "topics.tsv"),
+            "--format",
+            "TREC",
+            "--qrels",
+            str(tmp_path / "qrels.txt"),
+            "--out",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert load_dataset(out).meta["provenance"]["source_format"] == "trec"
+
+    result = runner.invoke(
+        app,
+        [
+            "dataset",
+            "import",
+            str(testset),
+            "--format",
+            "ragas",
+            "--out",
+            str(tmp_path / "x.jsonl"),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "--corpus" in result.output
+    assert not (tmp_path / "x.jsonl").exists()

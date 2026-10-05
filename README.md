@@ -107,6 +107,8 @@ it. Credentials are referenced by environment variable and never written into co
 | Pinecone | index over HTTPS | none |
 | Weaviate | collection | `[weaviate]` |
 
+Already have a benchmark? `vectraudit dataset import` reads BEIR, TREC qrels, Ragas test
+sets, DeepEval goldens and LangSmith/Langfuse exports ([formats](docs/release-checks.md#bringing-labels-you-already-have)).
 No labels yet? The [local labelling assistant](docs/labelling.md) (`vectraudit label`)
 pools candidate documents from your questions and source corpus, then supports blind
 second passes, agreement and reviewer resolution before export. Choosing a setup

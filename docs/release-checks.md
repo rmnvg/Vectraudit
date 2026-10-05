@@ -72,6 +72,31 @@ vectraudit dataset stats retrieval/dataset.jsonl --policy retrieval/policy.json
 vectraudit dataset diff old.jsonl retrieval/dataset.jsonl   # review label changes
 ```
 
+### Bringing labels you already have
+
+If your benchmark already lives in another tool's format, import it as is. The importers
+only translate your labels; they never invent questions or judgments.
+
+| Source | Command | What becomes the label |
+|---|---|---|
+| BEIR folder | `dataset import ./fiqa --format beir [--split test]` | `qrels/<split>.tsv` grades by corpus id |
+| TREC | `dataset import topics.tsv --format trec --qrels qrels.txt` | `qid iter docno grade` lines; the query file is `qid<TAB>text` or JSONL |
+| Ragas test set | `dataset import testset.jsonl --format ragas --corpus chunks.jsonl` | `reference_context_ids`, or `reference_contexts` located in the corpus |
+| DeepEval goldens | `dataset import goldens.json --format deepeval --corpus chunks.jsonl` | `context` located in the corpus (`retrieval_context` is never a label) |
+| LangSmith / Langfuse export | `dataset import export.json --id-column id --text-column inputs.question --relevant-column outputs.doc_ids` | Any list or `"id:grade; id"` field, by dotted path |
+
+Ragas and DeepEval usually name reference passages by their text. `--corpus` is a JSONL,
+JSON or CSV file of the documents your backend returns (`_id`/`doc_id`/`id` and
+`text`/`content`/`page_content`, or `--corpus-id-field` / `--corpus-text-field`); each
+passage is matched, ignoring whitespace differences, to the documents that contain it. A
+passage that is not found, appears in more than `--max-matches` documents (default 5) or is
+under 20 characters is not used, and the import reports how many. Queries with no located
+passage are skipped, and a query with some unlocated passages keeps only the located ones,
+so its labels may be incomplete. Use the corpus at the chunking the test set was built from.
+
+Negative TREC grades are dropped, judged queries without a positive grade are skipped, and
+the dataset header records the source format, file hashes and skip counts as `provenance`.
+
 `stats` warns about too few labelled queries, unlabelled queries, cohorts below the
 policy minimum, duplicate texts and missing vectors. `record` adds the dataset's embedding
 model to the run's provenance and warns if `--embedder` differs from it.
