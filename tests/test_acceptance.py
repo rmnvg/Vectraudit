@@ -3,7 +3,8 @@
 For each backend, through the real CLI: a baseline passes against itself; a candidate
 corpus with noisy embeddings (a controlled quality regression) fails; a broken connection
 is an error; a different dataset version is not comparable. A deterministic latency
-regression fails via the library. pgvector runs when ``VECTRAUDIT_TEST_PG_DSN`` is set.
+regression fails via the library. pgvector, Pinecone and Weaviate run when their test
+servers are configured (see each connector's tests).
 """
 
 from __future__ import annotations
@@ -162,10 +163,125 @@ def pgvector_connections(d: Path) -> dict[str, Path]:
     }
 
 
+PINECONE_URL = os.environ.get("VECTRAUDIT_TEST_PINECONE_URL")
+WEAVIATE_URL = os.environ.get("VECTRAUDIT_TEST_WEAVIATE_URL")
+WEAVIATE_GRPC = os.environ.get("VECTRAUDIT_TEST_WEAVIATE_GRPC")
+
+
+def pinecone_connections(d: Path) -> dict[str, Path]:
+    if not PINECONE_URL:
+        pytest.skip("Set VECTRAUDIT_TEST_PINECONE_URL to run Pinecone acceptance tests.")
+    import uuid
+
+    from tests.test_connector_pinecone import _http
+
+    suffix = uuid.uuid4().hex[:8]
+    names = {}
+    for name in ("clean", "noisy"):
+        index = f"va-{name}-{suffix}"
+        info = _http(
+            "POST",
+            f"{PINECONE_URL}/indexes",
+            {
+                "name": index,
+                "dimension": D,
+                "metric": "euclidean",
+                "spec": {"serverless": {"cloud": "aws", "region": "us-east-1"}},
+            },
+        )
+        host = "http://" + info["host"]
+        vectors = np.load(d / f"{name}.npy")
+        for start in range(0, len(vectors), 200):
+            _http(
+                "POST",
+                f"{host}/vectors/upsert",
+                {
+                    "vectors": [
+                        {"id": str(i), "values": v.tolist()}
+                        for i, v in enumerate(vectors[start : start + 200], start)
+                    ]
+                },
+            )
+        names[name] = index
+    os.environ["VA_ACCEPT_PINECONE_KEY"] = "pclocal"
+    common = {
+        "backend": "pinecone",
+        "api_key_env": "VA_ACCEPT_PINECONE_KEY",
+        "control_plane_url": PINECONE_URL,
+    }
+    return {
+        "base": _write(d / "pc-base.json", {**common, "index": names["clean"]}),
+        "noisy": _write(d / "pc-noisy.json", {**common, "index": names["noisy"]}),
+        "broken": _write(
+            d / "pc-broken.json",
+            {
+                **common,
+                "index": names["clean"],
+                "control_plane_url": "http://127.0.0.1:9",
+                "timeout_s": 2,
+            },
+        ),
+    }
+
+
+def weaviate_connections(d: Path) -> dict[str, Path]:
+    if not WEAVIATE_URL or not WEAVIATE_GRPC:
+        pytest.skip("Set VECTRAUDIT_TEST_WEAVIATE_URL and _GRPC to run Weaviate acceptance.")
+    import uuid
+    from urllib.parse import urlsplit
+
+    import weaviate
+    from weaviate.classes.config import Configure, DataType, Property, VectorDistances
+
+    http, grpc = urlsplit(WEAVIATE_URL), urlsplit(WEAVIATE_GRPC)
+    client = weaviate.connect_to_local(host=http.hostname, port=http.port, grpc_port=grpc.port)
+    suffix = uuid.uuid4().hex[:8]
+    names = {}
+    for name in ("clean", "noisy"):
+        collection = f"VaAccept{name.title()}{suffix}"
+        coll = client.collections.create(
+            collection,
+            properties=[Property(name="doc_id", data_type=DataType.TEXT)],
+            vector_config=Configure.Vectors.self_provided(
+                vector_index_config=Configure.VectorIndex.hnsw(
+                    distance_metric=VectorDistances.L2_SQUARED
+                )
+            ),
+        )
+        with coll.batch.fixed_size(200) as batch:
+            for i, v in enumerate(np.load(d / f"{name}.npy")):
+                batch.add_object(properties={"doc_id": str(i)}, vector=v.tolist())
+        assert not coll.batch.failed_objects
+        names[name] = collection
+    client.close()
+    common = {
+        "backend": "weaviate",
+        "url": WEAVIATE_URL,
+        "grpc_url": WEAVIATE_GRPC,
+        "id_property": "doc_id",
+    }
+    return {
+        "base": _write(d / "wv-base.json", {**common, "collection": names["clean"]}),
+        "noisy": _write(d / "wv-noisy.json", {**common, "collection": names["noisy"]}),
+        "broken": _write(
+            d / "wv-broken.json",
+            {
+                **common,
+                "collection": names["clean"],
+                "url": "http://127.0.0.1:9",
+                "grpc_url": "http://127.0.0.1:10",
+                "timeout_s": 2,
+            },
+        ),
+    }
+
+
 BACKENDS = {
     "faiss": faiss_connections,
     "qdrant": qdrant_connections,
     "pgvector": pgvector_connections,
+    "pinecone": pinecone_connections,
+    "weaviate": weaviate_connections,
 }
 
 
