@@ -572,6 +572,40 @@ management a pilot needs, before real customer data arrives.
 a deleted workspace leaves no rows behind; exports contain everything the owner can see and
 nothing else; CI fails on known-vulnerable dependencies.
 
+### Phase 18: Embedding and chunking experiments (PRD FR12)
+Goal: compare several candidate retrieval setups (embedding model, chunking, index) on one
+labelled query set, fairly, in one report, and hand the winner to release checks.
+New code lives in `vectraudit.experiments` (plain library, strict types).
+
+1. **Corpus and chunking.** A corpus is JSONL source documents (`doc_id`, `text`, optional
+   metadata). Chunkers (`words` with size/overlap, `paragraphs` merged up to a size) emit
+   chunks with their source `doc_id` and character offsets, so labels survive re-chunking.
+2. **Embedders.** A dependency-free `hashing` embedder (lexical baseline, also used in
+   tests) and `sentence-transformers` models with query/document prefixes, batching and a
+   disk cache keyed by model, chunking and corpus hash.
+3. **Labels across chunkings.** Labels stay on source documents (`relevant`) or text spans
+   (new optional `relevant_spans`). Document-level evaluation maps retrieved chunks to
+   their documents (first occurrence wins) and searches deeper until k distinct documents;
+   span-level evaluation counts a chunk relevant when it overlaps a labelled span. Old
+   chunk ids are never reused across chunkings.
+4. **Experiment runner.** A JSON manifest lists the corpus, queries, k and candidates. For
+   each candidate: chunk, embed documents and queries, build the index (exact by default,
+   or a FAISS factory string with search parameters and a per-candidate exact reference),
+   search, and write a standard run record (ids are document ids; backend `experiment`
+   with the candidate's configuration), so any candidate can be compared, uploaded and
+   pinned like any other run.
+5. **Comparison report.** All candidates ranked on nDCG/recall/MRR with paired bootstrap
+   intervals against the leader, cohort winners, and costs (chunks, dimensions, index
+   size, embedding time, query p50/p95); pairwise diagnoses reuse `compare_runs`. HTML,
+   JSON and Markdown. CLI: `vectraudit experiment run MANIFEST --out DIR`.
+6. **Real demo and case study.** Embedding models and chunk sizes on the RAG corpus from
+   the Phase 15 case study, with the hashing baseline.
+
+**Acceptance:** on a fixture where the right answer is known (a lexical-only candidate vs a
+semantic one; small vs large chunks), the report ranks candidates correctly with intervals;
+chunking changes are evaluated against document labels, not stale chunk ids; the winner's
+run file passes `vectraudit check` against itself and uploads to the cloud.
+
 ---
 
 ## 9. Testing strategy
