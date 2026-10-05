@@ -8,6 +8,14 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Guided passage grading with durable local corpora and separate irrelevant judgments;
+  CSV/JSON import previews and deduplicated incident review without inferred labels.
+- Permission scenario builder for tenant contexts, allowed/forbidden documents and no-answer cases.
+- Immutable benchmark snapshots and content/metadata inventory comparisons that queue stale
+  labels for human review without rewriting existing versions.
+- Persistent regression cases with owners, notes, evidence history, Markdown issue summaries,
+  measured fix verification and explicit recurrence checks. Guided runs reload after restart.
+
 - LangChain and LlamaIndex retrievers as workbench pipelines
   (`vectraudit.integrations.retrievers`): compression retrievers and postprocessors are
   recorded as real stages, so losses are attributed to the reranker that caused them. A

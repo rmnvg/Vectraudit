@@ -37,6 +37,8 @@ class DraftIn(Contract):
     revision: str | None = None
     name: str = Field(min_length=1, max_length=128)
     dataset: str = Field(max_length=MAX_BODY)
+    corpus: str = Field(default="", max_length=MAX_BODY)
+    irrelevant: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class Document(Contract):
@@ -115,7 +117,19 @@ class GuidedWorkspace:
 
     def save_draft(self, body: DraftIn) -> dict[str, Any]:
         """Validate annotation semantics before an optimistic, atomic draft update."""
+        from vectraudit.pipelines.workflows import documents
+
         ds = parse_dataset(body.dataset)
+        documents(body.corpus)
+        queries = {q.query_id: q for q in ds.queries}
+        for query_id, ids in body.irrelevant.items():
+            query = queries.get(query_id)
+            if query is None or len(ids) > 5000 or any(not d or len(d) > 512 for d in ids):
+                raise ValueError("Invalid irrelevant-document judgments")
+            positive = {d for d, grade in query.relevant.items() if grade > 0}
+            positive |= {span.doc_id for span in query.relevant_spans}
+            if positive & set(ids):
+                raise ValueError("A document cannot be both relevant and irrelevant")
         if len(ds) > 500:
             raise HTTPException(422, "Guided benchmarks support at most 500 queries")
         identifier = body.id or uuid.uuid4().hex
@@ -127,12 +141,18 @@ class GuidedWorkspace:
             ):
                 raise HTTPException(409, "Benchmark changed. Reload it before saving.")
             dataset = render_dataset(dataset_rows(ds), ds.meta)
-            revision = hashlib.sha256((body.name + "\n" + dataset).encode()).hexdigest()
+            revision = hashlib.sha256(
+                json.dumps(
+                    [body.name, dataset, body.corpus, body.irrelevant], sort_keys=True
+                ).encode()
+            ).hexdigest()
             value = {
                 "id": identifier,
                 "revision": revision,
                 "name": body.name,
                 "dataset": dataset,
+                "corpus": body.corpus,
+                "irrelevant": body.irrelevant,
                 "audit": audit_benchmark(ds),
             }
             _write(path, value)
@@ -333,4 +353,7 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
             "candidate": candidate,
         }
 
+    from vectraudit.pipelines.workflows import workflow_router
+
+    router.include_router(workflow_router(workspace), dependencies=auth)
     return router

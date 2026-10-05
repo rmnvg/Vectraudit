@@ -266,3 +266,96 @@ The existing release-check run format is retained. See
 [enterprise deployment](enterprise-deployment.md) for governance, SSO and recovery checks.
 Real-provider SSO certification, representative load tests and PostgreSQL recovery rehearsals
 are deployment acceptance work; passing local fixtures is not a claim of market readiness.
+
+## Passage review and benchmark maintenance
+
+The guided **Build benchmark** step now includes a passage browser. Attach a JSONL corpus
+(`doc_id`, `text`, optional `metadata.title`) and read passages while choosing **Irrelevant**,
+**Relevant**, **Highly relevant**, or **Unjudged**. This works with registered pipelines too:
+lookup uses the attached local corpus, not an outbound document request. Missing document
+text is reported explicitly. Passage order is corpus order, not retrieval rank; use the
+search field and pagination to inspect other documents. Existing standalone labeling tools
+remain available for pooling, independent second passes and reviewer resolution.
+
+An irrelevant judgment is saved separately from the evaluation dataset when needed; it
+never implies that the question has no answer. Mark no-answer only after reviewing coverage.
+Assigning a positive passage grade clears no-answer and replaces span judgments for that
+same document; other spans, contexts, filters and held-out splits remain intact. The advanced
+JSON grade editor remains available. Draft saves preserve the local corpus and irrelevant
+judgments across restarts. A JSONL dataset export contains evaluation labels; frozen versions
+also retain the separate irrelevant judgments.
+
+**Import questions or production incidents** previews CSV, JSON arrays (including
+`examples`/`items`/`data` wrappers), and JSONL. Map question, ID and relevance columns; nested
+JSON question/ID paths are supported. Missing IDs are derived from question/context/filter
+content. The relevance column accepts the existing `doc-id:grade; other-id` CSV syntax.
+Native filters, vectors, span labels and headers are preserved for ordinary imports.
+Select preview rows before adding them; conflicting existing IDs are rejected, never replaced.
+The older native JSONL import still replaces the current editor contents.
+
+In incident mode, relevance/no-answer/forbidden judgments and held-out status are discarded.
+Exact duplicate question/context/filter combinations are combined with source references.
+Feedback and retrieved documents are not ground truth. Selected incidents are exploratory,
+unannotated questions that need human passage review. Include ordinary traffic for coverage;
+this is a local export workflow, not a live monitoring collector. Import accepts up to 5000
+source rows and 500 distinct questions; select smaller source files for larger exports.
+
+**Build permission scenarios** clones an exploratory question into named context/filter
+cases with expected relevant IDs, forbidden IDs and explicit no-answer assertions. Scenarios
+must specify context and an expectation. The form's filters are strings; use the existing
+query editor or API for numeric/boolean values. Contradictory relevant/forbidden expectations
+are rejected. The resulting queries use the existing real pipeline runner, so registered
+adapters must forward context and filters. Passing sampled cases is not an access-control
+certification. Held-out questions cannot seed new scenarios.
+
+### Freeze and check label freshness
+
+Save the benchmark, then choose **Freeze saved benchmark**. Each immutable local snapshot
+contains the dataset, its hash, the draft revision, irrelevant judgments and an optional
+inventory of document text/metadata hashes. Corpus text remains in the local draft. Changing
+or deleting a draft does not rewrite frozen snapshots.
+
+Choose a frozen version and **Check current corpus** after attaching a newer corpus. The
+review list identifies labels (including spans, forbidden and irrelevant IDs) referring to
+changed/deleted documents. No-answer judgments are flagged when new/changed content might
+answer them. Missing inventory is reported as **unknown**. A changed hash is a review signal,
+not proof that a label is wrong or the cause of a retrieval regression.
+
+**Restore as new draft** restores the frozen dataset and irrelevant judgments, keeping the
+currently attached corpus. Review affected passages, save/freeze the revised benchmark, then
+remeasure both baseline and candidate. Existing run files and frozen versions stay unchanged.
+These files live under `.workbench/benchmarks/`; draft corpora live under `.workbench/drafts/`.
+All are customer-controlled local files and are not uploaded by these workflows.
+
+## Persistent regression cases
+
+In **Compare a fix**, select a finding and choose **Track finding**. A case preserves the
+original baseline/candidate IDs, benchmark hash and recorded finding. Assign an owner,
+record investigation notes, and move it through open/investigating/fix proposed. Owners are
+local attribution, not authenticated identities. Cases survive browser and server restarts
+under `.workbench/cases/`; **Download issue summary** produces Markdown for your issue tracker.
+
+Record a new candidate and choose **Verify fix or recurrence**. Verification reruns the
+existing default release comparison against the case's original baseline and requires:
+
+- A complete, comparable run of the same query set, dataset version and k.
+- A passing release verdict across that comparison suite.
+- No unresolved finding for the tracked query.
+
+Only this measured operation can assign **verified**; manual updates cannot. The original
+baseline or failing candidate cannot be used as verification evidence. Errors and
+non-comparable runs do not change case status. A later explicit verification that fails
+reopens the case and appends evidence to its history. Each verification also saves the full
+release-check artifact (including the policy) and links it from the history. Verification covers the baseline's
+recorded split, not any held-out queries that were never run. Case status never overrides
+release verdicts, and does not automatically update merely because a new run was recorded.
+
+The guided run selector reloads the newest local runs after restart (up to 100 files and
+20 MiB combined); artifact inspection remains available for other runs. Snapshot/case lists
+show the newest 200 records. Local writes use version checks and file locks; stale edits
+must reload before retrying. Existing token, same-origin and request-size protections apply
+to all new guided APIs.
+
+Reproduce the full browser journey with `node scripts/market_fit_smoke.mjs` after building
+the UI. It tests grading/reload, snapshots, findings, incident review, permission creation
+and freshness at desktop/mobile sizes against a real local server.

@@ -6,6 +6,8 @@ export interface DraftSummary { id: string; name: string; revision: string }
 export interface GuidedSession { token: string; pipelines: PipelineChoice[]; drafts: DraftSummary[] }
 export interface Draft extends DraftSummary {
   dataset: string
+  corpus?: string
+  irrelevant?: Record<string, string[]>
   audit: { n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][] }
 }
 export interface QueryRow {
