@@ -144,6 +144,8 @@ jobs:
       - name: Run smoke tests
         working-directory: frontend
         run: npm run e2e
+      - name: Retrieval workbench browser regression
+        run: node scripts/workbench_smoke.mjs
       - name: Local labelling browser regression
         run: node scripts/labelling_smoke.mjs
       - uses: actions/upload-artifact@v4
