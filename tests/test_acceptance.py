@@ -33,7 +33,9 @@ runner = CliRunner()
 N, D, N_QUERIES = 2_000, 32, 50
 POLICY = {
     "metrics": {"ndcg": {"max_drop": 0.02}, "recall": {"max_drop": 0.02}},
-    "latency": {"p95_max_increase_pct": 100},
+    # Sub-millisecond baselines against networked emulators jitter by whole milliseconds on
+    # shared CI runners; the floor ignores that, and the 50 ms regression below still fails.
+    "latency": {"p95_max_increase_pct": 100, "min_increase_ms": 10},
     "min_queries": 20,
 }
 PG_DSN = os.environ.get("VECTRAUDIT_TEST_PG_DSN")
