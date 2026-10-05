@@ -110,6 +110,7 @@ module = [
     "vectraudit.connectors.*",
     "vectraudit.integrations.*",
     "vectraudit.cloud.*",
+    "vectraudit.experiments.*",
 ]
 strict = true
 
