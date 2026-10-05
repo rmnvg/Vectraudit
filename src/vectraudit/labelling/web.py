@@ -50,6 +50,11 @@ def judge(task: Task, judgment: Judgment) -> None:
         raise ValueError("Judgment is outside this pool")
     if judgment.end is not None and judgment.end > len(task.documents[judgment.doc_id]):
         raise ValueError("Span exceeds source document")
+    task.resolutions = [
+        j
+        for j in task.resolutions
+        if (j.query_id, j.doc_id) != (judgment.query_id, judgment.doc_id)
+    ]
     task.judgments = [
         j
         for j in task.judgments
@@ -111,6 +116,12 @@ def create_app(path: Path) -> FastAPI:
             )
         if not 0 <= q < len(task.queries):
             raise HTTPException(404)
+        assigned = task.assignments.get(annotator)
+        eligible = [
+            i for i, row in enumerate(task.queries) if assigned is None or row.query_id in assigned
+        ]
+        if q not in eligible:
+            q = eligible[0]
         query = task.queries[q]
         done = sum(j.annotator == annotator and j.grade is not None for j in task.judgments)
         total = sum(len(row.documents) for row in task.queries)
@@ -150,8 +161,10 @@ def create_app(path: Path) -> FastAPI:
             )
             body += "".join(f'<button name="grade" value="{g}">{g}</button>' for g in range(4))
             body += '<button name="grade" value="skip">Skip</button></form></article>'
-        for label, index in [("Previous", q - 1), ("Next", q + 1)]:
-            if 0 <= index < len(task.queries):
+        for label, offset in [("Previous", -1), ("Next", 1)]:
+            position = eligible.index(q) + offset
+            if 0 <= position < len(eligible):
+                index = eligible[position]
                 url = escape(urlencode({"annotator": annotator, "q": index}))
                 body += f'<a href="/?{url}">{label}</a> '
         return head + body + "</main></html>"

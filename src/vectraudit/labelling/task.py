@@ -52,6 +52,8 @@ class Task(Model):
     documents: dict[str, str]
     queries: list[Question]
     judgments: list[Judgment] = Field(default_factory=list)
+    resolutions: list[Judgment] = Field(default_factory=list)
+    assignments: dict[str, list[str]] = Field(default_factory=dict)
     sha256: str = ""
 
     @model_validator(mode="after")
@@ -65,6 +67,21 @@ class Task(Model):
                 raise ValueError("Duplicate pooled documents")
             if any(d not in self.documents for d in q.documents):
                 raise ValueError("Pool contains an unknown source document")
+        for rows in (self.judgments, self.resolutions):
+            seen: set[tuple[str, str, str]] = set()
+            for j in rows:
+                key = (j.query_id, j.doc_id, j.annotator)
+                if key in seen:
+                    raise ValueError("Duplicate judgment")
+                seen.add(key)
+                query = next((q for q in self.queries if q.query_id == j.query_id), None)
+                if query is None or j.doc_id not in query.documents:
+                    raise ValueError("Judgment outside pool")
+                if j.end is not None and j.end > len(self.documents[j.doc_id]):
+                    raise ValueError("Span exceeds source document")
+        for person, ids in self.assignments.items():
+            if not person.strip() or not set(ids) <= {q.query_id for q in self.queries}:
+                raise ValueError("Invalid second-pass assignment")
         return self
 
     def digest(self) -> str:

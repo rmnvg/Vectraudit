@@ -117,3 +117,35 @@ def test_local_ui_csrf_escape_save(inputs, tmp_path, monkeypatch):
     form.update(start="", end="", grade="skip")
     assert client.post("/judge", data=form).status_code == 200
     assert load_task(path).judgments[0].grade is None
+
+
+def test_agreement_resolution_and_sample(inputs):
+    from vectraudit.labelling.agreement import agreement, assign_sample, kappa, resolve
+    from vectraudit.labelling.task import Judgment
+    from vectraudit.labelling.web import judge
+
+    assert kappa([(0, 0), (0, 1), (1, 0), (1, 1)]) == 0
+    assert kappa([(0, 0), (1, 1), (2, 2), (3, 3)]) == 1
+    assert kappa([(0, 0), (0, 1), (1, 1), (1, 1)]) == 0.5
+    assert kappa([(1, 2), (0, 0)], binary=True) == 1
+    assert kappa([(1, 1)]) is None
+    assert kappa([]) is None
+    dataset, corpus = inputs
+    task = pool(dataset, corpus, k=1)
+    q = task.queries[0]
+    for name, grade in [("A", 1), ("B", 3)]:
+        judge(
+            task, Judgment(query_id=q.query_id, doc_id=q.documents[0], annotator=name, grade=grade)
+        )
+    assert resolve(task, q.query_id, q.documents[0]) is None
+    report = agreement(task)
+    assert report["pairs"][0]["n"] == 1
+    assert not report["disagreements"][0]["resolved"]
+    task.resolutions.append(
+        Judgment(query_id=q.query_id, doc_id=q.documents[0], annotator="R", grade=2)
+    )
+    assert resolve(task, q.query_id, q.documents[0]).grade == 2
+    judge(task, Judgment(query_id=q.query_id, doc_id=q.documents[0], annotator="C", grade=3))
+    assert resolve(task, q.query_id, q.documents[0]).grade == 3
+    assert not task.resolutions
+    assert len(assign_sample(task, "B", 0.2)) == 8

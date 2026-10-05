@@ -64,3 +64,49 @@ def serve_command(task: Path, port: int = 8766) -> None:
         raise typer.Exit(1) from exc
     typer.echo(f"Local labelling: http://127.0.0.1:{port}")
     uvicorn.run(application, host="127.0.0.1", port=port, access_log=False)
+
+
+@label_app.command("agreement")
+def agreement_command(task: Path) -> None:
+    """Print pairwise kappa and disagreements as JSON."""
+    import json
+
+    from vectraudit.labelling.agreement import agreement
+    from vectraudit.labelling.task import load_task
+
+    typer.echo(json.dumps(agreement(load_task(task)), indent=2))
+
+
+@label_app.command("sample")
+def sample_command(task: Path, annotator: str, fraction: float = 0.2, seed: int = 0) -> None:
+    """Assign an annotator a blind second pass; stop the server before modifying."""
+    from vectraudit.labelling.agreement import assign_sample
+    from vectraudit.labelling.task import load_task
+
+    value = load_task(task)
+    ids = assign_sample(value, annotator, fraction, seed=seed)
+    save_task(value, task)
+    typer.echo(f"Assigned {len(ids)} questions to {annotator}")
+
+
+@label_app.command("resolve")
+def resolve_command(
+    task: Path,
+    query_id: str,
+    doc_id: str,
+    reviewer: str,
+    grade: int,
+    start: int | None = None,
+    end: int | None = None,
+) -> None:
+    """Record the reviewer's final decision; stop the server before modifying."""
+    from vectraudit.labelling.task import Judgment, load_task
+
+    value = load_task(task)
+    judgment = Judgment(
+        query_id=query_id, doc_id=doc_id, annotator=reviewer, grade=grade, start=start, end=end
+    )
+    value.resolutions = [
+        j for j in value.resolutions if (j.query_id, j.doc_id) != (query_id, doc_id)
+    ] + [judgment]
+    save_task(value, task)
