@@ -5,60 +5,76 @@
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
 
 > **Proprietary and confidential.** Vectraudit (formerly faissight) is a commercial product,
-> distributed privately and not published to PyPI. It is the foundation for a retrieval
-> release-check platform with FAISS, Qdrant, pgvector, Pinecone and Weaviate connectors,
-> local relevance labelling, experiments, and a hosted control plane. Evaluation executes
-> on your infrastructure; the FAISS debugger provides deeper index inspection.
+> distributed privately and not published to PyPI.
 
-Compare baseline and candidate retrieval on a versioned dataset, produce a report with
-query-level evidence, and enforce quality and latency policies in CI. Human relevance
-labels measure answer relevance; exact references measure ANN approximation separately.
+Vectraudit tells you whether a change to your retrieval system made it better or worse,
+and why. It measures baseline and candidate retrieval on the same versioned, labelled
+questions. It traces where each relevant document was lost and checks permission and
+no-answer behavior. Every decision is backed by query-level evidence. Evaluation runs on
+your infrastructure; only run files are uploaded, and only if you choose to.
 
-The [retrieval engineering workbench](docs/retrieval-workbench.md) adds complete Python and
-HTTP pipeline evaluation, stage traces, no-answer and permission assertions, bounded
-optimization with held-out validation, benchmark maintenance and scheduled monitoring.
-Start the runnable local example:
+There are three ways to use it:
 
-```bash
-vectraudit workbench run examples/workbench/manifest.json --out workbench-runs
-vectraudit workbench serve workbench-runs
-```
+| | For | Start with |
+|---|---|---|
+| **[Retrieval workbench](#retrieval-workbench)** | Building a benchmark, evaluating a whole pipeline, comparing a fix in the browser | `vectraudit workbench serve` |
+| **[Release checks](#release-checks)** | Blocking regressions in CI on FAISS, Qdrant, pgvector, Pinecone or Weaviate | `vectraudit init` |
+| **[FAISS index debugger](#faiss-index-debugger)** | Explaining missed neighbours, quantization loss and recall vs latency inside one index | `vectraudit serve INDEX` |
 
-![Local retrieval workbench with measured metrics and stage document traces](docs/screenshots/workbench.png)
+Results can also go to the [hosted control plane](docs/cloud-operations.md) for pinned
+baselines, history, reports and pull-request checks.
 
-Start with [your first release check](docs/first-check.md). If you have no labels, use the
-[local labelling assistant](docs/labelling.md). Before recording a run, inspect your setup:
-
-```bash
-vectraudit doctor --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --policy retrieval/policy.json
-```
-
-Doctor runs offline and never loads an embedding model or opens a database connection.
-See [setup diagnostics](docs/doctor.md) for text-only queries and CI usage.
-
-The local FAISS debugger also explains missed neighbours, quantization loss, cluster
-imbalance, and the recall-versus-latency tradeoff inside an index.
-
-![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](docs/screenshots/query-explorer.png)
-
-## Quick start
+## Install
 
 Install a wheel from a private release (see [docs/RELEASING.md](docs/RELEASING.md)), or
 from a checkout with `uv sync --all-extras` and prefix the commands below with `uv run`:
 
 ```bash
 pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
-vectraudit demo                       # builds a real RAG demo once (~1 min), opens the UI
-vectraudit serve my.index --vectors vectors.npy --meta chunks.jsonl   # your own index
 ```
 
-`vectraudit demo` downloads 12,000 public passages, embeds them with `all-MiniLM-L6-v2` and
-builds IVF-Flat, IVF-PQ and HNSW indexes. Type a question and see which true neighbours
-the index missed, and why.
+Extras install only the backends you use: `[faiss-cpu]`, `[qdrant]`, `[pgvector]`, `[weaviate]`.
+Pinecone needs no extra. `[text]` adds sentence-transformers for text queries, and `[cloud]`
+adds the hosted control plane's dependencies. `[all]` includes everything except the
+optional LLM labelling helper (`[label-llm]`).
 
-Only need FAISS support? The `[faiss-cpu]` extra is enough; `[all]` adds text queries
-(sentence-transformers), UMAP and Parquet metadata. Conda or GPU users with FAISS already
-installed can install the wheel without extras.
+## Retrieval workbench
+
+Test the whole pipeline, not just the index: query rewriting, hybrid retrieval, filters,
+rerankers and permissions. The workbench runs locally and opens on a guided workflow:
+
+```bash
+vectraudit workbench serve workbench-runs   # opens http://127.0.0.1:8766
+```
+
+1. **Connect a pipeline:** the built-in BM25/hybrid baseline over a JSONL corpus, or
+   Python and HTTP adapters registered at startup with `--manifest pipelines.json`.
+2. **Build a benchmark:** questions, relevance grades, explicit no-answer judgments, tenant
+   context, filters, forbidden documents, cohort tags and an exploratory/held-out split.
+   No JSON files to edit by hand.
+3. **Evaluate and inspect:** a cancellable local run records each stage's results.
+   Follow any document through every stage to the one where it was lost.
+4. **Compare a fix:** run a candidate configuration, get a release verdict, and step
+   through both runs' traces side by side.
+
+Use **Use starter example** for a first run in under a minute. Held-out queries stay out of
+exploratory runs and need explicit confirmation, so tuning doesn't contaminate them.
+
+![Guided workflow comparing a baseline and a reranked candidate with side-by-side stage traces](docs/screenshots/guided-workflow.png)
+
+The same engine runs from the command line for automation: bounded optimization with one
+held-out validation, benchmark audits (duplicates, missing categories, judgment queues)
+and scheduled monitoring against a frozen baseline.
+
+```bash
+vectraudit workbench run examples/workbench/manifest.json --out workbench-runs
+vectraudit workbench optimize examples/workbench/manifest.json --out workbench-runs/optimization.json
+vectraudit workbench benchmark examples/workbench/queries.jsonl --runs workbench-runs
+vectraudit workbench monitor manifest.json baseline.run.json
+```
+
+See the [workbench guide](docs/retrieval-workbench.md) for adapter manifests, stage
+evidence, no-answer and permission assertions, and data-handling boundaries.
 
 ## Release checks
 
@@ -66,143 +82,83 @@ Measure a baseline and a candidate retrieval setup on the same labelled queries,
 decide: pass, fail, error or not comparable.
 
 ```bash
+vectraudit init --backend qdrant          # or faiss, pgvector, pinecone, weaviate
+vectraudit doctor --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --policy retrieval/policy.json
 vectraudit record --connection main.json --dataset dataset.jsonl --out baseline.json --label main
 vectraudit record --connection pr.json   --dataset dataset.jsonl --out candidate.json --label pr-42
 vectraudit check baseline.json candidate.json --policy policy.json --html report.html
 ```
 
-`check` exits 0 (pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job
-summary, and the HTML report lists the regressed queries with the ids they lost. Semantic
-metrics (recall, precision, MRR, nDCG) need relevance labels; ANN recall needs an exact
-reference; neither is ever substituted for the other. Failing checks explain themselves:
-each finding is marked verified, supported or hypothesis, with the facts behind it.
+`init` scaffolds a connection, policy, query sheet and GitHub workflow. `doctor` inspects
+the setup offline without loading a model or opening a database connection. `check` exits 0
+(pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job summary, and the
+HTML report lists the regressed queries with the ids they lost.
 
-- [Paid-pilot launch readiness](docs/launch-readiness.md): validation and acceptance evidence
-- [Your first release check in 15 minutes](docs/first-check.md) (`vectraudit init`)
-- [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
-- [Experiments](docs/experiments.md): pick an embedding model, chunking and index on your
-  own labelled queries before release checks guard it
-- [Case study: choosing an embedding model and chunk size](docs/case-study-experiment.md)
+Semantic metrics (recall, precision, MRR, nDCG) need relevance labels; ANN recall needs an
+exact reference; neither is ever substituted for the other. Failing checks explain
+themselves: each finding is marked verified, supported or hypothesis, with the facts behind
+it. Credentials are referenced by environment variable and never written into config files.
+
+| Backend | Connector | Extra |
+|---|---|---|
+| FAISS | index file | `[faiss-cpu]` |
+| Qdrant | collection | `[qdrant]` |
+| pgvector | table and columns in PostgreSQL | `[pgvector]` |
+| Pinecone | index over HTTPS | none |
+| Weaviate | collection | `[weaviate]` |
+
+No labels yet? The [local labelling assistant](docs/labelling.md) (`vectraudit label`)
+pools candidate documents from your questions and source corpus, then supports blind
+second passes, agreement and reviewer resolution before export. Choosing a setup
+before you guard it? [Experiments](docs/experiments.md) (`vectraudit experiment`) compare
+embedding models, chunkings and indexes on one labelled set.
+
+- [Your first release check in 15 minutes](docs/first-check.md)
 - [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
+- [Setup diagnostics](docs/doctor.md): `vectraudit doctor` for text-only queries and CI
 - [Pull-request workflow](examples/github/retrieval-check.yml) with check runs and comments
-- [Running Vectraudit Cloud](docs/cloud-operations.md): hosted baselines, history,
-  reports and the dashboard (`vectraudit record --upload`, `check cloud:main --upload`)
+- [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
+- [Case study: choosing an embedding model and chunk size](docs/case-study-experiment.md)
 
-## From Python and Jupyter
+## FAISS index debugger
 
-```python
-import vectraudit
+For FAISS users, a local UI explains what happens inside one index: which true neighbours
+the search missed and why, how much quantization costs, how balanced the lists are, and the
+cheapest setting that reaches your recall target.
 
-viewer = vectraudit.launch(index, vectors=xb, metadata=chunks)  # any faiss.Index
-viewer  # in a notebook: the UI appears inline; elsewhere your browser opens
-viewer.stop()
+```bash
+vectraudit demo                       # builds a real RAG demo once (~1 min), opens the UI
+vectraudit serve my.index --vectors vectors.npy --meta chunks.jsonl
 ```
 
-`metadata` can be a list of dicts, a DataFrame or a `.jsonl`/`.csv`/`.parquet` file with an
-`id` column. `embedder` can be any `str -> vector` function. It works in JupyterLab, VS Code
-notebooks and Colab (detected automatically); see [Jupyter notes](docs/jupyter.md).
+`vectraudit demo` downloads 12,000 public passages, embeds them with `all-MiniLM-L6-v2` and
+builds IVF-Flat, IVF-PQ and HNSW indexes. Type a question and see which true neighbours
+the index missed, and why.
 
-The same analyses are available without the UI:
-
-```python
-report = viewer.session.query(id=42, k=10, nprobe=4)
-report.recall, report.ivf_trace.min_nprobe_for_all
-```
-
-## What's inside
+![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](docs/screenshots/query-explorer.png)
 
 | View | What it shows |
 |---|---|
-| **Query explorer** | Search by text, stored id or vector. Compares with exact ground truth and gives a reason for every missed neighbour: *cell not probed*, *quantization*, *transform* (PCA/OPQ), or *ranked out*, plus the smallest nprobe that finds them all. Shareable URLs, CSV/JSON export. |
-| **Tuner** | Recall@k and latency across nprobe or efSearch, the cheapest value for your target recall (optionally with 95% confidence), per-query recall and the worst queries (one click to explain each), suggested next steps backed by the measurements, and a copy-paste snippet to apply it. |
-| **Compare** | Two indexes over the same vectors (say IVF-Flat vs IVF-PQ vs HNSW) on identical queries: recall with intervals, mean/p95 latency, serialized size, and which queries' neighbours changed. Start with `--compare OTHER.index`. |
-| **HNSW graph** | The layers of an HNSW graph and an animated, step-by-step replay of the search, showing which true neighbours were never reached. |
-| **Quantization** | How far PQ/SQ codes are from your raw vectors, the compression ratio, and how much they distort distances between near neighbours (the part that decides ranking). |
-| **Overview** | Inverted-list sizes, imbalance factor with a plain-English verdict, largest lists. |
-| **Cluster map** | Stored vectors projected with PCA or UMAP (2D/3D), with IVF centroids; click a list to read its chunks. |
-| **Relevance** | Labelled judgements against your held-out queries: recall, MRR and nDCG@k before and after exact reranking, worst queries first. See [below](#labelled-relevance-and-reranking). |
-| **Run history** | Finished sweeps, comparisons and evaluations kept across restarts; rename, download, or diff two saved sweeps. |
-
-![Animated HNSW search: greedy descent through the upper layers, then candidate expansion on level 0](docs/screenshots/hnsw-search.png)
+| **Query explorer** | Search by text, stored id or vector. Compares with exact ground truth and gives a reason for every missed neighbour: *cell not probed*, *quantization*, *transform* (PCA/OPQ), or *ranked out*, plus the smallest nprobe that finds them all. |
+| **Tuner** | Recall@k and latency across nprobe or efSearch, the cheapest value for your target recall, the worst queries, and suggested next steps backed by the measurements. |
+| **Compare** | Two indexes over the same vectors on identical queries: recall with intervals, mean/p95 latency, serialized size, and which queries' neighbours changed. |
+| **HNSW graph** | The layers of an HNSW graph and an animated, step-by-step replay of the search. |
+| **Quantization** | How far PQ/SQ codes are from your raw vectors and how much they distort near-neighbour distances. |
+| **Overview** | Inverted-list sizes and imbalance, with a **Diagnose my index** guide. |
+| **Cluster map** | Stored vectors projected with PCA or UMAP (2D/3D), with IVF centroids. |
+| **Relevance** | Recall, MRR and nDCG@k from labelled judgements, before and after exact reranking. |
+| **Run history** | Saved sweeps, comparisons and evaluations kept across restarts. |
 
 <table>
 <tr>
 <td><img alt="Tuner: no nprobe reaches 0.95 recall on IVF-PQ; the suggested next step explains that compression caps recall near 0.62 and to re-rank with exact distances" src="docs/screenshots/tuner.png"></td>
-<td><img alt="Quantization: PQ error, compression and distance fidelity" src="docs/screenshots/quantization.png"></td>
+<td><img alt="Animated HNSW search: greedy descent through the upper layers, then candidate expansion on level 0" src="docs/screenshots/hnsw-search.png"></td>
 </tr>
 <tr>
+<td><img alt="Quantization: PQ error, compression and distance fidelity" src="docs/screenshots/quantization.png"></td>
 <td><img alt="Cluster map with one inverted list selected" src="docs/screenshots/cluster-map.png"></td>
-<td><img alt="Overview: list balance and sizes" src="docs/screenshots/overview.png"></td>
 </tr>
 </table>
-
-## Inputs
-
-| Input | Required | Formats | Used for |
-|---|---|---|---|
-| FAISS index | yes | index file or in-memory `faiss.Index` | everything |
-| Raw vectors | recommended | `.npy` float32, n × d (row *i* = id *i*, or use `--ids`) | exact ground truth, quantization error |
-| Ids | optional | `.npy` int64 | when row order isn't the id |
-| Metadata | optional | `.jsonl` / `.csv` / `.parquet` with an `id` column (plus e.g. `text`, `title`) | reading results as text |
-| Embedder | optional | sentence-transformers model name, or a Python callable | text queries |
-| Query vectors | optional | `.npy` | sweeps on your own queries |
-
-Without raw vectors, vectraudit reconstructs them from the index; the UI then warns that
-ground truth is computed on reconstructed vectors, so PQ/SQ error isn't measured.
-
-## Labelled relevance and reranking
-
-Use held-out query vectors and human relevance judgements to measure whether retrieved
-chunks answer the question. Create a JSONL file with one entry per query row:
-
-```json
-{"row": 0, "relevant": {"42": 2, "77": 1}}
-{"row": 1, "relevant": {"105": 1}}
-```
-
-Chunk ids are decimal strings; grades are finite non-negative numbers. Every query needs
-at least one positive judgement, and every labelled chunk must exist in the corpus.
-Unjudged chunks count as non-relevant. Recall@k uses all positively labelled chunks as its
-denominator; MRR@k uses the first relevant hit; nDCG@k uses **linear graded gains**.
-The summary is the arithmetic mean across queries, so each query has equal weight.
-Incomplete judgements can underestimate relevance. These metrics are separate from ANN recall.
-
-```bash
-vectraudit evaluate index.faiss --vectors vectors.npy --queries queries.npy \
-  --labels judgements.jsonl --k 10 --candidates 100 --mmap --json > relevance.json
-```
-
-`--candidates` additionally retrieves a larger candidate pool and reranks it using exact
-raw-vector distances. JSON includes both sets of metrics and per-query results; ids are
-strings to preserve int64 precision. Timings are single-query observations, not benchmark
-estimates. The Python equivalents are `core.load_judgements`, `core.evaluate_relevance`,
-and `core.relevance_metrics`.
-
-In **Query explorer**, set **Rerank candidates** to at least k to compare the original
-search with candidate retrieval plus exact reranking. Raw vectors are required. The
-experiment shows both result tables, recall and latency; settings survive shared links,
-and results can be exported. Reranking cannot recover neighbours outside the candidate set.
-Python users can call `viewer.session.query(id=42, k=10, candidates=100)`.
-
-The same evaluation runs in the UI: start with `--vectors` and `--queries`, open
-**Relevance**, and load (or paste) the judgements JSONL. It shows recall, MRR and nDCG@k
-before and after optional exact reranking, every query's scores (worst first, or most
-helped by reranking) with a link that explains the query in the Query Explorer, and CSV or
-JSON exports. The web view takes up to 10,000 queries and 5 MB of judgements; use
-`vectraudit evaluate` for more.
-
-**Run history** keeps the newest 100 finished sweeps, index comparisons and relevance
-evaluations in `~/.cache/vectraudit/history/` (or `$VECTRAUDIT_CACHE_DIR/history/`), so they
-survive restarts. Rename, download or delete them, or compare two saved sweeps with the same
-query-set and corpus checks as `vectraudit runs diff`. Saved sweeps record the decision for a
-0.95 recall target; use **Save run** in the Tuner for your own target and latency budget.
-`vectraudit cache clear` leaves history alone. It is off in `--demo-mode` and for sessions
-created with `disk_cache=False`.
-
-The Overview's **Diagnose my index** guide connects input checks, representative queries,
-tuning, and baseline verification.
-
-## Supported indexes
 
 | Index | Support |
 |---|---|
@@ -212,163 +168,28 @@ tuning, and baseline verification.
 | Wrappers: `IndexIDMap`/`IDMap2`, `IndexPreTransform` (PCA, OPQ), `IndexRefine` | unwrapped transparently; ids stay yours |
 | Binary, GPU, IVF FastScan, others | basic stats only (convert GPU indexes with `faiss.index_gpu_to_cpu`) |
 
-## Command line
+From Python or Jupyter (JupyterLab, VS Code notebooks and Colab; see [Jupyter notes](docs/jupyter.md)):
 
-```text
-vectraudit serve INDEX [--vectors v.npy] [--ids ids.npy] [--meta chunks.jsonl]
-                      [--embedder all-MiniLM-L6-v2] [--queries q.npy]
-                      [--host 127.0.0.1] [--port 8765] [--no-browser] [--max-points 50000]
-                      [--compare other.index ...] [--mmap]
-vectraudit info INDEX                          # kind, wrappers, parameters
-vectraudit sweep INDEX --vectors v.npy [--param nprobe] [--target 0.95]
-                      [--max-p95-ms 10] [--repeats 3] [--seed 0] [--json]
-                      [--save run.json] [--baseline earlier.json]
-vectraudit runs diff EARLIER.json LATER.json   # regressions between saved runs
-vectraudit compare LEFT RIGHT --vectors v.npy [--queries q.npy] [--ids ids.npy]
-                      [--left-nprobe 4] [--right-ef-search 64] [--json]
-vectraudit evaluate INDEX --vectors v.npy --queries q.npy --labels judgements.jsonl
-                      [--k 10] [--candidates 100] [--json]   # labelled relevance
-vectraudit demo [--index ivf_pq|ivf_flat|hnsw]
-vectraudit cache info | clear [--older-than-days 30] [--max-mb 500]
+```python
+import vectraudit
+
+viewer = vectraudit.launch(index, vectors=xb, metadata=chunks)  # any faiss.Index
+report = viewer.session.query(id=42, k=10, nprobe=4)
+report.recall, report.ivf_trace.min_nprobe_for_all
 ```
 
-`vectraudit sweep` exits with code 2 when no value reaches `--target` (within the p95 budget
-of `--max-p95-ms`, if given), 3 when `--baseline` shows a regression, and 4 when `--baseline`
-couldn't be compared at all (different query sets, no overlapping values, ...) &mdash; that is
-not a pass, and CI should treat it as a failure, not silently skip the check. `vectraudit runs
-diff` uses the same three failure codes.
+The [FAISS debugger reference](docs/faiss-debugger.md) covers inputs, labelled relevance,
+every command-line option (`serve`, `sweep`, `compare`, `evaluate`, `runs diff`, `cache`),
+saved baselines, measurement methodology, caching and limitations.
 
-### Saved runs and baselines
+## Hosted service and deployment
 
-`vectraudit sweep --save run.json` (or **Save run** in the Tuner) keeps a sweep as JSON: the
-index's sha1, parameters and distance metric, the query set's fingerprint, a fingerprint of
-the raw `--vectors` corpus ground truth was computed on, the settings, the environment,
-every measurement, the recommendation for your target, and the worst queries. Compare a
-later sweep with it using `--baseline run.json`, the Tuner's **Compare with a saved run**, or
-`vectraudit runs diff`. A setting regresses when its recall drops by more than
-`--max-recall-drop` (0.01), or when its p95 grows by more than `--max-p95-increase` (20%)
-*and* by more than `--min-p95-increase-ms` (0.05 ms): sub-millisecond timings vary between
-runs, and the floor keeps that noise from failing CI.
-
-Recall is compared only when both runs used the same k, parameter, query set, metric and
-ground-truth corpus; latency only when both were measured with the same FAISS version and
-machine. Otherwise the comparison says why, and reports itself as not comparable rather than
-reporting a false "no regressions". A saved run is validated on load and before it's written:
-every recall and latency number must be finite and in range, point values must be unique, and
-the identifying fingerprints must be present, so a corrupted or hand-edited file is rejected
-rather than silently compared against.
-
-```bash
-vectraudit sweep index.faiss --vectors v.npy --queries eval.npy --save baseline.json
-# ... rebuild or retrain the index ...
-vectraudit sweep new.faiss --vectors v.npy --queries eval.npy --baseline baseline.json
-```
-
-## Reproducible tuning and index comparison
-
-Sweeps warm up each setting, then time each query three times on one FAISS thread.
-Use `--repeats` and `--seed` (also available in the Tuner) to control the measurement.
-JSON exports include the query-set SHA-256, sampling seed, timing seed, repetition count,
-and Python/NumPy/FAISS and platform versions. Supplied `--queries` use the first
-`--n-queries` rows; the seed controls sampling only when queries are drawn from stored vectors.
-
-Each setting also reports an approximate 95% interval for mean recall, the exact per-query
-recall distribution (so "how many queries fall below the target" is known, not just the
-mean) and its lowest-recall queries. The recommendation is the *smallest* value meeting the
-target; when a larger value happens to measure faster, it is reported separately as the
-fastest measured setting, since that gap is usually timing noise. A p95 latency budget
-(`--max-p95-ms`, or the Tuner's budget field) adds a second constraint. When the target is
-reachable but not within the budget, the result says so, with the setting recall needs and
-the best recall the budget allows, instead of reporting "not reached".
-
-### Suggested next steps
-
-The Tuner, `vectraudit sweep` and `GET /api/sweep/{job_id}/advice?target=0.95` turn a sweep
-into next steps, each with the measurements behind it. For IVF sweeps, every setting also
-reports the share of true neighbours in the probed lists. That share caps recall, so the gap
-between them tells the two failure modes apart:
-
-- **Neighbours in lists that weren't probed**: raise nprobe. The suggestion names the
-  nprobe at which the target share of neighbours is within reach and offers that sweep.
-- **Neighbours in probed lists but ranked out**: more probing won't help. PQ/SQ codes, a
-  PCA transform, or (for IVF-Flat) vectors that differ from what was indexed are named as
-  the cause, with a fix such as re-ranking with exact distances.
-
-HNSW sweeps suggest larger efSearch values while recall still rises fast enough to reach the
-target, and a denser graph when it has levelled off. At the recommended setting, a tail of
-queries finding fewer than half their neighbours, and uneven IVF lists, are flagged too.
-
-Sampled stored vectors make convenient queries, but they are not your users' queries. Pass
-held-out queries with `--queries` before trusting a recommendation; the Tuner and Compare
-views show a "How far to trust this" checklist. Recall is agreement with exact search on
-the same embeddings. It is not answer quality: if the exact neighbours are poor answers, the
-embedding model or chunking is at fault, not the index.
-
-```bash
-vectraudit compare exact.index compressed.index --vectors vectors.npy \
-  --queries queries.npy --right-nprobe 16 --repeats 5 --seed 42 --json > comparison.json
-```
-
-Comparison uses the same raw ground truth and queries for both indexes, reports recall,
-mean/p95 latency and serialized index size, and lists neighbours unique to either index
-for each query. Serialized size is not process RAM. Both indexes must use the same metric,
-input dimension and user IDs. Python users can call `vectraudit.core.compare_indexes` with
-loaded indexes, a `VectorSource`, and a `QuerySet`.
-
-To compare in the UI, pass the other indexes to `serve` (or `launch(..., compare=[...])`);
-they must be built from the same `--vectors`:
-
-```bash
-vectraudit serve ivf_flat.index --vectors vectors.npy --compare ivf_pq.index --compare hnsw.index
-```
-
-The **Compare** view runs the same paired measurement as `vectraudit compare`, with each
-index's own nprobe/efSearch, and links changed queries to the Query Explorer.
-
-Raw-vector IDs are checked against index IDs before analysis. Supply `--ids` for custom
-IDs. The API uses numeric IDs through `2**53 - 1` and decimal strings above that limit,
-preserving the full non-negative int64 range in browser inputs, links and exports.
-
-Background work uses at most two workers and eight queued jobs per session; a full queue
-returns `429 JOB_CAPACITY`. The Tuner's **Cancel sweep** button (or
-`DELETE /api/sweep/{job_id}`) stops queued work immediately and running work at its next
-checkpoint. A native FAISS call already running must finish first. Sessions retain up to
-32 completed jobs for one hour, with expired entries removed on the next access; query and
-ground-truth caches are limited to four entries and 64 MiB. An evicted sweep can be rerun.
-
-Projections are cached on disk under `~/.cache/vectraudit/<index sha1>/` (or
-`$VECTRAUDIT_CACHE_DIR`). The cache only saves time: if it can't be written (a read-only home
-or a full disk), the projection is still shown, with a warning in the Cluster map and the
-server log. `vectraudit cache info` shows usage per index. `vectraudit cache clear` removes
-everything, or only entries unused for `--older-than-days`, or least recently used entries
-beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the disk cache.
-
-## How it compares
-
-- **[Feder](https://github.com/zilliztech/feder)** (Zilliz) visualises FAISS IVF-Flat and
-  hnswlib indexes in JavaScript and is great for learning how they search. vectraudit does
-  all FAISS work in Python, supports PQ/SQ, HNSW and wrapper indexes, and focuses on
-  debugging: exact ground truth, per-neighbour miss reasons, recall/latency tuning and
-  chunk text.
-- **Embedding projectors** (TensorFlow Projector, Nomic Atlas, Renumics Spotlight, Arize
-  Phoenix) visualise embeddings. vectraudit visualises the *index*: what it probes, stores and
-  loses.
-
-## Limitations
-
-- CPU FAISS only; convert GPU indexes first.
-- The HNSW trace is reconstructed in Python. It matches FAISS's own results in our tests
-  (100% overlap across efSearch 4–256, L2 and IP), but FAISS internals can change.
-- Memory is roughly index size + n × d × 4 bytes (about 0.6 GB for 1M × 64, measured);
-  see [performance and memory](docs/performance.md).
-- A local, single-user tool: no authentication. Use `--demo-mode` for a read-only shared
-  deployment ([Hugging Face Space setup](deploy/hf-space/README.md)).
-
-## Roadmap
-
-- IVF-HNSW (HNSW coarse quantizer) and IVF FastScan support
-- Load FAISS stores directly from LangChain / LlamaIndex save folders
-- VS Code extension
+- [Running Vectraudit Cloud](docs/cloud-operations.md): hosted baselines, history, reports
+  and the dashboard (`vectraudit record --upload`, `check cloud:main --upload`)
+- [Enterprise deployment](docs/enterprise-deployment.md): local, private-runner and hosted
+  profiles, SSO, roles and recovery
+- [Threat model](docs/threat-model.md) and [incident response](docs/incident-response.md)
+- [Launch readiness](docs/launch-readiness.md): validation and pilot acceptance evidence
 
 ## Development
 
@@ -387,7 +208,8 @@ After adding or upgrading a frontend runtime dependency, run
 `node scripts/third-party-notices.mjs` in `frontend/` to refresh
 `src/vectraudit/THIRD_PARTY_NOTICES.txt`, which ships in the wheel (CI fails on drift).
 Browser tests run on Chromium, Firefox and WebKit: `npx playwright install chromium firefox
-webkit`, build the UI, then `npm run e2e` in `frontend/`.
+webkit`, build the UI, then `npm run e2e` in `frontend/`. The workbench journeys run with
+`node scripts/workbench_smoke.mjs` and `node scripts/guided_smoke.mjs`.
 Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
