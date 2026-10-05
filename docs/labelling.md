@@ -36,16 +36,23 @@ retriever. Each run must be complete and contain exactly the question IDs. Verif
 IDs refer to the same question texts; ordinary run files do not store text for comparison.
 
 Grades are **0 not relevant, 1 partly, 2 relevant, 3 perfect**. A click autosaves a human
-decision atomically. Focus a passage and press `0`–`3`, or `S` to skip. Select passage text
+decision atomically with a cross-process lock. Focus a passage and press `0`–`3`, or `S` to skip. Select passage text
 to populate optional start/end offsets, then choose a positive grade. Offsets are Unicode
 character positions, end exclusive, on the full source document. You may enter them
-manually. Reopening a task restores decisions; selecting a new grade replaces your prior
-judgment. Skip is not grade zero and can be revisited.
+manually. Reopening restores decisions and saved spans, and resumes your first unfinished question.
+Changing a grade preserves its saved span; use Clear span to remove it. Grade zero and
+skip clear positive spans. Stale tabs receive a conflict; reload before saving. Identical
+retries preserve reviewer decisions. Dataset status shows label coverage and offers a
+local dataset download when ready. Partial exports are allowed but clearly disclosed.
 
 ## Review and agreement
 
-Stop the server before CLI commands that modify the task. Only one server process or
-writer may use a task file at a time. Several browser tabs can use the same local server.
+CLI transactions and browser writes use the same OS lock, so tabs and local processes
+can safely update one task. Long-running suggestions refuse to save if the task changes
+meanwhile. Python save_task also rejects stale snapshots; update_task(path, callback)
+provides a short transaction. A private companion TASK.lock contains no document text.
+The OS releases the lock on process exit; do not remove the file while writers run.
+Delete it with the task after stopping all writers. Network filesystem locking is unverified.
 Names identify annotators, not authenticated accounts; this is a trusted local workflow.
 
 ```bash
@@ -76,9 +83,13 @@ agreement and suggestion provenance. The dataset's normal content hash is its ve
 no existing dataset hashing rules changed. Preserve earlier exports for comparison:
 
 ```bash
+vectraudit label status task.json --json
 vectraudit label export task.json --out dataset-v2.jsonl
 vectraudit dataset diff dataset-v1.jsonl dataset-v2.jsonl
 ```
+
+Existing CLI exports are preserved unless you pass --force; use a new filename for each
+frozen version. Browser downloads use dataset.jsonl and your browser controls its location.
 
 Only human-decided labels are exported. **Unjudged pooled documents remain unjudged; the
 metric contract counts missing relevance as non-relevant when evaluating a labelled
