@@ -80,7 +80,8 @@ class HashingEmbedder:
                 sign = 1.0 if h & 1 else -1.0
                 out[row, (h >> 1) % self.dim] += sign * (1.0 + math.log(n))
         norms = np.linalg.norm(out, axis=1, keepdims=True)
-        return np.divide(out, norms, out=np.zeros_like(out), where=norms > 0)
+        normalized: FloatArray = np.divide(out, norms, out=np.zeros_like(out), where=norms > 0)
+        return normalized
 
     def embed_documents(self, texts: Sequence[str]) -> FloatArray:
         return self._embed(texts)

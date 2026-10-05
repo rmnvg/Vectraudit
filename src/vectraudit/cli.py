@@ -930,6 +930,10 @@ from vectraudit.release_cli import check, cloud_app, dataset_app, init, record  
 
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(cloud_app, name="cloud")
+
+from vectraudit.experiments_cli import experiment_app  # noqa: E402
+
+app.add_typer(experiment_app, name="experiment")
 app.command()(record)
 app.command()(check)
 app.command()(init)
