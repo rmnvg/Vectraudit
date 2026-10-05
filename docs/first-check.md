@@ -54,6 +54,17 @@ embedding and record commands above/below. See [labelling.md](labelling.md) for 
 runs, second-pass review, privacy and versioning. Labels use source-document IDs; the
 experiment runner maps chunks to sources automatically.
 
+### Check the setup before recording
+
+```bash
+vectraudit doctor --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --policy retrieval/policy.json
+```
+
+For text-only questions, add `--embedder YOUR-EMBEDDING-MODEL`. Doctor stays offline:
+it checks installed dependencies and input readiness, while `record` verifies actual
+backend access and model execution. Fix errors before running. Warnings are advisory;
+`--strict` makes them fail CI. See [doctor.md](doctor.md).
+
 ## 4. Record and check (3 minutes)
 
 ```bash

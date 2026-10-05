@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from vectraudit.connectors.base import Connector, ConnectorError, ErrorCode, ParamValue
 
@@ -132,6 +133,107 @@ def resolve_path(cfg: ConnectionConfig, value: str) -> Path:
 def _optional_path(cfg: ConnectionConfig, key: str) -> Path | None:
     value = option(cfg.options, key, str)
     return None if value is None else resolve_path(cfg, value)
+
+
+# Shared by offline doctor and runtime opens: structural checks need no backend client.
+_OPTION_TYPES: dict[str, dict[str, type]] = {
+    "faiss": {"index": str, "vectors": str, "ids": str, "reconstructed_reference": bool},
+    "qdrant": {
+        "url": str,
+        "path": str,
+        "api_key_env": str,
+        "collection": str,
+        "vector_name": str,
+        "timeout_s": int,
+    },
+    "pgvector": {
+        "dsn_env": str,
+        "table": str,
+        "id_column": str,
+        "vector_column": str,
+        "distance": str,
+        "filter_columns": list,
+        "statement_timeout_ms": int,
+        "connect_timeout_s": int,
+    },
+    "pinecone": {
+        "index": str,
+        "namespace": str,
+        "host": str,
+        "api_key_env": str,
+        "control_plane_url": str,
+        "timeout_s": int,
+    },
+    "weaviate": {
+        "url": str,
+        "collection": str,
+        "api_key_env": str,
+        "id_property": str,
+        "vector_name": str,
+        "tenant": str,
+        "grpc_url": str,
+        "timeout_s": int,
+    },
+}
+_REQUIRED = {
+    "faiss": ("index",),
+    "qdrant": ("collection",),
+    "pgvector": ("dsn_env", "table"),
+    "pinecone": ("api_key_env", "index"),
+    "weaviate": ("url", "collection"),
+}
+
+
+def validate_connection(cfg: ConnectionConfig) -> None:
+    """Validate backend options offline, without accessing files, secrets or servers."""
+    if cfg.backend not in _OPTION_TYPES:
+        raise ConnectorError(ErrorCode.CONFIG, "Unknown connection backend.")
+    known = _OPTION_TYPES[cfg.backend]
+    _reject_unknown(cfg, set(known))
+    for key in _REQUIRED[cfg.backend]:
+        if key.endswith("_env") and cfg.options.get(key) is None:
+            raise ConnectorError(
+                ErrorCode.CONFIG, f'Missing "{key}": the environment variable holding the secret.'
+            )
+    for key, kind in known.items():
+        value = (
+            require(cfg.options, key, kind)
+            if key in _REQUIRED[cfg.backend]
+            else option(cfg.options, key, kind)
+        )
+        if value is None:
+            continue
+        if kind is str and key != "namespace" and not value.strip():
+            raise ConnectorError(ErrorCode.CONFIG, f"{key} must not be empty.")
+        if kind is int and value < 1:
+            raise ConnectorError(ErrorCode.CONFIG, f"{key} must be >= 1.")
+        if kind is list and any(not isinstance(item, str) for item in value):
+            raise ConnectorError(ErrorCode.CONFIG, f"{key} must be a list of column names.")
+    if cfg.backend == "faiss" and cfg.options.get("ids") and not cfg.options.get("vectors"):
+        raise ConnectorError(ErrorCode.CONFIG, "ids needs vectors.")
+    if cfg.backend == "qdrant" and bool(cfg.options.get("url")) == bool(cfg.options.get("path")):
+        raise ConnectorError(
+            ErrorCode.CONFIG, 'Give the Qdrant connection either "url" or "path" (exactly one).'
+        )
+
+    for key in ("url", "grpc_url", "host", "control_plane_url"):
+        value = cfg.options.get(key)
+        if value is None:
+            continue
+        if cfg.backend in ("pinecone", "weaviate") and "://" not in value:
+            value = "https://" + value
+        try:
+            parts = urlsplit(value)
+            if parts.scheme not in ("http", "https") or not parts.hostname:
+                raise ValueError("Invalid address")
+            if parts.username is not None or parts.password is not None:
+                raise ConnectorError(
+                    ErrorCode.CONFIG,
+                    f"The {cfg.backend.title()} {key} must not contain credentials.",
+                )
+            _ = parts.port
+        except ValueError as exc:
+            raise ConnectorError(ErrorCode.CONFIG, f"Invalid {cfg.backend.title()} {key}.") from exc
 
 
 def _open_faiss(cfg: ConnectionConfig) -> Connector:
@@ -268,4 +370,5 @@ BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
 
 def open_connector(cfg: ConnectionConfig) -> Connector:
     """Connect to the configured backend."""
+    validate_connection(cfg)
     return BACKENDS[cfg.backend](cfg)

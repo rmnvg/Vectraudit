@@ -646,6 +646,27 @@ passes on Pinecone and Weaviate; unsupported capabilities are reported, never fa
 Full lint, format, both Python type checks and test gates precede each step commit;
 UI changes also require a headless Chrome visual check. Never push.
 
+### Phase 21: Paid-pilot launch readiness
+
+1. **Trustworthy verdicts.** Enforce policy minimums on measured query pairs per
+   quality metric, disclose sparse coverage and keep bootstrap memory bounded. Cohort
+   metrics below their own minimum are reported without judging.
+2. **Offline onboarding check.** `vectraudit doctor` inspects installation, local UI,
+   connection files, required secret presence, dataset labels/vectors and policy readiness
+   without opening a connector, loading a model or sending data. JSON output and strict
+   warning mode support CI; align the product introduction with implemented capabilities.
+3. **Safe, usable annotation.** Serialize task writes across processes, reject stale
+   saves, preserve saved spans, resume unfinished work, show label readiness and offer
+   reviewer resolution plus dataset download in the browser. Cover concurrent tabs,
+   conflicts, malformed forms and local-only operation.
+4. **Distribution and launch evidence.** Installed-wheel smoke coverage for onboarding
+   and labelling, repeatable browser regression checks and a paid-pilot readiness guide
+   distinguishing automated checks from customer, operating and commercial evidence.
+
+No new runtime dependencies, hosted corpus upload, deployment, push or merge. Work on
+`feat/launch-readiness` created with `--no-track`; verify it still has no upstream at the
+end. Full Python gates precede each step commit, with visual/browser checks for UI changes.
+
 ---
 
 ## 9. Testing strategy

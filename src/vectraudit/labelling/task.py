@@ -132,9 +132,9 @@ def atomic_write(path: Path, text: str) -> None:
 
 def save_task(task: Task, path: Path) -> None:
     """Validate and atomically save a task with its current content digest."""
-    Task.model_validate(task.model_dump())
-    task.sha256 = task.digest()
-    atomic_write(path, task.model_dump_json(indent=2) + "\n")
+    from vectraudit.labelling.storage import commit_task
+
+    commit_task(task, path)
 
 
 def load_task(path: Path) -> Task:

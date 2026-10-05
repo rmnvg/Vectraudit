@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from vectraudit.cli import app
 from vectraudit.experiments.corpus import Document, make_corpus
+from vectraudit.labelling.operations import revision
 from vectraudit.labelling.pooling import load_questions, pool
 from vectraudit.labelling.task import load_task, save_task
 
@@ -106,14 +107,21 @@ def test_local_ui_csrf_escape_save(inputs, tmp_path, monkeypatch):
     import re
 
     form["csrf"] = re.search(r'name="csrf" value="([^"]+)"', page.text)[1]
+    form["version"] = revision(task, task.queries[0].query_id, form["doc"], annotator="A")
     assert client.post("/judge", data=form).status_code == 200
     assert load_task(path).judgments[0].grade == 3
+    form["version"] = revision(
+        load_task(path), task.queries[0].query_id, form["doc"], annotator="A"
+    )
     form.update(start="0", end="99999")
     assert client.post("/judge", data=form).status_code == 400
     form.update(start="0", end="3")
     assert client.post("/judge", data=form).status_code == 200
     assert len(load_task(path).judgments) == 1
     assert load_task(path).judgments[0].end == 3
+    form["version"] = revision(
+        load_task(path), task.queries[0].query_id, form["doc"], annotator="A"
+    )
     form.update(start="", end="", grade="skip")
     assert client.post("/judge", data=form).status_code == 200
     assert load_task(path).judgments[0].grade is None
@@ -207,6 +215,9 @@ def test_suggestions_require_human_acceptance(inputs, tmp_path):
         "doc": task.queries[0].documents[0],
         "annotator": "A",
         "grade": "accept",
+        "version": revision(
+            task, task.queries[0].query_id, task.queries[0].documents[0], annotator="A"
+        ),
         "suggestion": "2",
         "judge": "fixture judge",
         "csrf": re.search(r'name="csrf" value="([^"]+)"', page.text)[1],
@@ -218,7 +229,7 @@ def test_suggestions_require_human_acceptance(inputs, tmp_path):
     assert "accepted_suggestions" in export_dataset(saved)
     suggest(saved, lambda q, d: 1, name="new judge")
     save_task(saved, path)
-    assert client.post("/judge", data=form).status_code == 400
+    assert client.post("/judge", data=form).status_code == 409
     assert suggestion_agreement(saved)["grade_agreement"] == 1
     with pytest.raises(ValueError, match="valid integer"):
         suggest(saved, lambda q, d: True, name="bad judge")
@@ -320,6 +331,7 @@ def test_forty_questions_to_experiment_and_check_offline(inputs, tmp_path, monke
                     "q": i,
                     "doc": q.documents[0],
                     "grade": 2,
+                    "version": revision(task, q.query_id, q.documents[0], annotator="Human"),
                 },
             ).status_code
             == 200

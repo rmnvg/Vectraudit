@@ -395,3 +395,70 @@ def test_tiny_latency_rises_are_noise() -> None:
     assert compare_runs(base, jitter, strict)["verdict"] == "fail"
     assert strict.latency.min_increase_ms == 0
     assert DEFAULT_POLICY.latency.min_increase_ms == 0.1
+
+
+def test_minimum_applies_to_measured_pairs_not_unlabelled_suite() -> None:
+    base = fake_run([1.0] * 40, ann=[1.0] * 40)
+    for q in base["queries"][2:]:
+        q["metrics"] = None
+    policy = parse_policy({"min_queries": 30, "metrics": {"ndcg": {"max_drop": 0.1}}})
+    result = compare_runs(base, copy.deepcopy(base), policy)
+    assert result["verdict"] == "not_comparable"
+    assert "2 measured query pairs" in reasons(result)
+    assert result["metrics"]["ndcg"]["n"] == 2
+    assert any("2/40" in warning for warning in result["warnings"])
+    ann_policy = parse_policy({"min_queries": 30, "metrics": {"ann_recall": {"min": 0.9}}})
+    assert compare_runs(base, copy.deepcopy(base), ann_policy)["verdict"] == "pass"
+
+
+def test_sparse_cohort_reports_without_judging() -> None:
+    base = fake_run([1.0] * 40, tags=[["faq"]] * 40, ann=[1.0] * 40)
+    cand = copy.deepcopy(base)
+    for b, c in zip(base["queries"][2:], cand["queries"][2:], strict=True):
+        b["metrics"] = c["metrics"] = None
+    for q in cand["queries"][:2]:
+        q["metrics"] = {m: 0.0 for m in ("recall", "precision", "mrr", "ndcg")}
+    policy = parse_policy(
+        {
+            "min_queries": 30,
+            "metrics": {"ann_recall": {"min": 0.9}},
+            "cohorts": {"min_queries": 10, "metrics": {"ndcg": {"max_drop": 0.1}}},
+        }
+    )
+    result = compare_runs(base, cand, policy)
+    assert result["verdict"] == "pass"
+    assert not result["cohorts"]["faq"]["judged"]
+    assert result["cohorts"]["faq"]["metrics"]["ndcg"]["n"] == 2
+    assert any("reported without judging" in warning for warning in result["warnings"])
+
+
+def test_regressed_count_cannot_use_sparse_primary_metric() -> None:
+    base = fake_run([1.0] * 40, ann=[1.0] * 40)
+    for q in base["queries"][2:]:
+        q["metrics"] = None
+    policy = parse_policy(
+        {
+            "min_queries": 30,
+            "metrics": {"ann_recall": {"min": 0.9}},
+            "primary_metric": "ndcg",
+            "max_regressed_queries": 10,
+        }
+    )
+    assert compare_runs(base, copy.deepcopy(base), policy)["verdict"] == "not_comparable"
+
+
+def test_batched_bootstrap_preserves_seeded_intervals(monkeypatch) -> None:
+    import numpy as np
+
+    import vectraudit.evaluation.compare as compare
+
+    monkeypatch.setattr(compare, "BOOTSTRAP_MAX_CELLS", 100)
+    values = np.linspace(0.0, 1.0, 40)
+    base = fake_run([0.0] * 40)
+    cand = fake_run(values.tolist())
+    seed, samples = 17, 101
+    idx = np.random.default_rng(seed).integers(0, 40, size=(samples, 40))
+    expected = np.percentile(values[idx].mean(axis=1), [2.5, 97.5])
+    stats = compare_runs(base, cand, seed=seed, n_bootstrap=samples)["metrics"]["recall"]
+    assert stats["ci_low"] == pytest.approx(expected[0])
+    assert stats["ci_high"] == pytest.approx(expected[1])

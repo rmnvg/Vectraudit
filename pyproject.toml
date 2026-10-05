@@ -1,7 +1,7 @@
 [project]
 name = "vectraudit"
 version = "0.1.0"
-description = "See inside your FAISS index: debug retrieval, tune recall."
+description = "Retrieval release checks, local relevance labelling and FAISS debugging."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]

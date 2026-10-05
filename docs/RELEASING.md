@@ -4,6 +4,20 @@ Vectraudit is distributed privately. Nothing is published to PyPI; release build
 attached to a GitHub release in this private repository, so only people with access to the
 repository can download them.
 
+## Branches and review
+
+Create development branches without inheriting the main branch's upstream:
+
+```bash
+git fetch origin main
+git switch --no-track -c feat/your-change origin/main
+git for-each-ref --format='%(refname:short) upstream=%(upstream)' refs/heads/feat/your-change
+```
+
+The upstream should be empty until the maintainer publishes the feature branch under its
+own matching name. Review the change before merging it. See [launch-readiness.md](launch-readiness.md)
+for pilot acceptance and operating evidence; successful CI alone does not establish them.
+
 ## Each release
 
 1. Update `version` in `pyproject.toml` and add a `## [x.y.z] - date` section to

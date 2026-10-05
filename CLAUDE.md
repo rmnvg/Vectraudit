@@ -53,5 +53,6 @@ uv build                          # wheel + sdist (build the frontend first)
 - FAISS is an optional extra (`vectraudit[faiss-cpu]`); import it lazily and raise a clear install hint on failure.
 - If the installed FAISS API differs from the plan, trust FAISS, adapt, and leave a short comment.
 - Don't add dependencies outside PLAN.md section 4 without asking. The product is proprietary (see `LICENSE`): new dependencies must have permissive licences (MIT, BSD, Apache-2.0, ISC); flag anything GPL/AGPL/LGPL, and MPL only as an unmodified dependency.
+- Create feature branches with `git switch --no-track -c BRANCH origin/main`. Verify the branch has no upstream before commits; never configure a feature branch to track `main`. The maintainer can later publish it with an explicit matching branch name.
 - One git commit per completed step, conventional messages (`feat:`, `fix:`, `test:`, `docs:`, `chore:`). Never push; the maintainer pushes.
 - Write tests alongside code; every public function in `vectraudit.core` gets a test.

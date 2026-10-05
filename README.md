@@ -1,22 +1,31 @@
 # Vectraudit
 
-**See inside your FAISS index: debug retrieval, tune recall.**
+**Catch retrieval regressions before you deploy.**
 
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
 
 > **Proprietary and confidential.** Vectraudit (formerly faissight) is a commercial product,
 > distributed privately and not published to PyPI. It is the foundation for a retrieval
-> release-check platform that will add Qdrant and pgvector support; this README documents the
-> current FAISS debugger.
+> release-check platform with FAISS, Qdrant, pgvector, Pinecone and Weaviate connectors,
+> local relevance labelling, experiments, and a hosted control plane. Evaluation executes
+> on your infrastructure; the FAISS debugger provides deeper index inspection.
 
-FAISS is the default vector index in countless RAG systems, but it has no UI. When retrieval
-goes wrong, vectraudit answers the questions you can't easily ask FAISS directly:
+Compare baseline and candidate retrieval on a versioned dataset, produce a report with
+query-level evidence, and enforce quality and latency policies in CI. Human relevance
+labels measure answer relevance; exact references measure ANN approximation separately.
 
-- Which cells did my query probe, and were the true nearest neighbours even in them?
-- Why did this irrelevant chunk rank first, and where did the relevant one go?
-- Is my IVF index badly imbalanced?
-- How much accuracy did PQ compression cost me?
-- Which `nprobe` / `efSearch` gives 95% recall at the lowest latency?
+Start with [your first release check](docs/first-check.md). If you have no labels, use the
+[local labelling assistant](docs/labelling.md). Before recording a run, inspect your setup:
+
+```bash
+vectraudit doctor --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --policy retrieval/policy.json
+```
+
+Doctor runs offline and never loads an embedding model or opens a database connection.
+See [setup diagnostics](docs/doctor.md) for text-only queries and CI usage.
+
+The local FAISS debugger also explains missed neighbours, quantization loss, cluster
+imbalance, and the recall-versus-latency tradeoff inside an index.
 
 ![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](docs/screenshots/query-explorer.png)
 
@@ -56,6 +65,7 @@ metrics (recall, precision, MRR, nDCG) need relevance labels; ANN recall needs a
 reference; neither is ever substituted for the other. Failing checks explain themselves:
 each finding is marked verified, supported or hypothesis, with the facts behind it.
 
+- [Paid-pilot launch readiness](docs/launch-readiness.md): validation and acceptance evidence
 - [Your first release check in 15 minutes](docs/first-check.md) (`vectraudit init`)
 - [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
 - [Experiments](docs/experiments.md): pick an embedding model, chunking and index on your
