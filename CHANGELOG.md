@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit dataset import --format beir|trec|ragas|deepeval` imports labelled
+  benchmarks teams already keep. Ragas/DeepEval reference passages given as text are
+  located in a `--corpus` file; unlocated and ambiguous passages are reported, never
+  guessed. JSON exports (LangSmith, Langfuse) import through dotted column paths.
+
 - Retrieval workbench: Python/HTTP pipeline adapters, DAG stage evidence, local BM25/vector
   fusion and phrase reranking, full-pipeline run artifacts and a standalone browser UI.
 - Explicit no-answer and tenant-context dataset assertions, forbidden-document release

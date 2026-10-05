@@ -76,6 +76,54 @@ def test_import_jsonl_and_errors(tmp_path) -> None:
         read_records(tmp_path / "bad.jsonl")
 
 
+def test_import_nested_json_export(tmp_path) -> None:
+    # The shape of a LangSmith or Langfuse dataset export: nested inputs and outputs.
+    export = {
+        "examples": [
+            {
+                "id": "ex-1",
+                "inputs": {"question": "Refund policy?"},
+                "outputs": {"doc_ids": ["doc-1", "doc-7"]},
+                "metadata": {"segment": "billing", "lang": "en"},
+            },
+            {"id": "ex-2", "inputs": {"question": "Unlabelled"}, "outputs": {}},
+        ]
+    }
+    (tmp_path / "export.json").write_text(json.dumps(export))
+    columns = ColumnMap(
+        query_id="id",
+        text="inputs.question",
+        relevant="outputs.doc_ids",
+        tags="metadata.segment",
+        filters={"metadata.lang": "str"},
+    )
+    rows = import_rows(read_records(tmp_path / "export.json"), columns)
+    assert rows == [
+        {
+            "query_id": "ex-1",
+            "text": "Refund policy?",
+            "relevant": {"doc-1": 1.0, "doc-7": 1.0},
+            "tags": ["billing"],
+            "filter": {"metadata.lang": "en"},
+        },
+        {"query_id": "ex-2", "text": "Unlabelled"},
+    ]
+    # A key that literally contains a dot takes precedence over the nested path.
+    assert import_rows([{"a.b": "flat", "a": {"b": "nested"}}], ColumnMap(query_id="a.b")) == [
+        {"query_id": "flat"}
+    ]
+    (tmp_path / "list.json").write_text(json.dumps([{"query_id": "q", "text": "t"}]))
+    assert read_records(tmp_path / "list.json") == [{"query_id": "q", "text": "t"}]
+    (tmp_path / "scalar.json").write_text("3")
+    with pytest.raises(DatasetError, match="JSON array"):
+        read_records(tmp_path / "scalar.json")
+    (tmp_path / "broken.json").write_text("[")
+    with pytest.raises(DatasetError, match="not valid JSON"):
+        read_records(tmp_path / "broken.json")
+    with pytest.raises(DatasetError, match="expected an object"):
+        import_rows([["q1"]], ColumnMap())  # type: ignore[list-item]
+
+
 def test_embed_dataset() -> None:
     ds = parse_dataset(
         json.dumps({"query_id": "a", "text": "hello"})

@@ -156,8 +156,49 @@ def _write_text(path: Path, text: str) -> None:
 
 @dataset_app.command("import")
 def dataset_import(
-    source: Annotated[Path, typer.Argument(help="CSV (with a header row) or JSONL file.")],
+    source: Annotated[
+        Path,
+        typer.Argument(
+            help=(
+                "CSV (with a header row), JSON array or JSONL file. JSON columns may be dotted "
+                "paths (inputs.question). With --format: a BEIR folder, a TREC query file "
+                "(qid<TAB>text or JSONL), or a Ragas/DeepEval test set."
+            )
+        ),
+    ],
     out: Annotated[Path, typer.Option(help="Dataset JSONL to write.")],
+    source_format: Annotated[
+        str | None,
+        typer.Option(
+            "--format",
+            help="beir, trec, ragas or deepeval. Omit for CSV/JSON with column mapping.",
+        ),
+    ] = None,
+    qrels: Annotated[
+        Path | None, typer.Option(help="TREC qrels file (qid iter docno grade), for --format trec.")
+    ] = None,
+    split: Annotated[str, typer.Option(help="BEIR qrels split, for --format beir.")] = "test",
+    corpus: Annotated[
+        Path | None,
+        typer.Option(
+            help=(
+                "Documents the backend returns (JSONL/JSON/CSV with id and text), to locate "
+                "Ragas/DeepEval reference passages given as text."
+            )
+        ),
+    ] = None,
+    corpus_id_field: Annotated[
+        str | None, typer.Option(help="Corpus id field (default: _id, doc_id or id).")
+    ] = None,
+    corpus_text_field: Annotated[
+        str | None, typer.Option(help="Corpus text field (default: text, content, page_content).")
+    ] = None,
+    max_matches: Annotated[
+        int,
+        typer.Option(
+            min=1, help="A passage found in more documents than this is ambiguous and skipped."
+        ),
+    ] = 5,
     id_column: Annotated[str, typer.Option(help="Column with the query id.")] = "query_id",
     text_column: Annotated[str, typer.Option(help="Column with the query text.")] = "text",
     vector_column: Annotated[
@@ -177,7 +218,8 @@ def dataset_import(
     ] = None,
     name: Annotated[str | None, typer.Option(help="Dataset name for the header.")] = None,
 ) -> None:
-    """Convert a CSV or JSONL file of queries and labels into a dataset."""
+    """Convert queries and relevance labels you already have into a dataset."""
+    from vectraudit.evaluation.dataset_formats import import_format
     from vectraudit.evaluation.dataset_tools import (
         ColumnMap,
         import_rows,
@@ -185,25 +227,43 @@ def dataset_import(
         render_dataset,
     )
 
-    filters = {}
-    for spec in filter_column or []:
-        col, _, kind = spec.partition(":")
-        filters[col.strip()] = kind.strip() or "str"
-    columns = ColumnMap(
-        query_id=id_column,
-        text=text_column,
-        vector=vector_column,
-        relevant=relevant_column,
-        tags=tags_column,
-        filters=filters,
-    )
+    meta: dict[str, Any] = {"name": name} if name else {}
+    warnings: list[str] = []
     try:
-        rows = import_rows(read_records(source), columns)
-        text = render_dataset(rows, {"name": name} if name else None)
+        if source_format:
+            imported = import_format(
+                source_format.lower(),
+                source,
+                qrels=qrels,
+                split=split,
+                corpus=corpus,
+                corpus_id_field=corpus_id_field,
+                corpus_text_field=corpus_text_field,
+                max_matches=max_matches,
+            )
+            rows, warnings = imported.rows, imported.warnings
+            meta["provenance"] = imported.provenance
+        else:
+            filters = {}
+            for spec in filter_column or []:
+                col, _, kind = spec.partition(":")
+                filters[col.strip()] = kind.strip() or "str"
+            columns = ColumnMap(
+                query_id=id_column,
+                text=text_column,
+                vector=vector_column,
+                relevant=relevant_column,
+                tags=tags_column,
+                filters=filters,
+            )
+            rows = import_rows(read_records(source), columns)
+        text = render_dataset(rows, meta or None)
     except DatasetError as e:
         raise _fail(str(e)) from e
     _write_text(out, text)
     ds = load_dataset(out)
+    for warning in warnings:
+        err_console.print(f"[yellow]Warning:[/] {escape(warning)}")
     console.print(
         f"Wrote {len(ds):,} queries ({ds.n_labelled:,} labelled) to {escape(str(out))}, "
         f"version {ds.sha256[:12]}"
