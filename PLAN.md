@@ -173,7 +173,7 @@ vectraudit/
   - `vectraudit[parquet]` → `pyarrow`.
   - `vectraudit[qdrant]` → `qdrant-client` (Phase 14 connector).
   - `vectraudit[pgvector]` → `psycopg[binary]` (Phase 14 connector; LGPL, used unmodified).
-  - `vectraudit[pinecone]` → `pinecone` (Apache-2.0); `vectraudit[weaviate]` → `weaviate-client` (BSD-3) (Phase 19 connectors).
+  - `vectraudit[weaviate]` → `weaviate-client` (BSD-3) (Phase 19). Pinecone needs no extra: the connector uses its REST API with a pinned API version.
   - `vectraudit[cloud]` → `sqlalchemy>=2`, `alembic`, `psycopg[binary]` (Phase 16 hosted service).
   - `vectraudit[all]` → everything above.
   - `vectraudit[dev]` → test/lint tools.
@@ -611,7 +611,7 @@ run file passes `vectraudit check` against itself and uploads to the cloud.
 Goal: certify the two "next release" backends against the same connector contract,
 contract tests and reference dataset as FAISS, Qdrant and pgvector.
 
-1. **Pinecone** (`vectraudit[pinecone]`): index by name or host, namespace, metadata
+1. **Pinecone** (no extra; REST API with a pinned version): index by name or host, namespace, metadata
    filters (portable equality filters as `$eq`), API key via `api_key_env`. Black box per
    the PRD: no exact reference, no tuning parameters, no snapshot; describe reports metric,
    dimension, vector counts (index and namespace) and serverless/pod spec. Typed errors for
