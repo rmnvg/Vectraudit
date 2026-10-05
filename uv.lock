@@ -3535,6 +3535,10 @@ dev = [
 faiss-cpu = [
     { name = "faiss-cpu" },
 ]
+label-llm = [
+    { name = "torch" },
+    { name = "transformers" },
+]
 parquet = [
     { name = "pyarrow" },
 ]
@@ -3574,13 +3578,15 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "sentence-transformers", marker = "extra == 'text'", specifier = ">=2.2" },
     { name = "sqlalchemy", marker = "extra == 'cloud'", specifier = ">=2.0" },
+    { name = "torch", marker = "extra == 'label-llm'", specifier = ">=2.2" },
+    { name = "transformers", marker = "extra == 'label-llm'", specifier = ">=4.40" },
     { name = "typer", specifier = ">=0.12" },
     { name = "umap-learn", marker = "extra == 'umap'", specifier = ">=0.5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
     { name = "vectraudit", extras = ["faiss-cpu", "umap", "text", "parquet", "qdrant", "weaviate", "pgvector", "cloud"], marker = "extra == 'all'" },
     { name = "weaviate-client", marker = "extra == 'weaviate'", specifier = ">=4.10" },
 ]
-provides-extras = ["faiss-cpu", "umap", "text", "parquet", "qdrant", "weaviate", "pgvector", "cloud", "all", "dev"]
+provides-extras = ["faiss-cpu", "umap", "text", "label-llm", "parquet", "qdrant", "weaviate", "pgvector", "cloud", "all", "dev"]
 
 [[package]]
 name = "virtualenv"

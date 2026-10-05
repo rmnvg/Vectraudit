@@ -26,11 +26,16 @@ class Judgment(Model):
     doc_id: str
     annotator: str = Field(min_length=1, max_length=100)
     grade: int | None = Field(default=None, ge=0, le=3)
+    suggestion_grade: int | None = Field(default=None, ge=0, le=3)
+    suggestion_judge: str | None = None
+    accepted_suggestion: bool = False
     start: int | None = Field(default=None, ge=0)
     end: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def valid(self) -> Judgment:
+        if self.accepted_suggestion and (self.grade is None or self.grade != self.suggestion_grade):
+            raise ValueError("Accepted suggestion must match the human grade")
         if not self.annotator.strip():
             raise ValueError("Annotator name is required")
         if (self.start is None) != (self.end is None):
@@ -44,6 +49,13 @@ class Judgment(Model):
         return self
 
 
+class Suggestion(Model):
+    query_id: str
+    doc_id: str
+    grade: int = Field(ge=0, le=3)
+    judge: str = Field(min_length=1)
+
+
 class Task(Model):
     format: str = "vectraudit.labelling.v1"
     name: str = Field(min_length=1)
@@ -52,6 +64,7 @@ class Task(Model):
     documents: dict[str, str]
     queries: list[Question]
     judgments: list[Judgment] = Field(default_factory=list)
+    suggestions: list[Suggestion] = Field(default_factory=list)
     resolutions: list[Judgment] = Field(default_factory=list)
     assignments: dict[str, list[str]] = Field(default_factory=dict)
     sha256: str = ""

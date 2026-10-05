@@ -38,6 +38,7 @@ dependencies = [
 faiss-cpu = ["faiss-cpu>=1.8"]
 umap = ["umap-learn>=0.5"]
 text = ["sentence-transformers>=2.2"]
+label-llm = ["transformers>=4.40", "torch>=2.2"]
 parquet = ["pyarrow>=14"]
 qdrant = ["qdrant-client>=1.13"]
 weaviate = ["weaviate-client>=4.10"]

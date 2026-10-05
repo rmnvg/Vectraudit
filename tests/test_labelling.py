@@ -181,3 +181,69 @@ def test_export_versioning_and_conflicts(inputs, tmp_path):
     judge(task, Judgment(query_id=q.query_id, doc_id=q.documents[1], annotator="B", grade=3))
     with pytest.raises(ValueError, match="Resolve disagreement"):
         export_dataset(task)
+
+
+def test_suggestions_require_human_acceptance(inputs, tmp_path):
+    import re
+
+    from fastapi.testclient import TestClient
+
+    from vectraudit.labelling.export import export_dataset
+    from vectraudit.labelling.suggestions import suggest, suggestion_agreement
+    from vectraudit.labelling.web import create_app
+
+    task = pool(*inputs, k=1)
+    suggest(task, lambda q, d: 2, name="fixture judge")
+    assert not task.judgments
+    with pytest.raises(ValueError, match="No positive"):
+        export_dataset(task)
+    path = tmp_path / "task.json"
+    save_task(task, path)
+    client = TestClient(create_app(path))
+    page = client.get("/?annotator=A")
+    assert "Machine suggestion: 2" in page.text
+    form = {
+        "q": "0",
+        "doc": task.queries[0].documents[0],
+        "annotator": "A",
+        "grade": "accept",
+        "suggestion": "2",
+        "judge": "fixture judge",
+        "csrf": re.search(r'name="csrf" value="([^"]+)"', page.text)[1],
+    }
+    assert client.post("/judge", data=form).status_code == 200
+    saved = load_task(path)
+    assert saved.judgments[0].accepted_suggestion
+    assert suggestion_agreement(saved) == {"n": 1, "accepted": 1, "grade_agreement": 1.0}
+    assert "accepted_suggestions" in export_dataset(saved)
+    suggest(saved, lambda q, d: 1, name="new judge")
+    save_task(saved, path)
+    assert client.post("/judge", data=form).status_code == 400
+    assert suggestion_agreement(saved)["grade_agreement"] == 1
+    with pytest.raises(ValueError, match="valid integer"):
+        suggest(saved, lambda q, d: True, name="bad judge")
+
+
+def test_llm_loads_only_local_safe_files(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from vectraudit.labelling.suggestions import LocalLLMJudge
+
+    calls = []
+
+    def load(path, **kwargs):
+        calls.append(kwargs)
+        return object()
+
+    loader = SimpleNamespace(from_pretrained=load)
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(AutoModelForCausalLM=loader, AutoTokenizer=loader),
+    )
+    LocalLLMJudge(tmp_path)
+    assert all(call["local_files_only"] and not call["trust_remote_code"] for call in calls)
+    assert calls[1]["use_safetensors"]
+    with pytest.raises(ValueError, match="existing local"):
+        LocalLLMJudge(tmp_path / "missing")

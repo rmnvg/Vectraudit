@@ -155,6 +155,18 @@ def create_app(path: Path) -> FastAPI:
                 f'<input type="hidden" name="{key}" value="{escape(value, quote=True)}">'
                 for key, value in fields.items()
             )
+            suggestion = next(
+                (s for s in task.suggestions if (s.query_id, s.doc_id) == (query.query_id, doc)),
+                None,
+            )
+            if suggestion is not None:
+                body += (
+                    f"<p>Machine suggestion: {suggestion.grade} "
+                    f"({escape(suggestion.judge)}). Requires your decision.</p>"
+                    f'<input type="hidden" name="suggestion" value="{suggestion.grade}">'
+                    f'<input type="hidden" name="judge" value="{escape(suggestion.judge)}">'
+                    '<button name="grade" value="accept">Accept suggestion</button>'
+                )
             body += (
                 '<label>Span start <input type="number" min="0" name="start"></label>'
                 '<label>End <input type="number" min="1" name="end"></label><br>'
@@ -188,11 +200,36 @@ def create_app(path: Path) -> FastAPI:
                 q = int(form["q"])
                 if not 0 <= q < len(task.queries):
                     raise ValueError("Unknown question")
+                suggestion = next(
+                    (
+                        s
+                        for s in task.suggestions
+                        if (s.query_id, s.doc_id) == (task.queries[q].query_id, form["doc"])
+                    ),
+                    None,
+                )
+                if suggestion is not None and (
+                    form.get("suggestion") != str(suggestion.grade)
+                    or form.get("judge") != suggestion.judge
+                ):
+                    raise ValueError("Suggestion changed; reload before judging")
+                accepting = form["grade"] == "accept"
+                if accepting and suggestion is None:
+                    raise ValueError("There is no suggestion to accept")
                 judgment = Judgment(
                     query_id=task.queries[q].query_id,
                     doc_id=form["doc"],
                     annotator=form["annotator"],
-                    grade=None if form["grade"] == "skip" else int(form["grade"]),
+                    grade=(
+                        suggestion.grade
+                        if accepting and suggestion is not None
+                        else None
+                        if form["grade"] == "skip"
+                        else int(form["grade"])
+                    ),
+                    suggestion_grade=suggestion.grade if suggestion else None,
+                    suggestion_judge=suggestion.judge if suggestion else None,
+                    accepted_suggestion=accepting,
                     start=int(form["start"]) if form.get("start") else None,
                     end=int(form["end"]) if form.get("end") else None,
                 )

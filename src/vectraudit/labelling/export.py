@@ -7,6 +7,7 @@ from typing import Any
 from vectraudit.evaluation.dataset import parse_dataset
 from vectraudit.evaluation.dataset_tools import render_dataset
 from vectraudit.labelling.agreement import agreement, decisions, resolve
+from vectraudit.labelling.suggestions import suggestion_agreement
 from vectraudit.labelling.task import Task
 
 
@@ -49,6 +50,10 @@ def export_dataset(task: Task) -> str:
             "pooling_sources": task.sources,
             "annotators": sorted({j.annotator for j in [*task.judgments, *task.resolutions]}),
             "agreement": agreement(task),
+            "suggestion_agreement": suggestion_agreement(task),
+            "accepted_suggestions": [
+                j.model_dump() for j in task.judgments if j.accepted_suggestion
+            ],
             "queries_without_positive_labels": no_positive,
             "resolution": "strict majority of grade and span; otherwise named reviewer",
         },

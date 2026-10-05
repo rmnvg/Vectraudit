@@ -133,3 +133,18 @@ def export_command(task: Path, out: Annotated[Path, typer.Option()]) -> None:
         typer.echo(
             "Questions without positive labels remain unlabelled and have no quality metrics."
         )
+
+
+@label_app.command("suggest")
+def suggest_command(
+    task: Path,
+    llm_model: Annotated[Path, typer.Option(help="Explicit opt-in: local causal model directory.")],
+) -> None:
+    """Generate optional suggestions locally; stop the server first. No labels are accepted."""
+    from vectraudit.labelling.suggestions import LocalLLMJudge, suggest
+    from vectraudit.labelling.task import load_task
+
+    value = load_task(task)
+    suggest(value, LocalLLMJudge(llm_model), name=f"local-llm:{llm_model.name}")
+    save_task(value, task)
+    typer.echo("Suggestions saved. Each requires a human decision in label serve.")
