@@ -1,0 +1,60 @@
+/** Local guided workflow contracts; all requests stay on the workbench origin. */
+import type { Run } from './workbench'
+
+export interface PipelineChoice { id: string; name: string; kind: string; destination: string | null }
+export interface DraftSummary { id: string; name: string; revision: string }
+export interface GuidedSession { token: string; pipelines: PipelineChoice[]; drafts: DraftSummary[] }
+export interface Draft extends DraftSummary {
+  dataset: string
+  audit: { n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][] }
+}
+export interface QueryRow {
+  query_id: string; text?: string; vector?: number[]; relevant?: Record<string, number>
+  no_answer?: boolean; forbidden?: string[]; context?: Record<string, string | number | boolean>
+  filter?: Record<string, string | number | boolean>; tags?: string[]; split?: 'explore' | 'heldout'
+  relevant_spans?: { doc_id: string; start: number; end: number; grade: number }[]
+}
+export interface JobState { status: 'running' | 'done' | 'failed' | 'cancelled'; progress: number; message: string; error?: string; run?: Run }
+export interface Comparison {
+  baseline: Run; candidate: Run
+  check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }> }
+}
+
+export async function guidedRequest<T>(path: string, token = '', body?: unknown, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`api/guided/${path}`, {
+    method: body === undefined ? 'GET' : 'POST', signal,
+    headers: { 'X-Workbench-Token': token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+  const result = await response.json()
+  if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The local request failed.')
+  return result as T
+}
+
+/** Preserve all supported query fields when a user edits a single annotation. */
+export function parseQueries(text: string): { rows: QueryRow[]; header?: Record<string, unknown> } {
+  const values = text.split('\n').filter(line => line.trim()).map(line => JSON.parse(line))
+  let header: Record<string, unknown> | undefined
+  if (values[0]?.dataset) header = values.shift()
+  if (!values.length || values.some(v => !v || typeof v !== 'object' || typeof v.query_id !== 'string')) {
+    throw new Error('Each query needs a query_id. Import a Vectraudit JSONL dataset.')
+  }
+  return { rows: values, header }
+}
+
+export function serializeQueries(rows: QueryRow[], header?: Record<string, unknown>): string {
+  return [...(header ? [header] : []), ...rows].map(row => JSON.stringify(row)).join('\n') + '\n'
+}
+
+export const demoCorpus = [
+  { doc_id: 'current-guide', text: 'Invoice export instructions. Download invoices from billing settings.', metadata: { tenant: 'acme', current: true } },
+  { doc_id: 'old-guide', text: 'Invoice export invoice export. Old invoice export instructions.', metadata: { tenant: 'acme', current: false } },
+  { doc_id: 'private-guide', text: 'Invoice export instructions for a different tenant.', metadata: { tenant: 'other', current: true } },
+  { doc_id: 'account-guide', text: 'Reset password using account recovery.', metadata: { tenant: 'acme', current: true } },
+].map(d => JSON.stringify(d)).join('\n')
+export const demoQueries: QueryRow[] = [
+  { query_id: 'invoice', text: 'invoice export', relevant: { 'current-guide': 2 }, context: { tenant: 'acme' }, filter: { current: true }, forbidden: ['private-guide'], tags: ['permission', 'outdated'] },
+  { query_id: 'password', text: 'reset password', relevant: { 'account-guide': 1 }, tags: ['exact_identifier'] },
+  { query_id: 'unknown', text: 'volcano weather', no_answer: true, tags: ['no_answer'] },
+  { query_id: 'heldout', text: 'download invoices', relevant: { 'current-guide': 1 }, split: 'heldout', tags: ['paraphrase'] },
+]
