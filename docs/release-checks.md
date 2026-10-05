@@ -175,7 +175,13 @@ the report warns that one query moves the mean noticeably.
 - `require_significance: true` fails a `max_drop` rule only when the whole 95% interval of
   the change is beyond the limit; useful for small or noisy query sets.
 - Without `--policy`, a built-in policy allows drops of 0.01 in nDCG, recall and ANN recall
-  (0.02 in MRR) and a 50% p95 rise, judged on whatever both runs measured.
+  (0.02 in MRR) and a 50% p95 rise, judged on whatever both runs measured. The workbench
+  labels this mode *exploratory*; it is not a substitute for an agreed release policy.
+- The workbench edits, versions and applies the same policy files
+  (`vectraudit workbench serve DIR --policy retrieval/policy.json`). From a passing
+  comparison it exports a release configuration that `vectraudit release validate | run |
+  check | update` runs in CI under the target branch's approved policy. See
+  [Release policies and exported release checks](retrieval-workbench.md#release-policies-and-exported-release-checks).
 
 ## Evidence and diagnosis
 
