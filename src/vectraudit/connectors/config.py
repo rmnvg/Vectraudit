@@ -179,6 +179,34 @@ def _open_pinecone(cfg: ConnectionConfig) -> Connector:
     )
 
 
+def _open_weaviate(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.weaviate import WeaviateConnector
+
+    _reject_unknown(
+        cfg,
+        {
+            "url",
+            "grpc_url",
+            "api_key_env",
+            "collection",
+            "id_property",
+            "vector_name",
+            "tenant",
+            "timeout_s",
+        },
+    )
+    return WeaviateConnector(
+        url=require(cfg.options, "url", str),
+        collection=require(cfg.options, "collection", str),
+        api_key=secret(cfg.options, "api_key", required=False),
+        id_property=option(cfg.options, "id_property", str),
+        vector_name=option(cfg.options, "vector_name", str),
+        tenant=option(cfg.options, "tenant", str),
+        grpc_url=option(cfg.options, "grpc_url", str),
+        timeout_s=_positive_int(cfg, "timeout_s", 10),
+    )
+
+
 def _open_pgvector(cfg: ConnectionConfig) -> Connector:
     from vectraudit.connectors.pgvector import PgvectorConnector
 
@@ -234,6 +262,7 @@ BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
     "qdrant": _open_qdrant,
     "pgvector": _open_pgvector,
     "pinecone": _open_pinecone,
+    "weaviate": _open_weaviate,
 }
 
 
