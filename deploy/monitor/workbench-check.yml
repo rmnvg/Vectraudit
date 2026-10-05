@@ -1,0 +1,21 @@
+# Copy into your private retrieval repository's .github/workflows/ after configuring
+# a self-hosted runner, the installed private Vectraudit package and frozen files.
+name: Frozen retrieval benchmark
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: frozen-retrieval-monitor
+  cancel-in-progress: false
+jobs:
+  monitor:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      # Operates on an existing, controlled runner checkout; sends no artifacts away.
+      - name: Check the deployed pipeline
+        working-directory: /opt/retrieval
+        run: vectraudit workbench monitor monitor.json baseline.run.json --history monitor-history

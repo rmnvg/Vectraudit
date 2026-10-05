@@ -99,6 +99,7 @@ class _Check:
         if self._runs_complete() and self._comparable():
             pairs = self._pairs()
             self.out["n_queries"] = len(pairs)
+            self._safety(pairs)
             self._quality(pairs)
             self._cohorts(pairs)
             self._latency()
@@ -108,6 +109,22 @@ class _Check:
         if self.out["metrics"]:
             self.out["findings"] = diagnose(self.out, self.base, self.cand, pairs)
         return self.out
+
+    def _safety(self, pairs: list[tuple[Mapping[str, Any], Mapping[str, Any]]]) -> None:
+        """Safety assertions are absolute gates, even when the baseline also violates them."""
+        for base, candidate in pairs:
+            if base.get("permission_checked") != candidate.get("permission_checked"):
+                self.flag(Verdict.NOT_COMPARABLE, "Permission measurement coverage changed.")
+            if (base.get("no_answer_correct") is None) != (
+                candidate.get("no_answer_correct") is None
+            ):
+                self.flag(Verdict.NOT_COMPARABLE, "No-answer measurement coverage changed.")
+            if candidate.get("forbidden_ids"):
+                self.flag(
+                    Verdict.FAIL, f"Forbidden documents delivered for {candidate['query_id']}."
+                )
+            if candidate.get("no_answer_correct") is False:
+                self.flag(Verdict.FAIL, f"No-answer assertion failed for {candidate['query_id']}.")
 
     # --- gates -----------------------------------------------------------------------
 
@@ -198,6 +215,18 @@ class _Check:
             if stats is not None:
                 available[name] = stats
         self.out["metrics"] = available
+        safety_pairs = sum(
+            (b.get("no_answer_correct") is not None and c.get("no_answer_correct") is not None)
+            or bool(b.get("permission_checked") and c.get("permission_checked"))
+            for b, c in pairs
+        )
+        if (
+            not available
+            and safety_pairs >= self.policy.min_queries
+            and not any(rule.required for rule in self.policy.metrics.values())
+        ):
+            self.out["safety"] = {"n": safety_pairs, "absolute_assertions": True}
+            return
         if not available:
             self.flag(
                 Verdict.NOT_COMPARABLE,

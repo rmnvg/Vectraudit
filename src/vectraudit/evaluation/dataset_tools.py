@@ -109,6 +109,12 @@ def import_rows(records: Iterable[Mapping[str, Any]], columns: ColumnMap) -> lis
         }
         if filters:
             row["filter"] = filters
+        for key in ("no_answer", "context", "forbidden", "split"):
+            value = rec.get(key)
+            if value not in (None, ""):
+                if isinstance(value, str) and key != "split":
+                    value = json.loads(value)
+                row[key] = value
         rows.append(row)
     return rows
 
@@ -152,6 +158,14 @@ def dataset_rows(ds: Dataset) -> list[dict[str, Any]]:
             row["filter"] = q.filter
         if q.tags:
             row["tags"] = list(q.tags)
+        if q.no_answer:
+            row["no_answer"] = True
+        if q.context:
+            row["context"] = q.context
+        if q.forbidden:
+            row["forbidden"] = list(q.forbidden)
+        if q.split != "explore":
+            row["split"] = q.split
         rows.append(row)
     return rows
 
@@ -235,7 +249,7 @@ def diff_datasets(a: Dataset, b: Dataset) -> dict[str, Any]:
 
 def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str, Any]:
     """Label coverage, grade distribution, cohorts and readiness warnings."""
-    labelled = [q for q in ds.queries if q.labelled]
+    labelled = [q for q in ds.queries if q.relevant or q.relevant_spans]
     from vectraudit.experiments.labels import document_labels
 
     labels = [document_labels(q) for q in labelled]
@@ -250,9 +264,9 @@ def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str
             f"{1 / max(len(labelled), 1):.2f} on a metric are hard to tell from noise. "
             f"Aim for {SMALL_LABELLED}+ (100+ for cohorts)."
         )
-    if labelled and len(labelled) < len(ds):
+    if ds.n_labelled and ds.n_labelled < len(ds):
         warnings.append(
-            f"{len(ds) - len(labelled)} queries have no labels: they count for ANN recall "
+            f"{len(ds) - ds.n_labelled} queries have no labels: they count for ANN recall "
             "and latency only."
         )
     if cohort_minimum is not None:
@@ -273,7 +287,9 @@ def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str
     return {
         "sha256": ds.sha256,
         "n_queries": len(ds),
-        "n_labelled": len(labelled),
+        "n_labelled": ds.n_labelled,
+        "n_positive": len(labelled),
+        "n_no_answer": sum(q.no_answer for q in ds.queries),
         "n_filtered": sum(bool(q.filter) for q in ds.queries),
         "relevant_per_query": {
             "min": min(positives, default=0),

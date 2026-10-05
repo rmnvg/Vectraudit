@@ -38,6 +38,9 @@ def create_app(settings: Settings, engine: Engine | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
+    from vectraudit.cloud.sso import router as sso_router
+
+    app.include_router(sso_router)
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessions = factory

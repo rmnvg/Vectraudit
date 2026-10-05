@@ -1,6 +1,6 @@
 # Vectraudit
 
-**Catch retrieval regressions before you deploy.**
+**Test your pipeline. Explain failures. Measure fixes. Guard every release.**
 
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
 
@@ -13,6 +13,18 @@
 Compare baseline and candidate retrieval on a versioned dataset, produce a report with
 query-level evidence, and enforce quality and latency policies in CI. Human relevance
 labels measure answer relevance; exact references measure ANN approximation separately.
+
+The [retrieval engineering workbench](docs/retrieval-workbench.md) adds complete Python and
+HTTP pipeline evaluation, stage traces, no-answer and permission assertions, bounded
+optimization with held-out validation, benchmark maintenance and scheduled monitoring.
+Start the runnable local example:
+
+```bash
+vectraudit workbench run examples/workbench/manifest.json --out workbench-runs
+vectraudit workbench serve workbench-runs
+```
+
+![Local retrieval workbench with measured metrics and stage document traces](docs/screenshots/workbench.png)
 
 Start with [your first release check](docs/first-check.md). If you have no labels, use the
 [local labelling assistant](docs/labelling.md). Before recording a run, inspect your setup:

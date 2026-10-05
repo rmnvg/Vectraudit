@@ -110,6 +110,22 @@ def _check_query(q: Any, k: int) -> None:
             _expect(_fraction(metrics.get(name)), f"metrics.{name} must be in [0, 1]")
     evidence = q.get("evidence")
     _expect(evidence is None or isinstance(evidence, dict), "evidence must be an object or null")
+    no_answer = q.get("no_answer_correct")
+    _expect(
+        no_answer is None or type(no_answer) is bool, "no_answer_correct must be boolean or null"
+    )
+    forbidden = q.get("forbidden_ids", [])
+    _expect(
+        isinstance(forbidden, list) and all(isinstance(d, str) for d in forbidden),
+        "forbidden_ids must be document ids",
+    )
+    if "permission_checked" in q:
+        _expect(type(q["permission_checked"]) is bool, "permission_checked must be boolean")
+    _expect(
+        not forbidden or q.get("permission_checked") is True,
+        "forbidden results require a permission check",
+    )
+    _expect(no_answer is not True or not ids, "successful no-answer check cannot deliver documents")
     recall = q.get("ann_recall")
     _expect(recall is None or _fraction(recall), "ann_recall must be in [0, 1] or null")
 

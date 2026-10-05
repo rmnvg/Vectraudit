@@ -669,6 +669,32 @@ end. Full Python gates precede each step commit, with visual/browser checks for 
 
 ---
 
+## Retrieval workbench phases 22–26 (2026-10-05)
+
+Implemented on `feat/retrieval-workbench`, extending the existing release-check and workspace foundations:
+
+- **22:** Text/vector Python and HTTP adapters, explicit stage graph traces, recorded loss analysis,
+  client latency, compatible run artifacts and CLI execution.
+- **23:** Explicit no-answer labels, permission contexts, forbidden-result gates, cohort coverage
+  guidance and backward-compatible dataset serialization. No-answer/permission authoring is JSONL;
+  the existing annotation UI remains focused on positive document judgments.
+- **24:** BM25/vector RRF and phrase-reranker baselines, custom rerankers through adapters,
+  bounded candidate search with latency/cost/memory constraints and one held-out validation.
+- **25:** Shared workbench UI, standalone local serving, benchmark duplicates/coverage and
+  exploratory human-judgment prioritization. CLI remains the execution/annotation entrypoint.
+- **26:** Scheduler-compatible frozen checks, local history, separate drift dimensions,
+  project access maps, retention/bulk-export controls, enterprise code/PKCE sign-in,
+  upgrade/restore fixture and deployment profiles.
+
+Acceptance artifacts: `tests/test_pipelines.py`, `tests/test_workbench.py`,
+`tests/test_cloud_governance.py`, `scripts/workbench_smoke.mjs`, and the runnable
+`examples/workbench/` suite. See `docs/retrieval-workbench.md` and
+`docs/enterprise-deployment.md` for exact boundaries. Actual identity-provider certification,
+production load tests and PostgreSQL restore rehearsals remain deployment acceptance work;
+these are not inferred from local tests. No push, deployment or production configuration change.
+
+---
+
 ## 9. Testing strategy
 
 - **Unit** (`tests/test_*.py`): every core module on tiny synthetic indexes; tests must run in < 60 s total.

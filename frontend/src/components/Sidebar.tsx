@@ -36,6 +36,7 @@ export function Sidebar({
 }) {
   const supported = info?.supported ?? false
   const nav: { view: View; label: string; hint: string; enabled: boolean }[] = [
+    { view: 'workbench', label: 'Workbench', hint: 'Test · explain · optimize · guard', enabled: true },
     { view: 'overview', label: 'Overview', hint: 'Index health', enabled: true },
     { view: 'map', label: 'Cluster map', hint: 'Projected vectors', enabled: supported },
     { view: 'query', label: 'Query explorer', hint: 'Why did it miss?', enabled: supported },
@@ -71,7 +72,7 @@ export function Sidebar({
     <aside className="flex w-64 shrink-0 flex-col gap-4 overflow-auto border-r border-line bg-surface p-4 print:hidden">
       <div>
         <div className="text-base font-semibold tracking-tight text-ink">vectraudit</div>
-        <div className="text-xs text-muted">see inside your FAISS index</div>
+        <div className="text-xs text-muted">retrieval engineering, with evidence</div>
       </div>
 
       {info && (

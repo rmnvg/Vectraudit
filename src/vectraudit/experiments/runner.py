@@ -140,6 +140,8 @@ def run_candidate(
     cache: EmbeddingCache | None = None,
     embedder: Embedder | None = None,
 ) -> CandidateResult:
+    if any(q.context for q in dataset.queries):
+        raise ExperimentError("Permission contexts require workbench pipeline adapters.")
     chunks = chunk_corpus(corpus, spec.chunking)
     if not chunks:
         raise ExperimentError(f"{spec.name}: chunking produced no chunks.")
@@ -178,6 +180,9 @@ def run_candidate(
                 "tags": list(q.tags),
                 "filtered": False,
                 "ids": docs,
+                "no_answer_correct": not docs if q.no_answer else None,
+                "forbidden_ids": sorted(set(docs) & set(q.forbidden)),
+                "permission_checked": bool(q.forbidden),
                 "exact_ids": exact_docs,
                 "latency_ms": latency_ms,
                 "metrics": semantic_metrics(docs, labels, k) if labels else None,

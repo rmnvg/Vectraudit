@@ -8,6 +8,15 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Retrieval workbench: Python/HTTP pipeline adapters, DAG stage evidence, local BM25/vector
+  fusion and phrase reranking, full-pipeline run artifacts and a standalone browser UI.
+- Explicit no-answer and tenant-context dataset assertions, forbidden-document release
+  gates, benchmark coverage/judgment queues and bounded held-out candidate optimization.
+- Frozen scheduled checks with separate corpus/configuration/result drift and local history.
+- Project access maps, configurable bulk-export/retention governance, schema migration 0005,
+  and enterprise authorization-code/PKCE sign-in via a configured verified-userinfo provider.
+- Runnable workbench example, browser regression script and deployment/recovery guidance.
+
 - Offline `vectraudit doctor` for installation, connection, secret presence, dataset and
   policy readiness, with JSON output and `--strict` for CI; no network or model loading.
 - Local source-document labelling with pooling, human grades and spans, optional confirmed

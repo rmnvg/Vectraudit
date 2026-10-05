@@ -21,6 +21,8 @@ from tests.test_cloud_runs import a_run, client_for
 from tests.test_cloud_web import sign_in
 
 UNSCOPED = {
+    ("GET", "/auth/sso"): "enterprise code flow with signed state and PKCE",
+    ("GET", "/auth/sso/callback"): "fixed-provider userinfo, verified email, invited user only",
     ("GET", "/healthz"): "liveness, no data",
     ("GET", "/readyz"): "readiness, no tenant data",
     ("GET", "/"): "redirect",
@@ -113,6 +115,9 @@ def test_workspace_routes_reject_other_tenants(world, cloud_app, victim, intrude
         "metrics": {"ndcg": {"min": 0}},
         "days": 1,
         "confirm": "acme",
+        "exports_enabled": True,
+        "retention_days": 30,
+        "roles": None,
     }
     checked = 0
     for method, path in _routes(cloud_app):

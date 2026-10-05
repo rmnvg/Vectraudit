@@ -1,0 +1,5 @@
+{"query_id":"billing","text":"invoice export","vector":[1,0,0],"relevant":{"invoice-guide":2},"forbidden":["secret-invoice"],"context":{"tenant":"acme"},"filter":{"current":true},"tags":["permission","outdated"]}
+{"query_id":"recovery","text":"reset password","vector":[0,1,0],"relevant":{"account-guide":1},"context":{"tenant":"acme"},"tags":["exact_identifier"]}
+{"query_id":"unknown","text":"volcano weather","no_answer":true,"context":{"tenant":"acme"},"tags":["no_answer"]}
+{"query_id":"billing-heldout","text":"download invoices","vector":[1,0,0],"relevant":{"invoice-guide":1},"forbidden":["secret-invoice"],"context":{"tenant":"acme"},"filter":{"current":true},"tags":["paraphrase"],"split":"heldout"}
+{"query_id":"recovery-heldout","text":"account recovery","vector":[0,1,0],"relevant":{"account-guide":1},"context":{"tenant":"acme"},"split":"heldout"}

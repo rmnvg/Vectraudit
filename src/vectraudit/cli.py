@@ -993,3 +993,7 @@ app.add_typer(label_app, name="label")
 from vectraudit.doctor_cli import doctor  # noqa: E402
 
 app.command("doctor")(doctor)
+
+from vectraudit.workbench_cli import workbench_app  # noqa: E402
+
+app.add_typer(workbench_app, name="workbench")

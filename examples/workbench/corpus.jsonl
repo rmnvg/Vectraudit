@@ -1,0 +1,5 @@
+{"doc_id":"invoice-guide","text":"Invoice export instructions. Download invoices from billing settings.","metadata":{"tenant":"acme","current":true},"vector":[1,0,0]}
+{"doc_id":"invoice-old","text":"Legacy invoice export. This invoice export procedure is outdated.","metadata":{"tenant":"acme","current":false},"vector":[0.9,0.1,0]}
+{"doc_id":"secret-invoice","text":"Invoice export instructions for another tenant.","metadata":{"tenant":"other","current":true},"vector":[1,0,0]}
+{"doc_id":"account-guide","text":"Reset password. Account recovery helps you regain access.","metadata":{"tenant":"acme","current":true},"vector":[0,1,0]}
+{"doc_id":"sku-guide","text":"SKU-9281 is the product identifier for the audit package.","metadata":{"tenant":"acme","current":true},"vector":[0,0,1]}
