@@ -8,6 +8,15 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Offline `vectraudit doctor` for installation, connection, secret presence, dataset and
+  policy readiness, with JSON output and `--strict` for CI; no network or model loading.
+- Local source-document labelling with pooling, human grades and spans, optional confirmed
+  suggestions, annotator agreement, browser review/resume/status and dataset download.
+  Task transactions protect concurrent writers and stale tabs; frozen exports are preserved
+  unless `--force` is explicit.
+- Installed-wheel smoke coverage from annotation through `record` and `check`, and a repeatable
+  Chrome labelling regression in CI. Paid-pilot launch evidence in `docs/launch-readiness.md`.
+
 - **Release checks:** `vectraudit dataset validate`, `vectraudit record` and
   `vectraudit check` compare a baseline and a candidate retrieval setup on a versioned,
   labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
@@ -48,6 +57,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   filter columns, `hnsw.ef_search` / `ivfflat.probes`, exact reference, query plans).
 
 ### Changed
+
+- Release-policy minimums now count measured pairs for each quality metric. Sparse cohort
+  metrics are reported without judging, and bootstrap memory is bounded for large suites.
+- Dataset statistics count positive span labels; embedding retains spans and diff reports
+  span-only changes. Keyboard grading targets grade buttons, avoiding hidden question fields.
 
 - Renamed the project from faissight to Vectraudit. The Python package, CLI command,
   environment variables (`VECTRAUDIT_*`) and cache directory (`~/.cache/vectraudit/`) all

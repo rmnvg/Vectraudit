@@ -65,6 +65,7 @@ metrics (recall, precision, MRR, nDCG) need relevance labels; ANN recall needs a
 reference; neither is ever substituted for the other. Failing checks explain themselves:
 each finding is marked verified, supported or hypothesis, with the facts behind it.
 
+- [Paid-pilot launch readiness](docs/launch-readiness.md): validation and acceptance evidence
 - [Your first release check in 15 minutes](docs/first-check.md) (`vectraudit init`)
 - [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
 - [Experiments](docs/experiments.md): pick an embedding model, chunking and index on your

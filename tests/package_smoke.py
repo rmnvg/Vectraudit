@@ -1,7 +1,10 @@
 """Run with an isolated Python containing the built wheel, FAISS and httpx."""
 
+import json
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import faiss
@@ -24,3 +27,75 @@ with TestClient(create_app(Session(index, vectors=x, disk_cache=False))) as clie
     assert response.status_code == 200, response.text
     assert response.json()["recall"] == 1.0
 subprocess.run([sys.executable, "-I", "-m", "vectraudit", "--version"], check=True)
+
+
+# The actual shipped wheel must support onboarding and local annotation without text/LLM extras.
+with tempfile.TemporaryDirectory(prefix="vectraudit-wheel-smoke-") as directory:
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.evaluation.dataset_tools import embed_dataset
+    from vectraudit.experiments.corpus import Document, make_corpus
+    from vectraudit.experiments.embedders import HashingEmbedder
+    from vectraudit.labelling.pooling import pool
+    from vectraudit.labelling.task import save_task
+    from vectraudit.labelling.web import create_app as create_label_app
+
+    root = Path(directory)
+    questions = parse_dataset('{"query_id":"q0","text":"retrieval relevance"}')
+    corpus = make_corpus(
+        [Document("0", "retrieval relevance labels"), Document("1", "cooking recipes")]
+    )
+    task = pool(questions, corpus, k=2)
+    task_path = root / "task.json"
+    save_task(task, task_path)
+    with TestClient(create_label_app(task_path), base_url="http://127.0.0.1") as client:
+        response = client.get("/?annotator=Wheel")
+        fields = dict(
+            re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)">', response.text)
+        )
+        # Synthetic simulated human input, only in this packaging test.
+        assert client.post("/judge", data={**fields, "grade": "2"}).status_code == 200
+        exported = client.get("/dataset.jsonl")
+        assert exported.status_code == 200
+        assert parse_dataset(exported.text).n_labelled == 1
+    model = HashingEmbedder(8)
+    embedded = embed_dataset(
+        parse_dataset(exported.text), model.embed_queries, model="hashing-8", normalized=True
+    )
+    dataset_path = root / "dataset.jsonl"
+    dataset_path.write_text(embedded, encoding="utf-8")
+    vectors = model.embed_documents([d.text for d in corpus.documents])
+    index = faiss.IndexFlatIP(8)
+    index.add(vectors)
+    faiss.write_index(index, str(root / "index.faiss"))
+    (root / "connection.json").write_text(json.dumps({"backend": "faiss", "index": "index.faiss"}))
+    cmd = [sys.executable, "-I", "-m", "vectraudit"]
+    diagnosed = subprocess.run(
+        [
+            *cmd,
+            "doctor",
+            "--connection",
+            str(root / "connection.json"),
+            "--dataset",
+            str(dataset_path),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(diagnosed.stdout)["status"] != "blocked"
+    run_path = root / "run.json"
+    subprocess.run(
+        [
+            *cmd,
+            "record",
+            "--connection",
+            str(root / "connection.json"),
+            "--dataset",
+            str(dataset_path),
+            "--out",
+            str(run_path),
+        ],
+        check=True,
+    )
+    subprocess.run([*cmd, "check", str(run_path), str(run_path), "--no-github-summary"], check=True)
