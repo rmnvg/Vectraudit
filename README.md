@@ -47,8 +47,9 @@ rerankers and permissions. The workbench runs locally and opens on a guided work
 vectraudit workbench serve workbench-runs   # opens http://127.0.0.1:8766
 ```
 
-1. **Connect a pipeline:** the built-in BM25/hybrid baseline over a JSONL corpus, or
-   Python and HTTP adapters registered at startup with `--manifest pipelines.json`.
+1. **Connect a pipeline:** the built-in BM25/hybrid baseline over a JSONL corpus, your
+   existing [LangChain or LlamaIndex retriever](docs/retrieval-workbench.md#langchain-and-llamaindex-retrievers),
+   or Python and HTTP adapters registered at startup with `--manifest pipelines.json`.
 2. **Build a benchmark:** questions, relevance grades, explicit no-answer judgments, tenant
    context, filters, forbidden documents, cohort tags and an exploratory/held-out split.
    No JSON files to edit by hand.

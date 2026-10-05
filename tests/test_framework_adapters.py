@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -174,23 +175,35 @@ def test_langchain_run_attributes_losses_and_feeds_release_checks() -> None:
 
 # --- LlamaIndex ----------------------------------------------------------------------------
 
-li_retrievers = pytest.importorskip("llama_index.core.retrievers")
-li_schema = pytest.importorskip("llama_index.core.schema")
-li_post = pytest.importorskip("llama_index.core.postprocessor")
+# Stand-ins with the llama-index-core interface the adapter uses (checked against 0.14.25):
+# BaseRetriever.retrieve(str) -> list[NodeWithScore]; NodeWithScore.node.node_id /
+# .ref_doc_id / .metadata and .score; BaseNodePostprocessor.postprocess_nodes(nodes,
+# query_bundle=None, query_str=None). llama-index-core is not a test dependency because its
+# nltk dependency carries an advisory the security scan would report.
 
 
-class LlamaKeyword(li_retrievers.BaseRetriever):  # type: ignore[misc,name-defined]
+@dataclass
+class TextNode:
+    node_id: str
+    metadata: dict[str, Any]
+    ref_doc_id: str | None = None
+
+
+@dataclass
+class NodeWithScore:
+    node: TextNode
+    score: float | None = None
+
+
+class LlamaKeyword:
     def __init__(self, top_k: int = 3, exclude: str | None = None) -> None:
-        super().__init__()
         self.top_k, self.exclude = top_k, exclude
 
-    def _retrieve(self, query_bundle: Any) -> list:
-        ids = [d for d in _rank(query_bundle.query_str) if d != self.exclude][: self.top_k]
+    def retrieve(self, str_or_query_bundle: str) -> list[NodeWithScore]:
+        ids = [d for d in _rank(str_or_query_bundle) if d != self.exclude][: self.top_k]
         return [
-            li_schema.NodeWithScore(
-                node=li_schema.TextNode(
-                    text=CORPUS[d], id_=f"node-{d}-{part}", metadata={"doc_id": d}
-                ),
+            NodeWithScore(
+                TextNode(f"node-{d}-{part}", {"doc_id": d}, ref_doc_id=f"src-{d}"),
                 score=1.0 - rank / 10,
             )
             for rank, d in enumerate(ids)
@@ -198,8 +211,19 @@ class LlamaKeyword(li_retrievers.BaseRetriever):  # type: ignore[misc,name-defin
         ]
 
 
+class SimilarityPostprocessor:
+    def __init__(self, similarity_cutoff: float) -> None:
+        self.similarity_cutoff = similarity_cutoff
+
+    def postprocess_nodes(
+        self, nodes: list[NodeWithScore], query_bundle: Any = None, query_str: str | None = None
+    ) -> list[NodeWithScore]:
+        assert query_str
+        return [n for n in nodes if (n.score or 0) >= self.similarity_cutoff]
+
+
 def test_llamaindex_document_level_ids_and_postprocessors() -> None:
-    cutoff = li_post.SimilarityPostprocessor(similarity_cutoff=0.85)
+    cutoff = SimilarityPostprocessor(similarity_cutoff=0.85)
     pipeline = llamaindex_pipeline(LlamaKeyword(), id_key="doc_id", postprocessors=[cutoff])
     result = pipeline(request(k=3))
     assert [s.name for s in result.stages] == [
@@ -215,6 +239,8 @@ def test_llamaindex_document_level_ids_and_postprocessors() -> None:
     assert [h.id for h in result.hits] == ["shipping", "refunds"]
     by_node = llamaindex_pipeline(LlamaKeyword())(request(k=2))
     assert [h.id for h in by_node.hits] == ["node-shipping-1", "node-shipping-2"]
+    by_source = llamaindex_pipeline(LlamaKeyword(), id_key="ref_doc_id")(request(k=1))
+    assert [h.id for h in by_source.hits] == ["src-shipping"]
 
     twice = llamaindex_pipeline(LlamaKeyword(), id_key="doc_id", postprocessors=[cutoff, cutoff])
     assert [s.name for s in twice(request(k=3)).stages][1:] == [
@@ -235,3 +261,47 @@ def test_llamaindex_filters_need_a_retriever_factory() -> None:
         llamaindex_pipeline(object())
     with pytest.raises(TypeError, match="postprocess_nodes"):
         llamaindex_pipeline(LlamaKeyword(), postprocessors=[object()])
+
+
+def test_workbench_imports_an_adapter_beside_the_manifest(tmp_path) -> None:
+    import sys
+
+    from typer.testing import CliRunner
+
+    from vectraudit.cli import app
+
+    (tmp_path / "queries.jsonl").write_text(
+        json.dumps({"query_id": "q1", "text": "shipping days", "relevant": {"shipping": 1}}) + "\n"
+    )
+    (tmp_path / "team_retrieval_adapter.py").write_text(
+        "from langchain_core.documents import Document\n"
+        "from langchain_core.retrievers import BaseRetriever\n"
+        "from vectraudit.integrations.retrievers import langchain_pipeline\n\n"
+        "class Fixed(BaseRetriever):\n"
+        "    def _get_relevant_documents(self, query, *, run_manager):\n"
+        "        return [Document(page_content='x', id='shipping')]\n\n"
+        "pipeline = langchain_pipeline(Fixed())\n"
+    )
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "dataset": "queries.jsonl",
+                "repeats": 1,
+                "candidates": [
+                    {
+                        "name": "team",
+                        "adapter": {"kind": "python", "target": "team_retrieval_adapter:pipeline"},
+                    }
+                ],
+            }
+        )
+    )
+    before = list(sys.path)
+    result = CliRunner().invoke(
+        app, ["workbench", "run", str(tmp_path / "manifest.json"), "--out", str(tmp_path / "runs")]
+    )
+    assert result.exit_code == 0, result.output
+    assert "team: complete" in result.output
+    assert sys.path == before
+    run = json.loads(next((tmp_path / "runs").glob("*.run.json")).read_text())
+    assert run["queries"][0]["ids"] == ["shipping"]

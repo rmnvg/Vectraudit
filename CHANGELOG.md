@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- LangChain and LlamaIndex retrievers as workbench pipelines
+  (`vectraudit.integrations.retrievers`): compression retrievers and postprocessors are
+  recorded as real stages, so losses are attributed to the reranker that caused them. A
+  Python adapter module beside the manifest is importable without installing it.
+
 - `vectraudit dataset import --format beir|trec|ragas|deepeval` imports labelled
   benchmarks teams already keep. Ragas/DeepEval reference passages given as text are
   located in a `--corpus` file; unlocated and ambiguous passages are reported, never
