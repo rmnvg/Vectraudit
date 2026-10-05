@@ -67,9 +67,7 @@ def create_app(path: Path) -> FastAPI:
     """Serve one local task; one process serializes reload/modify/replace transactions."""
     load_task(path)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
-    )
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
     token = secrets.token_urlsafe(32)
     lock = threading.Lock()
 
@@ -123,11 +121,15 @@ def create_app(path: Path) -> FastAPI:
         if q not in eligible:
             q = eligible[0]
         query = task.queries[q]
-        done = sum(j.annotator == annotator and j.grade is not None for j in task.judgments)
-        total = sum(len(row.documents) for row in task.queries)
+        eligible_ids = {task.queries[i].query_id for i in eligible}
+        done = sum(
+            j.annotator == annotator and j.grade is not None and j.query_id in eligible_ids
+            for j in task.judgments
+        )
+        total = sum(len(task.queries[i].documents) for i in eligible)
         body = (
             f"<p>{escape(annotator)} · {done}/{total} judged · "
-            f"Question {q + 1}/{len(task.queries)}</p>"
+            f"Question {eligible.index(q) + 1}/{len(eligible)}</p>"
             f"<h2>{escape(query.text)}</h2><p>Focus a passage, then press 0-3 or S to skip. "
             "Select text to fill optional character offsets; choose a grade to save.</p>"
         )

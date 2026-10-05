@@ -143,6 +143,11 @@ def dataset_rows(ds: Dataset) -> list[dict[str, Any]]:
             row["vector"] = [float(x) for x in q.vector]
         if q.relevant:
             row["relevant"] = q.relevant
+        if q.relevant_spans:
+            row["relevant_spans"] = [
+                {"doc_id": s.doc_id, "start": s.start, "end": s.end, "grade": s.grade}
+                for s in q.relevant_spans
+            ]
         if q.filter:
             row["filter"] = q.filter
         if q.tags:
@@ -197,6 +202,10 @@ def _query_fields(q: DatasetQuery) -> dict[str, Any]:
         "text": q.text,
         "vector": None if q.vector is None else [float(x) for x in q.vector],
         "relevant": q.relevant,
+        "relevant_spans": [
+            {"doc_id": s.doc_id, "start": s.start, "end": s.end, "grade": s.grade}
+            for s in q.relevant_spans
+        ],
         "filter": q.filter,
         "tags": list(q.tags),
     }

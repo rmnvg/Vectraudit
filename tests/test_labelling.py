@@ -94,7 +94,7 @@ def test_local_ui_csrf_escape_save(inputs, tmp_path, monkeypatch):
     task.queries[0].text = '<script>alert("query")</script>'
     path = tmp_path / "task.json"
     save_task(task, path)
-    client = TestClient(create_app(path))
+    client = TestClient(create_app(path), base_url="http://127.0.0.1")
     page = client.get("/?annotator=A")
     assert "&lt;script&gt;" in page.text
     assert "default-src 'none'" in page.headers["Content-Security-Policy"]
@@ -199,7 +199,7 @@ def test_suggestions_require_human_acceptance(inputs, tmp_path):
         export_dataset(task)
     path = tmp_path / "task.json"
     save_task(task, path)
-    client = TestClient(create_app(path))
+    client = TestClient(create_app(path), base_url="http://127.0.0.1")
     page = client.get("/?annotator=A")
     assert "Machine suggestion: 2" in page.text
     form = {
@@ -247,3 +247,169 @@ def test_llm_loads_only_local_safe_files(tmp_path, monkeypatch):
     assert calls[1]["use_safetensors"]
     with pytest.raises(ValueError, match="existing local"):
         LocalLLMJudge(tmp_path / "missing")
+
+
+def test_forty_questions_to_experiment_and_check_offline(inputs, tmp_path, monkeypatch):
+    import re
+
+    from fastapi.testclient import TestClient
+
+    from vectraudit.labelling.web import create_app
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Outbound network access in local workflow")
+
+    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    monkeypatch.setattr(socket, "create_connection", forbidden)
+    _, corpus = inputs
+    corpus_path = tmp_path / "corpus.jsonl"
+    corpus_path.write_text(
+        "\n".join(json.dumps({"doc_id": d.doc_id, "text": d.text}) for d in corpus.documents)
+    )
+    manifest = {
+        "name": "acceptance",
+        "corpus": "corpus.jsonl",
+        "queries": "dataset.jsonl",
+        "k": 2,
+        "candidates": [
+            {
+                "name": f"lexical-{size}",
+                "embedder": {"type": "hashing"},
+                "chunking": {"size": size, "overlap": 0},
+            }
+            for size in (20, 40, 80)
+        ],
+    }
+    manifest_path = tmp_path / "experiment.json"
+    manifest_path.write_text(json.dumps(manifest))
+    path = tmp_path / "task.json"
+    runner = CliRunner()
+
+    def invoke(args):
+        result = runner.invoke(app, list(map(str, args)))
+        assert result.exit_code == 0, result.output or repr(result.exception)
+
+    invoke(
+        [
+            "label",
+            "pool",
+            tmp_path / "questions.csv",
+            corpus_path,
+            "--out",
+            path,
+            "--manifest",
+            manifest_path,
+            "--no-lexical",
+            "--k",
+            "2",
+        ]
+    )
+    task = load_task(path)
+    assert len(task.sources) == 3
+    client = TestClient(create_app(path), base_url="http://127.0.0.1")
+    page = client.get("/?annotator=Human")
+    csrf = re.search(r'name="csrf" value="([^"]+)"', page.text)[1]
+    for i, q in enumerate(task.queries):
+        # Simulated human input for interoperability, never a product labelling heuristic.
+        assert (
+            client.post(
+                "/judge",
+                data={
+                    "csrf": csrf,
+                    "annotator": "Human",
+                    "q": i,
+                    "doc": q.documents[0],
+                    "grade": 2,
+                },
+            ).status_code
+            == 200
+        )
+    invoke(["label", "export", path, "--out", tmp_path / "dataset.jsonl"])
+    invoke(["dataset", "validate", tmp_path / "dataset.jsonl"])
+    invoke(["experiment", "run", manifest_path, "--out", tmp_path / "results", "--no-cache"])
+    run = tmp_path / "results/runs/lexical-20.json"
+    invoke(["check", run, run, "--json", tmp_path / "check.json"])
+    invoke(
+        [
+            "label",
+            "pool",
+            tmp_path / "questions.csv",
+            corpus_path,
+            "--out",
+            tmp_path / "again.json",
+            "--experiment",
+            tmp_path / "results",
+            "--no-lexical",
+            "--k",
+            "2",
+        ]
+    )
+    assert len(load_task(tmp_path / "again.json").sources) == 3
+
+
+def test_span_export_survives_embedding_and_diff():
+    import numpy as np
+
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.evaluation.dataset_tools import diff_datasets, embed_dataset
+
+    text = (
+        '{"query_id":"q","text":"answer","relevant":{"doc":2},'
+        '"relevant_spans":[{"doc_id":"doc","start":0,"end":3,"grade":2}]}'
+    )
+    original = parse_dataset(text)
+    embedded = parse_dataset(
+        embed_dataset(
+            original, lambda texts: np.ones((len(texts), 8)), model="fixture", normalized=False
+        )
+    )
+    assert original.queries[0].relevant_spans == embedded.queries[0].relevant_spans
+    changed = parse_dataset(text.replace('"end":3', '"end":4'))
+    assert diff_datasets(original, changed)["changed"] == {"q": ["relevant_spans"]}
+
+
+def test_existing_dataset_hashes_unchanged():
+    import hashlib
+
+    from vectraudit.evaluation.dataset import parse_dataset
+
+    # Pre-Phase-20 canonical representation: provenance absent means identical bytes.
+    row = {
+        "query_id": "q",
+        "vector": None,
+        "text": "answer",
+        "relevant": {"doc": 2.0},
+        "filter": {},
+        "tags": [],
+    }
+    for meta in ({}, {"name": "legacy"}):
+        canonical = {"meta": meta, "queries": [row]} if meta else [row]
+        expected = hashlib.sha256(
+            json.dumps(
+                canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode()
+        ).hexdigest()
+        text = (json.dumps({"dataset": meta}) + "\n" if meta else "") + json.dumps(row)
+        assert parse_dataset(text).sha256 == expected
+
+
+def test_second_pass_is_blind_and_progress_is_sampled(inputs, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from vectraudit.labelling.agreement import assign_sample
+    from vectraudit.labelling.task import Judgment
+    from vectraudit.labelling.web import create_app, judge
+
+    task = pool(*inputs, k=1)
+    ids = assign_sample(task, "B", 0.2)
+    for q in task.queries:
+        judge(task, Judgment(query_id=q.query_id, doc_id=q.documents[0], annotator="A", grade=3))
+    path = tmp_path / "task.json"
+    save_task(task, path)
+    client = TestClient(create_app(path), base_url="http://127.0.0.1")
+    page = client.get("/?annotator=B")
+    assert "0/8 judged" in page.text
+    assert "Saved grade 3" not in page.text
+    assert "Question 1/8" in page.text
+    first = next(q for q in task.queries if q.query_id in ids)
+    assert first.text in page.text

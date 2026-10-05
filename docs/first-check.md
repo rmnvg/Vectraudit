@@ -37,6 +37,23 @@ Use the same embedding model as your corpus (normalised if your index uses cosin
 product). `stats` tells you if the set is too small to trust; 30 labelled queries detect
 large regressions, 100+ detect subtle ones and make cohorts meaningful.
 
+### Starting without labels
+
+Use the local assistant with a CSV of questions (`text`, optional `query_id`) and a JSONL
+source corpus (`doc_id`, `text`):
+
+```bash
+vectraudit label pool questions.csv corpus.jsonl --k 5 --out task.json
+vectraudit label serve task.json
+# Label at http://127.0.0.1:8766, then stop the server.
+vectraudit label export task.json --out retrieval/dataset.jsonl
+```
+
+Allow about 30 minutes for a small first pass, more for long passages. Continue with the
+embedding and record commands above/below. See [labelling.md](labelling.md) for pooled
+runs, second-pass review, privacy and versioning. Labels use source-document IDs; the
+experiment runner maps chunks to sources automatically.
+
 ## 4. Record and check (3 minutes)
 
 ```bash

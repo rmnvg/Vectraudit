@@ -92,8 +92,20 @@ class Task(Model):
                     raise ValueError("Judgment outside pool")
                 if j.end is not None and j.end > len(self.documents[j.doc_id]):
                     raise ValueError("Span exceeds source document")
+        resolved = [(j.query_id, j.doc_id) for j in self.resolutions]
+        if len(set(resolved)) != len(resolved):
+            raise ValueError("Duplicate reviewer resolution")
+        suggested: set[tuple[str, str]] = set()
+        for suggestion in self.suggestions:
+            pair = (suggestion.query_id, suggestion.doc_id)
+            if pair in suggested:
+                raise ValueError("Duplicate suggestion")
+            suggested.add(pair)
+            query = next((q for q in self.queries if q.query_id == suggestion.query_id), None)
+            if query is None or suggestion.doc_id not in query.documents:
+                raise ValueError("Suggestion outside pool")
         for person, ids in self.assignments.items():
-            if not person.strip() or not set(ids) <= {q.query_id for q in self.queries}:
+            if not person.strip() or not ids or not set(ids) <= {q.query_id for q in self.queries}:
                 raise ValueError("Invalid second-pass assignment")
         return self
 

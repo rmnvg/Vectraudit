@@ -639,7 +639,8 @@ passes on Pinecone and Weaviate; unsupported capabilities are reported, never fa
 3. Named annotators, sampled second passes, binary/graded Cohen kappa and explicit review.
 4. Versioned dataset export with provenance, preserving existing dataset hashes.
 5. Optional callable and LLM suggestions, disabled by default and human-confirmed.
-6. Optional hosted labelling only after local acceptance; otherwise defer explicitly.
+6. **Deferred:** optional hosted labelling; this phase delivers only the local workflow,
+   without creating any hosted text-upload surface.
 7. Workflow/privacy guide, first-check integration and three-candidate RAG demo.
 
 Full lint, format, both Python type checks and test gates precede each step commit;
