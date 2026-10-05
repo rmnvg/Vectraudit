@@ -984,3 +984,8 @@ def runs_diff(
         raise typer.Exit(code=3)
     if not cmp.comparable:
         raise typer.Exit(code=4)
+
+
+from vectraudit.labelling_cli import label_app  # noqa: E402
+
+app.add_typer(label_app, name="label")

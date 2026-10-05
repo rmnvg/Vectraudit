@@ -630,6 +630,21 @@ contract tests and reference dataset as FAISS, Qdrant and pgvector.
 connection is an error, different dataset is not comparable, latency regression fails)
 passes on Pinecone and Weaviate; unsupported capabilities are reported, never faked.
 
+### Phase 20: Local labelling assistant
+
+1. Candidate pooling from CSV/JSONL questions, corpus, run files and experiment candidates;
+   randomized source-document pools in a content-hashed local task.
+2. Loopback-only labelling UI with escaped HTML, strict CSP, CSRF protection, atomic
+   autosave, grades, skip, keyboard shortcuts and character spans.
+3. Named annotators, sampled second passes, binary/graded Cohen kappa and explicit review.
+4. Versioned dataset export with provenance, preserving existing dataset hashes.
+5. Optional callable and LLM suggestions, disabled by default and human-confirmed.
+6. Optional hosted labelling only after local acceptance; otherwise defer explicitly.
+7. Workflow/privacy guide, first-check integration and three-candidate RAG demo.
+
+Full lint, format, both Python type checks and test gates precede each step commit;
+UI changes also require a headless Chrome visual check. Never push.
+
 ---
 
 ## 9. Testing strategy
