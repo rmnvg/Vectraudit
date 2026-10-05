@@ -15,8 +15,23 @@ export interface QueryRow {
   relevant_spans?: { doc_id: string; start: number; end: number; grade: number }[]
 }
 export interface JobState { status: 'running' | 'done' | 'failed' | 'cancelled'; progress: number; message: string; error?: string; run?: Run }
+export type Severity = 'blocking' | 'error' | 'regression' | 'info' | 'improvement'
+export interface StageLoss { stage: string; parents: string[]; evidence: string | null; reason: string }
+export interface Finding {
+  kind: 'error' | 'permission' | 'no_answer' | 'lost_relevant' | 'recovered_relevant' | 'still_missing' | 'ranking_regressed' | 'improved'
+  severity: Severity; message: string; doc_ids: string[]; new_doc_ids?: string[]; runs?: string[]
+  documents?: { doc_id: string; stages: StageLoss[] | string[]; reason?: string; diverged_at?: string | null; baseline_stages?: string[] | null; candidate_stages?: string[] }[]
+}
+export interface TriageItem {
+  query_id: string; tags: string[]; severity: Severity; metric: string | null
+  baseline: number | null; candidate: number | null; delta: number | null; stages_recorded: boolean; findings: Finding[]
+}
+export interface Triage {
+  format: 'vectraudit.triage'; primary_metric: string | null; n_paired: number; truncated: boolean
+  counts: Record<Severity | 'unchanged', number>; unpaired: { baseline_only: string[]; candidate_only: string[] }; items: TriageItem[]
+}
 export interface Comparison {
-  baseline: Run; candidate: Run
+  baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }
   check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }> }
 }
 

@@ -42,7 +42,28 @@ a pipeline to a measured fix without editing JSON files:
    cancellation. Cancelled runs are not saved. Completed runs are written to `DIR` as
    ordinary `*.run.json` files, so **Inspect failures** opens them in the detailed trace view.
 4. **Compare a fix.** Choose a baseline and a candidate, run the release comparison
-   (saved as `*.check.json`), and step through each query's stage traces side by side.
+   (saved as `*.check.json`), and work through the ranked findings.
+
+### Findings
+
+Every comparison is triaged per query, most severe first:
+
+| Severity | Finding |
+|---|---|
+| Blocking | Forbidden documents delivered (with the stages that carried them); a no-answer query that returned results |
+| Error | The query failed in either run, so it has no score |
+| Regressed | A relevant document the baseline delivered and the candidate lost; otherwise a lower score from re-ranking |
+| Missing in both | Relevant documents neither run delivered |
+| Improved | Relevant documents recovered, or a higher score |
+
+A lost document is located in one of two ways. The candidate's own trace can show the
+stage that dropped it from its parent's output. Otherwise, the first stage that held it in
+the baseline but not in the candidate shows where the runs diverge. Without stage traces a
+finding says the ranking regressed and lists the dropped results, without guessing a cause.
+Each finding names the `*.run.json` and `*.check.json` files it came from. Selecting it
+highlights the document in both traces and marks the stage where it was dropped. **Open in
+candidate run** opens the same query and document in the detailed trace view. The triage is
+`vectraudit.evaluation.triage.triage(baseline, candidate)` and works on any two run files.
 
 Exploratory runs never include held-out queries. A held-out run requires an explicit
 confirmation. A comparison between different splits is reported as not comparable.

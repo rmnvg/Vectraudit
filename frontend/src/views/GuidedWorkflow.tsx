@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { demoCorpus, demoQueries, guidedRequest, parseQueries, serializeQueries } from '../lib/guided'
 import type { Comparison, Draft, GuidedSession, JobState, QueryRow } from '../lib/guided'
 import type { Run } from '../lib/workbench'
+import Findings from './Findings'
+import type { Inspect } from './Findings'
 
 const panel = 'rounded-2xl border border-line bg-surface p-5'
 const button = 'rounded-lg border border-line px-4 py-2 text-sm hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed'
@@ -9,7 +11,7 @@ const primary = `${button} bg-teal-600 text-white hover:bg-teal-700`
 const input = 'mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-sm'
 const format = (value: number | null | undefined) => value == null ? '—' : value.toFixed(3)
 
-export default function GuidedWorkflow({ onInspect }: { onInspect: (run: Run) => void }) {
+export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   const [session, setSession] = useState<GuidedSession | null>(null)
   const [step, setStep] = useState(0)
   const [error, setError] = useState('')
@@ -45,8 +47,6 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: (run: Run) =>
   const [comparison, setComparison] = useState<Comparison | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [comparing, setComparing] = useState(false)
-  const [compareQuery, setCompareQuery] = useState('')
-  const [focusDoc, setFocusDoc] = useState('')
   const imported = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: (run: Run) =>
     setComparing(true); setError('')
     try {
       const result = await guidedRequest<Comparison>('compare', session.token, { baseline: baseId, candidate: candidateId })
-      setComparison(result); setCompareQuery(result.baseline.queries[0]?.query_id || '')
+      setComparison(result)
     } catch (e) { setError(String(e)) } finally { setComparing(false) }
   }
   function download() {
@@ -190,13 +190,12 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: (run: Run) =>
       {dirty && <p className="mt-4 text-sm text-amber-600">Save benchmark changes before running.</p>}
       <div className="mt-5 flex flex-wrap gap-3"><button className={primary} disabled={!draft || dirty || running || (mode === 'heldout' && !heldout) || (choice?.kind === 'http' && !remote)} onClick={() => void evaluate()}>{running ? 'Evaluation running…' : 'Run evaluation'}</button>{jobId && <button className={button} onClick={() => void guidedRequest(`jobs/${jobId}/cancel`, session.token, {}).catch(e => setError(String(e)))}>Cancel evaluation</button>}</div>
       {job && <div className="mt-5" role="status"><p className="text-sm">{job.status === 'done' ? `Evaluation ${job.run?.status || 'complete'}` : job.status} · {job.message}</p><progress aria-label="Evaluation progress" className="mt-2 w-full accent-teal-600" value={job.progress} max={1} />{job.error && <p className="mt-2 text-sm text-red-600">{job.error}</p>}<p className="mt-1 text-xs text-muted">Cancellation takes effect between queries. An active adapter call finishes first.</p></div>}
-      {runs.length > 0 && <div className="mt-6 space-y-3"><h3 className="font-semibold">Recorded evaluations</h3>{runs.map(run => <div key={run.run_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4"><div><b className="text-sm">{run.label}</b><p className="mt-1 text-xs text-muted">{run.status} · {run.summary.n_queries} queries · nDCG {format(run.summary.metrics?.ndcg)} · p95 {format(run.summary.latency_ms?.p95)} ms</p></div><button className={button} onClick={() => onInspect(run)}>Inspect failures</button></div>)}<button className={button} onClick={() => { setLabel('Candidate fix'); setStep(3) }}>Compare a fix</button></div>}
+      {runs.length > 0 && <div className="mt-6 space-y-3"><h3 className="font-semibold">Recorded evaluations</h3>{runs.map(run => <div key={run.run_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4"><div><b className="text-sm">{run.label}</b><p className="mt-1 text-xs text-muted">{run.status} · {run.summary.n_queries} queries · nDCG {format(run.summary.metrics?.ndcg)} · p95 {format(run.summary.latency_ms?.p95)} ms</p></div><button className={button} onClick={() => onInspect(run, { query: '', doc: '' })}>Inspect failures</button></div>)}<button className={button} onClick={() => { setLabel('Candidate fix'); setStep(3) }}>Compare a fix</button></div>}
     </section>}
     {step === 3 && <section className={`${panel} space-y-5`}><div><h2 className="text-xl font-semibold">Compare a measured fix</h2><p className="mt-2 text-sm text-muted">Keep the benchmark and k unchanged. Change pipeline configuration, record another run, then inspect both results.</p></div><button className={button} onClick={() => { setLabel('Candidate fix'); setStep(2) }}>Evaluate another configuration</button>
       {runs.length < 2 ? <p className="text-sm text-muted">Record a baseline and a candidate to compare measured results.</p> : <><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Baseline<select aria-label="Baseline run" value={baseId} className={input} onChange={e => setBaseId(e.target.value)}>{runs.map(r => <option key={r.run_id} value={r.run_id}>{r.label} · {r.run_id.slice(0, 8)}</option>)}</select></label><label className="text-sm">Candidate<select aria-label="Candidate run" value={candidateId} className={input} onChange={e => setCandidateId(e.target.value)}>{runs.map(r => <option key={r.run_id} value={r.run_id}>{r.label} · {r.run_id.slice(0, 8)}</option>)}</select></label></div><button className={primary} disabled={baseId === candidateId || comparing} onClick={() => void compare()}>{comparing ? 'Comparing…' : 'Compare runs'}</button></>}
-      {comparison && <><div role="status" className="rounded-xl bg-surface-2 p-4"><b className={comparison.check.verdict === 'pass' ? 'text-teal-600' : 'text-amber-600'}>Release comparison: {comparison.check.verdict}</b>{comparison.check.reasons.map((r, i) => <p className="mt-2 text-sm" key={i}>{r.message}</p>)}{comparison.check.warnings.map((w, i) => <p className="mt-2 text-xs text-muted" key={i}>{w}</p>)}</div>
-        <div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Compare query<select aria-label="Compare query" value={compareQuery} className={input} onChange={e => setCompareQuery(e.target.value)}>{comparison.baseline.queries.map(q => <option key={q.query_id}>{q.query_id}</option>)}</select></label><label className="text-sm">Highlight document ID<input aria-label="Highlight document ID" className={input} value={focusDoc} onChange={e => setFocusDoc(e.target.value)} /></label></div>
-        <div className="grid gap-4 lg:grid-cols-2">{[comparison.baseline, comparison.candidate].map((run, i) => <TraceComparison key={run.run_id} title={i === 0 ? 'Baseline' : 'Candidate'} run={run} queryId={compareQuery} document={focusDoc} onDocument={setFocusDoc} />)}</div>
+      {comparison && <><div role="status" className="rounded-xl bg-surface-2 p-4"><b className={comparison.check.verdict === 'pass' ? 'text-teal-600' : comparison.check.verdict === 'fail' ? 'text-red-600' : 'text-amber-600'}>Release comparison: {comparison.check.verdict}</b>{comparison.check.reasons.map((r, i) => <p className="mt-2 text-sm" key={i}>{r.message}</p>)}{comparison.check.warnings.map((w, i) => <p className="mt-2 text-xs text-muted" key={i}>{w}</p>)}</div>
+        <Findings key={comparison.files.check} comparison={comparison} onInspect={onInspect} />
       </>}
     </section>}
   </div>
@@ -214,15 +213,4 @@ function JsonField({ label, value, hint, onValue, onInvalid }: { label: string; 
 function ListField({ label, value, separator, onValue }: { label: string; value: string[]; separator: string; onValue: (value: string[]) => void }) {
   const [text, setText] = useState(value.join(separator))
   return <label className="block text-sm">{label}<textarea aria-label={label} className={input} rows={2} value={text} onChange={e => { setText(e.target.value); onValue(e.target.value.split(separator).map(v => v.trim()).filter(Boolean)) }} /><span className="text-xs text-muted">{separator === ',' ? 'Separate tags with commas.' : 'One ID per line. Returning any of these fails a permission assertion.'}</span></label>
-}
-
-function TraceComparison({ title, run, queryId, document, onDocument }: { title: string; run: Run; queryId: string; document: string; onDocument: (id: string) => void }) {
-  const query = run.queries.find(q => q.query_id === queryId)
-  return <div className="min-w-0 rounded-xl border border-line p-4"><h3 className="font-semibold">{title} · {run.label}</h3><p className="mt-2 text-sm text-muted">nDCG {format(query?.metrics?.ndcg)} · {format(query?.latency_ms)} ms</p>{!!query?.error && <p className="mt-3 text-sm text-red-600">Query failed; no quality score.</p>}
-    {!!query?.forbidden_ids?.length && <p className="mt-3 text-sm text-red-600">Forbidden: {query.forbidden_ids.join(', ')}</p>}
-    {query?.no_answer_correct != null && <p className="mt-3 text-sm">No-answer check: {query.no_answer_correct ? 'passed' : 'failed'}</p>}
-    {query?.evidence?.stages?.map(stage => <div key={stage.name} className={`mt-3 rounded-lg border p-3 ${document && stage.hits.some(h => h.id === document) ? 'border-teal-500 bg-teal-500/5' : 'border-line'}`}><b className="text-sm">{stage.name}</b><p className="text-xs text-muted">{stage.hits.length} documents · {format(stage.latency_ms)} ms · {stage.source}</p><div className="mt-2 flex max-h-24 flex-wrap gap-1 overflow-auto">{stage.hits.slice(0, 50).map(h => <button className={`rounded px-2 py-1 font-mono text-xs ${document === h.id ? 'bg-teal-600 text-white' : 'bg-surface-2'}`} key={h.id} onClick={() => onDocument(h.id)}>{h.id}</button>)}</div></div>)}
-    {!query?.evidence?.stages?.length && <p className="mt-3 text-sm text-muted">No recorded stage evidence.</p>}
-    {query?.evidence?.failures?.map((failure, i) => <button key={i} className="mt-3 block text-left text-sm text-amber-600" onClick={() => onDocument(failure.doc_id)}>{failure.doc_id} · {failure.stage || 'Not observed'}<span className="block text-xs text-muted">{failure.reason}</span></button>)}
-  </div>
 }

@@ -18,6 +18,7 @@ from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.runfile import load_run
+from vectraudit.evaluation.triage import triage
 from vectraudit.labelling.storage import TaskBusy, task_lock
 from vectraudit.labelling.task import atomic_write
 from vectraudit.pipelines.benchmark import audit_benchmark
@@ -312,11 +313,24 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
 
     @router.post("/compare", dependencies=auth)
     def compare(body: ComparisonIn) -> dict[str, Any]:
-        baseline = load_run(workspace.run_path(body.baseline))
-        candidate = load_run(workspace.run_path(body.candidate))
+        base_path = workspace.run_path(body.baseline)
+        cand_path = workspace.run_path(body.candidate)
+        baseline, candidate = load_run(base_path), load_run(cand_path)
         check = compare_runs(baseline, candidate)
         identifier = uuid.uuid4().hex
         _write(workspace.root / f"{identifier}.check.json", check)
-        return {"check": check, "baseline": baseline, "candidate": candidate}
+        # Name the files on disk so every finding points at the evidence it came from.
+        files = {
+            "baseline": base_path.name,
+            "candidate": cand_path.name,
+            "check": f"{identifier}.check.json",
+        }
+        return {
+            "check": check,
+            "triage": triage(baseline, candidate),
+            "files": files,
+            "baseline": baseline,
+            "candidate": candidate,
+        }
 
     return router
