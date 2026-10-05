@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import statistics
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -67,6 +67,7 @@ def execute_pipeline(
     *,
     config: dict[str, Any] | None = None,
     corpus_version: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
     """Run text/vector requests locally, recording failures without inventing scores."""
     options = options or RunOptions(warmup=0)
@@ -83,6 +84,8 @@ def execute_pipeline(
     start = time.perf_counter()
     try:
         for index, q in enumerate(dataset.queries):
+            if progress is not None:
+                progress(index, len(dataset))
             request = PipelineRequest(
                 query_id=q.query_id,
                 text=q.text,
@@ -165,6 +168,8 @@ def execute_pipeline(
                     "hint": "Validate the adapter locally against PipelineRequest/PipelineResult.",
                 }
             record["queries"].append(entry)
+        if progress is not None:
+            progress(len(dataset), len(dataset))
         record["status"] = "partial" if any(q["error"] for q in record["queries"]) else "complete"
     except KeyboardInterrupt:
         record["status"] = "cancelled"

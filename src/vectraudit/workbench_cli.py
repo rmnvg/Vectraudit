@@ -172,11 +172,15 @@ def monitor_command(
 
 @workbench_app.command("serve")
 def serve_command(
-    directory: Annotated[Path, typer.Argument()] = Path("workbench-runs"), port: int = 8766
+    directory: Annotated[Path, typer.Argument()] = Path("workbench-runs"),
+    port: int = 8766,
+    manifest: Annotated[
+        Path | None, typer.Option(help="Register trusted pipeline adapters for the guided UI.")
+    ] = None,
 ) -> None:
     """Open the local workbench without requiring a FAISS index. No data is uploaded."""
     import uvicorn
 
     from vectraudit.pipelines.web import create_workbench
 
-    uvicorn.run(create_workbench(directory), host="127.0.0.1", port=port)
+    uvicorn.run(create_workbench(directory, manifest), host="127.0.0.1", port=port)

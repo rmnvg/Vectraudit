@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import GuidedWorkflow from './GuidedWorkflow'
 import { parseArtifact } from '../lib/workbench'
 import type { Artifact, Benchmark, Monitor, Optimization, Run } from '../lib/workbench'
 
-const tabs = ['Pipeline runs', 'Experiments', 'Benchmark', 'Monitoring', 'Setup'] as const
+const tabs = ['Guided workflow', 'Pipeline runs', 'Experiments', 'Benchmark', 'Monitoring', 'Setup'] as const
 type Tab = typeof tabs[number]
 const number = (value: number | null | undefined, digits = 2) => value == null ? '—' : value.toFixed(digits)
 const panel = 'rounded-2xl border border-line bg-surface p-5'
@@ -10,7 +11,7 @@ const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface
 
 
 export default function Workbench() {
-  const [tab, setTab] = useState<Tab>('Pipeline runs')
+  const [tab, setTab] = useState<Tab>('Guided workflow')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [files, setFiles] = useState<string[]>([])
   const [error, setError] = useState('')
@@ -23,7 +24,11 @@ export default function Workbench() {
   }, [])
   const accept = (raw: unknown) => {
     const data = parseArtifact(raw)
-    setArtifacts(items => [...items, data])
+    if (data.format === "vectraudit.run") {
+      const existing = runs.findIndex(r => r.run_id === data.run_id)
+      setActive(existing < 0 ? runs.length : existing)
+      if (existing < 0) setArtifacts(items => [...items, data])
+    } else setArtifacts(items => [...items, data])
     setTab(data.format === 'vectraudit.run' ? 'Pipeline runs' : data.format === 'vectraudit.optimization' ? 'Experiments' : data.format === 'vectraudit.benchmark' ? 'Benchmark' : 'Monitoring')
     setError('')
   }
@@ -46,7 +51,7 @@ export default function Workbench() {
       <div><div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-teal-600"><span className="h-2 w-2 rounded-full bg-teal-500" />Retrieval engineering</div>
         <h1 className="text-3xl font-semibold tracking-tight">Your next release. With evidence.</h1>
         <p className="mt-2 text-sm text-muted">Test the whole pipeline. Find the loss. Measure the fix.</p></div>
-      <div className="flex flex-wrap items-center gap-3"><span className="rounded-full bg-teal-500/10 px-3 py-1.5 text-xs text-teal-600">Local workspace · no uploads</span>
+      <div className="flex flex-wrap items-center gap-3"><span className="rounded-full bg-teal-500/10 px-3 py-1.5 text-xs text-teal-600">Local workspace</span>
         <label className={`${button} cursor-pointer bg-ink text-page`}>Import artifacts<input aria-label="Import artifacts" type="file" accept=".json" multiple className="sr-only" onChange={async e => {
           for (const file of Array.from(e.target.files || [])) {
             try { if (file.size > 20 * 1024 * 1024) throw new Error('File exceeds 20 MiB'); accept(JSON.parse(await file.text())) } catch (err) { setError(String(err)) }
@@ -55,11 +60,12 @@ export default function Workbench() {
         }} /></label></div>
     </header>
     <div className="rounded-2xl bg-gradient-to-r from-teal-950 to-slate-900 px-6 py-5 text-white">
-      <div className="grid gap-4 text-sm md:grid-cols-4">{['01  Define a benchmark', '02  Trace your pipeline', '03  Compare measured fixes', '04  Guard every release'].map((step, i) => <button key={step} onClick={() => setTab((['Benchmark', 'Pipeline runs', 'Experiments', 'Monitoring'] as Tab[])[i])} className="rounded-lg px-2 py-2 text-left hover:bg-white/10">{step}<span className="mt-1 block text-xs text-teal-100/60">{['Labels, permissions, no-answer', 'Every stage, every lost document', 'Quality within your latency budget', 'Frozen checks and change history'][i]}</span></button>)}</div>
+      <div className="grid gap-4 text-sm md:grid-cols-4">{['01  Define a benchmark', '02  Trace your pipeline', '03  Compare measured fixes', '04  Guard every release'].map((step, i) => <button key={step} onClick={() => setTab((['Guided workflow', 'Pipeline runs', 'Experiments', 'Monitoring'] as Tab[])[i])} className="rounded-lg px-2 py-2 text-left hover:bg-white/10">{step}<span className="mt-1 block text-xs text-teal-100/60">{['Labels, permissions, no-answer', 'Every stage, every lost document', 'Quality within your latency budget', 'Frozen checks and change history'][i]}</span></button>)}</div>
     </div>
     <nav aria-label="Workbench" className="flex gap-2 overflow-x-auto border-b border-line">{tabs.map(t => <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm ${tab === t ? 'border-teal-500 font-semibold text-teal-600' : 'border-transparent text-muted hover:text-ink'}`}>{t}</button>)}</nav>
     {error && <div role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-600">{error}</div>}
     {files.length > 0 && <label className="flex flex-col items-start gap-2 text-sm text-muted sm:flex-row sm:items-center">Open local artifact<select aria-label="Open local artifact" className={`${button} w-full min-w-0 max-w-md bg-surface`} disabled={busy} value="" onChange={e => void load(e.target.value)}><option value="">{busy ? 'Loading…' : 'Choose a recorded result'}</option>{files.map(name => <option key={name}>{name}</option>)}</select></label>}
+    <div hidden={tab !== 'Guided workflow'}><GuidedWorkflow onInspect={accept} /></div>
     {tab === 'Pipeline runs' && (selected ? <>
       <div className="flex flex-wrap gap-2">{runs.map((run, i) => <button className={`${button} ${active === i ? 'border-teal-500 text-teal-600' : ''}`} key={`${run.run_id}-${i}`} onClick={() => setActive(i)}>{run.label || run.run_id.slice(0, 12)}</button>)}</div>
       <RunView run={selected} key={selected.run_id} />
@@ -71,7 +77,7 @@ export default function Workbench() {
     </div> : <Empty title="Optimize against your budget." text="Compare retrieval depth, hybrid weights and rerankers. Only feasible candidates are selected; one selected candidate is validated on held-out queries." command="vectraudit workbench optimize manifest.json --out optimization.json" />)}
     {tab === 'Benchmark' && (benchmark ? <div className="grid gap-5 lg:grid-cols-2"><div className={panel}><h2 className="text-lg font-semibold">Benchmark health</h2><p className="my-4 text-3xl font-semibold">{benchmark.n_labelled}<span className="text-base font-normal text-muted"> / {benchmark.n_queries} annotated</span></p><p className="text-sm text-muted">{benchmark.duplicates.length} duplicate groups · {benchmark.unannotated.length} awaiting judgment</p><h3 className="mb-3 mt-6 font-medium">Coverage to add</h3>{benchmark.suggestions.map(s => <div key={s.category} className="border-t border-line py-3"><div className="text-sm font-semibold">{s.category.replaceAll('_', ' ')}</div><p className="mt-1 text-sm text-muted">{s.instruction}</p></div>)}</div><div className={panel}><h2 className="font-semibold">Human judgment queue</h2><p className="my-3 text-sm text-muted">Exploratory queries only. Suggestions never become labels automatically.</p>{benchmark.judgment_queue.slice(0, 100).map((q, i) => <div key={i} className="border-t border-line py-3 text-sm"><span className="font-mono">{q.query_id} → {q.doc_id}</span><p className="mt-1 text-muted">{q.reason}</p></div>)}{!benchmark.judgment_queue.length && <p className="text-sm text-muted">No pooled documents awaiting judgment. Supply candidate runs to build a review queue.</p>}</div></div> : <Empty title="A benchmark you can trust." text="Find duplicate questions, missing test categories and documents that need a human judgment. Keep exploratory work separate from the final held-out benchmark." command="vectraudit workbench benchmark queries.jsonl --runs workbench-runs" />)}
     {tab === 'Monitoring' && (monitors.length ? <div className="space-y-4">{monitors.map((m, i) => <div key={i} className={panel}><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{new Date(m.created_at).toLocaleString()}</h2><Badge good={m.verdict === 'pass'}>{m.verdict}</Badge></div><div className="mt-4 grid gap-4 text-sm md:grid-cols-4"><span>Corpus: <b>{m.drift.corpus}</b></span><span>Configuration: <b>{m.drift.configuration}</b></span><span>Changed queries: <b>{m.drift.results.length}</b></span><span>p95: <b>{number(m.summary.latency_ms?.p95)} ms</b></span></div>{m.alerts.map((a, j) => <p key={j} className="mt-3 text-sm text-red-600">{a.message}</p>)}</div>)}</div> : <Empty title="Make regressions visible." text="Schedule checks against a frozen baseline. Track result changes and distinguish corpus changes from configuration changes. Import multiple monitor artifacts to review trends." command="vectraudit workbench monitor manifest.json baseline.run.json" />)}
-    {tab === 'Setup' && <div className="grid gap-5 lg:grid-cols-2"><div className={panel}><h2 className="text-lg font-semibold">One local workflow</h2><ol className="mt-4 space-y-4 text-sm"><li>1. Import questions with <code>vectraudit dataset import</code>.</li><li>2. Judge candidate documents with <code>vectraudit label</code>.</li><li>3. Define Python, HTTP or hybrid candidates in a manifest.</li><li>4. Run, inspect and optimize in this workbench.</li><li>5. Use <code>vectraudit check</code> for release comparisons.</li><li>6. Schedule <code>vectraudit workbench monitor</code>.</li></ol></div><div className={panel}><h2 className="text-lg font-semibold">Your data stays with you</h2><p className="mt-4 text-sm leading-7 text-muted">Imported artifacts are read in this browser. The local artifact server only reads its configured directory. Pipeline execution happens in your local process. An HTTP adapter sends query text, vectors, filters and user context to the endpoint you configure. Cloud upload is a separate, explicit action.</p><p className="mt-4 text-sm text-muted">Start with the runnable example in <code>examples/workbench/</code> and the workbench guide in <code>docs/retrieval-workbench.md</code>.</p></div></div>}
+    {tab === 'Setup' && <div className="grid gap-5 lg:grid-cols-2"><div className={panel}><h2 className="text-lg font-semibold">One local workflow</h2><ol className="mt-4 space-y-4 text-sm"><li>1. Import questions with <code>vectraudit dataset import</code>.</li><li>2. Judge candidate documents with <code>vectraudit label</code>.</li><li>3. Define Python, HTTP or hybrid candidates in a manifest.</li><li>4. Run, inspect and optimize in this workbench.</li><li>5. Use <code>vectraudit check</code> for release comparisons.</li><li>6. Schedule <code>vectraudit workbench monitor</code>.</li></ol></div><div className={panel}><h2 className="text-lg font-semibold">Your data stays with you</h2><p className="mt-4 text-sm leading-7 text-muted">Imported artifacts are read in this browser. Saved benchmarks and evaluation results stay in the configured workspace directory. Pipeline execution happens in your local process. An HTTP adapter sends query text, vectors, filters and user context to the endpoint you configure. Cloud upload is a separate, explicit action.</p><p className="mt-4 text-sm text-muted">Start with the runnable example in <code>examples/workbench/</code> and the workbench guide in <code>docs/retrieval-workbench.md</code>.</p></div></div>}
   </div>
 }
 

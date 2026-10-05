@@ -171,3 +171,4 @@ One line per non-obvious technical decision.
 - 2026-10-05: Optimization evaluates exploration first and only one selected candidate on held-out data; unknown cost/memory cannot satisfy constraints, and no candidate is auto-deployed.
 - 2026-10-05: Workbench browser reads artifacts; trusted adapter imports and outbound HTTP run only through CLI/Python. No new remote execution route.
 - 2026-10-05: Enterprise SSO uses fixed HTTPS authorization-code/PKCE and verified userinfo for existing users; ID tokens are not accepted as identity evidence. Project allowlists cap existing workspace roles; runner scopes remain separate.
+- 2026-10-05: Guided workbench executes only the built-in local hybrid baseline or adapters registered by the startup `--manifest`; browser writes need a per-process token plus same-origin, bodies cap at 5 MiB, drafts use optimistic revisions, one worker runs at a time, and cancelled runs are never saved.

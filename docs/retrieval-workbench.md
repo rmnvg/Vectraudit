@@ -21,8 +21,37 @@ artifact directory. Inspect a query, click a document ID, and follow it through 
 The example is deliberately tiny: it demonstrates behavior, not production effectiveness.
 
 The browser presents runs, stage evidence, experiments, benchmark review queues, and
-monitoring history. Setup, annotation and execution use the existing CLI workflows;
-this release does not turn the browser into an arbitrary Python execution service.
+monitoring history. Optimization, monitoring and bulk labelling still use the CLI.
+
+## Guided workflow
+
+The **Guided workflow** tab (the default in `vectraudit workbench serve`) takes you from
+a pipeline to a measured fix without editing JSON files:
+
+1. **Connect pipeline.** Choose the built-in local BM25/hybrid baseline and paste or
+   upload a JSONL corpus (`doc_id`, `text`, optional `metadata` and `vector`). You can
+   also choose an adapter registered at startup with
+   `vectraudit workbench serve DIR --manifest pipelines.json`. **Use starter example**
+   loads a four-document corpus and benchmark.
+2. **Build benchmark.** Add or import questions. For each one, set relevance grades,
+   an explicit *no relevant document* judgment, tenant context, filters, forbidden
+   document IDs, cohort tags, and the exploratory or held-out split. Fields containing
+   invalid JSON block saving. Saved benchmarks are versioned in `DIR/.workbench/drafts/`.
+   A save based on an older revision is rejected rather than overwriting newer edits.
+3. **Evaluate & inspect.** Runs execute in a single local worker with progress and
+   cancellation. Cancelled runs are not saved. Completed runs are written to `DIR` as
+   ordinary `*.run.json` files, so **Inspect failures** opens them in the detailed trace view.
+4. **Compare a fix.** Choose a baseline and a candidate, run the release comparison
+   (saved as `*.check.json`), and step through each query's stage traces side by side.
+
+Exploratory runs never include held-out queries. A held-out run requires an explicit
+confirmation. A comparison between different splits is reported as not comparable.
+
+The browser cannot register Python code or new endpoints. Pipelines come only from the
+startup manifest. A registered HTTP adapter runs only after you confirm that query text,
+vectors, filters and user context will be sent to its displayed destination. Write
+requests need a per-process token and a same-origin request, and request bodies are
+limited to 5 MiB.
 
 ## Pipeline adapters
 
@@ -162,8 +191,9 @@ and version their adapter configuration when deployed code changes.
 
 ## Validation and deployment boundaries
 
-`tests/test_pipelines.py`, `tests/test_workbench.py` and `scripts/workbench_smoke.mjs`
-exercise adapters, stage evidence, safety assertions, split isolation and browser flows.
+`tests/test_pipelines.py`, `tests/test_workbench.py`, `tests/test_guided_workbench.py`,
+`scripts/workbench_smoke.mjs` and `scripts/guided_smoke.mjs` exercise adapters, stage
+evidence, safety assertions, split isolation, guided persistence and browser flows.
 The existing release-check run format is retained. See
 [enterprise deployment](enterprise-deployment.md) for governance, SSO and recovery checks.
 Real-provider SSO certification, representative load tests and PostgreSQL recovery rehearsals
