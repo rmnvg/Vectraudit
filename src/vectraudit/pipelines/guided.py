@@ -25,6 +25,7 @@ from vectraudit.pipelines.benchmark import audit_benchmark
 from vectraudit.pipelines.lexical import hybrid_pipeline
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
 from vectraudit.pipelines.models import Contract
+from vectraudit.pipelines.release import corpus_version as documents_version
 from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
 from vectraudit.pipelines.runtime import HTTPPipeline, Pipeline
 
@@ -67,6 +68,8 @@ class EvaluationIn(Contract):
 class ComparisonIn(Contract):
     baseline: str
     candidate: str
+    policy: str | None = None
+    """Saved or startup policy id; ``None`` compares under the exploratory defaults."""
 
 
 def _identifier(value: str) -> str:
@@ -82,7 +85,11 @@ def _write(path: Path, value: dict[str, Any]) -> None:
 class GuidedWorkspace:
     """One local artifact directory, durable drafts, and a single evaluation worker."""
 
-    def __init__(self, root: Path, manifest: Path | None = None) -> None:
+    def __init__(
+        self, root: Path, manifest: Path | None = None, policy: Path | None = None
+    ) -> None:
+        from vectraudit.pipelines.release_workflow import PolicyStore
+
         self.root = root.resolve()
         self.drafts = self.root / ".workbench" / "drafts"
         self.token = secrets.token_urlsafe(32)
@@ -98,6 +105,7 @@ class GuidedWorkspace:
         for candidate in self.registry.values():
             if candidate.adapter.kind == "http":
                 HTTPPipeline(str(candidate.adapter.target), timeout=candidate.adapter.timeout)
+        self.policies = PolicyStore(self, policy)
 
     def _draft_path(self, identifier: str) -> Path:
         path = self.drafts / f"{_identifier(identifier)}.json"
@@ -215,9 +223,7 @@ class GuidedWorkspace:
             # Prevalidate the corpus; build the index in the background worker.
             if len({d["doc_id"] for d in documents}) != len(documents):
                 raise HTTPException(422, "Corpus document ids must be unique")
-            corpus_version = hashlib.sha256(
-                json.dumps(documents, sort_keys=True).encode()
-            ).hexdigest()
+            corpus_version = documents_version(documents)
             params: dict[str, Any] = {
                 "depth": body.depth,
                 "vector_weight": body.vector_weight,
@@ -336,7 +342,8 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
         base_path = workspace.run_path(body.baseline)
         cand_path = workspace.run_path(body.candidate)
         baseline, candidate = load_run(base_path), load_run(cand_path)
-        check = compare_runs(baseline, candidate)
+        rules, policy = workspace.policies.resolve(body.policy)
+        check = compare_runs(baseline, candidate, rules)
         identifier = uuid.uuid4().hex
         _write(workspace.root / f"{identifier}.check.json", check)
         # Name the files on disk so every finding points at the evidence it came from.
@@ -347,13 +354,16 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
         }
         return {
             "check": check,
+            "policy": policy,
             "triage": triage(baseline, candidate),
             "files": files,
             "baseline": baseline,
             "candidate": candidate,
         }
 
+    from vectraudit.pipelines.release_workflow import release_router
     from vectraudit.pipelines.workflows import workflow_router
 
     router.include_router(workflow_router(workspace), dependencies=auth)
+    router.include_router(release_router(workspace), dependencies=auth)
     return router

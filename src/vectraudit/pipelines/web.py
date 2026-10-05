@@ -19,10 +19,12 @@ from vectraudit.pipelines.guided import MAX_BODY, GuidedWorkspace, guided_router
 from vectraudit.server.app import STATIC_DIR, _mount_frontend
 
 
-def create_workbench(directory: Path, manifest: Path | None = None) -> FastAPI:
+def create_workbench(
+    directory: Path, manifest: Path | None = None, policy: Path | None = None
+) -> FastAPI:
     """Serve a bounded artifact directory and the shared product UI."""
     root = directory.resolve()
-    workspace = GuidedWorkspace(root, manifest)
+    workspace = GuidedWorkspace(root, manifest, policy)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

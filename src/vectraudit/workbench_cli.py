@@ -177,10 +177,61 @@ def serve_command(
     manifest: Annotated[
         Path | None, typer.Option(help="Register trusted pipeline adapters for the guided UI.")
     ] = None,
+    policy: Annotated[
+        Path | None,
+        typer.Option(help="Offer this policy file (e.g. your CI policy) for comparisons."),
+    ] = None,
 ) -> None:
     """Open the local workbench without requiring a FAISS index. No data is uploaded."""
     import uvicorn
 
+    from vectraudit.evaluation.policy import PolicyError, load_policy
     from vectraudit.pipelines.web import create_workbench
 
-    uvicorn.run(create_workbench(directory, manifest), host="127.0.0.1", port=port)
+    if policy is not None:
+        try:
+            load_policy(policy)
+        except PolicyError as exc:
+            typer.echo(f"Policy error: {exc}", err=True)
+            raise typer.Exit(2) from exc
+    uvicorn.run(create_workbench(directory, manifest, policy), host="127.0.0.1", port=port)
+
+
+@workbench_app.command("export")
+def export_command(
+    release: Annotated[str, typer.Argument(help="Release configuration id from the workbench.")],
+    workspace: Annotated[Path, typer.Option(help="Workbench directory.")] = Path("workbench-runs"),
+    out: Annotated[Path, typer.Option(help="Repository root to write into.")] = Path(),
+    force: Annotated[bool, typer.Option(help="Overwrite files that already exist.")] = False,
+) -> None:
+    """Write an exported release check into a repository for review. Nothing is pushed."""
+    import re
+
+    if not re.fullmatch(r"[a-f0-9]{32}", release):
+        typer.echo("Release configuration ids are 32 hexadecimal characters.", err=True)
+        raise typer.Exit(2)
+    path = workspace / ".workbench" / "releases" / f"{release}.json"
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Cannot read release configuration {path}: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    written, skipped = [], []
+    for relative, content in sorted(record["files"].items()):
+        target = out / relative
+        if target.exists() and not force:
+            skipped.append(target)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        written.append(target)
+    for target in written:
+        typer.echo(f"wrote {target}")
+    for target in skipped:
+        typer.echo(f"skipped {target} (exists; --force overwrites)")
+    for item in record["issues"]["prerequisites"]:
+        typer.echo(f"prerequisite: {item}")
+    for item in record["issues"]["warnings"]:
+        typer.echo(f"warning: {item}")
+    if skipped:
+        raise typer.Exit(1)

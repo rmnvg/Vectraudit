@@ -1,0 +1,94 @@
+# A retrieval release check on every pull request (exported by the Vectraudit workbench).
+#
+# The target branch's release configuration is the approved one: its benchmark, k and
+# policy judge both sides. The baseline runs the target branch's pipeline code and the
+# candidate runs this pull request's, on the same runner, so latency is comparable.
+# A pull request that proposes a new policy or benchmark is checked under the approved
+# versions; the proposal is reported and applies after merge.
+#
+# Security: this runs on `pull_request`, never `pull_request_target`, so pull requests from
+# forks get no secrets. Keep the pipeline credentials below read-only.
+
+name: Retrieval release check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write          # --github-check: the verdict as a check on the pull request
+  pull-requests: write   # --github-comment: one summary comment, updated on each push
+
+jobs:
+  release-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VECTRAUDIT_VERSION: v__VERSION__
+      RELEASE: __RELEASE__
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install vectraudit
+        env:
+          # A fine-grained token with read access to the vectraudit release you were given.
+          GH_TOKEN: ${{ secrets.VECTRAUDIT_DOWNLOAD_TOKEN }}
+        run: |
+          gh release download "$VECTRAUDIT_VERSION" --repo rmnvg/Vectraudit \
+            --pattern '*.whl' --dir "$RUNNER_TEMP/vectraudit"
+          pip install "$(ls "$RUNNER_TEMP"/vectraudit/*.whl)"
+
+__INSTALL_PIPELINE__      - name: Find the approved configuration (target branch)
+        id: approved
+        run: |
+          git worktree add "$RUNNER_TEMP/base" "origin/$GITHUB_BASE_REF"
+          if [ -f "$RUNNER_TEMP/base/$RELEASE" ]; then
+            echo "release=$RUNNER_TEMP/base/$RELEASE" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=" >> "$GITHUB_OUTPUT"
+            echo "::notice::$GITHUB_BASE_REF has no approved release configuration yet. This pull request introduces it; the comparison starts after merge." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Validate this pull request's configuration
+        run: vectraudit release validate "$RELEASE"
+
+      - name: Record the baseline (target branch pipeline)
+        if: steps.approved.outputs.release != ''
+__BASELINE_ENV__        # A failed run still writes its file; `release check` reports it as an error.
+        run: |
+          vectraudit release run "${{ steps.approved.outputs.release }}" \
+            --out runs/baseline.run.json --label "$GITHUB_BASE_REF" || true
+
+      - name: Record the candidate (this pull request)
+__CANDIDATE_ENV__        # With an approved configuration, `release check` reports a failed run as an error;
+        # without one, a failed run fails this step.
+        run: |
+          APPROVED="${{ steps.approved.outputs.release }}"
+          vectraudit release run "$RELEASE" ${APPROVED:+--approved "$APPROVED"} \
+            --out runs/candidate.run.json \
+            --label "pr-${{ github.event.pull_request.number }}" || [ -n "$APPROVED" ]
+
+      - name: Check
+        if: steps.approved.outputs.release != ''
+        # Exit codes: 0 pass, 1 error, 3 fail, 4 not comparable. Writes the job summary.
+        # Publishing is best effort: fork pull requests get a read-only token.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          vectraudit release check "${{ steps.approved.outputs.release }}" \
+            runs/baseline.run.json runs/candidate.run.json --proposed "$RELEASE" \
+            --html runs/report.html --json runs/result.json \
+            --github-check --github-comment
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-release-check
+          path: runs/

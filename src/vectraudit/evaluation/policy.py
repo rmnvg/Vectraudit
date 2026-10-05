@@ -18,6 +18,7 @@ policy file, :data:`DEFAULT_POLICY` applies its rules to whichever metrics both 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass, field
@@ -109,6 +110,15 @@ DEFAULT_POLICY = Policy(
     latency=LatencyRule(p95_max_increase_pct=50.0),
     is_default=True,
 )
+
+
+def policy_sha256(policy: Policy) -> str:
+    """Identity of the effective rules: equal for the same policy in the browser, CLI and CI.
+
+    Matches the hosted service's policy digest (canonical JSON of :meth:`Policy.as_dict`).
+    """
+    blob = json.dumps(policy.as_dict(), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def load_policy(path: str | Path) -> Policy:

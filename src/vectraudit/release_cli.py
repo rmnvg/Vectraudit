@@ -616,6 +616,34 @@ def check(
     if upload:
         hosted = _record_cloud_check(client, cand, str(baseline)[6:], verdict)
         report_url = report_url or hosted
+    emit_check(
+        result,
+        json_out=json_out,
+        html=html,
+        markdown=markdown,
+        github_summary=github_summary,
+        report_url=report_url,
+        github_check=github_check,
+        github_comment=github_comment,
+        check_name=check_name,
+    )
+    raise typer.Exit(code=EXIT_CODES[verdict])
+
+
+def emit_check(
+    result: dict[str, Any],
+    *,
+    json_out: Path | None,
+    html: Path | None,
+    markdown: Path | None,
+    github_summary: bool,
+    report_url: str | None,
+    github_check: bool,
+    github_comment: bool,
+    check_name: str,
+) -> None:
+    """Write the reports, print the verdict and publish to GitHub (best effort)."""
+    verdict = Verdict(result["verdict"])
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
@@ -633,7 +661,6 @@ def check(
     _print_check(result, verdict)
     if github_check or github_comment:
         _publish_github(result, md, github_check, github_comment, check_name, report_url)
-    raise typer.Exit(code=EXIT_CODES[verdict])
 
 
 def _publish_github(

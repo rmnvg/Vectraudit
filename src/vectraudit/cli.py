@@ -997,3 +997,7 @@ app.command("doctor")(doctor)
 from vectraudit.workbench_cli import workbench_app  # noqa: E402
 
 app.add_typer(workbench_app, name="workbench")
+
+from vectraudit.release_config_cli import release_app  # noqa: E402
+
+app.add_typer(release_app, name="release")
