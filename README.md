@@ -58,6 +58,9 @@ each finding is marked verified, supported or hypothesis, with the facts behind 
 
 - [Your first release check in 15 minutes](docs/first-check.md) (`vectraudit init`)
 - [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
+- [Experiments](docs/experiments.md): pick an embedding model, chunking and index on your
+  own labelled queries before release checks guard it
+- [Case study: choosing an embedding model and chunk size](docs/case-study-experiment.md)
 - [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
 - [Pull-request workflow](examples/github/retrieval-check.yml) with check runs and comments
 - [Running Vectraudit Cloud](docs/cloud-operations.md): hosted baselines, history,

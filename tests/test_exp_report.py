@@ -94,3 +94,31 @@ def test_cli_and_winner_runs_are_checkable(tmp_path, monkeypatch) -> None:
     bad = runner.invoke(app, ["experiment", "run", str(tmp_path / "missing.json")])
     assert bad.exit_code == 1
     assert "not found" in bad.output
+
+
+def test_experiment_demo_synthetic(tmp_path) -> None:
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).parents[1] / "examples" / "experiment_demo.py"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--synthetic",
+            "--queries",
+            "30",
+            "--out",
+            str(tmp_path / "demo"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+        env={**__import__("os").environ, "VECTRAUDIT_CACHE_DIR": str(tmp_path / "cache")},
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    result = json.loads((tmp_path / "demo" / "result.json").read_text())
+    assert result["ranking"][-1]["name"] == "lexical-64"  # tiny hashing space collides
+    assert (tmp_path / "demo" / "runs" / "lexical-2048.json").exists()

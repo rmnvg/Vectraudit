@@ -138,12 +138,13 @@ def run_candidate(
     experiment: str,
     embedders: Mapping[str, Embedder] | None = None,
     cache: EmbeddingCache | None = None,
+    embedder: Embedder | None = None,
 ) -> CandidateResult:
     chunks = chunk_corpus(corpus, spec.chunking)
     if not chunks:
         raise ExperimentError(f"{spec.name}: chunking produced no chunks.")
     doc_of = {c.chunk_id: c.doc_id for c in chunks}
-    embedder = make_embedder(spec.embedder, embedders)
+    embedder = embedder or make_embedder(spec.embedder, embedders)
     cache = cache or EmbeddingCache(None)
     started = time.perf_counter()
     vectors, cached = cache.get_or_compute(
@@ -270,6 +271,11 @@ def run_experiment(
     """Run all candidates; returns the experiment summary and per-candidate results."""
     corpus, dataset = _load_inputs(manifest)
     cache = EmbeddingCache(cache_root)
+    # Load every embedder (and so torch, for model candidates) before FAISS builds any
+    # index: on macOS both ship OpenMP, and torch initialising second aborts the process.
+    if progress is not None:
+        progress("loading embedders")
+    loaded = {spec.name: make_embedder(spec.embedder, embedders) for spec in manifest.candidates}
     results = []
     for spec in manifest.candidates:
         if progress is not None:
@@ -283,6 +289,7 @@ def run_experiment(
                 experiment=manifest.name,
                 embedders=embedders,
                 cache=cache,
+                embedder=loaded[spec.name],
             )
         )
     summary = {
