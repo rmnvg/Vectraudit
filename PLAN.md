@@ -173,6 +173,7 @@ vectraudit/
   - `vectraudit[parquet]` → `pyarrow`.
   - `vectraudit[qdrant]` → `qdrant-client` (Phase 14 connector).
   - `vectraudit[pgvector]` → `psycopg[binary]` (Phase 14 connector; LGPL, used unmodified).
+  - `vectraudit[weaviate]` → `weaviate-client` (BSD-3) (Phase 19). Pinecone needs no extra: the connector uses its REST API with a pinned API version.
   - `vectraudit[cloud]` → `sqlalchemy>=2`, `alembic`, `psycopg[binary]` (Phase 16 hosted service).
   - `vectraudit[all]` → everything above.
   - `vectraudit[dev]` → test/lint tools.
@@ -605,6 +606,29 @@ New code lives in `vectraudit.experiments` (plain library, strict types).
 semantic one; small vs large chunks), the report ranks candidates correctly with intervals;
 chunking changes are evaluated against document labels, not stale chunk ids; the winner's
 run file passes `vectraudit check` against itself and uploads to the cloud.
+
+### Phase 19: Pinecone and Weaviate connectors (PRD FR11)
+Goal: certify the two "next release" backends against the same connector contract,
+contract tests and reference dataset as FAISS, Qdrant and pgvector.
+
+1. **Pinecone** (no extra; REST API with a pinned version): index by name or host, namespace, metadata
+   filters (portable equality filters as `$eq`), API key via `api_key_env`. Black box per
+   the PRD: no exact reference, no tuning parameters, no snapshot; describe reports metric,
+   dimension, vector counts (index and namespace) and serverless/pod spec. Typed errors for
+   auth, missing index, rate limits, timeouts and connection failures.
+2. **Weaviate** (`vectraudit[weaviate]`): collection, optional named vector and tenant,
+   document id from a property or the object UUID, portable filters as property equality,
+   API key via `api_key_env`. Exact reference only for collections with a flat index;
+   describe reports the vector index type, distance and HNSW settings.
+3. **Contract tests and CI.** Unit tests with recorded client behaviour; integration tests
+   against `pinecone-local` and `semitechnologies/weaviate` containers (skipped without
+   their URLs), added as CI services; the Phase 14 acceptance suite runs on both.
+4. **Docs and scaffolding.** Connection fields in the release-check guide, `vectraudit init
+   --backend pinecone|weaviate`, threat-model and changelog updates.
+
+**Acceptance:** the acceptance suite (baseline passes, noisy embeddings fail, broken
+connection is an error, different dataset is not comparable, latency regression fails)
+passes on Pinecone and Weaviate; unsupported capabilities are reported, never faked.
 
 ---
 

@@ -1,0 +1,8 @@
+{
+  "backend": "weaviate",
+  "name": "production collection",
+  "url": "https://YOUR-CLUSTER.weaviate.cloud",
+  "api_key_env": "WEAVIATE_API_KEY",
+  "collection": "Docs",
+  "id_property": "doc_id"
+}

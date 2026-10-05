@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
-BACKENDS = ("faiss", "qdrant", "pgvector")
+BACKENDS = ("faiss", "qdrant", "pgvector", "pinecone", "weaviate")
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,8 @@ _SETTINGS = {
     "faiss": _Backend("faiss-cpu", None),
     "qdrant": _Backend("qdrant", "QDRANT_API_KEY"),
     "pgvector": _Backend("pgvector", "RETRIEVAL_PG_DSN"),
+    "pinecone": _Backend("", "PINECONE_API_KEY"),  # REST API: no extra package needed
+    "weaviate": _Backend("weaviate", "WEAVIATE_API_KEY"),
 }
 
 
@@ -36,7 +38,7 @@ def render_workflow(backend: str) -> str:
         )
     return (
         _template("retrieval-check.yml.tmpl")
-        .replace("__EXTRAS__", settings.extras)
+        .replace("[__EXTRAS__]", f"[{settings.extras}]" if settings.extras else "")
         .replace("__ENV_BLOCK__", env_block)
     )
 

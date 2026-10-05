@@ -161,6 +161,52 @@ def _open_qdrant(cfg: ConnectionConfig) -> Connector:
     )
 
 
+def _open_pinecone(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.pinecone import CONTROL_PLANE, PineconeConnector
+
+    _reject_unknown(
+        cfg, {"index", "namespace", "host", "api_key_env", "control_plane_url", "timeout_s"}
+    )
+    api_key = secret(cfg.options, "api_key")
+    assert api_key is not None
+    return PineconeConnector(
+        api_key=api_key,
+        index=require(cfg.options, "index", str),
+        namespace=option(cfg.options, "namespace", str, ""),
+        host=option(cfg.options, "host", str),
+        control_plane_url=option(cfg.options, "control_plane_url", str, CONTROL_PLANE),
+        timeout_s=_positive_int(cfg, "timeout_s", 10),
+    )
+
+
+def _open_weaviate(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.weaviate import WeaviateConnector
+
+    _reject_unknown(
+        cfg,
+        {
+            "url",
+            "grpc_url",
+            "api_key_env",
+            "collection",
+            "id_property",
+            "vector_name",
+            "tenant",
+            "timeout_s",
+        },
+    )
+    return WeaviateConnector(
+        url=require(cfg.options, "url", str),
+        collection=require(cfg.options, "collection", str),
+        api_key=secret(cfg.options, "api_key", required=False),
+        id_property=option(cfg.options, "id_property", str),
+        vector_name=option(cfg.options, "vector_name", str),
+        tenant=option(cfg.options, "tenant", str),
+        grpc_url=option(cfg.options, "grpc_url", str),
+        timeout_s=_positive_int(cfg, "timeout_s", 10),
+    )
+
+
 def _open_pgvector(cfg: ConnectionConfig) -> Connector:
     from vectraudit.connectors.pgvector import PgvectorConnector
 
@@ -215,6 +261,8 @@ BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
     "faiss": _open_faiss,
     "qdrant": _open_qdrant,
     "pgvector": _open_pgvector,
+    "pinecone": _open_pinecone,
+    "weaviate": _open_weaviate,
 }
 
 

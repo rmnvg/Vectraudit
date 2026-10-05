@@ -128,7 +128,9 @@ def dataset_validate(
 
 
 def init(
-    backend: Annotated[str, typer.Option(help="faiss, qdrant or pgvector.")] = "faiss",
+    backend: Annotated[
+        str, typer.Option(help="faiss, qdrant, pgvector, pinecone or weaviate.")
+    ] = "faiss",
     directory: Annotated[
         Path, typer.Option("--dir", help="Repository root to scaffold into.")
     ] = Path(),
