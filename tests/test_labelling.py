@@ -82,3 +82,38 @@ def test_pool_candidates_and_runs(inputs, tmp_path):
     save_run(result.run, path)
     with pytest.raises(ValueError, match="source documents"):
         pool(dataset, corpus, runs=[path])
+
+
+def test_local_ui_csrf_escape_save(inputs, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from vectraudit.labelling.web import create_app
+
+    dataset, corpus = inputs
+    task = pool(dataset, corpus, k=2)
+    task.queries[0].text = '<script>alert("query")</script>'
+    path = tmp_path / "task.json"
+    save_task(task, path)
+    client = TestClient(create_app(path))
+    page = client.get("/?annotator=A")
+    assert "&lt;script&gt;" in page.text
+    assert "default-src 'none'" in page.headers["Content-Security-Policy"]
+    assert "run:" not in page.text
+    assert "hashing" not in page.text
+    assert client.get("/", headers={"Host": "evil.example"}).status_code == 400
+    form = {"q": "0", "doc": task.queries[0].documents[0], "annotator": "A", "grade": "3"}
+    assert client.post("/judge", data=form).status_code == 403
+    import re
+
+    form["csrf"] = re.search(r'name="csrf" value="([^"]+)"', page.text)[1]
+    assert client.post("/judge", data=form).status_code == 200
+    assert load_task(path).judgments[0].grade == 3
+    form.update(start="0", end="99999")
+    assert client.post("/judge", data=form).status_code == 400
+    form.update(start="0", end="3")
+    assert client.post("/judge", data=form).status_code == 200
+    assert len(load_task(path).judgments) == 1
+    assert load_task(path).judgments[0].end == 3
+    form.update(start="", end="", grade="skip")
+    assert client.post("/judge", data=form).status_code == 200
+    assert load_task(path).judgments[0].grade is None

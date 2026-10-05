@@ -21,6 +21,29 @@ class Question(Model):
     documents: list[str]
 
 
+class Judgment(Model):
+    query_id: str
+    doc_id: str
+    annotator: str = Field(min_length=1, max_length=100)
+    grade: int | None = Field(default=None, ge=0, le=3)
+    start: int | None = Field(default=None, ge=0)
+    end: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def valid(self) -> Judgment:
+        if not self.annotator.strip():
+            raise ValueError("Annotator name is required")
+        if (self.start is None) != (self.end is None):
+            raise ValueError("Both span offsets are required")
+        if (
+            self.start is not None
+            and self.end is not None
+            and (self.start >= self.end or not self.grade)
+        ):
+            raise ValueError("Spans require start < end and a positive grade")
+        return self
+
+
 class Task(Model):
     format: str = "vectraudit.labelling.v1"
     name: str = Field(min_length=1)
@@ -28,6 +51,7 @@ class Task(Model):
     sources: list[str]
     documents: dict[str, str]
     queries: list[Question]
+    judgments: list[Judgment] = Field(default_factory=list)
     sha256: str = ""
 
     @model_validator(mode="after")

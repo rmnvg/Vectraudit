@@ -48,3 +48,19 @@ def pool_command(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"Saved {len(task.queries)} questions to {out}; content hash {task.sha256}")
+
+
+@label_app.command("serve")
+def serve_command(task: Path, port: int = 8766) -> None:
+    """Label a task in a local browser; binds only to 127.0.0.1."""
+    import uvicorn
+
+    from vectraudit.labelling.web import create_app
+
+    try:
+        application = create_app(task)
+    except (ValueError, OSError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"Local labelling: http://127.0.0.1:{port}")
+    uvicorn.run(application, host="127.0.0.1", port=port, access_log=False)
