@@ -156,7 +156,15 @@ def _write_text(path: Path, text: str) -> None:
 
 @dataset_app.command("import")
 def dataset_import(
-    source: Annotated[Path, typer.Argument(help="CSV (with a header row) or JSONL file.")],
+    source: Annotated[
+        Path,
+        typer.Argument(
+            help=(
+                "CSV (with a header row), JSON array or JSONL file. "
+                "JSON columns may be dotted paths (inputs.question)."
+            )
+        ),
+    ],
     out: Annotated[Path, typer.Option(help="Dataset JSONL to write.")],
     id_column: Annotated[str, typer.Option(help="Column with the query id.")] = "query_id",
     text_column: Annotated[str, typer.Option(help="Column with the query text.")] = "text",
