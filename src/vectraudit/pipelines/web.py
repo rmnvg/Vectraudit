@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import Response
 
+from vectraudit.labelling.storage import TaskBusy
 from vectraudit.pipelines.guided import MAX_BODY, GuidedWorkspace, guided_router
 from vectraudit.server.app import STATIC_DIR, _mount_frontend
 
@@ -50,6 +51,10 @@ def create_workbench(directory: Path, manifest: Path | None = None) -> FastAPI:
             return response
         other_response: Response = await call_next(request)
         return other_response
+
+    @app.exception_handler(TaskBusy)
+    async def busy(_: Request, exc: TaskBusy) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=409)
 
     @app.exception_handler(ValueError)
     async def invalid(_: Request, exc: ValueError) -> JSONResponse:
