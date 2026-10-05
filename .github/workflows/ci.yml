@@ -150,6 +150,8 @@ jobs:
         run: node scripts/guided_smoke.mjs
       - name: Benchmark and regression case browser journey
         run: node scripts/market_fit_smoke.mjs
+      - name: Release policy and exported release check journey
+        run: node scripts/release_smoke.mjs
       - name: Local labelling browser regression
         run: node scripts/labelling_smoke.mjs
       - uses: actions/upload-artifact@v4

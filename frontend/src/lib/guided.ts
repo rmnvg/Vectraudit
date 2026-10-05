@@ -1,4 +1,5 @@
 /** Local guided workflow contracts; all requests stay on the workbench origin. */
+import type { PolicyRef } from './release'
 import type { Run } from './workbench'
 
 export interface PipelineChoice { id: string; name: string; kind: string; destination: string | null }
@@ -33,7 +34,7 @@ export interface Triage {
   counts: Record<Severity | 'unchanged', number>; unpaired: { baseline_only: string[]; candidate_only: string[] }; items: TriageItem[]
 }
 export interface Comparison {
-  baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }
+  baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }; policy: PolicyRef
   check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }> }
 }
 
