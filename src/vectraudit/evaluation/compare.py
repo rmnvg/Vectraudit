@@ -30,6 +30,7 @@ CHECK_FORMAT = "vectraudit.check"
 CHECK_FORMAT_VERSION = 1
 SMALL_SAMPLE = 30
 EPS = 1e-9
+BOOTSTRAP_MAX_CELLS = 1_000_000
 _ENVIRONMENT_KEYS = ("system", "machine", "cpu_count", "python")
 
 
@@ -52,6 +53,8 @@ def compare_runs(
     n_bootstrap: int = 2000,
 ) -> dict[str, Any]:
     """Compare two validated run records and return the check result (plain JSON)."""
+    if n_bootstrap < 1:
+        raise ValueError("n_bootstrap must be positive")
     check = _Check(baseline, candidate, policy, seed, n_bootstrap)
     return check.result()
 
@@ -202,11 +205,29 @@ class _Check:
                 "exact reference.",
             )
             return
+        for name, stats in available.items():
+            if stats["n"] < len(pairs):
+                self.warnings.append(
+                    f"{name} was measured on {stats['n']}/{len(pairs)} paired queries; "
+                    "unmeasured queries do not contribute to this metric."
+                )
+            if stats["n"] < SMALL_SAMPLE <= len(pairs):
+                self.warnings.append(
+                    f"Only {stats['n']} measured pairs for {name}: "
+                    "treat its interval as indicative."
+                )
         judged = 0
         for name, rule in self.policy.metrics.items():
             if name not in available:
                 if rule.required:
                     self.flag(Verdict.NOT_COMPARABLE, _unavailable(name))
+                continue
+            if available[name]["n"] < self.policy.min_queries:
+                self.flag(
+                    Verdict.NOT_COMPARABLE,
+                    f"{name} has {available[name]['n']} measured query pairs, below the policy "
+                    f"minimum of {self.policy.min_queries}. Add labels or an exact reference.",
+                )
                 continue
             judged += 1
             self._apply_rule(name, rule, available[name], "")
@@ -239,8 +260,13 @@ class _Check:
     def _bootstrap(self, deltas: np.ndarray[Any, Any]) -> tuple[float, float]:
         if len(deltas) == 1:
             return float(deltas[0]), float(deltas[0])
-        idx = self.rng.integers(0, len(deltas), size=(self.n_bootstrap, len(deltas)))
-        means = deltas[idx].mean(axis=1)
+        # Preserve all seeded resamples, but never allocate a queries by resamples matrix.
+        batch = max(1, BOOTSTRAP_MAX_CELLS // len(deltas))
+        means = np.empty(self.n_bootstrap, dtype=np.float64)
+        for start in range(0, self.n_bootstrap, batch):
+            stop = min(self.n_bootstrap, start + batch)
+            idx = self.rng.integers(0, len(deltas), size=(stop - start, len(deltas)))
+            means[start:stop] = deltas[idx].mean(axis=1)
         return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
     def _apply_rule(
@@ -279,6 +305,16 @@ class _Check:
         if primary is None or primary not in available:
             if self.policy.max_regressed_queries is not None:
                 self.flag(Verdict.NOT_COMPARABLE, _unavailable(primary or "a quality metric"))
+            return
+        if (
+            self.policy.max_regressed_queries is not None
+            and available[primary]["n"] < self.policy.min_queries
+        ):
+            self.flag(
+                Verdict.NOT_COMPARABLE,
+                f"Regressed-query rule needs {self.policy.min_queries} measured pairs "
+                f"for {primary}; only {available[primary]['n']} are available.",
+            )
             return
         changes = []
         for b, c in pairs:
@@ -327,15 +363,30 @@ class _Check:
                 stats = self._metric_stats(members, name)
                 if stats is not None:
                     metrics[name] = stats
-            judged = len(members) >= rule.min_queries
-            self.out["cohorts"][tag] = {"n": len(members), "judged": judged, "metrics": metrics}
-            if not judged:
-                continue
-            for name, metric_rule in rule.metrics.items():
-                if name in metrics:
-                    self._apply_rule(name, metric_rule, metrics[name], f"cohort {tag!r}: ")
-                elif metric_rule.required:
-                    self.flag(Verdict.NOT_COMPARABLE, f"cohort {tag!r}: {_unavailable(name)}")
+            enough_queries = len(members) >= rule.min_queries
+            judged_metrics = []
+            if enough_queries:
+                for name, metric_rule in rule.metrics.items():
+                    if name not in metrics:
+                        if metric_rule.required:
+                            self.flag(
+                                Verdict.NOT_COMPARABLE, f"cohort {tag!r}: {_unavailable(name)}"
+                            )
+                    elif metrics[name]["n"] < rule.min_queries:
+                        self.warnings.append(
+                            f"Cohort {tag!r}: {name} reported without judging because only "
+                            f"{metrics[name]['n']} measured pairs are available "
+                            f"(minimum {rule.min_queries})."
+                        )
+                    else:
+                        judged_metrics.append(name)
+                        self._apply_rule(name, metric_rule, metrics[name], f"cohort {tag!r}: ")
+            self.out["cohorts"][tag] = {
+                "n": len(members),
+                "judged": bool(judged_metrics) if rule.metrics else enough_queries,
+                "judged_metrics": judged_metrics,
+                "metrics": metrics,
+            }
 
     # --- latency ---------------------------------------------------------------------
 

@@ -85,6 +85,7 @@ class Policy:
     metrics: dict[str, MetricRule]
     latency: LatencyRule = LatencyRule()
     min_queries: int = 1
+    """Minimum suite size and measured paired queries for each judged quality metric."""
     max_regressed_queries: int | None = None
     primary_metric: str | None = None
     """Metric whose per-query drops define "regressed queries"; default: first available."""
