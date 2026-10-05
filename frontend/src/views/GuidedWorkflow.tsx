@@ -3,6 +3,9 @@ import { demoCorpus, demoQueries, guidedRequest, parseQueries, serializeQueries 
 import type { Comparison, Draft, GuidedSession, JobState, QueryRow } from '../lib/guided'
 import type { Run } from '../lib/workbench'
 import Findings from './Findings'
+import { BenchmarkSnapshots, ImportQuestions, PassageGrader, PermissionBuilder } from './BenchmarkTools'
+import type { Irrelevant } from '../lib/benchmarkTools'
+import RegressionCases from './RegressionCases'
 import type { Inspect } from './Findings'
 
 const panel = 'rounded-2xl border border-line bg-surface p-5'
@@ -17,6 +20,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   const [error, setError] = useState('')
   const [pipeline, setPipeline] = useState('builtin')
   const [corpus, setCorpus] = useState('')
+  const [irrelevant, setIrrelevant] = useState<Irrelevant>({})
   const [rows, setRows] = useState<QueryRow[]>([])
   const [header, setHeader] = useState<Record<string, unknown> | undefined>()
   const [name, setName] = useState('My retrieval benchmark')
@@ -83,6 +87,17 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
     return () => { stopped = true; clearTimeout(timer); controller.abort() }
   }, [jobId, session])
 
+  useEffect(() => {
+    if (!session?.token) return
+    const controller = new AbortController()
+    guidedRequest<Run[]>('runs', session.token, undefined, controller.signal).then(saved => {
+      setRuns(previous => [...saved.filter(r => !previous.some(p => p.run_id === r.run_id)), ...previous])
+      setBaseId(previous => previous || saved.at(-1)?.run_id || '')
+      setCandidateId(previous => previous || saved[0]?.run_id || '')
+    }).catch(e => { if (!controller.signal.aborted) setError(String(e)) })
+    return () => controller.abort()
+  }, [session?.token])
+
   const choice = session?.pipelines.find(p => p.id === pipeline)
   const current = rows[selected]
   const running = !!jobId || submitting
@@ -95,7 +110,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   }
   function startDemo() {
     setPipeline('builtin'); setCorpus(demoCorpus); setRows(demoQueries.map(r => ({ ...r })))
-    setName('Retrieval starter benchmark'); setDraft(null); setDirty(true); setInvalidFields({}); setEditorVersion(v => v + 1); setSelected(0); setHeader(undefined)
+    setIrrelevant({}); setName('Retrieval starter benchmark'); setDraft(null); setDirty(true); setInvalidFields({}); setEditorVersion(v => v + 1); setSelected(0); setHeader(undefined)
     setStep(1); setError('')
   }
   async function readFile(file: File) {
@@ -107,7 +122,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
     setSaving(true); setError('')
     try {
       const saved = await guidedRequest<Draft>('drafts', session.token, {
-        id: draft?.id, revision: draft?.revision, name, dataset: serializeQueries(rows, header),
+        id: draft?.id, revision: draft?.revision, name, dataset: serializeQueries(rows, header), corpus, irrelevant,
       })
       setDraft(saved); setDirty(false)
       setSession(previous => previous && ({ ...previous, drafts: [...previous.drafts.filter(d => d.id !== saved.id), saved] }))
@@ -119,7 +134,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
     try {
       const saved = await guidedRequest<Draft>(`drafts/${id}`, session.token)
       const content = parseQueries(saved.dataset)
-      setDraft(saved); setRows(content.rows); setHeader(content.header); setName(saved.name)
+      setCorpus(saved.corpus || ''); setIrrelevant(saved.irrelevant || {}); setDraft(saved); setRows(content.rows); setHeader(content.header); setName(saved.name)
       setDirty(false); setInvalidFields({}); setEditorVersion(v => v + 1); setSelected(0); setError(''); setStep(1)
     } catch (e) { setError(String(e)) }
   }
@@ -143,6 +158,19 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       setComparison(result)
     } catch (e) { setError(String(e)) } finally { setComparing(false) }
   }
+  function addRows(additions: QueryRow[], importHeader?: Record<string, unknown>) {
+    const ids = new Set(rows.map(r => r.query_id))
+    if (additions.some(r => ids.has(r.query_id))) { setError('Some question IDs already exist. Rename them before importing; existing questions were kept.'); return }
+    if (rows.length + additions.length > 500) { setError('Guided benchmarks support at most 500 questions.'); return }
+    setRows(previous => [...previous, ...additions]); setDirty(true); setError('')
+    if (importHeader) {
+      const oldMeta = (header?.dataset || {}) as Record<string, unknown>
+      const newMeta = (importHeader.dataset || {}) as Record<string, unknown>
+      const oldProvenance = (oldMeta.provenance || {}) as Record<string, unknown>
+      const imports = Array.isArray(oldProvenance.imports) ? oldProvenance.imports : []
+      setHeader({ dataset: { ...(rows.length ? oldMeta : newMeta), provenance: { ...(rows.length ? oldProvenance : (newMeta.provenance || {}) as Record<string, unknown>), imports: [...imports, newMeta] } } })
+    }
+  }
   function download() {
     const url = URL.createObjectURL(new Blob([serializeQueries(rows, header)], { type: 'application/x-ndjson' }))
     const link = document.createElement('a'); link.href = url; link.download = 'benchmark.jsonl'; link.click()
@@ -159,27 +187,32 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
     {step === 0 && <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
       <section className={panel}><h2 className="text-xl font-semibold">Connect your retrieval pipeline</h2><p className="mt-2 text-sm text-muted">Choose a local baseline or an adapter registered for this workspace.</p>
         <label className="mt-5 block text-sm">Pipeline<select aria-label="Pipeline" value={pipeline} onChange={e => { setPipeline(e.target.value); setRemote(false) }} className={input}>{session.pipelines.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
-        {pipeline === 'builtin' ? <><p className="mt-4 text-sm text-muted">Add source documents as JSONL. Each document needs <code>doc_id</code> and <code>text</code>; metadata and vectors are optional.</p><label className="mt-3 block text-sm">Corpus file<input aria-label="Corpus file" type="file" accept=".jsonl,.ndjson" className="mt-2 block text-sm" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { setCorpus(await readFile(file)); setError('') } catch (err) { setError(String(err)) } } }} /></label><label className="mt-4 block text-sm">Corpus JSONL<textarea aria-label="Corpus JSONL" rows={7} value={corpus} onChange={e => setCorpus(e.target.value)} className={`${input} font-mono text-xs`} placeholder={'{"doc_id":"guide","text":"Your source document"}'} /></label></> : <div className="mt-5 rounded-xl bg-surface-2 p-4 text-sm"><p>{choice?.kind === 'http' ? `Queries will be sent to ${choice.destination}.` : 'This adapter runs locally with its registered configuration.'}</p><p className="mt-2 text-muted">To register another Python or HTTP adapter, restart the workbench with <code>--manifest pipelines.json</code>.</p></div>}
+        {pipeline === 'builtin' ? <><p className="mt-4 text-sm text-muted">Add source documents as JSONL. Each document needs <code>doc_id</code> and <code>text</code>; metadata and vectors are optional.</p><label className="mt-3 block text-sm">Corpus file<input aria-label="Corpus file" type="file" accept=".jsonl,.ndjson" className="mt-2 block text-sm" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { setCorpus(await readFile(file)); setDirty(true); setError('') } catch (err) { setError(String(err)) } } }} /></label><label className="mt-4 block text-sm">Corpus JSONL<textarea aria-label="Corpus JSONL" rows={7} value={corpus} onChange={e => { setCorpus(e.target.value); setDirty(true) }} className={`${input} font-mono text-xs`} placeholder={'{"doc_id":"guide","text":"Your source document"}'} /></label></> : <div className="mt-5 rounded-xl bg-surface-2 p-4 text-sm"><p>{choice?.kind === 'http' ? `Queries will be sent to ${choice.destination}.` : 'This adapter runs locally with its registered configuration.'}</p><p className="mt-2 text-muted">To register another Python or HTTP adapter, restart the workbench with <code>--manifest pipelines.json</code>.</p></div>}
         <button className={`${primary} mt-5`} disabled={pipeline === 'builtin' && !corpus.trim()} onClick={() => setStep(1)}>Continue to benchmark</button>
       </section>
       <aside className={panel}><div className="text-xs font-semibold uppercase tracking-widest text-teal-600">First evaluation</div><h2 className="mt-3 text-xl font-semibold">Start with a working example</h2><p className="mt-3 text-sm leading-6 text-muted">Four documents and four questions show relevance, tenant permissions, outdated content, no-answer behavior and a separate held-out query.</p><button className={`${button} mt-5`} onClick={startDemo}>Use starter example</button><hr className="my-6 border-line" /><h3 className="font-semibold">Data stays under your control</h3><p className="mt-2 text-sm leading-6 text-muted">Benchmarks are saved to this local workspace. HTTP adapters require an explicit query-transfer confirmation before evaluation. Browser input cannot register executable code or a new endpoint.</p></aside>
     </div>}
     {step === 1 && <fieldset disabled={saving} className={panel}>
       <div className="flex flex-wrap justify-between gap-4"><div><h2 className="text-xl font-semibold">Build a trustworthy benchmark</h2><p className="mt-2 text-sm text-muted">{exploreCount} exploratory · {heldoutCount} held-out · {dirty ? 'Unsaved changes' : 'Saved locally'}</p></div><div className="flex flex-wrap gap-2"><button disabled={invalid} className={button} onClick={() => imported.current?.click()}>Import queries</button><button className={button} disabled={!rows.length || invalid} onClick={download}>Download JSONL</button><button className={primary} disabled={!rows.length || saving || !dirty || invalid} onClick={() => void save()}>{saving ? 'Saving…' : 'Save benchmark'}</button></div></div>
-      <input ref={imported} aria-label="Query file" type="file" accept=".jsonl,.ndjson" className="sr-only" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { const parsed = parseQueries(await readFile(file)); setRows(parsed.rows); setHeader(parsed.header); setDraft(null); setDirty(true); setInvalidFields({}); setEditorVersion(v => v + 1); setSelected(0); setError('') } catch (err) { setError(String(err)) } } e.target.value = '' }} />
+      <input ref={imported} aria-label="Query file" type="file" accept=".jsonl,.ndjson" className="sr-only" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { const parsed = parseQueries(await readFile(file)); setIrrelevant({}); setRows(parsed.rows); setHeader(parsed.header); setDraft(null); setDirty(true); setInvalidFields({}); setEditorVersion(v => v + 1); setSelected(0); setError('') } catch (err) { setError(String(err)) } } e.target.value = '' }} />
+      <fieldset disabled={invalid}><ImportQuestions token={session.token} onImport={dataset => { const parsed = parseQueries(dataset); addRows(parsed.rows, parsed.header) }} /></fieldset>
+      <details className="my-4 rounded-xl border border-line p-4"><summary className="cursor-pointer font-semibold">Local passage corpus</summary><p className="mt-2 text-xs text-muted">Stored in this local draft. Registered pipelines can use this corpus for passage lookup without changing their retrieval adapter.</p><label className="block text-sm mt-2">Passage corpus file<input type="file" accept=".jsonl,.ndjson" className={input} onChange={async e => { const file = e.target.files?.[0]; if (file) { try { setCorpus(await readFile(file)); setDirty(true); setError('') } catch (err) { setError(String(err)) } } }} /></label></details>
       <div className="my-5 grid gap-4 md:grid-cols-2"><label className="text-sm">Benchmark name<input aria-label="Benchmark name" value={name} onChange={e => { setName(e.target.value); setDirty(true) }} className={input} /></label><label className="text-sm">Resume saved benchmark<select aria-label="Resume saved benchmark" disabled={invalid} className={input} value="" onChange={e => void restore(e.target.value)}><option value="">Choose a saved draft</option>{session.drafts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label></div>
-      <div className="grid gap-5 lg:grid-cols-[240px_1fr]"><div><div className="max-h-96 space-y-1 overflow-auto">{rows.map((r, i) => <button className={`w-full rounded-lg p-3 text-left text-sm ${i === selected ? 'bg-teal-500/10 text-teal-600' : 'hover:bg-surface-2'}`} key={`${i}-${r.query_id}`} disabled={invalid} onClick={() => setSelected(i)}><b className="block truncate">{r.query_id}</b><span className="text-xs text-muted">{r.split === 'heldout' ? 'Held-out' : 'Explore'} · {r.no_answer ? 'No answer' : Object.keys(r.relevant || {}).length ? 'Judged' : 'Unannotated'}</span></button>)}</div><button className={`${button} mt-3 w-full`} disabled={invalid} onClick={() => { setSelected(rows.length); setRows(previous => [...previous, { query_id: `q-${crypto.randomUUID().slice(0, 8)}`, text: '' }]); setDirty(true) }}>Add question</button></div>
-        {current ? <div className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Query ID<input aria-label="Query ID" className={input} value={current.query_id} onChange={e => changeRow({ ...current, query_id: e.target.value })} /></label><label className="text-sm">Split<select aria-label="Query split" className={input} value={current.split || 'explore'} onChange={e => changeRow({ ...current, split: e.target.value as 'explore' | 'heldout' })}><option value="explore">Exploratory</option><option value="heldout">Held-out</option></select></label></div>
+      <div className="grid gap-5 lg:grid-cols-[240px_1fr]"><div><div className="max-h-96 space-y-1 overflow-auto">{rows.map((r, i) => <button className={`w-full rounded-lg p-3 text-left text-sm ${i === selected ? 'bg-teal-500/10 text-teal-600' : 'hover:bg-surface-2'}`} key={`${i}-${r.query_id}`} disabled={invalid} onClick={() => setSelected(i)}><b className="block truncate">{r.query_id}</b><span className="text-xs text-muted">{r.split === 'heldout' ? 'Held-out' : 'Explore'} · {r.no_answer ? 'No answer' : Object.keys(r.relevant || {}).length || r.relevant_spans?.length ? 'Judged' : (irrelevant[r.query_id]?.length ? 'Reviewed · needs positive or no-answer label' : 'Unannotated')}</span></button>)}</div><button className={`${button} mt-3 w-full`} disabled={invalid} onClick={() => { setSelected(rows.length); setRows(previous => [...previous, { query_id: `q-${crypto.randomUUID().slice(0, 8)}`, text: '' }]); setDirty(true) }}>Add question</button></div>
+        {current ? <div className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Query ID<input aria-label="Query ID" className={input} value={current.query_id} onChange={e => { const id = e.target.value; setIrrelevant(previous => { const next = { ...previous }; if (next[current.query_id]) { next[id] = next[current.query_id]; delete next[current.query_id] } return next }); changeRow({ ...current, query_id: id }) }} /></label><label className="text-sm">Split<select aria-label="Query split" className={input} value={current.split || 'explore'} onChange={e => changeRow({ ...current, split: e.target.value as 'explore' | 'heldout' })}><option value="explore">Exploratory</option><option value="heldout">Held-out</option></select></label></div>
           <label className="block text-sm">Question<textarea aria-label="Question" className={input} rows={2} value={current.text || ''} onChange={e => changeRow({ ...current, text: e.target.value })} /></label>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={current.no_answer || false} onChange={e => { setInvalidFields(previous => ({ ...previous, relevant: false })); const row = { ...current, no_answer: e.target.checked }; if (e.target.checked) { delete row.relevant; delete row.relevant_spans } changeRow(row) }} /><span>No relevant document exists<span className="mt-1 block text-xs text-muted">An explicit no-answer judgment. Unchecked with no labels means unannotated.</span></span></label>
-          {!current.no_answer && <JsonField key={`${editorVersion}-${selected}-relevant`} label="Relevance grades" onInvalid={bad => fieldValidity("relevant", bad)} value={current.relevant || {}} hint={'Document IDs mapped to grades, e.g. {"guide":2}. Existing span labels are preserved.'} onValue={v => changeRow({ ...current, relevant: v as Record<string, number> })} />}
+          <fieldset disabled={invalid}><PassageGrader key={current.query_id} corpus={corpus} row={current} irrelevant={irrelevant[current.query_id] || []} onGrade={(row, ids) => { changeRow(row); setIrrelevant(previous => ({ ...previous, [row.query_id]: ids })); setEditorVersion(v => v + 1) }} /></fieldset>
+          {!current.no_answer && <JsonField key={`${editorVersion}-${selected}-relevant`} label="Relevance grades" onInvalid={bad => fieldValidity("relevant", bad)} value={current.relevant || {}} hint={'Document IDs mapped to grades, e.g. {"guide":2}. Existing span labels are preserved.'} onValue={v => { changeRow({ ...current, relevant: v as Record<string, number> }); setIrrelevant(previous => ({ ...previous, [current.query_id]: (previous[current.query_id] || []).filter(id => !(Number((v as Record<string, number>)[id]) > 0)) })) }} />}
           <div className="grid gap-4 sm:grid-cols-2"><JsonField key={`${editorVersion}-${selected}-context`} label="User or tenant context" onInvalid={bad => fieldValidity("context", bad)} value={current.context || {}} hint={'For example {"tenant":"acme"}'} onValue={v => changeRow({ ...current, context: v as QueryRow['context'] })} /><JsonField key={`${editorVersion}-${selected}-filter`} label="Document filters" onInvalid={bad => fieldValidity("filter", bad)} value={current.filter || {}} hint={'For example {"current":true}'} onValue={v => changeRow({ ...current, filter: v as QueryRow['filter'] })} /></div>
           <ListField key={`${editorVersion}-${selected}-forbidden`} label="Forbidden document IDs" value={current.forbidden || []} separator={"\n"} onValue={value => changeRow({ ...current, forbidden: value })} />
           <ListField key={`${editorVersion}-${selected}-tags`} label="Cohort tags" value={current.tags || []} separator="," onValue={value => changeRow({ ...current, tags: value })} />
-          <button className={`${button} text-red-600`} onClick={() => { setRows(previous => previous.filter((_, i) => i !== selected)); setSelected(0); setInvalidFields({}); setDirty(true) }}>Remove question</button>
+          <fieldset disabled={invalid}><PermissionBuilder key={current.query_id} token={session.token} dataset={serializeQueries(rows, header)} row={current} onAdd={addRows} /></fieldset>
+          <button className={`${button} text-red-600`} onClick={() => { setIrrelevant(previous => Object.fromEntries(Object.entries(previous).filter(([id]) => id !== current.query_id))); setRows(previous => previous.filter((_, i) => i !== selected)); setSelected(0); setInvalidFields({}); setDirty(true) }}>Remove question</button>
         </div> : <p className="text-sm text-muted">Import a JSONL dataset or add your first question.</p>}
       </div>
       {draft && !dirty && <div className="mt-5 rounded-xl bg-surface-2 p-4 text-sm"><b>{draft.audit.n_labelled}/{draft.audit.n_queries} annotated</b> · {draft.audit.duplicates.length} duplicate groups<p className="mt-2 text-muted">Coverage to review: {draft.audit.missing_categories.join(', ') || 'All suggested categories represented'}</p></div>}
+      <BenchmarkSnapshots token={session.token} draft={draft} dirty={dirty || invalid} corpus={corpus} onRestore={(dataset, judgments) => { if (dirty && !window.confirm('Discard unsaved edits and restore this frozen dataset as a new draft?')) return; const parsed = parseQueries(dataset); setRows(parsed.rows); setHeader(parsed.header); setDraft(null); setIrrelevant(judgments); setDirty(true); setSelected(0); setInvalidFields({}); setEditorVersion(v => v + 1) }} />
       <button className={`${primary} mt-5`} disabled={!draft || dirty || invalid} onClick={() => setStep(2)}>Continue to evaluation</button>
     </fieldset>}
     {step === 2 && <section className={panel}><h2 className="text-xl font-semibold">Evaluate and inspect the evidence</h2><p className="mt-2 text-sm text-muted">{choice?.name} · {draft?.name || 'Save a benchmark first'} · {exploreCount} exploratory queries</p>
@@ -197,6 +230,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       {comparison && <><div role="status" className="rounded-xl bg-surface-2 p-4"><b className={comparison.check.verdict === 'pass' ? 'text-teal-600' : comparison.check.verdict === 'fail' ? 'text-red-600' : 'text-amber-600'}>Release comparison: {comparison.check.verdict}</b>{comparison.check.reasons.map((r, i) => <p className="mt-2 text-sm" key={i}>{r.message}</p>)}{comparison.check.warnings.map((w, i) => <p className="mt-2 text-xs text-muted" key={i}>{w}</p>)}</div>
         <Findings key={comparison.files.check} comparison={comparison} onInspect={onInspect} />
       </>}
+      <RegressionCases token={session.token} comparison={comparison} runs={runs} />
     </section>}
   </div>
 }

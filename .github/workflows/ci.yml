@@ -148,6 +148,8 @@ jobs:
         run: node scripts/workbench_smoke.mjs
       - name: Guided workflow browser regression
         run: node scripts/guided_smoke.mjs
+      - name: Benchmark and regression case browser journey
+        run: node scripts/market_fit_smoke.mjs
       - name: Local labelling browser regression
         run: node scripts/labelling_smoke.mjs
       - uses: actions/upload-artifact@v4
