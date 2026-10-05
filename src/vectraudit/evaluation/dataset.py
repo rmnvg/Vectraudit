@@ -38,7 +38,7 @@ MAX_QUERIES = 100_000
 MAX_ID_LENGTH = 512
 FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _KEYS = {"query_id", "vector", "text", "relevant", "relevant_spans", "filter", "tags"}
-_META_KEYS = {"name", "description", "embedding_model", "normalized"}
+_META_KEYS = {"name", "description", "embedding_model", "normalized", "provenance"}
 
 
 class DatasetError(ValueError):
@@ -174,6 +174,8 @@ def _meta(obj: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"header {key} must be a string")
     if "normalized" in meta and not isinstance(meta["normalized"], bool):
         raise ValueError("header normalized must be true or false")
+    if "provenance" in meta and not isinstance(meta["provenance"], dict):
+        raise ValueError("header provenance must be an object")
     return dict(meta)
 
 

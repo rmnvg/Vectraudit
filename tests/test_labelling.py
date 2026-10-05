@@ -149,3 +149,35 @@ def test_agreement_resolution_and_sample(inputs):
     assert resolve(task, q.query_id, q.documents[0]).grade == 3
     assert not task.resolutions
     assert len(assign_sample(task, "B", 0.2)) == 8
+
+
+def test_export_versioning_and_conflicts(inputs, tmp_path):
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.evaluation.dataset_tools import diff_datasets
+    from vectraudit.labelling.export import export_dataset
+    from vectraudit.labelling.task import Judgment
+    from vectraudit.labelling.web import judge
+
+    dataset, corpus = inputs
+    task = pool(dataset, corpus, k=2)
+    q = task.queries[0]
+    with pytest.raises(ValueError, match="No positive"):
+        export_dataset(task)
+    judge(
+        task,
+        Judgment(
+            query_id=q.query_id, doc_id=q.documents[0], annotator="A", grade=2, start=0, end=3
+        ),
+    )
+    before = parse_dataset(export_dataset(task))
+    assert before.n_labelled == 1
+    assert q.documents[1] not in before.queries[0].relevant
+    assert before.queries[0].relevant_spans[0].end == 3
+    assert before.meta["provenance"]["annotators"] == ["A"]
+    judge(task, Judgment(query_id=q.query_id, doc_id=q.documents[1], annotator="A", grade=1))
+    after = parse_dataset(export_dataset(task))
+    assert before.sha256 != after.sha256
+    assert diff_datasets(before, after)
+    judge(task, Judgment(query_id=q.query_id, doc_id=q.documents[1], annotator="B", grade=3))
+    with pytest.raises(ValueError, match="Resolve disagreement"):
+        export_dataset(task)

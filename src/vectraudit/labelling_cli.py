@@ -110,3 +110,26 @@ def resolve_command(
         j for j in value.resolutions if (j.query_id, j.doc_id) != (query_id, doc_id)
     ] + [judgment]
     save_task(value, task)
+
+
+@label_app.command("export")
+def export_command(task: Path, out: Annotated[Path, typer.Option()]) -> None:
+    """Export human labels to a versioned dataset without changing the task."""
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.labelling.export import export_dataset
+    from vectraudit.labelling.task import atomic_write, load_task
+
+    try:
+        if out.resolve() == task.resolve():
+            raise ValueError("Dataset output must not overwrite the task")
+        text = export_dataset(load_task(task))
+        dataset = parse_dataset(text)
+        atomic_write(out, text)
+    except (ValueError, OSError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"Exported {dataset.n_labelled}/{len(dataset)} labelled queries; {dataset.sha256}")
+    if dataset.n_labelled < len(dataset):
+        typer.echo(
+            "Questions without positive labels remain unlabelled and have no quality metrics."
+        )
