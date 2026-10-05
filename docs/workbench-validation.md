@@ -28,3 +28,25 @@ those deployments passed. Actual provider SSO, PostgreSQL disaster recovery, rep
 customer load and operational launch acceptance remain to be verified in the target
 environment. No live deployment, remote schedule, customer-data upload or external alert
 was configured by this work.
+
+## Market-fit workflows — 2026-10-05
+
+Local validation on `feat/market-fit-workflows`:
+
+- Python regression suite: **1,115 passed, 22 skipped, 1 deselected**. The skips still
+  require external pgvector, Pinecone or Weaviate services; the slow test is deselected.
+  Local-server tests were run with loopback socket access enabled.
+- Python lint, formatting and mypy: passed in the Python 3.12 development environment.
+- Frontend: **65 tests passed**, type check/production build and lint passed.
+- Existing guided workflow browser regression: passed.
+- New `scripts/market_fit_smoke.mjs`: passed at desktop and mobile sizes with no browser
+  exceptions or horizontal overflow. Covers passage grading and reload, frozen versions,
+  persistent case notes, incident deduplication without labels, permission scenarios and
+  stale-label review. Added to the CI browser job.
+- API tests additionally cover real tenant forwarding, no-answer cases, immutable snapshots,
+  provenance/span/filter preservation, complete-run fix verification, recurrence, stale-write
+  rejection, origin/token checks and symlink boundaries.
+
+These results validate the local workflows. They do not establish customer adoption,
+production deployment readiness, or live third-party integration acceptance. Incident
+imports remain local-file based, and case recurrence is checked by explicit verification.

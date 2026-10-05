@@ -52,11 +52,13 @@ vectraudit workbench serve workbench-runs   # opens http://127.0.0.1:8766
    or Python and HTTP adapters registered at startup with `--manifest pipelines.json`.
 2. **Build a benchmark:** questions, relevance grades, explicit no-answer judgments, tenant
    context, filters, forbidden documents, cohort tags and an exploratory/held-out split.
-   No JSON files to edit by hand.
+   Read local passages and click grades, preview CSV/JSON imports, or build permission
+   scenarios. Freeze versions and review labels when documents change.
 3. **Evaluate and inspect:** a cancellable local run records each stage's results.
    Follow any document through every stage to the one where it was lost.
 4. **Compare a fix:** run a candidate configuration, get a release verdict, and step
-   through both runs' traces side by side.
+   through both runs' traces side by side. Track a finding, record investigation notes,
+   and verify a later fix against the same comparison suite.
 
 Use **Use starter example** for a first run in under a minute. Held-out queries stay out of
 exploratory runs and need explicit confirmation, so tuning doesn't contaminate them.
