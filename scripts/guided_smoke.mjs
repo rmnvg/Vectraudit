@@ -50,15 +50,19 @@ try {
   await page.getByLabel('Evaluation split').selectOption('heldout')
   assert.ok(await page.getByRole('button', { name: 'Run evaluation' }).isDisabled())
   await page.getByLabel('Evaluation split').selectOption('explore')
-  const evaluate = async (label, reranker) => {
+  const evaluate = async (label, reranker, depth) => {
     await page.getByLabel('Run label').fill(label)
     await page.getByLabel('Reranker').selectOption(reranker)
+    await page.getByLabel('Retrieval depth').fill(String(depth))
     await page.getByRole('button', { name: 'Run evaluation' }).click()
     await page.getByRole('status').getByText(/^Evaluation (complete|partial)/).waitFor({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Run evaluation' }).waitFor()
+    // The previous run's status stays visible; wait for this run's recorded row instead.
+    await page.getByText(label, { exact: true }).waitFor({ timeout: 20_000 })
   }
-  await evaluate('Baseline', 'none')
-  await evaluate('Phrase reranker', 'phrase')
+  await evaluate('Baseline', 'none', 50)
+  // A shallower candidate pool: a plausible latency fix that loses a relevant document.
+  await evaluate('Shallow depth', 'phrase', 2)
   const recorded = page.getByRole('button', { name: 'Inspect failures' })
   assert.equal(await recorded.count(), 2)
   assert.equal((await readdir(workspace)).filter(f => f.endsWith('.run.json')).length, 2)
@@ -67,14 +71,30 @@ try {
   await page.getByRole('button', { name: 'Compare a fix', exact: true }).click()
   const runs = await page.getByLabel('Baseline run').locator('option').allTextContents()
   await page.getByLabel('Baseline run').selectOption({ label: runs.find(r => r.startsWith('Baseline')) })
-  await page.getByLabel('Candidate run').selectOption({ label: runs.find(r => r.startsWith('Phrase reranker')) })
+  await page.getByLabel('Candidate run').selectOption({ label: runs.find(r => r.startsWith('Shallow depth')) })
   await page.getByRole('button', { name: 'Compare runs' }).click()
-  await page.getByText(/Release comparison:/).waitFor()
+  await page.getByText('Release comparison: fail').waitFor()
   await page.getByRole('heading', { name: /^Baseline · / }).waitFor()
   await page.getByRole('heading', { name: /^Candidate · / }).waitFor()
-  await page.getByLabel('Highlight document ID').fill('current-guide')
   assert.ok((await readdir(workspace)).some(f => f.endsWith('.check.json')))
+
+  // Findings: the lost relevant document is ranked, located at a stage, and linked to evidence.
+  const findings = page.getByRole('list', { name: 'Findings' })
+  await findings.getByRole('button', { name: /invoice/ }).waitFor()
+  const finding = page.getByRole('region', { name: 'Finding invoice' })
+  assert.match(await finding.textContent(), /lost relevant/)
+  assert.match(await finding.textContent(), /First missing at keyword in the candidate/)
+  assert.match(await finding.textContent(), /\.run\.json/)
+  assert.equal(await page.getByLabel('Highlight document ID').inputValue(), 'current-guide')
+  await page.getByText('current-guide dropped here').waitFor()
   await page.screenshot({ path: join(workspace, 'guided-compare.png'), fullPage: true })
+
+  // Opening the evidence lands on the same query and document in the detailed trace view.
+  await finding.getByRole('button', { name: 'Open in candidate run' }).click()
+  await page.getByRole('heading', { name: 'Stage evidence' }).waitFor()
+  assert.equal(await page.getByLabel('Trace document ID').inputValue(), 'current-guide')
+  await page.getByText(/^invoice · recorded document outputs/).waitFor()
+  await page.getByRole('navigation', { name: 'Workbench' }).getByRole('button', { name: 'Guided workflow' }).click()
 
   // Inspect hands the recorded run to the detailed trace view.
   await steps.getByRole('button', { name: /Evaluate & inspect/ }).click()

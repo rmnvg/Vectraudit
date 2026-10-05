@@ -15,6 +15,7 @@ export default function Workbench() {
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [files, setFiles] = useState<string[]>([])
   const [error, setError] = useState('')
+  const [focus, setFocus] = useState<{ run: string; query: string; doc: string } | null>(null)
   const [active, setActive] = useState(0)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -65,10 +66,10 @@ export default function Workbench() {
     <nav aria-label="Workbench" className="flex gap-2 overflow-x-auto border-b border-line">{tabs.map(t => <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm ${tab === t ? 'border-teal-500 font-semibold text-teal-600' : 'border-transparent text-muted hover:text-ink'}`}>{t}</button>)}</nav>
     {error && <div role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-600">{error}</div>}
     {files.length > 0 && <label className="flex flex-col items-start gap-2 text-sm text-muted sm:flex-row sm:items-center">Open local artifact<select aria-label="Open local artifact" className={`${button} w-full min-w-0 max-w-md bg-surface`} disabled={busy} value="" onChange={e => void load(e.target.value)}><option value="">{busy ? 'Loading…' : 'Choose a recorded result'}</option>{files.map(name => <option key={name}>{name}</option>)}</select></label>}
-    <div hidden={tab !== 'Guided workflow'}><GuidedWorkflow onInspect={accept} /></div>
+    <div hidden={tab !== 'Guided workflow'}><GuidedWorkflow onInspect={(run, at) => { accept(run); setFocus({ run: run.run_id, ...at }) }} /></div>
     {tab === 'Pipeline runs' && (selected ? <>
       <div className="flex flex-wrap gap-2">{runs.map((run, i) => <button className={`${button} ${active === i ? 'border-teal-500 text-teal-600' : ''}`} key={`${run.run_id}-${i}`} onClick={() => setActive(i)}>{run.label || run.run_id.slice(0, 12)}</button>)}</div>
-      <RunView run={selected} key={selected.run_id} />
+      <RunView run={selected} key={`${selected.run_id}-${focus?.run === selected.run_id ? `${focus.query}-${focus.doc}` : ''}`} focus={focus?.run === selected.run_id ? focus : null} />
     </> : <Empty title="Bring your real retrieval pipeline." text="Import a recorded run to inspect quality, stage latency, document losses and permission violations. Python and HTTP adapters run on your machine." command="vectraudit workbench run manifest.json --out workbench-runs" />)}
     {tab === 'Experiments' && (optimization ? <div className="space-y-5">
       <div className={panel}><h2 className="text-lg font-semibold">Measured candidates</h2><p className="mt-1 text-sm text-muted">Selected: {optimization.selected || 'No feasible candidate'} · Held-out constraints: {optimization.eligible ? 'met' : 'not met'}. Review before release.</p></div>
@@ -83,10 +84,10 @@ export default function Workbench() {
 
 function Badge({ good, children }: { good: boolean; children: React.ReactNode }) { return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${good ? 'bg-teal-500/10 text-teal-600' : 'bg-amber-500/10 text-amber-600'}`}>{children}</span> }
 function Empty({ title, text, command }: { title: string; text: string; command: string }) { return <div className={`${panel} py-14 text-center`}><div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-500/10 text-2xl text-teal-600">⌘</div><h2 className="text-xl font-semibold">{title}</h2><p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">{text}</p><code className="mt-6 inline-block max-w-full overflow-x-auto rounded-lg bg-surface-2 px-4 py-3 text-xs">{command}</code></div> }
-function RunView({ run }: { run: Run }) {
-  const [queryId, setQueryId] = useState(run.queries[0]?.query_id || '')
+function RunView({ run, focus = null }: { run: Run; focus?: { query: string; doc: string } | null }) {
+  const [queryId, setQueryId] = useState(focus?.query || run.queries[0]?.query_id || '')
   const [search, setSearch] = useState('')
-  const [doc, setDoc] = useState('')
+  const [doc, setDoc] = useState(focus?.doc || '')
   const queries = useMemo(() => run.queries.filter(q => `${q.query_id} ${q.tags.join(' ')}`.toLowerCase().includes(search.toLowerCase())), [run, search])
   const query = run.queries.find(q => q.query_id === queryId)
   const stats = [ ['nDCG', number(run.summary.metrics?.ndcg, 3)], ['Pipeline p95', `${number(run.summary.latency_ms?.p95)} ms`], ['Successful queries', `${run.summary.n_ok} / ${run.summary.n_queries}`], ['Policy violations', String(run.summary.permissions?.violations ?? '—')] ]

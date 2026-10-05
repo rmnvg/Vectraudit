@@ -108,7 +108,13 @@ def test_real_evaluation_splits_and_comparison(client, tmp_path):
     )
     assert compared.status_code == 200, compared.text
     assert compared.json()["check"]["verdict"] != "not_comparable"
-    assert list(tmp_path.glob("*.check.json"))
+    files = compared.json()["files"]
+    assert files["baseline"] == f"{baseline['run_id']}.run.json"
+    assert (tmp_path / files["check"]).exists()
+    findings = compared.json()["triage"]
+    assert findings["format"] == "vectraudit.triage"
+    assert findings["candidate_run"] == candidate["run_id"]
+    assert findings["n_paired"] == 3
     assert client.post("/api/guided/jobs", json=options(draft, mode="heldout")).status_code == 422
     heldout = run(client, draft, mode="heldout", confirm_heldout=True)
     assert [q["query_id"] for q in heldout["queries"]] == ["final"]
