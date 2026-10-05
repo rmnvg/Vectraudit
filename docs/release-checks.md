@@ -189,3 +189,10 @@ It contains the dataset version, backend description and capabilities, search pa
 timing protocol, metric contract, provenance (commit SHA, CI run URL, runner environment,
 `--tag key=value` labels such as embedding model or chunking version) and per-query ranked
 ids, latency, metrics and errors.
+
+
+Policy `min_queries` applies to both the suite size and the measured query pairs for every
+judged quality metric. A suite of 100 questions with two labels cannot satisfy a minimum
+of 30 for nDCG. `check` returns `not_comparable` and includes coverage in its warnings.
+Cohort metrics below their measured-pair minimum are reported without judging; their
+query count alone does not establish label coverage.

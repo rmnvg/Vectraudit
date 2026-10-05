@@ -989,3 +989,7 @@ def runs_diff(
 from vectraudit.labelling_cli import label_app  # noqa: E402
 
 app.add_typer(label_app, name="label")
+
+from vectraudit.doctor_cli import doctor  # noqa: E402
+
+app.command("doctor")(doctor)

@@ -235,9 +235,12 @@ def diff_datasets(a: Dataset, b: Dataset) -> dict[str, Any]:
 
 def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str, Any]:
     """Label coverage, grade distribution, cohorts and readiness warnings."""
-    labelled = [q for q in ds.queries if q.relevant]
-    positives = [sum(g > 0 for g in q.relevant.values()) for q in labelled]
-    grades = Counter(g for q in labelled for g in q.relevant.values())
+    labelled = [q for q in ds.queries if q.labelled]
+    from vectraudit.experiments.labels import document_labels
+
+    labels = [document_labels(q) for q in labelled]
+    positives = [sum(g > 0 for g in row.values()) for row in labels]
+    grades = Counter(g for row in labels for g in row.values())
     tags = Counter(t for q in ds.queries for t in q.tags)
     texts = Counter(q.text.strip().lower() for q in ds.queries if q.text)
     warnings = []
