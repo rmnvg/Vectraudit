@@ -121,7 +121,17 @@ def authorize(
     if ROLE_RANK[membership.role] < ROLE_RANK[need]:
         raise forbidden(f"This needs the {need} role; you are {membership.role}.")
     project = _project(session, ws, project_slug) if project_slug else None
-    return Access(ws, project, membership.role, principal)
+    role = membership.role
+    if action == "export" and not ws.exports_enabled:
+        raise forbidden("Workspace exports are disabled by an owner.")
+    if project is not None and project.access_roles is not None and role != "owner":
+        project_role = project.access_roles.get(principal.user_id or "")
+        if project_role not in {"viewer", "engineer"}:
+            raise not_found("Project")
+        role = min((role, project_role), key=lambda r: ROLE_RANK[r])
+        if ROLE_RANK[role] < ROLE_RANK[need]:
+            raise forbidden(f"This needs the {need} project role; you are {role}.")
+    return Access(ws, project, role, principal)
 
 
 def _project(session: Session, ws: Workspace, slug: str) -> Project:
@@ -288,10 +298,18 @@ def remove_member(session: Session, access: Access, user_id: str) -> None:
 # --- projects ----------------------------------------------------------------------------
 
 
-def projects(session: Session, ws: Workspace) -> list[Project]:
-    return list(
+def projects(session: Session, ws: Workspace, access: Access | None = None) -> list[Project]:
+    found = list(
         session.scalars(select(Project).where(Project.workspace_id == ws.id).order_by(Project.slug))
     )
+
+    if access is None or access.role == "owner":
+        return found
+    if access.principal.kind == "runner":
+        return [p for p in found if p.id == access.principal.project_id]
+    return [
+        p for p in found if p.access_roles is None or access.principal.user_id in p.access_roles
+    ]
 
 
 def create_project(session: Session, access: Access, slug: str, name: str) -> Project:

@@ -80,6 +80,7 @@ class Workspace(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     slug: Mapped[str] = mapped_column(String(64), unique=True)
     name: Mapped[str] = mapped_column(String(200))
+    exports_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     plan: Mapped[str] = mapped_column(String(32), default="pilot")
     limits: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
     """Per-workspace overrides of the plan's limits (custom pilot deals)."""
@@ -105,6 +106,8 @@ class Project(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     slug: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(200))
+    access_roles: Mapped[dict[str, str] | None] = mapped_column(JSONType, nullable=True)
+    """Optional user-id -> project role allowlist. Workspace owners retain access."""
     policy: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 

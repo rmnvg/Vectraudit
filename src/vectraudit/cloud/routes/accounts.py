@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from vectraudit.cloud import quotas, repo, service
 from vectraudit.cloud.auth import Principal
@@ -170,7 +170,7 @@ def _project_out(p: object) -> ProjectOut:
 @router.get("/workspaces/{workspace}/projects")
 def list_projects(workspace: str, session: SessionDep, principal: PrincipalDep) -> list[ProjectOut]:
     access = repo.authorize(session, principal, workspace, "read")
-    found = repo.projects(session, access.workspace)
+    found = repo.projects(session, access.workspace, access)
     if access.role == "runner":
         found = [p for p in found if p.id == principal.project_id]
     return [_project_out(p) for p in found]
@@ -307,3 +307,68 @@ def delete_workspace(
 ) -> dict[str, int]:
     access = repo.authorize(session, principal, workspace, "delete")
     return service.delete_workspace(session, access, body.confirm)
+
+
+class GovernanceIn(BaseModel):
+    exports_enabled: bool
+    retention_days: int = Field(ge=1, le=3650)
+
+
+@router.put("/workspaces/{workspace}/governance")
+def governance(
+    workspace: str, body: GovernanceIn, session: SessionDep, principal: PrincipalDep
+) -> dict[str, object]:
+    """Owners configure retention and workspace export controls; all changes are audited."""
+    access = repo.authorize(session, principal, workspace, "manage_members")
+    access.workspace.exports_enabled = body.exports_enabled
+    access.workspace.limits = {
+        **(access.workspace.limits or {}),
+        "retention_days": body.retention_days,
+    }
+    repo.audit(
+        session,
+        access.workspace.id,
+        principal.actor,
+        "workspace.governance",
+        "workspace",
+        access.workspace.id,
+        **body.model_dump(),
+    )
+    return body.model_dump()
+
+
+class ProjectAccessIn(BaseModel):
+    roles: dict[str, str] | None
+
+
+@router.put("/workspaces/{workspace}/projects/{project}/access")
+def project_access(
+    workspace: str,
+    project: str,
+    body: ProjectAccessIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, object]:
+    """Restrict a project to existing members. Null restores workspace inheritance."""
+    access = repo.authorize(session, principal, workspace, "manage_members", project)
+    assert access.project is not None
+    if body.roles is not None:
+        members = {u.id for u, _ in repo.members(session, access.workspace)}
+        if any(
+            user not in members or role not in {"viewer", "engineer"}
+            for user, role in body.roles.items()
+        ):
+            raise CloudError(
+                422, "invalid_roles", "Use workspace member ids and viewer/engineer roles."
+            )
+    access.project.access_roles = body.roles
+    repo.audit(
+        session,
+        access.workspace.id,
+        principal.actor,
+        "project.access",
+        "project",
+        access.project.id,
+        roles=body.roles,
+    )
+    return {"roles": body.roles}

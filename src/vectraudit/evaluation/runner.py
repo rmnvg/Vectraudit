@@ -103,6 +103,10 @@ def execute_run(
             )
         record["search"]["exact_reference"] = use_exact
         record["search"]["exact_reference_note"] = caps.exact_reference_note if use_exact else None
+        if any(q.context for q in dataset.queries):
+            raise ConnectorError(
+                ErrorCode.UNSUPPORTED, "Permission contexts require a full-pipeline adapter."
+            )
         vectors, embedding_s = _query_vectors(dataset, embed, info.dim)
         record["timing"]["embedding_s"] = embedding_s
         _warm_up(connector, dataset, vectors, options)
@@ -254,6 +258,9 @@ def _run_query(
             latencies.append((time.perf_counter() - t0) * 1000)
         ids = results[0]
         entry["ids"] = ids
+        entry["no_answer_correct"] = all(not r for r in results) if q.no_answer else None
+        entry["forbidden_ids"] = sorted({doc for r in results for doc in r} & set(q.forbidden))
+        entry["permission_checked"] = bool(q.forbidden)
         entry["latency_ms"] = statistics.median(latencies)
         entry["nondeterministic"] = any(r != ids for r in results[1:])
         if q.relevant:
@@ -304,6 +311,22 @@ def summarize(queries: Sequence[Mapping[str, Any]], n_queries: int) -> dict[str,
         "ann_recall": statistics.fmean(recalls) if recalls else None,
         "n_ann_recall": len(recalls),
         "latency_ms": latency_summary([q["latency_ms"] for q in ok]),
+        "no_answer": {
+            "n": sum(q.get("no_answer_correct") is not None for q in ok),
+            "accuracy": (
+                statistics.fmean(
+                    float(q["no_answer_correct"])
+                    for q in ok
+                    if q.get("no_answer_correct") is not None
+                )
+                if any(q.get("no_answer_correct") is not None for q in ok)
+                else None
+            ),
+        },
+        "permissions": {
+            "n": sum(bool(q.get("permission_checked")) for q in ok),
+            "violations": sum(bool(q.get("forbidden_ids")) for q in ok),
+        },
         "n_nondeterministic": sum(bool(q["nondeterministic"]) for q in ok),
     }
 

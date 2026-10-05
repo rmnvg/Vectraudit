@@ -81,6 +81,7 @@ include = [
     "/src/vectraudit",
     "/tests",
     "/examples/*.py",
+    "/examples/workbench/**",
     "/examples/*.ipynb",
     "/benchmarks",
     "/README.md",
@@ -114,6 +115,7 @@ module = [
     "vectraudit.cloud.*",
     "vectraudit.experiments.*",
     "vectraudit.labelling.*",
+    "vectraudit.pipelines.*",
 ]
 strict = true
 

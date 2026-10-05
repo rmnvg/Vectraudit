@@ -47,6 +47,13 @@ def pool(
     seed: int | None = None,
 ) -> Task:
     """Union top-k documents per source, validating every id against the corpus."""
+    if any(
+        q.no_answer or q.context or q.forbidden or q.split == "heldout" for q in dataset.queries
+    ):
+        raise ValueError(
+            "This annotation workflow accepts exploratory positive-label queries only. "
+            "Keep no-answer, permission and held-out assertions in the source benchmark JSONL."
+        )
     if k < 1:
         raise ValueError("k must be positive")
     pools: dict[str, set[str]] = {q.query_id: set() for q in dataset.queries}

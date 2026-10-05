@@ -8,6 +8,7 @@ import { useTheme } from './lib/theme'
 import { Overview } from './views/Overview'
 
 // deck.gl is heavy; only load it when a map view is opened.
+const Workbench = lazy(() => import('./views/Workbench'))
 const Evaluation = lazy(() => import('./views/Evaluation'))
 const History = lazy(() => import('./views/History'))
 const ClusterMap = lazy(() => import('./views/ClusterMap'))
@@ -78,18 +79,19 @@ export default function App() {
   }, [])
 
   const supported = info.data?.supported ?? false
-  const view = supported ? route.view : 'overview'
+  const standalone = (info.data as unknown as { workbench?: boolean })?.workbench
+  const view = standalone || route.view === 'workbench' ? 'workbench' : supported ? route.view : 'overview'
 
   return (
     <div className="flex h-full bg-page text-ink">
-      {!focus && narrow && (
+      {!standalone && !focus && narrow && (
         <button
           aria-label="Close the menu"
           onClick={() => setFocus(true)}
           className="fixed inset-0 z-30 bg-black/30 print:hidden"
         />
       )}
-      {!focus && (
+      {!standalone && !focus && (
         <div
           ref={menu}
           role={narrow ? 'dialog' : undefined}
@@ -111,7 +113,7 @@ export default function App() {
         </div>
       )}
       <main className="relative min-w-0 flex-1 overflow-auto">
-        {focus && (
+        {!standalone && focus && (
           // On narrow frames the button sits in its own bar so it never covers a page heading.
           <div className={narrow ? 'sticky top-0 z-20 border-b border-line bg-page/95 px-2 py-1.5 print:hidden' : ''}>
             <button
@@ -144,6 +146,7 @@ export default function App() {
                 </div>
               }
             >
+              {view === 'workbench' && <Workbench />}
               {view === 'evaluation' && <Evaluation info={info.data} params={route.params} />}
               {view === 'history' && <History />}
               {view === 'overview' && <Overview info={info.data} />}

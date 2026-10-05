@@ -141,7 +141,8 @@ test('tuner: per-query recall and worst queries lead to the explorer', async ({ 
   await page.getByRole('radio', { name: '95% lower bound ≥ target' }).click()
   await expect(page.getByText('smallest value confidently meeting the target')).toBeVisible()
   // The e2e server has no --queries, so worst queries are stored ids the explorer can open.
-  await page.getByRole('button', { name: 'Explain' }).first().click()
+  const worst = page.locator('section', { hasText: 'Worst queries at nprobe 1' })
+  await worst.getByRole('button', { name: 'Explain', exact: true }).first().click()
   await expect(page).toHaveURL(/#\/query\?id=\d+&k=10&nprobe=1/)
   await expect(page.getByRole('heading', { name: 'Query explorer' })).toBeVisible()
   await expect(page.getByText('Recall@10', { exact: true })).toBeVisible()

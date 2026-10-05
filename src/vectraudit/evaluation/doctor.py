@@ -142,7 +142,8 @@ class Doctor:
             for name, rule in policy.metrics.items()
             if name in SEMANTIC_METRICS and rule.required
         ]
-        if semantic and ds.n_labelled < policy.min_queries:
+        n_positive = sum(bool(q.relevant or q.relevant_spans) for q in ds.queries)
+        if semantic and n_positive < policy.min_queries:
             self.add(
                 "labels.minimum",
                 "error",
@@ -150,11 +151,11 @@ class Doctor:
                 f"Label at least {policy.min_queries} queries "
                 "with positive source-document relevance.",
             )
-        elif ds.n_labelled < SMALL_LABELLED:
+        elif n_positive < SMALL_LABELLED:
             self.add(
                 "labels.small",
                 "warning",
-                f"Only {ds.n_labelled} queries have positive labels.",
+                f"Only {n_positive} queries have positive labels.",
                 "Use label pool/serve/export; aim for 30+ representative labelled queries.",
             )
         if ds.n_labelled < len(ds):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ class Settings:
     share_links: bool = False
     """Signed public report links are off unless explicitly enabled."""
     environment: str = "production"
+    sso: dict[str, str] | None = None
     github_client_id: str | None = None
     github_client_secret: str | None = None
     """GitHub OAuth app for dashboard sign-in; without it, members sign in with a token."""
@@ -52,7 +54,16 @@ class Settings:
             max_queries = int(get("MAX_QUERIES_PER_RUN") or cls.max_queries_per_run)
         except ValueError as e:
             raise SettingsError("VECTRAUDIT_CLOUD_MAX_QUERIES_PER_RUN must be an integer.") from e
+        sso = None
+        if get("SSO_JSON"):
+            try:
+                sso = json.loads(get("SSO_JSON") or "")
+                if not isinstance(sso, dict):
+                    raise ValueError("expected object")
+            except ValueError as e:
+                raise SettingsError("VECTRAUDIT_CLOUD_SSO_JSON must be a JSON object.") from e
         return cls(
+            sso=sso,
             database_url=normalize_database_url(url),
             max_queries_per_run=max_queries,
             secret_key=secret,

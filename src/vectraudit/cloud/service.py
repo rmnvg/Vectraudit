@@ -236,6 +236,7 @@ def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
                 "name": p.name,
                 "created_at": p.created_at.isoformat(),
                 "policy": p.policy,
+                "access_roles": p.access_roles,
                 "baselines": [
                     {
                         "name": b.name,
@@ -299,6 +300,7 @@ def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
         "exported_at": utcnow().isoformat(),
         "workspace": {
             "slug": ws.slug,
+            "exports_enabled": ws.exports_enabled,
             "name": ws.name,
             "plan": ws.plan,
             "created_at": ws.created_at.isoformat(),

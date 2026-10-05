@@ -213,9 +213,13 @@ def login_page(
     request: Request, settings: SettingsDep, next: str = "/app", error: str = ""
 ) -> HTMLResponse:
     state = secrets.token_urlsafe(24)
-    github = ""
+    github = (
+        '<p><a class="badge pass" href="/auth/sso">Enterprise sign-in</a></p>'
+        if settings.sso
+        else ""
+    )
     if settings.github_client_id:
-        github = (
+        github += (
             f'<p><a class="badge pass" href="/auth/github?next={quote(_safe_next(next))}">'
             "Sign in with GitHub</a></p>"
         )
@@ -445,7 +449,7 @@ def workspace_page(
             e(p.slug),
             e(p.created_at.date()),
         ]
-        for p in repo.projects(session, ws)
+        for p in repo.projects(session, ws, access)
     ]
     owner = access.role == "owner"
     members = [_member_row(ws.slug, u, m.role, web, owner) for u, m in repo.members(session, ws)]

@@ -12,6 +12,8 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 import vectraudit
+from vectraudit.pipelines import PipelineResult, execute_pipeline
+from vectraudit.pipelines.web import create_workbench
 from vectraudit.server.app import STATIC_DIR, create_app
 from vectraudit.session import Session
 
@@ -99,3 +101,16 @@ with tempfile.TemporaryDirectory(prefix="vectraudit-wheel-smoke-") as directory:
         check=True,
     )
     subprocess.run([*cmd, "check", str(run_path), str(run_path), "--no-github-summary"], check=True)
+
+# Full-pipeline support and the standalone workbench must also ship in the wheel.
+
+no_answer = parse_dataset('{"query_id":"none","text":"out of scope","no_answer":true}')
+record = execute_pipeline(no_answer, lambda request: PipelineResult(abstained=True))
+assert record["summary"]["no_answer"]["accuracy"] == 1
+assert list((STATIC_DIR / "assets").glob("Workbench-*.js"))
+with (
+    tempfile.TemporaryDirectory() as directory,
+    TestClient(create_workbench(Path(directory))) as client,
+):
+    assert client.get("/api/info").json()["workbench"]
+    assert client.get("/api/workbench").json()["artifacts"] == []

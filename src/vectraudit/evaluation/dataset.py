@@ -37,7 +37,19 @@ FilterValue = str | int | float | bool
 MAX_QUERIES = 100_000
 MAX_ID_LENGTH = 512
 FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
-_KEYS = {"query_id", "vector", "text", "relevant", "relevant_spans", "filter", "tags"}
+_KEYS = {
+    "query_id",
+    "vector",
+    "text",
+    "relevant",
+    "relevant_spans",
+    "filter",
+    "tags",
+    "no_answer",
+    "context",
+    "forbidden",
+    "split",
+}
 _META_KEYS = {"name", "description", "embedding_model", "normalized", "provenance"}
 
 
@@ -68,9 +80,14 @@ class DatasetQuery:
     filter: dict[str, FilterValue] = field(default_factory=dict)
     tags: tuple[str, ...] = ()
 
+    no_answer: bool = False
+    context: dict[str, FilterValue] = field(default_factory=dict)
+    forbidden: tuple[str, ...] = ()
+    split: str = "explore"
+
     @property
     def labelled(self) -> bool:
-        return bool(self.relevant or self.relevant_spans)
+        return self.no_answer or bool(self.relevant or self.relevant_spans)
 
 
 @dataclass(frozen=True)
@@ -196,7 +213,24 @@ def _parse_query(obj: Any) -> DatasetQuery:
         raise ValueError("text must be a non-empty string")
     if vector is None and text is None:
         raise ValueError("a query needs a vector, a text, or both")
+    no_answer = obj.get("no_answer", False)
+    if type(no_answer) is not bool:
+        raise ValueError("no_answer must be a boolean")
+    relevant = _relevant(obj.get("relevant"))
+    spans = _spans(obj.get("relevant_spans"))
+    if no_answer and (relevant or spans):
+        raise ValueError("no_answer cannot coexist with positive relevance labels")
+    forbidden = _tags(obj.get("forbidden"))
+    if set(forbidden) & ({d for d, g in relevant.items() if g > 0} | {s.doc_id for s in spans}):
+        raise ValueError("a document cannot be both relevant and forbidden")
+    split = obj.get("split", "explore")
+    if split not in {"explore", "heldout"}:
+        raise ValueError("split must be explore or heldout")
     return DatasetQuery(
+        no_answer=no_answer,
+        context=_filter(obj.get("context")),
+        forbidden=forbidden,
+        split=split,
         query_id=query_id,
         vector=vector,
         text=text,
@@ -299,6 +333,10 @@ def _fingerprint(queries: list[DatasetQuery], meta: dict[str, Any]) -> str:
             "relevant": q.relevant,
             "filter": q.filter,
             "tags": list(q.tags),
+            **({"no_answer": True} if q.no_answer else {}),
+            **({"context": q.context} if q.context else {}),
+            **({"forbidden": list(q.forbidden)} if q.forbidden else {}),
+            **({"split": q.split} if q.split != "explore" else {}),
             # Only present when used, so datasets without spans keep their versions.
             **(
                 {"relevant_spans": [[s.doc_id, s.start, s.end, s.grade] for s in q.relevant_spans]}

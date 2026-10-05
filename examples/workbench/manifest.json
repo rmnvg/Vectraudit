@@ -1,0 +1,11 @@
+{
+  "dataset": "queries.jsonl",
+  "k": 2,
+  "repeats": 3,
+  "max_candidates": 4,
+  "max_p95_ms": 150,
+  "candidates": [
+    {"name":"keyword", "adapter":{"kind":"hybrid","corpus":"corpus.jsonl"}, "params":{"vector_weight":0,"depth":10}},
+    {"name":"phrase-reranker", "adapter":{"kind":"hybrid","corpus":"corpus.jsonl"}, "params":{"vector_weight":0,"depth":10,"reranker":"phrase"}}
+  ]
+}
