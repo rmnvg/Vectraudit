@@ -82,7 +82,7 @@ def test_init_cli(tmp_path) -> None:
     assert (tmp_path / ".github" / "workflows" / "retrieval-check.yml").exists()
     result = runner.invoke(app, ["init", "--dir", str(tmp_path), "--backend", "pgvector"])
     assert "kept" in result.output
-    result = runner.invoke(app, ["init", "--backend", "pinecone", "--dir", str(tmp_path)])
+    result = runner.invoke(app, ["init", "--backend", "milvus", "--dir", str(tmp_path)])
     assert result.exit_code == 1
     assert "Unknown backend" in result.output
 

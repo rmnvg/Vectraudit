@@ -13,6 +13,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   labelled dataset and return pass (0), error (1), fail (3) or not comparable (4), with HTML,
   JSON and Markdown reports and a GitHub job summary. Connectors share one contract with
   declared capabilities and typed errors. See `docs/release-checks.md`.
+- **Pinecone and Weaviate connectors:** Pinecone over its REST API (pinned version, no extra
+  dependency; black box: no exact reference) and Weaviate (`vectraudit[weaviate]`: named
+  vectors, tenants, id property, flat-index exact reference). Both pass the release-check
+  acceptance suite; `vectraudit init --backend pinecone|weaviate`.
 - **Experiments** (`vectraudit experiment run`): compare embedding models, chunkings and
   indexes on one labelled set at document level (labels on documents or text spans survive
   re-chunking), with paired intervals against the leader, ties called out, cohort winners

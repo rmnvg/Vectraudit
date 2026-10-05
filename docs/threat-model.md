@@ -45,6 +45,7 @@ new kind of data, actor or integration is added.
 | Resource exhaustion | Body size limit, per-run query cap, plan quotas | `test_cloud_quotas` |
 | Fork PR exfiltrates secrets | Workflow uses `pull_request`, never `pull_request_target`; publishing degrades to job summary | template and docs |
 | Database credentials of customers leak via connection files | Literal secrets rejected; only `*_env` references | `test_connectors` |
+| API keys for hosted vector databases leak in transit | Pinecone and Weaviate connectors refuse to send keys over plain HTTP except to a local emulator; URLs with embedded credentials are rejected | `test_connector_pinecone`, `test_connector_weaviate` |
 | SQL injection via pgvector connector | Identifier validation and quoting; bound parameters; read-only transactions | `test_connector_pgvector` |
 | Vulnerable dependency | `pip-audit` and `npm audit` in CI (Phase 17) | CI |
 | Data retained after a customer leaves | Workspace export and deletion; retention purge; backup expiry documented (Phase 17) | `test_cloud_deletion` |

@@ -1,0 +1,7 @@
+{
+  "backend": "pinecone",
+  "name": "production index",
+  "index": "docs",
+  "namespace": "",
+  "api_key_env": "PINECONE_API_KEY"
+}
