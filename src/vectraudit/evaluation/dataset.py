@@ -37,12 +37,22 @@ FilterValue = str | int | float | bool
 MAX_QUERIES = 100_000
 MAX_ID_LENGTH = 512
 FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
-_KEYS = {"query_id", "vector", "text", "relevant", "filter", "tags"}
+_KEYS = {"query_id", "vector", "text", "relevant", "relevant_spans", "filter", "tags"}
 _META_KEYS = {"name", "description", "embedding_model", "normalized"}
 
 
 class DatasetError(ValueError):
     """The dataset file is malformed; the message names the line and the problem."""
+
+
+@dataclass(frozen=True)
+class Span:
+    """A relevant character range ``[start, end)`` of a source document."""
+
+    doc_id: str
+    start: int
+    end: int
+    grade: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -53,12 +63,14 @@ class DatasetQuery:
     vector: FloatArray | None
     text: str | None
     relevant: dict[str, float] = field(default_factory=dict)
+    relevant_spans: tuple[Span, ...] = ()
+    """Relevant text ranges inside source documents (for chunking experiments)."""
     filter: dict[str, FilterValue] = field(default_factory=dict)
     tags: tuple[str, ...] = ()
 
     @property
     def labelled(self) -> bool:
-        return bool(self.relevant)
+        return bool(self.relevant or self.relevant_spans)
 
 
 @dataclass(frozen=True)
@@ -187,6 +199,7 @@ def _parse_query(obj: Any) -> DatasetQuery:
         vector=vector,
         text=text,
         relevant=_relevant(obj.get("relevant")),
+        relevant_spans=_spans(obj.get("relevant_spans")),
         filter=_filter(obj.get("filter")),
         tags=_tags(obj.get("tags")),
     )
@@ -247,6 +260,26 @@ def _filter(value: Any) -> dict[str, FilterValue]:
     return out
 
 
+def _spans(value: Any) -> tuple[Span, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("relevant_spans must be a list of {doc_id, start, end, grade}")
+    out = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) - {"doc_id", "start", "end", "grade"}:
+            raise ValueError("each relevant span is {doc_id, start, end, grade?}")
+        doc_id = _identifier(item.get("doc_id"), "a span's doc_id")
+        start, end = item.get("start"), item.get("end")
+        if type(start) is not int or type(end) is not int or not 0 <= start < end:
+            raise ValueError("span start and end must be integers with 0 <= start < end")
+        grade = item.get("grade", 1)
+        if type(grade) not in (int, float) or not math.isfinite(grade) or grade <= 0:
+            raise ValueError("span grade must be a positive number")
+        out.append(Span(doc_id, start, end, float(grade)))
+    return tuple(out)
+
+
 def _tags(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -264,6 +297,12 @@ def _fingerprint(queries: list[DatasetQuery], meta: dict[str, Any]) -> str:
             "relevant": q.relevant,
             "filter": q.filter,
             "tags": list(q.tags),
+            # Only present when used, so datasets without spans keep their versions.
+            **(
+                {"relevant_spans": [[s.doc_id, s.start, s.end, s.grade] for s in q.relevant_spans]}
+                if q.relevant_spans
+                else {}
+            ),
         }
         for q in sorted(queries, key=lambda q: q.query_id)
     ]
