@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Literal
 
@@ -75,7 +76,18 @@ def open_adapter(adapter: Adapter, root: Path) -> Pipeline:
     module, sep, name = str(adapter.target).partition(":")
     if not sep or not name.isidentifier():
         raise ValueError("Python adapter target must be module:function")
-    fn: Pipeline = getattr(importlib.import_module(module), name)
+    # A module beside the manifest is importable without installing it; only for this
+    # import, so the runner's sys.path is otherwise unchanged.
+    folder = str(root.resolve())
+    added = folder not in sys.path
+    if added:
+        sys.path.insert(0, folder)
+    try:
+        imported = importlib.import_module(module)
+    finally:
+        if added:
+            sys.path.remove(folder)
+    fn: Pipeline = getattr(imported, name)
     if not callable(fn):
         raise ValueError("Python adapter target is not callable")
     return fn

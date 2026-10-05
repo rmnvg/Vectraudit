@@ -168,9 +168,10 @@ the report warns that one query moves the mean noticeably.
 
 - `max_drop` is absolute (0.02 = two points); `min` is a floor for the candidate.
 - Every metric a policy names must be measured in both runs, or the check is not comparable.
-- `latency.min_increase_ms` (default 0.1): percentage latency rules only fail when the p50 /
-  p95 rise is also larger than this in absolute terms, so microsecond jitter on fast local
-  indexes is not a regression. Set it to 0 to judge every rise.
+- `latency.min_increase_ms` (default 2): percentage latency rules only fail when the p50 /
+  p95 rise is also larger than this in absolute terms, so scheduler jitter on shared CI
+  runners (about 0.1 ms on local indexes, 1.5 ms against networked backends) is not a
+  regression. Lower it, or set 0 to judge every rise, on dedicated hardware.
 - `require_significance: true` fails a `max_drop` rule only when the whole 95% interval of
   the change is beyond the limit; useful for small or noisy query sets.
 - Without `--policy`, a built-in policy allows drops of 0.01 in nDCG, recall and ANN recall

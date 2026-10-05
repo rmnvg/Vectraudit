@@ -4,7 +4,7 @@ A policy is JSON::
 
     {"version": 1,
      "metrics": {"ndcg": {"max_drop": 0.02}, "ann_recall": {"min": 0.9}},
-     "latency": {"p95_max_increase_pct": 25, "p95_max_ms": 80, "min_increase_ms": 0.1},
+     "latency": {"p95_max_increase_pct": 25, "p95_max_ms": 80, "min_increase_ms": 2},
      "min_queries": 30,
      "max_regressed_queries": 10,
      "primary_metric": "ndcg",
@@ -67,8 +67,9 @@ class LatencyRule:
     p50_max_increase_pct: float | None = None
     p95_max_increase_pct: float | None = None
     p95_max_ms: float | None = None
-    min_increase_ms: float = 0.1
-    """Percentage rules ignore rises smaller than this in absolute terms: timer noise."""
+    min_increase_ms: float = 2.0
+    """Percentage rules ignore rises smaller than this in absolute terms: shared CI runners
+    move p95 by ~0.1 ms on local indexes and ~1.5 ms against networked backends."""
     require_same_environment: bool = True
 
 

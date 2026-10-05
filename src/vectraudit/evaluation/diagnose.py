@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 
 from vectraudit.evaluation.evidence import REASON_TEXT, plan_uses_index
+from vectraudit.evaluation.policy import LatencyRule
 
 LEVELS = ("verified", "supported", "hypothesis")
 MATERIAL = 0.005
@@ -428,7 +429,9 @@ def _latency(result: Mapping[str, Any], diff: Mapping[str, Any]) -> list[dict[st
     change = latency.get("p95_change_pct")
     if not latency.get("compared") or change is None or abs(change) < 20:
         return []
-    floor = ((result.get("policy") or {}).get("latency") or {}).get("min_increase_ms", 0.1)
+    floor = ((result.get("policy") or {}).get("latency") or {}).get(
+        "min_increase_ms", LatencyRule.min_increase_ms
+    )
     if abs(latency["candidate"]["p95"] - latency["baseline"]["p95"]) <= floor:
         return []  # sub-floor changes are timer noise, not a finding
     direction = "rose" if change > 0 else "fell"

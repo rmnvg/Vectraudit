@@ -112,8 +112,9 @@ abstention and more than `k` delivered hits fail the query. Responses are limite
 endpoints are intentionally supported; configuration is trusted local input.
 
 For custom Python, use `{"kind":"python","target":"my_package.retrieval:search"}`.
-The callable accepts `PipelineRequest` and returns `PipelineResult`. The package must be
-importable in the runner environment. Only trusted CLI configuration loads code.
+The callable accepts `PipelineRequest` and returns `PipelineResult`. A module in the
+manifest's folder is importable directly; otherwise the package must be installed in the
+runner environment. Only trusted CLI configuration loads code.
 
 ```python
 from vectraudit.pipelines import Hit, PythonPipeline, Stage
@@ -130,6 +131,52 @@ search = PythonPipeline(
     ]
 )
 ```
+
+### LangChain and LlamaIndex retrievers
+
+Evaluate the retriever your application already builds, without rewriting it. Put a small
+module beside the manifest:
+
+```python
+# my_rag.py
+from vectraudit.integrations.retrievers import langchain_pipeline, llamaindex_pipeline
+from my_app.retrieval import build_retriever, build_index, build_reranker
+
+# LangChain: anything with invoke(query). id_key names the metadata field your labels use
+# (default: Document.id). invoke_kwargs forwards k and the dataset's filters.
+dense = langchain_pipeline(
+    build_retriever(), id_key="doc_id", invoke_kwargs=lambda r: {"k": r.k, "filter": r.filters}
+)
+
+# LlamaIndex: anything with retrieve(query), or a function that builds one per request.
+# id_key="ref_doc_id" evaluates source documents rather than chunks.
+index = build_index()
+reranked = llamaindex_pipeline(
+    lambda r: index.as_retriever(similarity_top_k=50),
+    id_key="ref_doc_id",
+    postprocessors=[build_reranker(top_n=10)],
+)
+```
+
+```json
+{"name": "dense", "adapter": {"kind": "python", "target": "my_rag:dense"}}
+```
+
+Stages are recorded from real calls. A LangChain retriever exposing `base_retriever` and
+`base_compressor` (such as `ContextualCompressionRetriever`) runs as those two steps, just
+as it runs itself, so a document the compressor or reranker drops is attributed to it;
+pass `decompose=False` to treat it as one opaque stage. Each LlamaIndex postprocessor is its
+own stage. When the last stage returns more than `k` documents, a `truncate` stage records
+the cut. Chunks that resolve to the same id count once, at their best rank.
+
+A query with filters or tenant context fails rather than running unfiltered unless the
+adapter forwards them (`invoke_kwargs` for LangChain, a retriever-building function for
+LlamaIndex). Framework filter syntax differs per vector store, so translate the dataset's
+equality filters there. Neither framework is a Vectraudit dependency: the adapters call
+`invoke`, `compress_documents`, `retrieve` and `postprocess_nodes` on the objects you pass.
+Run files are redacted, so to see an adapter's own error, call it once directly:
+`dense(PipelineRequest(query_id="t", text="a question", k=10))`, importing `PipelineRequest`
+from `vectraudit.pipelines`.
 
 Instrument real keyword/vector/filter/fusion/rerank/truncation functions with `Stage`.
 Explicit parent edges preserve parallel retrieval branches. A recorded disappearance

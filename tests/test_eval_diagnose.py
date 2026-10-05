@@ -131,8 +131,8 @@ def test_concentrations() -> None:
 
 
 def test_latency_with_parameter_change_and_nondeterminism() -> None:
-    base = fake_run([1.0] * 40, latency=1.0)
-    cand = fake_run([1.0] * 40, latency=2.0, search={"k": 2, "params": {"nprobe": 64}})
+    base = fake_run([1.0] * 40, latency=10.0)
+    cand = fake_run([1.0] * 40, latency=20.0, search={"k": 2, "params": {"nprobe": 64}})
     cand["queries"][0]["nondeterministic"] = True
     result = compare_runs(base, cand)
     f = finding(result, "latency-params")

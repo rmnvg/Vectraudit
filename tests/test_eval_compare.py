@@ -394,7 +394,7 @@ def test_tiny_latency_rises_are_noise() -> None:
     )
     assert compare_runs(base, jitter, strict)["verdict"] == "fail"
     assert strict.latency.min_increase_ms == 0
-    assert DEFAULT_POLICY.latency.min_increase_ms == 0.1
+    assert DEFAULT_POLICY.latency.min_increase_ms == 2.0
 
 
 def test_minimum_applies_to_measured_pairs_not_unlabelled_suite() -> None:
