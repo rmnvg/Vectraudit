@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Critical-question release assertions: require a document within a specified rank, edit and
+  export rules from the workbench, and inspect assertion evidence in JSON/HTML/Markdown reports.
+  Missing queries and insufficient retrieval depth cannot silently pass.
+
 - Connected passage-review queues in the guided benchmark editor: pool actual baseline and
   candidate results, prioritize unjudged disagreements, grade local passages, and return from
   comparison findings. Queues enforce exact exploratory versions, preserve irrelevant/span

@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { STARTER_POLICY, formFromPolicy, policyFromForm, policyLabel } from './release'
 
 describe('release policy form', () => {
+  it('preserves critical rules through editing and accepts assertion-only policies', () => {
+    const raw = { critical_queries: [{ query_id: 'invoice', doc_id: 'guide', max_rank: 3 }] }
+    const { policy, errors } = policyFromForm(formFromPolicy(raw))
+    expect(errors).toEqual([])
+    expect(policy?.critical_queries).toEqual(raw.critical_queries)
+  })
+  it('rejects malformed, duplicate and incomplete critical assertions', () => {
+    expect(() => formFromPolicy({ critical_queries: {} })).toThrow()
+    expect(() => formFromPolicy({ critical_queries: [{ typo: 'query' }] })).toThrow()
+    const form = formFromPolicy(STARTER_POLICY)
+    form.criticalQueries = [{ queryId: 'q', docId: 'd', maxRank: '0' }, { queryId: 'q', docId: 'd', maxRank: '' }]
+    expect(policyFromForm(form).policy).toBeUndefined()
+    expect(policyFromForm(form).errors.join(' ')).toMatch(/duplicates/)
+  })
   it('round-trips the starter policy without changing its rules', () => {
     const { policy, errors } = policyFromForm(formFromPolicy(STARTER_POLICY))
     expect(errors).toEqual([])

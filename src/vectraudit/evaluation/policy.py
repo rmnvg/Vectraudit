@@ -37,6 +37,7 @@ _TOP_KEYS = {
     "primary_metric",
     "cohorts",
     "require_significance",
+    "critical_queries",
 }
 _LATENCY_KEYS = {
     "p50_max_increase_pct",
@@ -83,6 +84,15 @@ class CohortRule:
 
 
 @dataclass(frozen=True)
+class CriticalQueryRule:
+    """A document that must appear within an inclusive rank for a named query."""
+
+    query_id: str
+    doc_id: str
+    max_rank: int
+
+
+@dataclass(frozen=True)
 class Policy:
     metrics: dict[str, MetricRule]
     latency: LatencyRule = LatencyRule()
@@ -95,9 +105,16 @@ class Policy:
     require_significance: bool = False
     """Fail a max_drop rule only when the whole 95% interval of the drop exceeds the limit."""
     is_default: bool = False
+    critical_queries: tuple[CriticalQueryRule, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        result = asdict(self)
+        # Preserve hashes of existing saved policies and exported release contracts.
+        if not self.critical_queries:
+            result.pop("critical_queries")
+        else:
+            result["critical_queries"] = [asdict(rule) for rule in self.critical_queries]
+        return result
 
 
 DEFAULT_POLICY = Policy(
@@ -174,10 +191,40 @@ def parse_policy(raw: Any) -> Policy:
         primary_metric=primary,
         cohorts=cohorts,
         require_significance=_bool(raw, "require_significance", False),
+        critical_queries=_critical_rules(raw.get("critical_queries", [])),
     )
-    has_quality_rule = bool(metrics) or max_regressed is not None or bool(cohorts.metrics)
+    has_quality_rule = (
+        bool(metrics)
+        or max_regressed is not None
+        or bool(cohorts.metrics)
+        or bool(policy.critical_queries)
+    )
     _expect(has_quality_rule, "a policy needs at least one metric or regressed-query rule")
     return policy
+
+
+def _critical_rules(raw: Any) -> tuple[CriticalQueryRule, ...]:
+    _expect(isinstance(raw, list), "critical_queries must be a list")
+    _expect(len(raw) <= 1000, "critical_queries supports at most 1000 assertions")
+    rules = []
+    seen = set()
+    for item in raw:
+        _expect(isinstance(item, dict), "critical_queries entries must be objects")
+        _no_unknown(item, {"query_id", "doc_id", "max_rank"}, "critical_queries")
+        for key in ("query_id", "doc_id"):
+            value = item.get(key)
+            _expect(
+                isinstance(value, str) and bool(value.strip()) and len(value) <= 512,
+                f"critical_queries.{key} must be a nonempty string of at most 512 characters",
+            )
+        _expect("max_rank" in item, "critical_queries.max_rank is required")
+        rank = _count(item, "max_rank", 1, minimum=1)
+        _expect(rank <= 10000, "critical_queries.max_rank must be at most 10000")
+        identity = (item["query_id"], item["doc_id"])
+        _expect(identity not in seen, "duplicate critical query/document assertion")
+        seen.add(identity)
+        rules.append(CriticalQueryRule(*identity, rank))
+    return tuple(rules)
 
 
 def _metric_rules(raw: Any, where: str) -> dict[str, MetricRule]:

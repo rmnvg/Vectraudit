@@ -106,6 +106,16 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         out += [release, ""]
     if result["reasons"]:
         out += [f"- {_md(r['message'])}" for r in result["reasons"]] + [""]
+    if result.get("critical_queries"):
+        out += [
+            "**Critical questions (recorded candidate ranking)**",
+            "",
+            _md_table(
+                ["Query", "Document", "Maximum rank", "Observed rank", "Verdict"],
+                _critical_rows(result),
+            ),
+            "",
+        ]
     findings = result.get("findings") or []
     if findings:
         out += ["**Diagnosis**", ""]
@@ -251,6 +261,19 @@ def _release_line(result: Mapping[str, Any], *, plain: bool = False) -> str:
     return text if plain else _md(text)
 
 
+def _critical_rows(result: Mapping[str, Any]) -> list[list[str]]:
+    return [
+        [
+            str(rule["query_id"]),
+            str(rule["doc_id"]),
+            str(rule["max_rank"]),
+            str(rule["rank"]) if rule["rank"] is not None else "Not observed",
+            str(rule["verdict"]),
+        ]
+        for rule in result["critical_queries"]
+    ]
+
+
 def render_html(result: Mapping[str, Any]) -> str:
     """A self-contained HTML investigation report."""
     verdict = result["verdict"]
@@ -274,6 +297,14 @@ def render_html(result: Mapping[str, Any]) -> str:
             for r in result["reasons"]
         )
         parts.append(f'<h2>Why</h2><ul class="reasons">{items}</ul>')
+    if result.get("critical_queries"):
+        parts += [
+            "<h2>Critical questions (recorded candidate ranking)</h2>",
+            _html_table(
+                ["Query", "Document", "Maximum rank", "Observed rank", "Verdict"],
+                _critical_rows(result),
+            ),
+        ]
     if result.get("findings"):
         parts.append("<h2>Diagnosis</h2>")
         parts.append(

@@ -228,3 +228,40 @@ judged quality metric. A suite of 100 questions with two labels cannot satisfy a
 of 30 for nDCG. `check` returns `not_comparable` and includes coverage in its warnings.
 Cohort metrics below their measured-pair minimum are reported without judging; their
 query count alone does not establish label coverage.
+
+## Critical-question assertions
+
+Use `critical_queries` in a release policy to require a named document within an inclusive
+rank for a particular question. For example, this policy blocks a release unless the
+candidate retrieves `current-guide` in the top three results for `invoice`:
+
+```json
+{
+  "version": 1,
+  "metrics": {"ndcg": {"max_drop": 0.02}},
+  "critical_queries": [
+    {"query_id": "invoice", "doc_id": "current-guide", "max_rank": 3}
+  ]
+}
+```
+
+The workbench's release policy editor provides **Add critical assertion** and preserves
+these rules through JSON import, policy versions and release-check export. The browser,
+CLI, hosted checks and CI use the same comparison engine. JSON results include each rule's
+observed rank and verdict; HTML and Markdown reports include passed and failed assertions.
+
+These are absolute requirements on the candidate, even if the baseline also fails, average
+quality improves or `require_significance` is enabled. A missing document or rank beyond the
+limit fails. A question absent from the measured split, or `max_rank` greater than the run's
+`k`, makes the check not comparable. Incomplete runs remain errors. Select a policy whose
+question IDs belong to the exact exploratory or held-out split being checked.
+
+An assertion-only policy may omit `metrics`; it needs no relevance grades but still obeys
+`min_queries` and the existing run-comparability checks. This does not establish quality
+for other questions. Each query/document pair must be unique; a policy supports at most
+1,000 assertions, with maximum ranks from 1 to 10,000.
+
+Assertions evaluate the **recorded candidate ranking**. For repeated pipeline calls this is
+the first result, matching current relevance metrics; they do not promise that every repeat
+retrieves the document. Existing nondeterminism warnings still apply. Policies without
+assertions retain their existing content hashes.

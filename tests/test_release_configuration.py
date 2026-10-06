@@ -28,6 +28,7 @@ from vectraudit.pipelines.web import create_workbench
 
 LENIENT = {"metrics": {"ndcg": {"max_drop": 0.1}}, "min_queries": 30}
 STRICT = {"metrics": {"ndcg": {"max_drop": 0.001}}, "min_queries": 30}
+CRITICAL = {**LENIENT, "critical_queries": [{"query_id": "q0", "doc_id": "a", "max_rank": 1}]}
 ROWS = [{"query_id": f"q{i}", "text": "invoice", "relevant": {"a": 2}} for i in range(35)]
 CORPUS = "\n".join(
     json.dumps({"doc_id": d, "text": text})
@@ -127,7 +128,7 @@ def test_every_surface_gives_the_same_verdict_and_a_stricter_policy_changes_all(
     )
     assert case["policy"]["source"] == "exploratory"
 
-    for rules, expected, code in [(LENIENT, "pass", 0), (STRICT, "fail", 3)]:
+    for rules, expected, code in [(LENIENT, "pass", 0), (STRICT, "fail", 3), (CRITICAL, "fail", 3)]:
         policy = post(client, "policies", {"name": "Release", "policy": rules})
         browser = post(
             client,
@@ -164,7 +165,7 @@ def test_every_surface_gives_the_same_verdict_and_a_stricter_policy_changes_all(
 
     # The stricter version did not rewrite the earlier verification's evidence.
     versions = [e["policy"]["version"] for e in case["history"] if e["kind"] == "verification"]
-    assert versions == [1, 2]
+    assert versions == [1, 2, 3]
 
     exploratory = post(
         client, "compare", {"baseline": baseline["run_id"], "candidate": candidate["run_id"]}
@@ -189,11 +190,12 @@ def _export(client, tmp_path, draft, baseline, candidate, *, include_corpus=True
     return policy, created
 
 
-def test_exported_release_check_runs_from_a_clean_checkout(client, tmp_path):
+@pytest.mark.parametrize("rules", [LENIENT, CRITICAL])
+def test_exported_release_check_runs_from_a_clean_checkout(client, tmp_path, rules):
     draft = save(client, rows=ROWS, corpus=CORPUS).json()
     baseline = record(client, draft, label="Baseline")
     candidate = record(client, draft, label="Candidate", reranker="phrase")
-    policy, created = _export(client, tmp_path, draft, baseline, candidate)
+    policy, created = _export(client, tmp_path, draft, baseline, candidate, rules=rules)
     assert created["version"] == 1
     files = created["files"]
     assert set(files) == {

@@ -100,6 +100,7 @@ class _Check:
             pairs = self._pairs()
             self.out["n_queries"] = len(pairs)
             self._safety(pairs)
+            self._critical_queries()
             self._quality(pairs)
             self._cohorts(pairs)
             self._latency()
@@ -125,6 +126,47 @@ class _Check:
                 )
             if candidate.get("no_answer_correct") is False:
                 self.flag(Verdict.FAIL, f"No-answer assertion failed for {candidate['query_id']}.")
+
+    def _critical_queries(self) -> None:
+        """Judge the candidate's recorded ranking, independently of aggregate quality."""
+        if not self.policy.critical_queries:
+            return
+        queries = {q["query_id"]: q for q in self.cand["queries"]}
+        assertions = []
+        for rule in self.policy.critical_queries:
+            query = queries.get(rule.query_id)
+            rank = None
+            if query is None:
+                verdict, detail = Verdict.NOT_COMPARABLE, "query was not measured"
+            elif rule.max_rank > self.cand["search"]["k"]:
+                verdict, detail = Verdict.NOT_COMPARABLE, "max_rank exceeds the run's k"
+            elif query.get("error") or query.get("ids") is None:
+                verdict, detail = Verdict.ERROR, "query has no successful measurement"
+            else:
+                ids = query["ids"]
+                rank = ids.index(rule.doc_id) + 1 if rule.doc_id in ids else None
+                verdict = (
+                    Verdict.PASS if rank is not None and rank <= rule.max_rank else Verdict.FAIL
+                )
+                detail = (
+                    f"observed rank {rank}" if rank is not None else "document was not retrieved"
+                )
+            assertions.append(
+                {
+                    "query_id": rule.query_id,
+                    "doc_id": rule.doc_id,
+                    "max_rank": rule.max_rank,
+                    "rank": rank,
+                    "verdict": verdict.value,
+                }
+            )
+            if verdict != Verdict.PASS:
+                self.flag(
+                    verdict,
+                    f"Critical query {rule.query_id}: document {rule.doc_id} "
+                    f"must appear in the top {rule.max_rank}; {detail}.",
+                )
+        self.out["critical_queries"] = assertions
 
     # --- gates -----------------------------------------------------------------------
 
@@ -215,6 +257,14 @@ class _Check:
             if stats is not None:
                 available[name] = stats
         self.out["metrics"] = available
+        if (
+            not available
+            and self.policy.critical_queries
+            and not self.policy.metrics
+            and self.policy.max_regressed_queries is None
+            and not self.policy.cohorts.metrics
+        ):
+            return
         safety_pairs = sum(
             (b.get("no_answer_correct") is not None and c.get("no_answer_correct") is not None)
             or bool(b.get("permission_checked") and c.get("permission_checked"))
