@@ -11,6 +11,7 @@ from vectraudit.evaluation.dataset import parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.runfile import load_run
 from vectraudit.pipelines.benchmark import audit_benchmark
+from vectraudit.pipelines.document_lookup import LookupRequest, LookupRunner, content_hash
 from vectraudit.pipelines.models import Contract
 
 if TYPE_CHECKING:
@@ -25,9 +26,16 @@ class ReviewPoolIn(Contract):
     query_id: str = Field(min_length=1, max_length=512)
 
 
+class ReviewDocumentsIn(ReviewPoolIn):
+    doc_ids: list[str] = Field(min_length=1, max_length=10)
+    source_run: str
+    confirm_lookup: bool = False
+
+
 def review_router(workspace: GuidedWorkspace) -> APIRouter:
     """Inherit the guided router's token/origin checks; never execute a retriever."""
     router = APIRouter()
+    lookup = LookupRunner()
 
     @router.post("/review-pool")
     def pool(body: ReviewPoolIn) -> dict[str, Any]:
@@ -82,6 +90,59 @@ def review_router(workspace: GuidedWorkspace) -> APIRouter:
             "baseline_measured": measured[0],
             "candidate_measured": measured[1],
             "items": items,
+            "document_lookup": bool(workspace.manifest and workspace.manifest.document_lookup),
+        }
+
+    @router.post("/review-documents")
+    def documents(body: ReviewDocumentsIn) -> dict[str, Any]:
+        config = workspace.manifest.document_lookup if workspace.manifest else None
+        if config is None:
+            raise HTTPException(422, "No document resolver is registered at startup")
+        if not body.confirm_lookup:
+            raise HTTPException(
+                422, "Confirm sending document IDs and saved context to the registered source"
+            )
+        reviewed = pool(body)
+        allowed = {item["doc_id"] for item in reviewed["items"]}
+        if len(body.doc_ids) != len(set(body.doc_ids)) or not set(body.doc_ids) <= allowed:
+            raise HTTPException(422, "Choose distinct documents from this question's review pool")
+        if body.source_run not in (body.baseline, body.candidate):
+            raise HTTPException(
+                422, "Choose the baseline or candidate as the document version source"
+            )
+        draft = workspace.load_draft(body.draft_id)
+        if draft["revision"] != body.revision:
+            raise HTTPException(409, "Benchmark changed. Reload before looking up passages.")
+        query = next(
+            q for q in parse_dataset(draft["dataset"]).queries if q.query_id == body.query_id
+        )
+        run = load_run(workspace.run_path(body.source_run))
+        version = run["backend"].get("corpus_version") or run["backend"].get("snapshot")
+        request = LookupRequest(
+            query_id=query.query_id,
+            doc_ids=body.doc_ids,
+            context=query.context,
+            filters=query.filter,
+            corpus_version=version,
+            run_id=body.source_run,
+        )
+        result = lookup.run(config, workspace.manifest_root, request)
+        if workspace.load_draft(body.draft_id)["revision"] != body.revision:
+            raise HTTPException(
+                409, "Benchmark changed during lookup. Reload before reviewing passages."
+            )
+        return {
+            "source_run": body.source_run,
+            "query_id": query.query_id,
+            "corpus_version": result.corpus_version,
+            "version_verified": version is not None,
+            "documents": [
+                {
+                    **doc.model_dump(),
+                    "sha256": content_hash(doc.text) if doc.text is not None else None,
+                }
+                for doc in result.documents
+            ],
         }
 
     return router

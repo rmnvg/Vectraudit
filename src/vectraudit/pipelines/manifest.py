@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
+from vectraudit.pipelines.document_lookup import LookupConfig
 from vectraudit.pipelines.lexical import hybrid_pipeline
 from vectraudit.pipelines.models import Contract
 from vectraudit.pipelines.runtime import HTTPPipeline, Pipeline
@@ -49,6 +50,7 @@ class Manifest(Contract):
     max_p95_ms: float = Field(default=150, gt=0)
     max_cost_usd: float | None = Field(default=None, ge=0)
     max_memory_bytes: int | None = Field(default=None, ge=0)
+    document_lookup: LookupConfig | None = None
 
 
 def load_manifest(path: Path) -> Manifest:
