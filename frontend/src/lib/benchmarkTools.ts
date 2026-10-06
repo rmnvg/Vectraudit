@@ -2,6 +2,18 @@ import type { QueryRow } from './guided'
 
 export type Irrelevant = Record<string, string[]>
 type Doc = { doc_id: string; text: string; metadata?: Record<string, unknown> }
+export interface LookupDocument {
+  doc_id: string; status: 'found' | 'missing' | 'forbidden' | 'version_unavailable'
+  text: string | null; title: string | null; version: string | null; sha256: string | null
+}
+export interface LookupResponse {
+  source_run: string; query_id: string; corpus_version: string | null; version_verified: boolean
+  documents: LookupDocument[]
+}
+export interface PassageLookup {
+  documents: Record<string, LookupDocument>; busy: boolean; confirmed: boolean
+  fetch: (ids: string[]) => void
+}
 export interface ReviewItem {
   query_id: string; doc_id: string; reason: string; priority: number
   baseline_rank: number | null; candidate_rank: number | null
@@ -10,6 +22,7 @@ export interface ReviewPool {
   draft_id: string; revision: string; dataset_sha256: string; query_id: string
   baseline: string; candidate: string; baseline_measured: boolean; candidate_measured: boolean
   items: ReviewItem[]
+  document_lookup?: boolean
 }
 
 /** Labels may change during review; changing the retrieval request invalidates its pool. */

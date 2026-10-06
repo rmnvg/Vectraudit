@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { guidedRequest, parseQueries } from '../lib/guided'
 import type { Draft, QueryRow } from '../lib/guided'
-import type { ReviewPool } from '../lib/benchmarkTools'
+import type { LookupResponse, ReviewPool } from '../lib/benchmarkTools'
 import { reviewRequestKey } from '../lib/benchmarkTools'
 import type { Run } from '../lib/workbench'
 import { PassageGrader } from './BenchmarkTools'
@@ -21,14 +21,46 @@ export default function PassageReview({ token, draft, dirty, runs, baseline, can
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const request = useRef<AbortController | null>(null)
-  useEffect(() => () => request.current?.abort(), [])
+  const lookupRequest = useRef<AbortController | null>(null)
+  const [lookupSource, setLookupSource] = useState('candidate')
+  const [confirmed, setConfirmed] = useState(false)
+  const [lookupBusy, setLookupBusy] = useState(false)
+  const [lookupError, setLookupError] = useState('')
+  const [lookedUp, setLookedUp] = useState<{ pool: ReviewPool; result: LookupResponse } | null>(null)
+  useEffect(() => () => { request.current?.abort(); lookupRequest.current?.abort() }, [])
   // Selecting another source never displays the previous pair's queue as its evidence.
   const savedRow = draft ? parseQueries(draft.dataset).rows.find(q => q.query_id === row.query_id) : undefined
   const sourceMatches = !!savedRow && reviewRequestKey(savedRow) === reviewRequestKey(row) && corpus === (draft?.corpus || '')
   const active = sourceMatches && poolCorpus === corpus && pool?.baseline === baseline && pool.candidate === candidate ? pool : null
+  const sourceRun = lookupSource === 'baseline' ? baseline : candidate
+  const remoteLookup = !!active?.document_lookup && lookupSource !== 'local' && !browse
+  const lookupResult = lookedUp?.pool === active && lookedUp?.result.source_run === sourceRun ? lookedUp.result : null
+  useEffect(() => () => { lookupRequest.current?.abort(); setLookupBusy(false) }, [active, sourceRun, lookupSource])
+  function resetLookup() {
+    lookupRequest.current?.abort(); setLookedUp(null); setLookupBusy(false); setLookupError(''); setConfirmed(false)
+  }
+  async function fetchDocuments(ids: string[]) {
+    if (!active || !confirmed || !ids.length) return
+    lookupRequest.current?.abort()
+    const controller = new AbortController()
+    lookupRequest.current = controller
+    setLookupBusy(true); setLookupError('')
+    setLookedUp(previous => previous && ({ ...previous, result: { ...previous.result, documents: previous.result.documents.filter(d => !ids.includes(d.doc_id)) } }))
+    try {
+      const result = await guidedRequest<LookupResponse>('review-documents', token, {
+        draft_id: active.draft_id, revision: active.revision, baseline, candidate,
+        query_id: row.query_id, source_run: sourceRun, doc_ids: ids, confirm_lookup: true,
+      }, controller.signal)
+      if (!controller.signal.aborted) setLookedUp(previous => ({ pool: active, result: {
+        ...result, documents: [...(previous?.pool === active && previous.result.source_run === sourceRun && previous.result.corpus_version === result.corpus_version ? previous.result.documents.filter(d => !ids.includes(d.doc_id)) : []), ...result.documents],
+      } }))
+    } catch (e) { if (!controller.signal.aborted) setLookupError(String(e)) }
+    finally { if (!controller.signal.aborted) setLookupBusy(false) }
+  }
   async function build() {
     if (!draft || !sourceMatches) return
     request.current?.abort()
+    resetLookup()
     const controller = new AbortController()
     request.current = controller
     setBusy(true); setError(''); setPool(null)
@@ -47,8 +79,8 @@ export default function PassageReview({ token, draft, dirty, runs, baseline, can
         <h3 className="font-semibold">Review passages from evaluation runs</h3>
         <p className="text-xs text-muted">Pool unjudged results for this question from two exploratory runs of the saved benchmark. Relevant, irrelevant, span-labeled and forbidden documents are excluded.</p>
         <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2">
-          <label className="min-w-0 text-sm">Review baseline<select aria-label="Review baseline" className={input} value={baseline} onChange={e => onBaseline(e.target.value)}><option value="">Choose a run</option>{runs.map(run => <option value={run.run_id} key={run.run_id}>{run.label || run.run_id}</option>)}</select></label>
-          <label className="min-w-0 text-sm">Review candidate<select aria-label="Review candidate" className={input} value={candidate} onChange={e => onCandidate(e.target.value)}><option value="">Choose a run</option>{runs.map(run => <option value={run.run_id} key={run.run_id}>{run.label || run.run_id}</option>)}</select></label>
+          <label className="min-w-0 text-sm">Review baseline<select aria-label="Review baseline" className={input} value={baseline} onChange={e => { resetLookup(); onBaseline(e.target.value) }}><option value="">Choose a run</option>{runs.map(run => <option value={run.run_id} key={run.run_id}>{run.label || run.run_id}</option>)}</select></label>
+          <label className="min-w-0 text-sm">Review candidate<select aria-label="Review candidate" className={input} value={candidate} onChange={e => { resetLookup(); onCandidate(e.target.value) }}><option value="">Choose a run</option>{runs.map(run => <option value={run.run_id} key={run.run_id}>{run.label || run.run_id}</option>)}</select></label>
         </fieldset>
         <button className={button} disabled={busy || !sourceMatches || !baseline || !candidate || baseline === candidate} onClick={() => void build()}>{busy ? 'Loading passages…' : 'Build passage review queue'}</button>
         {!sourceMatches && <p className="text-xs text-muted">Save your question and corpus before building a queue. Changed questions need new evaluation runs.</p>}
@@ -56,7 +88,15 @@ export default function PassageReview({ token, draft, dirty, runs, baseline, can
         {!!baseline && baseline === candidate && <p className="text-xs text-muted">Choose two different evaluation runs.</p>}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         {active && <div className="flex flex-wrap gap-2"><button className={button} aria-pressed={!browse} onClick={() => setBrowse(false)}>Review pooled passages</button><button className={button} aria-pressed={browse} onClick={() => setBrowse(true)}>Browse all passages</button></div>}
+        {active?.document_lookup && !browse && <div className="space-y-2">
+          <label className="block text-sm">Passage source<select aria-label="Passage source" className={input} value={lookupSource} onChange={e => { resetLookup(); setLookupSource(e.target.value) }}><option value="candidate">Registered source · candidate corpus version</option><option value="baseline">Registered source · baseline corpus version</option><option value="local">Attached local corpus</option></select></label>
+          {remoteLookup && <><label className="flex gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Send document IDs, saved context and filters to the registered document source</label>
+            <p className="text-xs text-muted">Fetch up to ten visible passages. Text stays in this browser session and is not added to the saved corpus or release export. Content versions are shown for review; saving grades does not freeze remote documents.</p>
+            {lookupResult && <p className="text-xs text-muted">{lookupResult.version_verified ? `Source reports the requested corpus version: ${lookupResult.corpus_version}` : 'Run corpus version unknown: fetched text cannot be verified against this run.'}</p>}
+            {lookupError && <p role="alert" className="text-sm text-red-600">{lookupError}</p>}
+          </>}
+        </div>}
       </section>}
-    <PassageGrader key={active && !browse ? 'pool' : 'corpus'} corpus={corpus} row={row} irrelevant={irrelevant} onGrade={onGrade} pool={row.split !== 'heldout' && active && !browse ? active : undefined} />
+    <PassageGrader key={active && !browse ? 'pool' : 'corpus'} corpus={corpus} row={row} irrelevant={irrelevant} onGrade={onGrade} pool={row.split !== 'heldout' && active && !browse ? active : undefined} lookup={remoteLookup ? { documents: Object.fromEntries((lookupResult?.documents || []).map(d => [d.doc_id, d])), busy: lookupBusy, confirmed, fetch: ids => void fetchDocuments(ids) } : undefined} />
   </div>
 }

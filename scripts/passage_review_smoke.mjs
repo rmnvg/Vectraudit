@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path'
 import { chromium } from '../frontend/node_modules/@playwright/test/index.mjs'
 
 const root = resolve(import.meta.dirname, '..')
+const remoteLookup = process.env.VECTRAUDIT_LOOKUP_SMOKE === '1'
 const workspace = await mkdtemp(join(tmpdir(), 'vectraudit-passage-review-'))
 const base = 'http://127.0.0.1:8820'
 await writeFile(join(workspace, 'review_fixture.py'), `from vectraudit.pipelines.models import Hit, PipelineResult
@@ -15,8 +16,19 @@ def retrieve(request):
         ["known", "negative", "common", "base-only", "missing"] if request.params["side"] == "base"
         else ["known", "negative", "common", "candidate-only"])
     return PipelineResult(hits=[Hit(id=doc) for doc in ids])
+def lookup(request):
+    documents = []
+    for doc in request.doc_ids:
+        if doc == "missing":
+            documents.append({"doc_id": doc, "status": "missing"})
+        elif (doc == "other") != (request.context.get("tenant") == "other"):
+            documents.append({"doc_id": doc, "status": "forbidden"})
+        else:
+            documents.append({"doc_id": doc, "status": "found", "text": "Remote passage for " + doc,
+                              "version": "content-v1"})
+    return {"corpus_version": request.corpus_version, "documents": documents}
 `)
-await writeFile(join(workspace, 'manifest.json'), JSON.stringify({ dataset: 'unused.jsonl', candidates: ['base', 'candidate'].map(side => ({ name: side, adapter: { kind: 'python', target: 'review_fixture:retrieve' }, params: { side } })) }))
+await writeFile(join(workspace, 'manifest.json'), JSON.stringify({ dataset: 'unused.jsonl', ...(remoteLookup ? { corpus_version: 'snapshot-v1', document_lookup: { target: 'review_fixture:lookup' } } : {}), candidates: ['base', 'candidate'].map(side => ({ name: side, adapter: { kind: 'python', target: 'review_fixture:retrieve' }, params: { side } })) }))
 const server = spawn(join(root, '.venv/bin/vectraudit'), ['workbench', 'serve', workspace, '--port', '8820', '--manifest', join(workspace, 'manifest.json')], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] })
 let browser, token, stderr = ''
 server.stderr.on('data', b => { stderr += b })
@@ -46,7 +58,7 @@ try {
     { query_id: 'other', text: 'invoice', context: { tenant: 'other' } },
     { query_id: 'heldout', text: 'final question', split: 'heldout' },
   ]
-  const corpus = ['known', 'negative', 'common', 'base-only', 'candidate-only', 'other', 'outside-pool'].map(doc_id => JSON.stringify({ doc_id, text: `Local passage for ${doc_id}` })).join('\n')
+  const corpus = remoteLookup ? '' : ['known', 'negative', 'common', 'base-only', 'candidate-only', 'other', 'outside-pool'].map(doc_id => JSON.stringify({ doc_id, text: `Local passage for ${doc_id}` })).join('\n')
   let draft = await api('drafts', { name: 'Review benchmark', dataset: rows.map(r => JSON.stringify(r)).join('\n'), corpus, irrelevant: { invoice: ['negative'] } })
   const baseline = await evaluate(draft, 0)
   const candidate = await evaluate(draft, 1)
@@ -68,6 +80,23 @@ try {
   assert.equal(await grader.getByRole('button', { name: 'Irrelevant: negative', exact: true }).count(), 0)
   assert.equal(await grader.getByText(/Show retrieval evidence/).count(), 0)
   assert.ok(await grader.getByRole('button', { name: 'Relevant: missing', exact: true }).isDisabled())
+  if (remoteLookup) {
+    assert.ok(await grader.getByRole('button', { name: 'Relevant: base-only', exact: true }).isDisabled())
+    const fetchPassages = grader.getByRole('button', { name: 'Fetch visible passages', exact: true })
+    assert.ok(await fetchPassages.isDisabled())
+    await page.getByRole('checkbox', { name: /Send document IDs/ }).check()
+    await fetchPassages.click()
+    await grader.getByText('Remote passage for base-only', { exact: true }).waitFor()
+    await grader.getByText('Document not found in this corpus version.', { exact: true }).waitFor()
+    assert.ok(await grader.getByRole('button', { name: 'Relevant: missing', exact: true }).isDisabled())
+    // Changing the source invalidates both content and transfer consent.
+    await page.getByLabel('Passage source', { exact: true }).selectOption('baseline')
+    assert.ok(await grader.getByRole('button', { name: 'Relevant: base-only', exact: true }).isDisabled())
+    await page.getByRole('checkbox', { name: /Send document IDs/ }).check()
+    await fetchPassages.click()
+    await grader.getByText('Remote passage for base-only', { exact: true }).waitFor()
+  }
+
   await grader.getByRole('button', { name: 'Irrelevant: base-only', exact: true }).click()
   await page.getByText(/3 passages awaiting judgment/).waitFor()
   await grader.getByText('Show retrieval evidence for base-only', { exact: true }).click()
@@ -76,9 +105,11 @@ try {
   await page.getByText(/4 passages awaiting judgment/).waitFor()
   await grader.getByRole('button', { name: 'Irrelevant: base-only', exact: true }).click()
   await grader.getByRole('button', { name: 'Relevant: candidate-only', exact: true }).click()
-  await page.getByRole('button', { name: 'Browse all passages', exact: true }).click()
-  await grader.getByRole('button', { name: 'Relevant: outside-pool', exact: true }).waitFor()
-  await page.getByRole('button', { name: 'Review pooled passages', exact: true }).click()
+  if (!remoteLookup) {
+    await page.getByRole('button', { name: 'Browse all passages', exact: true }).click()
+    await grader.getByRole('button', { name: 'Relevant: outside-pool', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Review pooled passages', exact: true }).click()
+  }
   await page.getByText(/2 passages awaiting judgment/).waitFor()
   await page.screenshot({ path: join(workspace, 'review-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -91,6 +122,12 @@ try {
   await page.getByRole('button', { name: 'Build passage review queue', exact: true }).click()
   await page.getByText(/1 passages awaiting judgment/).waitFor()
   assert.equal(await grader.locator('article').count(), 1)
+  if (remoteLookup) {
+    await page.getByRole('checkbox', { name: /Send document IDs/ }).check()
+    await grader.getByRole('button', { name: 'Fetch visible passages', exact: true }).click()
+    await grader.getByText('Remote passage for other', { exact: true }).waitFor()
+    assert.equal(await grader.getByText('Remote passage for base-only', { exact: true }).count(), 0)
+  }
   await grader.getByRole('button', { name: 'Relevant: other', exact: true }).click()
   await page.getByLabel('Question', { exact: true }).fill('changed question')
   assert.equal(await page.getByText('Review retrieved passages', { exact: true }).count(), 0)
@@ -103,8 +140,16 @@ try {
   await page.reload()
   await steps.getByRole('button', { name: /Build benchmark/ }).click()
   await page.getByLabel('Resume saved benchmark').selectOption({ label: 'Review benchmark' })
-  assert.equal(await page.getByRole('button', { name: 'Irrelevant: base-only', exact: true }).getAttribute('aria-pressed'), 'true')
-  assert.equal(await page.getByRole('button', { name: 'Relevant: candidate-only', exact: true }).getAttribute('aria-pressed'), 'true')
+  if (remoteLookup) {
+    const saved = await api(`drafts/${draft.id}`)
+    assert.equal(saved.corpus, '')
+    assert.ok(saved.irrelevant.invoice.includes('base-only'))
+    assert.equal(saved.dataset.includes('Remote passage'), false)
+    assert.equal(JSON.parse(saved.dataset.split('\n').find(line => line.includes('candidate-only'))).relevant['candidate-only'], 1)
+  } else {
+    assert.equal(await page.getByRole('button', { name: 'Irrelevant: base-only', exact: true }).getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.getByRole('button', { name: 'Relevant: candidate-only', exact: true }).getAttribute('aria-pressed'), 'true')
+  }
   await page.getByLabel('Review baseline').selectOption(baseline.run_id)
   await page.getByLabel('Review candidate').selectOption(candidate.run_id)
   await page.getByRole('button', { name: 'Build passage review queue', exact: true }).click()
