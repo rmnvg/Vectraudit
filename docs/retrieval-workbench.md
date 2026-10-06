@@ -277,6 +277,28 @@ text is reported explicitly. Passage order is corpus order, not retrieval rank; 
 search field and pagination to inspect other documents. Existing standalone labeling tools
 remain available for pooling, independent second passes and reviewer resolution.
 
+After evaluating two pipelines, choose an exploratory question and select **Review baseline**
+and **Review candidate**, then **Build passage review queue**. The queue pools delivered
+documents from those runs, with unjudged disagreements first. Positive, zero-grade, span,
+separate irrelevant and forbidden judgments are excluded. Held-out questions never enter
+this queue. Both runs must cover the exact saved exploratory dataset; cancelled or incomplete
+runs are rejected. A failed question in a finished partial run contributes no ranking and is
+explicitly reported as unknown, not treated as an empty result or a disagreement.
+
+Read and grade the queued passages using your attached local corpus. Missing text remains
+visible and cannot be graded until supplied. Retrieval source and rank are hidden in the
+grader until a judgment is entered; **Show retrieval evidence** then reveals them. This is
+not an independent blind second pass: previous inspection or document IDs can reveal the
+source. **Browse all passages** lets you inspect documents outside the retrieved pool.
+
+You can review multiple questions before saving. A changed question, tenant context, filter
+or split invalidates its active pool. Saving new relevance labels changes the dataset version;
+remeasure both pipelines before building another pool or making a release decision. Separate
+irrelevant judgments persist across reloads and are excluded from later queues. Comparing
+runs does not modify their evidence or the labels. From a comparison finding, **Review passages
+for this question** returns to that exploratory question in the open benchmark with the
+comparison's baseline/candidate selected. Version compatibility is checked when building.
+
 An irrelevant judgment is saved separately from the evaluation dataset when needed; it
 never implies that the question has no answer. Mark no-answer only after reviewing coverage.
 Assigning a positive passage grade clears no-answer and replaces span judgments for that
@@ -447,3 +469,7 @@ to all new guided APIs.
 Reproduce the full browser journey with `node scripts/market_fit_smoke.mjs` after building
 the UI. It tests grading/reload, snapshots, findings, incident review, permission creation
 and freshness at desktop/mobile sizes against a real local server.
+
+`node scripts/passage_review_smoke.mjs` exercises registered Python adapters, measured runs,
+pooled grading, missing text, multi-question review, stale-version rejection, persistence,
+and a fresh browser comparison. Both scripts run in CI.

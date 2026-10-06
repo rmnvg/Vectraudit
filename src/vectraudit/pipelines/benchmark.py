@@ -19,7 +19,12 @@ SUITE_TAGS = (
 )
 
 
-def audit_benchmark(dataset: Dataset, runs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def audit_benchmark(
+    dataset: Dataset,
+    runs: list[dict[str, Any]] | None = None,
+    *,
+    irrelevant: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
     """Suggest human review; never infer relevance or modify a frozen benchmark."""
     groups: dict[str, list[str]] = defaultdict(list)
     tags: Counter[str] = Counter()
@@ -43,7 +48,9 @@ def audit_benchmark(dataset: Dataset, runs: list[dict[str, Any]] | None = None) 
         rankings = by_query[q.query_id]
         pool = set.union(*rankings) if rankings else set()
         common = set.intersection(*rankings) if rankings else set()
-        unjudged = pool - set(q.relevant) - set(q.forbidden)
+        judged = set(q.relevant) | {span.doc_id for span in q.relevant_spans}
+        judged.update((irrelevant or {}).get(q.query_id, []))
+        unjudged = pool - judged - set(q.forbidden)
         if q.split == "explore":
             judgments.extend(
                 {

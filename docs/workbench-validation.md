@@ -50,3 +50,22 @@ Local validation on `feat/market-fit-workflows`:
 These results validate the local workflows. They do not establish customer adoption,
 production deployment readiness, or live third-party integration acceptance. Incident
 imports remain local-file based, and case recurrence is checked by explicit verification.
+
+## Connected passage review — 2026-10-06
+
+- Python suite: **1,132 passed, 22 skipped, 1 deselected**, with loopback access enabled.
+  Skipped integrations require external pgvector, Pinecone or Weaviate services.
+- Python lint/format and mypy passed; type checks also passed in the Python 3.10 side environment.
+- Frontend: **72 tests passed**; type check, production build and lint passed.
+- New `scripts/passage_review_smoke.mjs` and existing market-fit/guided browser journeys passed.
+  The new CI journey exercises real registered adapters and runs, disagreement ordering,
+  missing-text handling, post-judgment rank disclosure, grading multiple questions, context
+  separation, changed-input invalidation, held-out exclusion, saved-label reload, rejection
+  of stale runs, fresh comparisons and navigation from findings back to review. Desktop/mobile
+  checks reported no browser exceptions or horizontal overflow.
+- API tests cover exact saved versions, span/irrelevant/zero-grade exclusions, failed queries
+  as unknown rankings, incomplete/cancelled run rejection and existing token/origin boundaries.
+
+Passages are looked up only in the attached local corpus. Independent second-pass review and
+reviewer resolution remain in the existing standalone labeling tool; this change does not
+add remote lookup, hosted annotation or a claim of blinded independent review.

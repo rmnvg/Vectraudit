@@ -150,6 +150,8 @@ jobs:
         run: node scripts/guided_smoke.mjs
       - name: Benchmark and regression case browser journey
         run: node scripts/market_fit_smoke.mjs
+      - name: Retrieved passage review browser journey
+        run: node scripts/passage_review_smoke.mjs
       - name: Release policy and exported release check journey
         run: node scripts/release_smoke.mjs
       - name: Local labelling browser regression

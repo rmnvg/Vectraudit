@@ -1,36 +1,44 @@
 import { useEffect, useMemo, useState } from 'react'
 import { guidedRequest, parseQueries } from '../lib/guided'
 import type { Draft, QueryRow } from '../lib/guided'
-import { gradeDocument, readDocuments } from '../lib/benchmarkTools'
-import type { Irrelevant } from '../lib/benchmarkTools'
+import { documentGrade, gradeDocument, pendingReview, readDocuments } from '../lib/benchmarkTools'
+import type { Irrelevant, ReviewPool } from '../lib/benchmarkTools'
 
 const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40'
 const input = 'mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-sm'
-export function PassageGrader({ corpus, row, irrelevant, onGrade }: { corpus: string; row: QueryRow; irrelevant: string[]; onGrade: (row: QueryRow, irrelevant: string[]) => void }) {
+export function PassageGrader({ corpus, row, irrelevant, onGrade, pool }: { corpus: string; row: QueryRow; irrelevant: string[]; onGrade: (row: QueryRow, irrelevant: string[]) => void; pool?: ReviewPool }) {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const parsed = useMemo(() => { try { return { docs: readDocuments(corpus), error: '' } } catch (e) { return { docs: [], error: String(e) } } }, [corpus])
-  const matches = parsed.docs.filter(d => `${d.doc_id} ${d.text}`.toLowerCase().includes(search.toLowerCase()))
+  const byId = new Map(parsed.docs.map(d => [d.doc_id, d]))
+  const documents = pool ? pool.items.filter(item => !row.forbidden?.includes(item.doc_id)).map(item => byId.get(item.doc_id) || { doc_id: item.doc_id, text: '', metadata: undefined }) : parsed.docs
+  const matches = documents.filter(d => `${d.doc_id} ${d.text}`.toLowerCase().includes(search.toLowerCase()))
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(matches.length / 10) - 1))
   const missing = [...new Set([...Object.keys(row.relevant || {}), ...(row.relevant_spans || []).map(s => s.doc_id), ...irrelevant])].filter(id => !parsed.docs.some(d => d.doc_id === id))
   return <section aria-label="Passage grading" className="rounded-xl border border-line p-4 space-y-3">
-    <h3 className="font-semibold">Read and grade passages</h3>
+    <h3 className="font-semibold">{pool ? 'Review retrieved passages' : 'Read and grade passages'}</h3>
     <p className="text-xs text-muted">Grades are human judgments. Irrelevant is distinct from unjudged; neither means no answer exists. Passage grades replace span grades for that document.</p>
     {!corpus && <p className="text-sm">Attach a local corpus below to look up document text, including for registered pipelines.</p>}
     {parsed.error && <p role="alert">{parsed.error}</p>}
     {missing.length > 0 && <p className="text-sm text-amber-600">Text unavailable for labeled documents: {missing.join(', ')}. Existing judgments are preserved.</p>}
     <label className="block text-sm">Find a passage<input className={input} value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} /></label>
-    <p className="text-xs text-muted">{matches.length} matching documents · local corpus order, no retrieval ranks</p>
-    {matches.slice(page * 10, page * 10 + 10).map(doc => {
+    <p className="text-xs text-muted">{pool ? `${pendingReview(pool, row, irrelevant).length} passages awaiting judgment · unjudged disagreements were queued first` : `${matches.length} matching documents · local corpus order, no retrieval ranks`}</p>
+    {pool && <p className="text-xs text-muted">Source and rank stay hidden until you grade a passage. Text comes from your attached local corpus. Save the reviewed benchmark, then rerun both pipelines before comparing the new labels.</p>}
+    {pool && (!pool.baseline_measured || !pool.candidate_measured) && <p role="status" className="text-sm text-amber-600">One run failed this question. Its ranking is unknown; the available results are pooled without claiming a disagreement.</p>}
+    {pool && !pool.items.length && <p className="text-sm">No unjudged retrieved passages for this question. You can still browse outside the pool; this does not establish that no answer exists.</p>}
+    {matches.slice(currentPage * 10, currentPage * 10 + 10).map(doc => {
       const spans = row.relevant_spans?.filter(s => s.doc_id === doc.doc_id) || []
-      const grade = row.relevant?.[doc.doc_id] ?? (spans.length ? Math.max(...spans.map(s => s.grade)) : irrelevant.includes(doc.doc_id) ? 0 : undefined)
+      const grade = documentGrade(row, doc.doc_id, irrelevant)
+      const evidence = pool?.items.find(item => item.doc_id === doc.doc_id)
       const forbidden = row.forbidden?.includes(doc.doc_id)
       return <article key={doc.doc_id} className="rounded-lg bg-surface-2 p-3 space-y-2">
         <b className="break-all text-sm">{String(doc.metadata?.title || doc.doc_id)}</b><p className="text-xs text-muted break-all">{doc.doc_id}{spans.length ? ' · Span-labeled' : ''}{forbidden ? ' · Forbidden' : ''}</p>
-        <p className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-sm">{doc.text}</p>
-        <div className="flex flex-wrap gap-2">{[{ label: 'Unjudged', value: null }, { label: 'Irrelevant', value: 0 }, { label: 'Relevant', value: 1 }, { label: 'Highly relevant', value: 2 }].map(option => <button key={option.label} className={button} aria-label={`${option.label}: ${doc.doc_id}`} aria-pressed={option.value === null ? grade === undefined : grade === option.value} disabled={!!forbidden && (option.value || 0) > 0} onClick={() => { const next = gradeDocument(row, doc.doc_id, option.value, irrelevant); onGrade(next.row, next.irrelevant) }}>{option.label}{(option.value === null ? grade === undefined : grade === option.value) ? ' ✓' : ''}</button>)}</div>
+        <p className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-sm">{doc.text || 'Passage text unavailable. Attach a local corpus containing this document before grading.'}</p>
+        <div className="flex flex-wrap gap-2">{[{ label: 'Unjudged', value: null }, { label: 'Irrelevant', value: 0 }, { label: 'Relevant', value: 1 }, { label: 'Highly relevant', value: 2 }].map(option => <button key={option.label} className={button} aria-label={`${option.label}: ${doc.doc_id}`} aria-pressed={option.value === null ? grade === undefined : grade === option.value} disabled={!doc.text || (!!forbidden && (option.value || 0) > 0)} onClick={() => { const next = gradeDocument(row, doc.doc_id, option.value, irrelevant); onGrade(next.row, next.irrelevant) }}>{option.label}{(option.value === null ? grade === undefined : grade === option.value) ? ' ✓' : ''}</button>)}</div>
+        {evidence && grade !== undefined && <details className="text-xs text-muted"><summary className="cursor-pointer">Show retrieval evidence for {doc.doc_id}</summary><p>{evidence.reason}</p><p>Baseline rank: {pool?.baseline_measured ? evidence.baseline_rank ?? 'Not retrieved' : 'Unknown (query failed)'}</p><p>Candidate rank: {pool?.candidate_measured ? evidence.candidate_rank ?? 'Not retrieved' : 'Unknown (query failed)'}</p></details>}
       </article>
     })}
-    <div className="flex gap-2"><button className={button} disabled={!page} onClick={() => setPage(page - 1)}>Previous passages</button><button className={button} disabled={(page + 1) * 10 >= matches.length} onClick={() => setPage(page + 1)}>Next passages</button></div>
+    <div className="flex gap-2"><button className={button} disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous passages</button><button className={button} disabled={(currentPage + 1) * 10 >= matches.length} onClick={() => setPage(currentPage + 1)}>Next passages</button></div>
   </section>
 }
 
