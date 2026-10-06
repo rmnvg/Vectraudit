@@ -500,8 +500,11 @@ def test_sweep_save_baseline_and_runs_diff(synthetic, tmp_path) -> None:
     assert saved.exit_code == 0, saved.output
     assert json.loads(base.read_text())["label"] == "before"
 
-    # Same run against itself: no regression.
-    same = runner.invoke(app, [*args, "--baseline", str(base), "--json"])
+    # Same run against itself: no recall regression. Sub-0.1 ms p95 timings on shared CI
+    # runners can more than double between runs, so the latency gate is not under test here.
+    same = runner.invoke(
+        app, [*args, "--baseline", str(base), "--json", "--min-p95-increase-ms", "1000"]
+    )
     assert same.exit_code == 0, same.output
     assert json.loads(same.stdout)["baseline"]["regressed"] is False
 
