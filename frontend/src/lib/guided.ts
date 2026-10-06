@@ -35,7 +35,7 @@ export interface Triage {
 }
 export interface Comparison {
   baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }; policy: PolicyRef
-  check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }> }
+  check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: { query_id: string; doc_id: string; max_rank: number; rank: number | null; verdict: string }[] }
 }
 
 export async function guidedRequest<T>(path: string, token = '', body?: unknown, signal?: AbortSignal): Promise<T> {

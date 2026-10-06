@@ -36,6 +36,7 @@ export interface PolicyForm {
   p95Pct: string; p50Pct: string; p95Ms: string; minIncreaseMs: string
   sameEnvironment: boolean
   requireSignificance: boolean
+  criticalQueries: { queryId: string; docId: string; maxRank: string }[]
 }
 
 /** The scaffolded CI policy (`vectraudit init`): a reasonable first release contract. */
@@ -53,6 +54,9 @@ const text = (value: unknown) => typeof value === 'number' ? String(value) : ''
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
 export function formFromPolicy(raw: RawPolicy): PolicyForm {
+  if ('critical_queries' in raw && (!Array.isArray(raw.critical_queries) || raw.critical_queries.some(item => !item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !['query_id', 'doc_id', 'max_rank'].includes(key))))) {
+    throw new Error('critical_queries must be a list of query_id, doc_id and max_rank rules.')
+  }
   const metrics = object(raw.metrics)
   const latency = object(raw.latency)
   const cohorts = object(raw.cohorts)
@@ -73,6 +77,10 @@ export function formFromPolicy(raw: RawPolicy): PolicyForm {
     minIncreaseMs: text(latency.min_increase_ms ?? 2),
     sameEnvironment: latency.require_same_environment !== false,
     requireSignificance: raw.require_significance === true,
+    criticalQueries: Array.isArray(raw.critical_queries) ? raw.critical_queries.map(item => {
+      const rule = object(item)
+      return { queryId: typeof rule.query_id === 'string' ? rule.query_id : '', docId: typeof rule.doc_id === 'string' ? rule.doc_id : '', maxRank: text(rule.max_rank) }
+    }) : [],
   }
 }
 
@@ -110,7 +118,19 @@ export function policyFromForm(form: PolicyForm): { policy?: RawPolicy; errors: 
     else cohortMetrics[m] = { max_drop: maxDrop }
   }
   const maxRegressed = count(form.maxRegressed, 'Regressed questions allowed', 0)
-  if (!Object.keys(metrics).length && maxRegressed === undefined && !Object.keys(cohortMetrics).length) {
+  const seen = new Set<string>()
+  const criticalQueries = form.criticalQueries.map((rule, i) => {
+    const label = `Critical assertion ${i + 1}`
+    if (!rule.queryId.trim() || !rule.docId.trim() || rule.queryId.length > 512 || rule.docId.length > 512) errors.push(`${label} needs query and document IDs of 1–512 characters.`)
+    const key = JSON.stringify([rule.queryId, rule.docId])
+    if (seen.has(key)) errors.push(`${label} duplicates a query/document pair.`)
+    seen.add(key)
+    const rank = count(rule.maxRank, `${label} maximum rank`, 1)
+    if (rank === undefined || rank > 10000) errors.push(`${label} needs a maximum rank from 1 to 10000.`)
+    return { query_id: rule.queryId, doc_id: rule.docId, max_rank: rank }
+  })
+  if (criticalQueries.length > 1000) errors.push('Use at most 1000 critical assertions.')
+  if (!Object.keys(metrics).length && maxRegressed === undefined && !Object.keys(cohortMetrics).length && !criticalQueries.length) {
     errors.push('Add at least one quality rule: a metric, a regressed-question limit or a cohort rule.')
   }
   const latency: Record<string, number | boolean> = {}
@@ -132,6 +152,7 @@ export function policyFromForm(form: PolicyForm): { policy?: RawPolicy; errors: 
     ...(form.primaryMetric && { primary_metric: form.primaryMetric }),
     cohorts: { min_queries: count(form.cohortMinQueries, 'Minimum questions per cohort', 1) ?? 10, metrics: cohortMetrics },
     require_significance: form.requireSignificance,
+    ...(criticalQueries.length > 0 && { critical_queries: criticalQueries }),
   }
   return errors.length ? { errors } : { policy, errors }
 }

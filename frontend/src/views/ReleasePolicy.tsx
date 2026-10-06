@@ -82,6 +82,15 @@ function PolicyEditor({ token, base, onSaved }: { token: string; base: PolicyRec
         <span className="pb-1.5 text-xs text-muted">{METRIC_HELP[m]}</span>
       </div>)}</div></div>
 
+    <div className="space-y-2"><h4 className="text-sm font-semibold">Critical questions</h4>
+      <p className="text-xs text-muted">Require a particular document within the top results for a question. These rules judge the candidate’s recorded ranking even when average quality improves. The question must be in the selected benchmark split and maximum rank must not exceed retrieval k. Repeated calls currently use the first recorded ranking.</p>
+      {form.criticalQueries.map((rule, index) => <div key={index} className="flex flex-wrap items-end gap-3">
+        {(['queryId', 'docId', 'maxRank'] as const).map(field => <label key={field} className="min-w-0 text-xs">{field === 'queryId' ? 'Query ID' : field === 'docId' ? 'Document ID' : 'Maximum rank'}<input aria-label={`Critical ${index + 1} ${field}`} className={field === 'maxRank' ? small : input} value={rule[field]} onChange={e => update({ criticalQueries: form.criticalQueries.map((item, i) => i === index ? { ...item, [field]: e.target.value } : item) })} /></label>)}
+        <button className={button} onClick={() => update({ criticalQueries: form.criticalQueries.filter((_, i) => i !== index) })}>Remove assertion {index + 1}</button>
+      </div>)}
+      <button className={button} onClick={() => update({ criticalQueries: [...form.criticalQueries, { queryId: '', docId: '', maxRank: '3' }] })}>Add critical assertion</button>
+    </div>
+
     <div className="grid gap-4 sm:grid-cols-3">
       <label className="text-sm">Minimum measured questions<input aria-label="Minimum measured questions" className={input} inputMode="numeric" value={form.minQueries} onChange={e => update({ minQueries: e.target.value })} /><span className="text-xs text-muted">Each required metric needs this many labelled questions measured in both runs; fewer is not comparable rather than a pass.</span></label>
       <label className="text-sm">Regressed questions allowed<input aria-label="Regressed questions allowed" className={input} inputMode="numeric" value={form.maxRegressed} onChange={e => update({ maxRegressed: e.target.value })} /><span className="text-xs text-muted">Fail when more individual questions get worse than this, even if the average holds. Empty means no limit.</span></label>

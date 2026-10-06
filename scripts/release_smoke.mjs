@@ -65,12 +65,17 @@ try {
   await page.getByLabel('Policy JSON').fill(JSON.stringify({ metrics: { ndcg: { max_drop: 1 }, recall: { max_drop: 1 } }, min_queries: 1 }))
   await page.getByRole('button', { name: 'Load into form' }).click()
   assert.equal(await page.getByLabel('Minimum measured questions').inputValue(), '1')
+  await page.getByRole('button', { name: 'Add critical assertion' }).click()
+  await page.getByLabel('Critical 1 queryId', { exact: true }).fill('password')
+  await page.getByLabel('Critical 1 docId', { exact: true }).fill('account-guide')
+  await page.getByLabel('Critical 1 maxRank', { exact: true }).fill('1')
   await page.getByRole('region', { name: 'Release policy settings' }).screenshot({ path: join(workspace, 'release-policy.png') })
   await page.getByRole('button', { name: 'Save policy version' }).click()
   await page.getByText(/Comparisons, case verifications and exports use/).waitFor()
   await page.getByRole('button', { name: 'Compare runs' }).click()
   await page.getByText(/under Pilot release policy v1/).waitFor()
   await page.getByText('Release comparison: pass').waitFor()
+  await page.getByRole('region', { name: 'Critical question results' }).getByText(/pass: password/).waitFor()
   await page.getByRole('button', { name: 'Track finding' }).click()
   await page.getByText(/· open · Unassigned/).first().waitFor()
 
@@ -97,12 +102,13 @@ try {
 
   // A stricter version changes the browser comparison and case verification together.
   await page.getByRole('button', { name: 'Edit as new version' }).click()
-  await page.getByLabel('ndcg allowed drop', { exact: true }).fill('0')
+  await page.getByLabel('Critical 1 docId', { exact: true }).fill('missing-required-document')
   await page.getByRole('button', { name: 'Save policy version' }).click()
   await page.getByText(/use Pilot release policy v2/).waitFor()
   await page.getByText(/The selected policy changed since this comparison/).waitFor()
   await page.getByRole('button', { name: 'Compare runs' }).click()
   await page.getByText('Release comparison: fail').waitFor()
+  await page.getByText(/Critical query password: document missing-required-document/).waitFor()
   await page.getByText(/Export is available once the candidate passes Pilot release policy v2/).waitFor()
 
   await page.getByRole('button', { name: 'Evaluate another configuration' }).click()
