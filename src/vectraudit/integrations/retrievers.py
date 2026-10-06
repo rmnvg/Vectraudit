@@ -25,6 +25,7 @@ from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from typing import Any
 
+from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.models import Hit, PipelineRequest, PipelineResult, StageTrace
 
 InvokeKwargs = Callable[[PipelineRequest], Mapping[str, Any]]
@@ -72,7 +73,7 @@ def _unique_hits(
     for item in items:
         raw = id_of(item)
         if raw is None or raw == "":
-            raise ValueError("a retrieved document has no id")
+            raise PipelineCallError("document_id_missing", "a retrieved document has no id")
         doc_id = str(raw)
         if doc_id in seen:
             continue
@@ -85,8 +86,9 @@ def _unique_hits(
 
 def _require_text(request: PipelineRequest) -> str:
     if not request.text:
-        raise ValueError(
-            f"query {request.query_id} has no text; framework retrievers take text queries"
+        raise PipelineCallError(
+            "text_required",
+            f"query {request.query_id} has no text; framework retrievers take text queries",
         )
     return request.text
 
@@ -94,8 +96,9 @@ def _require_text(request: PipelineRequest) -> str:
 def _reject_unforwarded(request: PipelineRequest, how: str) -> None:
     """Fail rather than silently ignore filters or tenant context the retriever never saw."""
     if request.filters or request.context:
-        raise ValueError(
-            f"query {request.query_id} has filters or tenant context; {how} to apply them"
+        raise PipelineCallError(
+            "context_unsupported",
+            f"query {request.query_id} has filters or tenant context; {how} to apply them",
         )
 
 

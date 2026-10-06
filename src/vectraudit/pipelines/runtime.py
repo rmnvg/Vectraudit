@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -11,6 +12,9 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
+from pydantic import ValidationError
+
+from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.models import Hit, PipelineRequest, PipelineResult, StageTrace
 
 
@@ -106,12 +110,30 @@ class HTTPPipeline:
         try:
             with opener.open(req, timeout=self.timeout) as response:
                 raw = response.read(8 * 1024 * 1024 + 1)
+        except urllib.error.HTTPError as exc:
+            code = {
+                401: "http_auth",
+                403: "http_auth",
+                404: "http_not_found",
+                429: "http_rate_limit",
+            }.get(exc.code, "http_error")
+            exc.close()
+            raise PipelineCallError(code, "pipeline endpoint returned an HTTP error") from exc
         except (OSError, urllib.error.URLError) as exc:
             # HTTP errors can contain signed URLs, headers or customer text.
-            raise ValueError("pipeline endpoint failed or timed out") from exc
+            cause = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+            code = (
+                "timeout"
+                if isinstance(cause, TimeoutError | socket.timeout)
+                else "connection_failed"
+            )
+            raise PipelineCallError(code, "pipeline endpoint failed or timed out") from exc
         if len(raw) > 8 * 1024 * 1024:
-            raise ValueError("pipeline response exceeds 8 MiB")
-        result = PipelineResult.model_validate(json.loads(raw))
+            raise PipelineCallError("response_too_large", "pipeline response exceeds 8 MiB")
+        try:
+            result = PipelineResult.model_validate(json.loads(raw))
+        except (ValueError, UnicodeError, ValidationError) as exc:
+            raise PipelineCallError("invalid_response", "pipeline response is not valid") from exc
         # Remote timings are reported, never independently measured by this runner.
         for stage in result.stages:
             stage.source = "reported"

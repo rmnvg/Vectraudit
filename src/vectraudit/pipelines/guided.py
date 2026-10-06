@@ -328,7 +328,9 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
             raise HTTPException(404, "Evaluation expired or the server restarted")
         state = found.as_dict()
         if state["error"]:
-            state["error"] = "Evaluation failed. Check the registered adapter locally."
+            state["error"] = (
+                "Evaluation failed. Use Test pipeline to diagnose the registered adapter."
+            )
         if found.is_done:
             state["run"] = found.result
         return state
@@ -361,6 +363,7 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
             "candidate": candidate,
         }
 
+    from vectraudit.pipelines.diagnostics import diagnostic_router
     from vectraudit.pipelines.release_workflow import release_router
     from vectraudit.pipelines.review import review_router
     from vectraudit.pipelines.workflows import workflow_router
@@ -368,4 +371,5 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
     router.include_router(workflow_router(workspace), dependencies=auth)
     router.include_router(release_router(workspace), dependencies=auth)
     router.include_router(review_router(workspace), dependencies=auth)
+    router.include_router(diagnostic_router(workspace), dependencies=auth)
     return router
