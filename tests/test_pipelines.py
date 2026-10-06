@@ -54,6 +54,16 @@ def test_branch_trace_and_release_compatibility():
     assert all(s["latency_ms"] >= 0 for s in query["evidence"]["stages"])
 
 
+def test_capabilities_separate_supported_from_captured_traces():
+    traced = PythonPipeline([Stage("keyword", "keyword", lambda q, p: [Hit(id="a")])])
+    untraced = execute_pipeline(dataset(), lambda q: PipelineResult(hits=[Hit(id="a")]))
+    captured = execute_pipeline(dataset(), traced)
+    assert untraced["capabilities"]["stage_traces_supported"]
+    assert not untraced["capabilities"]["stage_traces"]
+    assert captured["capabilities"]["stage_traces"]
+    assert check_run(untraced)["status"] == "complete"
+
+
 def test_no_answer_is_not_missing_annotation():
     def empty(q):
         return PipelineResult()

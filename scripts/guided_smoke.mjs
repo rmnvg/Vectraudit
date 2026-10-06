@@ -32,6 +32,17 @@ try {
   await page.getByRole('button', { name: 'Use starter example' }).click()
   await page.getByRole('heading', { name: 'Build a trustworthy benchmark' }).waitFor()
 
+  // 01 Connect: a pipeline test sends one sample question and saves no run.
+  await steps.getByRole('button', { name: /Connect pipeline/ }).click()
+  const check = page.getByRole('region', { name: 'Test pipeline' })
+  assert.equal(await check.getByLabel('Sample question').inputValue(), 'invoice export')
+  await check.getByRole('button', { name: 'Test pipeline' }).click()
+  // Tenant context reaches the adapter but is never reported as verified authorization.
+  await check.getByText(/^Connected, with gaps/).waitFor({ timeout: 20_000 })
+  await check.getByText(/downstream use and authorization are unverified/).waitFor()
+  assert.equal((await readdir(workspace)).filter(f => f.endsWith('.run.json')).length, 0)
+  await steps.getByRole('button', { name: /Build benchmark/ }).click()
+
   // 02 Benchmark: invalid JSON blocks saving; a no-answer judgment is an explicit label.
   await page.getByRole('button', { name: /^unknown/ }).click()
   assert.ok(await page.getByRole('checkbox', { name: /No relevant document exists/ }).isChecked())

@@ -79,7 +79,11 @@ def execute_pipeline(
         "config": config or {},
         "corpus_version": corpus_version,
     }
-    record["capabilities"] = {"exact_reference": False, "stage_traces": True}
+    record["capabilities"] = {
+        "exact_reference": False,
+        "stage_traces_supported": True,
+        "stage_traces": False,
+    }
     record["timing"]["scope"] = "complete pipeline call; client wall clock; serial queries"
     start = time.perf_counter()
     try:
@@ -174,5 +178,8 @@ def execute_pipeline(
     except KeyboardInterrupt:
         record["status"] = "cancelled"
     record["timing"]["wall_s"] = time.perf_counter() - start
+    record["capabilities"]["stage_traces"] = any(
+        (q.get("evidence") or {}).get("stages") for q in record["queries"]
+    )
     record["summary"] = summarize(record["queries"], len(dataset))
     return record

@@ -33,6 +33,8 @@ a pipeline to a measured fix without editing JSON files:
    also choose an adapter registered at startup with
    `vectraudit workbench serve DIR --manifest pipelines.json`. **Use starter example**
    loads a four-document corpus and benchmark.
+   **Test pipeline** sends one sample question to the selected pipeline before you build
+   a benchmark (see [Test a pipeline connection](#test-a-pipeline-connection)).
 2. **Build benchmark.** Add or import questions. For each one, set relevance grades,
    an explicit *no relevant document* judgment, tenant context, filters, forbidden
    document IDs, cohort tags, and the exploratory or held-out split. Fields containing
@@ -73,6 +75,43 @@ startup manifest. A registered HTTP adapter runs only after you confirm that que
 vectors, filters and user context will be sent to its displayed destination. Write
 requests need a per-process token and a same-origin request, and request bodies are
 limited to 5 MiB.
+
+### Test a pipeline connection
+
+**Test pipeline** on the *Connect pipeline* step calls the selected pipeline once with a
+sample question (prefilled from the first exploratory benchmark question) and optional
+filters, user/tenant context, forbidden document IDs, or a no-answer expectation. It
+saves no run. The report lists one result per check:
+
+| Check | What it shows |
+|---|---|
+| Response | The call returned a valid `PipelineResult` within the time limit. |
+| Ranking | How many documents came back; IDs are unique and at most `k`. |
+| Document lookup | Which returned IDs map to passages in the local corpus (unmapped IDs are listed). |
+| Stage evidence | Whether stage traces were returned and how many use adapter-reported timings. |
+| Corpus version | Whether a corpus version is configured. This is not an inventory of a remote corpus. |
+| Filters / context | Marked *Not verified* when supplied. Reaching the adapter does not prove it applied them. Returned documents are checked against filter values in the local corpus metadata. |
+| Forbidden / no-answer | The supplied assertions, for this one call only. |
+
+Status is *Passed*, *Warning*, *Failed*, *Not verified* or *Not tested*. A failed
+call reports a fixed category with a next step instead of the exception text:
+
+- missing credential variable
+- import or dependency failure
+- adapter configuration
+- HTTP 401/403, 404, 429 or another HTTP error
+- connection failure or timeout
+- oversized or invalid response
+- too many hits
+- missing document ID
+- framework retriever cannot forward filters/context
+- adapter exception
+
+The test runs in a separate Python process with its output discarded, so adapter logs and
+exception messages (which may contain credentials) never reach the browser. It is killed
+at its time limit (default 60 s) or on **Cancel test**, and only one test runs at a time.
+HTTP adapters still require consent to send the sample. The API is
+`POST /api/guided/diagnostics` and `POST /api/guided/diagnostics/cancel`.
 
 ## Pipeline adapters
 
