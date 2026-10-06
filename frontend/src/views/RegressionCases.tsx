@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react'
 import { guidedRequest } from '../lib/guided'
 import type { Comparison } from '../lib/guided'
 import type { Run } from '../lib/workbench'
+import { policyLabel } from '../lib/release'
+import type { PolicyRef } from '../lib/release'
 
 const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40'
 const input = 'mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-sm'
 export interface RegressionCase {
   id: string; revision: string; query_id: string; dataset_sha256: string
   baseline: string; candidate: string; status: string; owner: string
-  finding: { findings: { message: string }[] }
-  history: { at: string; kind: string; status?: string; owner?: string; note?: string; candidate?: string; verdict?: string; verified?: boolean }[]
+  finding: { findings: { message: string }[] }; policy?: PolicyRef
+  history: { at: string; kind: string; status?: string; owner?: string; note?: string; candidate?: string; verdict?: string; verified?: boolean; policy?: PolicyRef }[]
 }
-export default function RegressionCases({ token, comparison, runs }: { token: string; comparison: Comparison | null; runs: Run[] }) {
+export default function RegressionCases({ token, comparison, runs, policy, policyRef }: { token: string; comparison: Comparison | null; runs: Run[]; policy: string | null; policyRef: PolicyRef | null }) {
   const [cases, setCases] = useState<RegressionCase[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -25,21 +27,21 @@ export default function RegressionCases({ token, comparison, runs }: { token: st
   }
   async function reload() { setError(''); try { setCases(await guidedRequest<RegressionCase[]>('cases', token)) } catch (e) { setError(String(e)) } }
   return <section aria-label="Regression cases" className="space-y-3 rounded-xl border border-line p-4"><div className="flex flex-wrap justify-between gap-3"><h3 className="font-semibold">Track findings through verified fixes</h3><button className={button} disabled={busy} onClick={() => void reload()}>Reload cases</button></div>
-    <p className="text-sm text-muted">Cases persist locally. Verification requires a new, complete, comparable run with a passing release check and no unresolved finding for this question. Manual status changes never change release verdicts. Verify later runs again to detect recurrence.</p>
-    {!!unresolved.length && comparison && <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Finding to track<select className={input} value={selectedQuery} onChange={e => setQuery(e.target.value)}>{unresolved.map(q => <option key={q.query_id} value={q.query_id}>{q.query_id} · {q.severity}</option>)}</select></label><button className={button} disabled={busy} onClick={() => void perform('cases', { baseline: comparison.baseline.run_id, candidate: comparison.candidate.run_id, query_id: selectedQuery })}>Track finding</button></div>}
+    <p className="text-sm text-muted">Cases persist locally. Verification requires a new, complete, comparable run that passes the selected release policy ({policyLabel(policyRef)}) and has no unresolved finding for this question. Each verification records the policy version it used. Manual status changes never change release verdicts. Verify later runs again to detect recurrence.</p>
+    {!!unresolved.length && comparison && <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Finding to track<select className={input} value={selectedQuery} onChange={e => setQuery(e.target.value)}>{unresolved.map(q => <option key={q.query_id} value={q.query_id}>{q.query_id} · {q.severity}</option>)}</select></label><button className={button} disabled={busy} onClick={() => void perform('cases', { baseline: comparison.baseline.run_id, candidate: comparison.candidate.run_id, query_id: selectedQuery, policy: comparison.policy?.id ?? null })}>Track finding</button></div>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {!cases.length && <p className="text-sm text-muted">Compare a baseline and candidate, then track a finding here.</p>}
-    {cases.map(c => <CaseEditor key={`${c.id}-${c.revision}`} record={c} runs={runs} busy={busy} onAction={perform} />)}
+    {cases.map(c => <CaseEditor key={`${c.id}-${c.revision}`} record={c} runs={runs} busy={busy} onAction={perform} policy={policy} policyRef={policyRef} />)}
   </section>
 }
-function CaseEditor({ record, runs, busy, onAction }: { record: RegressionCase; runs: Run[]; busy: boolean; onAction: (path: string, body: unknown) => Promise<void> }) {
+function CaseEditor({ record, runs, busy, onAction, policy, policyRef }: { record: RegressionCase; runs: Run[]; busy: boolean; onAction: (path: string, body: unknown) => Promise<void>; policy: string | null; policyRef: PolicyRef | null }) {
   const [owner, setOwner] = useState(record.owner)
   const [note, setNote] = useState('')
   const [status, setStatus] = useState(record.status === 'verified' ? 'investigating' : record.status)
   const [candidate, setCandidate] = useState('')
   const choices = runs.filter(r => r.run_id !== record.baseline && r.run_id !== record.candidate)
   function download() {
-    const text = [`# Retrieval regression: ${record.query_id}`, `Status: ${record.status}`, `Owner: ${record.owner || 'Unassigned'}`, `Benchmark: ${record.dataset_sha256}`, `Baseline evidence: ${record.baseline}.run.json`, `Original candidate: ${record.candidate}.run.json`, ...record.finding.findings.map(f => f.message), '', '## History', ...record.history.map(h => JSON.stringify(h))].join('\n')
+    const text = [`# Retrieval regression: ${record.query_id}`, `Status: ${record.status}`, `Owner: ${record.owner || 'Unassigned'}`, `Benchmark: ${record.dataset_sha256}`, `Baseline evidence: ${record.baseline}.run.json`, `Original candidate: ${record.candidate}.run.json`, `Found under: ${policyLabel(record.policy)}`, ...record.finding.findings.map(f => f.message), '', '## History', ...record.history.map(h => JSON.stringify(h))].join('\n')
     const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' })); const link = document.createElement('a'); link.href = url; link.download = `case-${record.id}.md`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
   return <details className="rounded-lg bg-surface-2 p-3" open><summary className="cursor-pointer text-sm font-semibold">{record.query_id} · {record.status} · {record.owner || 'Unassigned'}</summary><fieldset disabled={busy} className="mt-3 space-y-3">
@@ -47,8 +49,8 @@ function CaseEditor({ record, runs, busy, onAction }: { record: RegressionCase; 
     <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Case owner<input className={input} value={owner} maxLength={128} onChange={e => setOwner(e.target.value)} /></label><label className="text-sm">Case status<select className={input} value={status} onChange={e => setStatus(e.target.value)}><option value="open">Open</option><option value="investigating">Investigating</option><option value="fix_proposed">Fix proposed</option></select></label></div>
     <label className="block text-sm">Investigation note<textarea className={input} maxLength={4000} value={note} onChange={e => setNote(e.target.value)} /></label>
     <button className={button} onClick={() => void onAction(`cases/${record.id}`, { revision: record.revision, owner, note, status })}>Save case update</button>
-    <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Verification run<select className={input} value={candidate} onChange={e => setCandidate(e.target.value)}><option value="">Choose a new candidate</option>{choices.map(r => <option key={r.run_id} value={r.run_id}>{r.label} · {r.run_id.slice(0, 8)}</option>)}</select></label><button className={button} disabled={!candidate} onClick={() => void onAction(`cases/${record.id}/verify`, { revision: record.revision, candidate })}>Verify fix or recurrence</button></div>
-    <ul className="max-h-48 space-y-2 overflow-auto text-xs">{record.history.map((h, i) => <li key={i}>{h.at} · {h.kind}{h.status ? ` · ${h.status}` : ''}{h.candidate ? ` · run ${h.candidate.slice(0, 8)}` : ''}{h.verdict ? ` · release ${h.verdict} · ${h.verified ? 'verified' : 'reopened'}` : ''}{h.note ? ` · ${h.note}` : ''}</li>)}</ul>
+    <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Verification run<select className={input} value={candidate} onChange={e => setCandidate(e.target.value)}><option value="">Choose a new candidate</option>{choices.map(r => <option key={r.run_id} value={r.run_id}>{r.label} · {r.run_id.slice(0, 8)}</option>)}</select></label><button className={button} disabled={!candidate} onClick={() => void onAction(`cases/${record.id}/verify`, { revision: record.revision, candidate, policy })}>Verify under {policyLabel(policyRef)}</button></div>
+    <ul className="max-h-48 space-y-2 overflow-auto text-xs">{record.history.map((h, i) => <li key={i}>{h.at} · {h.kind}{h.status ? ` · ${h.status}` : ''}{h.candidate ? ` · run ${h.candidate.slice(0, 8)}` : ''}{h.verdict ? ` · release ${h.verdict} under ${policyLabel(h.policy)} · ${h.verified ? 'verified' : 'reopened'}` : ''}{h.note ? ` · ${h.note}` : ''}</li>)}</ul>
     <button className={button} onClick={download}>Download issue summary</button>
   </fieldset></details>
 }

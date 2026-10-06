@@ -6,6 +6,10 @@ import Findings from './Findings'
 import { BenchmarkSnapshots, ImportQuestions, PassageGrader, PermissionBuilder } from './BenchmarkTools'
 import type { Irrelevant } from '../lib/benchmarkTools'
 import RegressionCases from './RegressionCases'
+import ReleaseExport from './ReleaseExport'
+import ReleasePolicy from './ReleasePolicy'
+import { policyLabel } from '../lib/release'
+import type { PolicyChoice, PolicyRef } from '../lib/release'
 import type { Inspect } from './Findings'
 
 const panel = 'rounded-2xl border border-line bg-surface p-5'
@@ -51,6 +55,8 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   const [comparison, setComparison] = useState<Comparison | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [comparing, setComparing] = useState(false)
+  const [policyId, setPolicyId] = useState<PolicyChoice>(undefined)
+  const [policyRef, setPolicyRef] = useState<PolicyRef | null>(null)
   const imported = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -154,7 +160,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
     if (!session) return
     setComparing(true); setError('')
     try {
-      const result = await guidedRequest<Comparison>('compare', session.token, { baseline: baseId, candidate: candidateId })
+      const result = await guidedRequest<Comparison>('compare', session.token, { baseline: baseId, candidate: candidateId, policy: policyId ?? null })
       setComparison(result)
     } catch (e) { setError(String(e)) } finally { setComparing(false) }
   }
@@ -226,11 +232,13 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       {runs.length > 0 && <div className="mt-6 space-y-3"><h3 className="font-semibold">Recorded evaluations</h3>{runs.map(run => <div key={run.run_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4"><div><b className="text-sm">{run.label}</b><p className="mt-1 text-xs text-muted">{run.status} · {run.summary.n_queries} queries · nDCG {format(run.summary.metrics?.ndcg)} · p95 {format(run.summary.latency_ms?.p95)} ms</p></div><button className={button} onClick={() => onInspect(run, { query: '', doc: '' })}>Inspect failures</button></div>)}<button className={button} onClick={() => { setLabel('Candidate fix'); setStep(3) }}>Compare a fix</button></div>}
     </section>}
     {step === 3 && <section className={`${panel} space-y-5`}><div><h2 className="text-xl font-semibold">Compare a measured fix</h2><p className="mt-2 text-sm text-muted">Keep the benchmark and k unchanged. Change pipeline configuration, record another run, then inspect both results.</p></div><button className={button} onClick={() => { setLabel('Candidate fix'); setStep(2) }}>Evaluate another configuration</button>
+      <ReleasePolicy token={session.token} value={policyId} onChange={(id, ref) => { setPolicyId(id); setPolicyRef(ref) }} />
       {runs.length < 2 ? <p className="text-sm text-muted">Record a baseline and a candidate to compare measured results.</p> : <><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Baseline<select aria-label="Baseline run" value={baseId} className={input} onChange={e => setBaseId(e.target.value)}>{runs.map(r => <option key={r.run_id} value={r.run_id}>{r.label} · {r.run_id.slice(0, 8)}</option>)}</select></label><label className="text-sm">Candidate<select aria-label="Candidate run" value={candidateId} className={input} onChange={e => setCandidateId(e.target.value)}>{runs.map(r => <option key={r.run_id} value={r.run_id}>{r.label} · {r.run_id.slice(0, 8)}</option>)}</select></label></div><button className={primary} disabled={baseId === candidateId || comparing} onClick={() => void compare()}>{comparing ? 'Comparing…' : 'Compare runs'}</button></>}
-      {comparison && <><div role="status" className="rounded-xl bg-surface-2 p-4"><b className={comparison.check.verdict === 'pass' ? 'text-teal-600' : comparison.check.verdict === 'fail' ? 'text-red-600' : 'text-amber-600'}>Release comparison: {comparison.check.verdict}</b>{comparison.check.reasons.map((r, i) => <p className="mt-2 text-sm" key={i}>{r.message}</p>)}{comparison.check.warnings.map((w, i) => <p className="mt-2 text-xs text-muted" key={i}>{w}</p>)}</div>
+      {comparison && <><div role="status" className="rounded-xl bg-surface-2 p-4"><b className={comparison.check.verdict === 'pass' ? 'text-teal-600' : comparison.check.verdict === 'fail' ? 'text-red-600' : 'text-amber-600'}>Release comparison: {comparison.check.verdict}</b><span className="ml-2 text-xs text-muted">under {policyLabel(comparison.policy)}{comparison.policy?.source === 'exploratory' ? ' (exploratory, not a release decision)' : ''}</span>{(comparison.policy?.id ?? null) !== (policyId ?? null) && <p className="mt-2 text-xs text-amber-600">The selected policy changed since this comparison. Compare again to apply it.</p>}{comparison.check.reasons.map((r, i) => <p className="mt-2 text-sm" key={i}>{r.message}</p>)}{comparison.check.warnings.map((w, i) => <p className="mt-2 text-xs text-muted" key={i}>{w}</p>)}</div>
+        <ReleaseExport key={`${comparison.files.check}-export`} token={session.token} comparison={comparison} defaultName={draft?.name || name} />
         <Findings key={comparison.files.check} comparison={comparison} onInspect={onInspect} />
       </>}
-      <RegressionCases token={session.token} comparison={comparison} runs={runs} />
+      <RegressionCases token={session.token} comparison={comparison} runs={runs} policy={policyId ?? null} policyRef={policyRef} />
     </section>}
   </div>
 }

@@ -224,6 +224,8 @@ class CaseIn(Contract):
     baseline: str
     candidate: str
     query_id: str
+    policy: str | None = None
+    """Policy of the comparison that found this case; ``None`` is exploratory defaults."""
 
 
 class CaseUpdate(Contract):
@@ -236,6 +238,8 @@ class CaseUpdate(Contract):
 class VerifyIn(Contract):
     revision: str
     candidate: str
+    policy: str | None = None
+    """Release policy to verify under; ``None`` uses the exploratory defaults."""
 
 
 class LocalRecords:
@@ -281,6 +285,25 @@ def _event(kind: str, **details: Any) -> dict[str, Any]:
     return {"at": datetime.now(timezone.utc).isoformat(), "kind": kind, **details}
 
 
+def freeze_draft(snapshots: LocalRecords, draft: dict[str, Any]) -> dict[str, Any]:
+    """An immutable snapshot of a saved draft: dataset version plus inventory hashes."""
+    ds = parse_dataset(draft["dataset"])
+    return snapshots.write(
+        {
+            "id": uuid.uuid4().hex,
+            "format_version": 1,
+            "name": draft["name"],
+            "created_at": _event("freeze")["at"],
+            "draft_id": draft["id"],
+            "draft_revision": draft["revision"],
+            "dataset_sha256": ds.sha256,
+            "dataset": draft["dataset"],
+            "irrelevant": draft.get("irrelevant", {}),
+            "inventory": inventory(draft.get("corpus", "")),
+        }
+    )
+
+
 def _revision(record: dict[str, Any], expected: str) -> None:
     if record["revision"] != expected:
         raise HTTPException(409, "Record changed. Reload before saving.")
@@ -315,21 +338,7 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
     def freeze(body: SnapshotIn) -> dict[str, Any]:
         draft = workspace.load_draft(body.draft_id)
         _revision(draft, body.revision)
-        ds = parse_dataset(draft["dataset"])
-        return snapshots.write(
-            {
-                "id": uuid.uuid4().hex,
-                "format_version": 1,
-                "name": draft["name"],
-                "created_at": _event("freeze")["at"],
-                "draft_id": draft["id"],
-                "draft_revision": draft["revision"],
-                "dataset_sha256": ds.sha256,
-                "dataset": draft["dataset"],
-                "irrelevant": draft.get("irrelevant", {}),
-                "inventory": inventory(draft.get("corpus", "")),
-            }
-        )
+        return freeze_draft(snapshots, draft)
 
     @router.post("/freshness")
     def freshness(body: FreshnessIn) -> dict[str, Any]:
@@ -410,6 +419,7 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
         ):
             raise ValueError("Choose an unresolved finding from this comparison")
         identifier = digest([body.baseline, baseline["dataset"]["sha256"], body.query_id])[:32]
+        _, policy = workspace.policies.resolve(body.policy)
         with task_lock(cases.path(identifier)):
             if cases.path(identifier).exists():
                 return cases.read(identifier)
@@ -424,7 +434,8 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
                     "status": "open",
                     "owner": "",
                     "finding": finding,
-                    "history": [_event("created", candidate=body.candidate)],
+                    "policy": policy,
+                    "history": [_event("created", candidate=body.candidate, policy=policy)],
                 }
             )
 
@@ -448,7 +459,8 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
             candidate = load_run(workspace.run_path(body.candidate))
             if body.candidate in (record["baseline"], record["candidate"]):
                 raise ValueError("Verify with a new candidate run, not the original evidence")
-            check = compare_runs(baseline, candidate)
+            rules, policy = workspace.policies.resolve(body.policy)
+            check = compare_runs(baseline, candidate, rules)
             if check["verdict"] in ("not_comparable", "error"):
                 raise ValueError("Verification requires a complete, comparable full benchmark run")
             finding = next(
@@ -475,6 +487,9 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
                     check_file=check_file,
                     verified=verified,
                     finding=finding,
+                    # Each verification keeps the policy it used; later policy versions never
+                    # rewrite this evidence.
+                    policy=policy,
                 )
             )
             return cases.write(record)

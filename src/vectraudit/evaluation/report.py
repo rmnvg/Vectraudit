@@ -101,6 +101,9 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         f"{result['n_queries']} queries, k = {_md(c['k'])}.",
         "",
     ]
+    release = _release_line(result)
+    if release:
+        out += [release, ""]
     if result["reasons"]:
         out += [f"- {_md(r['message'])}" for r in result["reasons"]] + [""]
     findings = result.get("findings") or []
@@ -233,6 +236,21 @@ def _run_card(title: str, run: Mapping[str, Any]) -> str:
     return f'<div class="card"><h3 style="margin:0 0 8px">{_e(title)}</h3><dl>{rows}</dl>{ci}</div>'
 
 
+def _release_line(result: Mapping[str, Any], *, plain: bool = False) -> str:
+    """Which release configuration and policy decided a ``vectraudit release check``."""
+    release = result.get("release")
+    if not release:
+        return ""
+    policy = release["policy"]
+    text = (
+        f"Release configuration {release['name']} v{release['version']} · policy "
+        f"{policy['name']} v{policy['version']} ({policy['sha256'][:12]}) · "
+        f"{'exploratory' if release['split'] == 'explore' else 'held-out'} benchmark "
+        f"{release['benchmark_sha256'][:12]}"
+    )
+    return text if plain else _md(text)
+
+
 def render_html(result: Mapping[str, Any]) -> str:
     """A self-contained HTML investigation report."""
     verdict = result["verdict"]
@@ -242,6 +260,11 @@ def render_html(result: Mapping[str, Any]) -> str:
         f"{_e(_VERDICT_TEXT[verdict])}</span></h1>",
         f'<p class="muted">{result["n_queries"]} paired queries · k = {_e(c["k"])} · '
         f"vectraudit {_e(__version__)}</p>",
+        *(
+            [f'<p class="muted">{_e(_release_line(result, plain=True))}</p>']
+            if "release" in result
+            else []
+        ),
         f'<div class="runs">{_run_card("Baseline", b)}{_run_card("Candidate", c)}</div>',
     ]
     if result["reasons"]:

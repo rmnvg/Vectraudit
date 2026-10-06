@@ -327,6 +327,91 @@ remeasure both baseline and candidate. Existing run files and frozen versions st
 These files live under `.workbench/benchmarks/`; draft corpora live under `.workbench/drafts/`.
 All are customer-controlled local files and are not uploaded by these workflows.
 
+## Release policies and exported release checks
+
+A comparison means little until the team agrees what "acceptable" is. **Compare a fix**
+therefore starts with a **Release policy** selector:
+
+- **Exploratory defaults** (when nothing else is chosen) judge whichever metrics both runs
+  measured, from a single question upward. Use them to explore. Verdicts are labelled
+  *exploratory, not a release decision*, and they cannot be exported.
+- **Saved policies** are created in the policy editor: required metrics with allowed drops
+  or minimums, the minimum number of measured questions, a limit on individually regressed
+  questions, cohort rules and latency limits, each explained in plain terms. You can also
+  paste an existing `policy.json` and download the result. The editor uses the same parser
+  as `vectraudit check --policy`. Saving under an existing name creates the next version;
+  versions are immutable files under `.workbench/policies/`.
+- **Your CI policy**: `vectraudit workbench serve DIR --policy retrieval/policy.json` offers
+  that exact file (read-only) and selects it by default.
+
+Every comparison, tracked case and verification records the policy's id, version and rule
+hash (`policy_sha256`, the same digest the hosted service uses). On the same run files the
+browser, `vectraudit check --policy`, case verification and the exported CI check give the
+same verdict, because all of them call one comparison with the same parsed rules.
+
+### Export release check
+
+After a **passing** comparison under a saved policy, **Export release check** creates a
+versioned release configuration (`.workbench/releases/`). Exporting again under the same name
+creates the next version. The configuration binds:
+
+- the frozen query split that was measured (the benchmark is frozen automatically if it
+  has not changed since the runs; otherwise the export is refused),
+- the candidate pipeline and its parameters, k and the CI repeat count,
+- the policy and its rule hash, the corpus version, the Vectraudit version and the evidence
+  (both run IDs and a saved check file).
+
+Download the files as a zip or write them into a checkout for review; nothing is pushed:
+
+```sh
+vectraudit workbench export RELEASE_ID --workspace DIR --out path/to/repo
+```
+
+| File | Purpose |
+|---|---|
+| `retrieval/release/release.json` | The configuration: benchmark/policy hashes, pipeline, k, repeats |
+| `retrieval/release/benchmark.jsonl` | The exact frozen split (exploratory or held-out, never mixed) |
+| `retrieval/release/policy.json` | The policy rules |
+| `retrieval/release/README.md` | What it checks, prerequisites, secrets and local commands |
+| `retrieval/release/corpus.jsonl` | Only when *Include the measured corpus* is checked |
+| `.github/workflows/retrieval-release-check.yml` | Runs the check on every pull request |
+
+Before export the workbench lists what the customer must provide: the corpus (when not
+included), an importable Python adapter and its dependencies, and repository secrets for
+HTTP deployments and tokens. Secrets and deployment URLs are referenced by environment
+variable only. Local endpoints that a CI runner cannot reach are flagged, and so are held-out
+exports.
+
+**How the CI check decides.** The target branch's `release.json` is the *approved*
+configuration. The workflow runs the target branch's pipeline (baseline) and the pull
+request's pipeline (candidate) on the approved benchmark and k, and judges them with the
+approved policy. A pull request that edits the policy or benchmark cannot loosen its own
+gate: the proposal is reported in the summary and applies after merge. For Python adapters,
+each side imports its own checkout (`python_path`, default the repository root), and the run
+records a hash of the adapter module that actually executed. For HTTP pipelines, set
+`RETRIEVAL_BASELINE_URL` and `RETRIEVAL_CANDIDATE_URL` to the two deployments being
+compared. Until the target branch has a release configuration, the workflow validates the
+proposed one, runs the candidate and reports that the comparison starts after merge.
+
+```sh
+vectraudit release validate retrieval/release/release.json   # files, hashes, prerequisites
+vectraudit release run retrieval/release/release.json --out runs/candidate.run.json \
+  [--approved base/retrieval/release/release.json]
+vectraudit release check base/retrieval/release/release.json \
+  runs/baseline.run.json runs/candidate.run.json --proposed retrieval/release/release.json
+vectraudit release update retrieval/release/release.json      # re-approve reviewed edits
+```
+
+`release check` uses the exit codes of `vectraudit check` and the same reports and GitHub
+publishing options. Its summary names the configuration, policy version and rule hash. If
+`policy.json` or `benchmark.jsonl` is edited without `release update`, `validate`, `run` and
+`check` fail and name the changed file; `update` records the change as a new configuration
+version and marks the earlier comparison evidence as superseded.
+
+Reproduce the browser journey with `node scripts/release_smoke.mjs` after building the UI.
+It creates a policy, compares, exports, runs `vectraudit release` on the exported files,
+and shows that a stricter policy version changes both the comparison and case verification.
+
 ## Persistent regression cases
 
 In **Compare a fix**, select a finding and choose **Track finding**. A case preserves the
@@ -335,18 +420,21 @@ record investigation notes, and move it through open/investigating/fix proposed.
 local attribution, not authenticated identities. Cases survive browser and server restarts
 under `.workbench/cases/`; **Download issue summary** produces Markdown for your issue tracker.
 
-Record a new candidate and choose **Verify fix or recurrence**. Verification reruns the
-existing default release comparison against the case's original baseline and requires:
+Record a new candidate and choose **Verify under <policy>**. Verification reruns the release
+comparison under the selected release policy (see below) against the case's original
+baseline and requires:
 
 - A complete, comparable run of the same query set, dataset version and k.
-- A passing release verdict across that comparison suite.
+- A passing release verdict under that policy across that comparison suite.
 - No unresolved finding for the tracked query.
 
 Only this measured operation can assign **verified**; manual updates cannot. The original
 baseline or failing candidate cannot be used as verification evidence. Errors and
 non-comparable runs do not change case status. A later explicit verification that fails
 reopens the case and appends evidence to its history. Each verification also saves the full
-release-check artifact (including the policy) and links it from the history. Verification covers the baseline's
+release-check artifact (including the policy) and links it from the history, together
+with the policy's name, version and rule hash. A later policy version never rewrites earlier
+verification evidence. Verification covers the baseline's
 recorded split, not any held-out queries that were never run. Case status never overrides
 release verdicts, and does not automatically update merely because a new run was recorded.
 

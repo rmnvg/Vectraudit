@@ -1,0 +1,32 @@
+import { describe, expect, it } from 'vitest'
+import { STARTER_POLICY, formFromPolicy, policyFromForm, policyLabel } from './release'
+
+describe('release policy form', () => {
+  it('round-trips the starter policy without changing its rules', () => {
+    const { policy, errors } = policyFromForm(formFromPolicy(STARTER_POLICY))
+    expect(errors).toEqual([])
+    expect(policy).toEqual({ ...STARTER_POLICY, latency: { p95_max_increase_pct: 30, min_increase_ms: 2 } })
+  })
+  it('keeps minimums, latency ceilings and environment rules', () => {
+    const raw = { metrics: { ann_recall: { min: 0.9 } }, latency: { p95_max_ms: 80, require_same_environment: false }, min_queries: 5, primary_metric: 'recall', require_significance: true }
+    const { policy } = policyFromForm(formFromPolicy(raw))
+    expect(policy?.metrics).toEqual({ ann_recall: { min: 0.9 } })
+    expect(policy?.latency).toEqual({ p95_max_ms: 80, min_increase_ms: 2, require_same_environment: false })
+    expect(policy?.primary_metric).toBe('recall')
+    expect(policy?.require_significance).toBe(true)
+  })
+  it('explains what to fix instead of producing an invalid policy', () => {
+    const form = formFromPolicy({ metrics: {} })
+    expect(policyFromForm(form).errors[0]).toMatch(/at least one quality rule/)
+    form.metrics.ndcg = { enabled: true, maxDrop: '', min: '' }
+    expect(policyFromForm(form).errors).toContain('Set an allowed drop or a minimum for ndcg, or turn it off.')
+    form.metrics.ndcg = { enabled: true, maxDrop: '-1', min: '2' }
+    const { errors, policy } = policyFromForm(form)
+    expect(policy).toBeUndefined()
+    expect(errors).toEqual(expect.arrayContaining(['ndcg allowed drop must be a number of at least 0.', 'ndcg minimum must be at most 1.']))
+  })
+  it('labels exploratory defaults distinctly from an agreed policy', () => {
+    expect(policyLabel(null)).toBe('Exploratory defaults')
+    expect(policyLabel({ id: 'x', name: 'Release', version: 2, sha256: 'a'.repeat(64), source: 'workspace' })).toBe('Release v2 · aaaaaaaaaaaa')
+  })
+})
