@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Connected passage-review queues in the guided benchmark editor: pool actual baseline and
+  candidate results, prioritize unjudged disagreements, grade local passages, and return from
+  comparison findings. Queues enforce exact exploratory versions, preserve irrelevant/span
+  judgments, report missing text and failed rankings, and reveal source/rank after grading.
 - Guided passage grading with durable local corpora and separate irrelevant judgments;
   CSV/JSON import previews and deduplicated incident review without inferred labels.
 - Permission scenario builder for tenant contexts, allowed/forbidden documents and no-answer cases.

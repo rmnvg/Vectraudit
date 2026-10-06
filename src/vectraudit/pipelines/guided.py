@@ -362,8 +362,10 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
         }
 
     from vectraudit.pipelines.release_workflow import release_router
+    from vectraudit.pipelines.review import review_router
     from vectraudit.pipelines.workflows import workflow_router
 
     router.include_router(workflow_router(workspace), dependencies=auth)
     router.include_router(release_router(workspace), dependencies=auth)
+    router.include_router(review_router(workspace), dependencies=auth)
     return router
