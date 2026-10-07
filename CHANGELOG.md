@@ -8,6 +8,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Registered document lookup for passage review: fetch bounded, context-scoped passages
+  without importing a full corpus, inspect content versions, and reject mismatched snapshots.
+
 - Critical-question release assertions: require a document within a specified rank, edit and
   export rules from the workbench, and inspect assertion evidence in JSON/HTML/Markdown reports.
   Missing queries and insufficient retrieval depth cannot silently pass.
