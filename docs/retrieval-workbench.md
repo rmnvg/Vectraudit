@@ -311,8 +311,8 @@ are deployment acceptance work; passing local fixtures is not a claim of market 
 The guided **Build benchmark** step now includes a passage browser. Attach a JSONL corpus
 (`doc_id`, `text`, optional `metadata.title`) and read passages while choosing **Irrelevant**,
 **Relevant**, **Highly relevant**, or **Unjudged**. This works with registered pipelines too:
-lookup uses the attached local corpus, not an outbound document request. Missing document
-text is reported explicitly. Passage order is corpus order, not retrieval rank; use the
+lookup uses the attached local corpus by default. A registered document resolver can fetch
+pooled passages on demand as described below. Missing document text is reported explicitly. Passage order is corpus order, not retrieval rank; use the
 search field and pagination to inspect other documents. Existing standalone labeling tools
 remain available for pooling, independent second passes and reviewer resolution.
 
@@ -345,6 +345,79 @@ same document; other spans, contexts, filters and held-out splits remain intact.
 JSON grade editor remains available. Draft saves preserve the local corpus and irrelevant
 judgments across restarts. A JSONL dataset export contains evaluation labels; frozen versions
 also retain the separate irrelevant judgments.
+
+### Look up passages without importing the whole corpus
+
+Register a trusted Python resolver in the startup manifest alongside your pipelines:
+
+```json
+{
+  "dataset": "queries.jsonl",
+  "corpus_version": "catalog-v7",
+  "candidates": [
+    {"name": "baseline", "adapter": {"kind": "python", "target": "retriever:search"}}
+  ],
+  "document_lookup": {"target": "document_source:lookup", "timeout_s": 30}
+}
+```
+
+Place `document_source.py` beside the manifest or install it in the workbench environment.
+Start with `vectraudit workbench serve workbench-runs --manifest pipelines.json`.
+The resolver is registered only at startup: browser requests cannot supply Python code,
+module paths, destination URLs, credentials, tenant context or filters.
+
+After building a passage review queue, choose **Passage source** (baseline or candidate
+corpus version), confirm sending IDs and saved context, then **Fetch visible passages**.
+At most ten IDs are requested per click. Grade available passages using the existing
+controls; missing, inaccessible and unavailable-version documents remain ungradable.
+Switching the source or question clears fetched content. **Attached local corpus** and
+**Browse all passages** retain the existing local workflow.
+
+The resolver accepts a `LookupRequest` and returns a `LookupResult` or its JSON-compatible
+dictionary. Import these contracts from `vectraudit.pipelines.document_lookup`:
+
+- Request: `query_id`, `doc_ids`, saved `context`, saved `filters`, selected `run_id`,
+  and selected run's `corpus_version` (or snapshot ID). Query text and vectors are not sent.
+- Result: `corpus_version` and exactly one entry per requested ID, without duplicates or
+  additional IDs. Each entry has `doc_id` and a `status`.
+- `found`: include nonempty `text` (at most 100,000 characters), `version` (document content
+  version), and optional `title`. Other statuses are `missing`, `forbidden`, and
+  `version_unavailable`; those entries must not contain text, titles or versions.
+
+Example result:
+
+```json
+{
+  "corpus_version": "catalog-v7",
+  "documents": [
+    {"doc_id": "guide", "status": "found", "text": "Invoice export instructions.",
+     "version": "guide-v3", "title": "Export invoices"},
+    {"doc_id": "old-guide", "status": "missing"}
+  ]
+}
+```
+
+The resolver must enforce the source's authorization and filter semantics, and read the
+requested snapshot rather than merely echo its identifier. A returned corpus version that
+differs from the known run version is rejected before any text reaches the browser. If the
+run has no version, the UI explicitly reports that correspondence is unknown. Versions are
+adapter-reported; the workbench also calculates a SHA-256 of each returned passage.
+
+See `examples/workbench/document_source.py` for a read-only SQLite implementation that
+looks up IDs within a tenant and snapshot and rejects unsupported filters. Adapt it to your
+customer-controlled source; credentials remain in the local environment. A Python resolver
+can use an existing database or HTTP client, so a new backend connector is not required.
+
+Lookups run in fresh processes, one at a time, with a configured 1–120 second timeout.
+Adapter stdout/stderr and raw exceptions are suppressed. Python code is trusted local code,
+not sandboxed; it must use read-only access and enforce authorization itself. A browser
+navigation discards the response; an already-running lookup may finish or reach its timeout.
+
+Fetched text and document versions are held only in the review UI; they are not written
+into drafts, frozen corpus inventories, run files or exported release bundles. Saving a
+grade saves the judgment, not a remote content snapshot. Preserve source snapshots externally
+when reproducible annotation or later label-freshness checks are required. Held-out questions
+and IDs outside the exact saved exploratory review pool cannot be fetched through this API.
 
 **Import questions or production incidents** previews CSV, JSON arrays (including
 `examples`/`items`/`data` wrappers), and JSONL. Map question, ID and relevance columns; nested
@@ -512,3 +585,6 @@ and freshness at desktop/mobile sizes against a real local server.
 `node scripts/passage_review_smoke.mjs` exercises registered Python adapters, measured runs,
 pooled grading, missing text, multi-question review, stale-version rejection, persistence,
 and a fresh browser comparison. Both scripts run in CI.
+
+Run `VECTRAUDIT_LOOKUP_SMOKE=1 node scripts/passage_review_smoke.mjs` for the same journey
+without an attached corpus, using a registered resolver. CI exercises both modes.

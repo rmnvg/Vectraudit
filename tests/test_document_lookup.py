@@ -8,7 +8,12 @@ from fastapi import HTTPException
 
 from tests.test_guided_workbench import run, save
 from tests.test_passage_review import review  # noqa: F401
-from vectraudit.pipelines.document_lookup import LookupConfig, LookupRequest, LookupRunner
+from vectraudit.pipelines.document_lookup import (
+    LookupConfig,
+    LookupRequest,
+    LookupResult,
+    LookupRunner,
+)
 from vectraudit.pipelines.manifest import Manifest
 
 RESOLVER = """
@@ -206,6 +211,20 @@ def test_concurrent_lookup_is_bounded(tmp_path):
         assert exc.value.status_code == 429
     finally:
         runner._lock.release()
+
+
+def test_changed_draft_during_lookup_drops_response(lookup, monkeypatch):
+    client, draft, body, _ = lookup
+
+    def changed(self, config, root, request):
+        path = client.app.state.guided._draft_path(draft["id"])
+        current = json.loads(path.read_text())
+        current["revision"] = "changed-during-lookup"
+        path.write_text(json.dumps(current))
+        return LookupResult(corpus_version=request.corpus_version, documents=[])
+
+    monkeypatch.setattr(LookupRunner, "run", changed)
+    assert client.post("/api/guided/review-documents", json=body).status_code == 409
 
 
 def test_example_sqlite_resolver_scopes_tenant_snapshot_and_filters(tmp_path, monkeypatch):
