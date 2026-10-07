@@ -229,3 +229,99 @@ def test_cancellation_and_capacity_do_not_save_partial_results(client, monkeypat
     assert client.app.state.guided.jobs.get(first).wait(10)
     assert client.get(f"/api/guided/jobs/{first}").json()["status"] == "cancelled"
     assert not list(tmp_path.glob("*.run.json"))
+
+
+def test_saved_evaluation_resumes_after_workspace_restart(client, monkeypatch, tmp_path):
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    def pipeline(request):
+        calls.append(request.query_id)
+        if len(calls) == 1:
+            entered.set()
+            assert release.wait(10)
+        return PipelineResult(hits=[])
+
+    monkeypatch.setattr("vectraudit.pipelines.guided.hybrid_pipeline", lambda _: pipeline)
+    draft = save(client).json()
+    identifier = client.post("/api/guided/jobs", json=options(draft)).json()["id"]
+    try:
+        assert entered.wait(5)
+        before = client.get("/api/guided/evaluations").json()[0]
+        assert before["running"]
+        assert (
+            client.post(f"/api/guided/evaluations/{identifier}/resume", json={}).status_code == 429
+        )
+        assert client.get("/api/guided/evaluations").json()[0]["job_id"] == identifier
+        client.post(f"/api/guided/jobs/{identifier}/cancel")
+    finally:
+        release.set()
+    assert client.app.state.guided.jobs.get(identifier).wait(10)
+    assert client.get("/api/guided/evaluations").json()[0]["finished"] == 1
+    # Fresh server state, same local directory: no JobRunner memory survives.
+    with TestClient(create_workbench(tmp_path)) as restarted:
+        restarted.headers["X-Workbench-Token"] = restarted.get("/api/guided/session").json()[
+            "token"
+        ]
+        state = restarted.get("/api/guided/evaluations").json()[0]
+        assert not state["running"]
+        started = restarted.post(f"/api/guided/evaluations/{identifier}/resume", json={})
+        assert started.status_code == 202
+        job_id = started.json()["id"]
+        assert restarted.app.state.guided.jobs.get(job_id).wait(10)
+        run = restarted.get(f"/api/guided/jobs/{job_id}").json()["run"]
+        assert run["status"] == "complete"
+        assert calls == ["allowed", "none", "missing"]
+        assert run["benchmark_source"]["revision"] == draft["revision"]
+        assert restarted.get("/api/guided/evaluations").json()[0]["status"] == "complete"
+
+
+def test_resume_rejects_changed_draft_and_requires_heldout_consent(client):
+    draft = save(client).json()
+    run(client, draft, mode="heldout", confirm_heldout=True)
+    identifier = client.get("/api/guided/evaluations").json()[0]["id"]
+    assert client.post(f"/api/guided/evaluations/{identifier}/resume", json={}).status_code == 422
+    assert (
+        save(client, id=draft["id"], revision=draft["revision"], name="Changed").status_code == 200
+    )
+    rejected = client.post(
+        f"/api/guided/evaluations/{identifier}/resume", json={"confirm_heldout": True}
+    )
+    assert rejected.status_code == 409
+
+
+def test_resume_reexports_if_process_stopped_after_journal_commit(client, tmp_path):
+    draft = save(client).json()
+    initial = run(client, draft)
+    (tmp_path / f"{initial['run_id']}.run.json").unlink()
+    state = client.get("/api/guided/evaluations").json()[0]
+    assert state["status"] == "partial"
+    started = client.post(f"/api/guided/evaluations/{state['id']}/resume", json={}).json()["id"]
+    assert client.app.state.guided.jobs.get(started).wait(10)
+    recovered = client.get(f"/api/guided/jobs/{started}").json()["run"]
+    assert recovered["run_id"] == initial["run_id"]
+    assert recovered["queries"] == initial["queries"]
+    assert (tmp_path / f"{initial['run_id']}.run.json").exists()
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt"])
+def test_damaged_guided_journal_never_silently_starts_over(client, tmp_path, damage):
+    draft = save(client).json()
+    initial = run(client, draft)
+    identifier = client.get("/api/guided/evaluations").json()[0]["id"]
+    journal = tmp_path / ".workbench" / "evaluations" / f"{identifier}.sqlite"
+    if damage == "missing":
+        journal.unlink()
+    else:
+        journal.write_bytes(b"broken")
+    state = client.get("/api/guided/evaluations").json()[0]
+    assert state["status"] == "unavailable"
+    assert state["resume_blocker"]
+    response = client.post(f"/api/guided/evaluations/{identifier}/resume", json={})
+    if damage == "missing":
+        assert response.status_code == 409
+    else:
+        job_id = response.json()["id"]
+        assert client.app.state.guided.jobs.get(job_id).wait(10)
+        assert client.get(f"/api/guided/jobs/{job_id}").json()["status"] == "failed"
+    assert json.loads((tmp_path / f"{initial['run_id']}.run.json").read_text()) == initial

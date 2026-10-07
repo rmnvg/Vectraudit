@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import sqlite3
+import uuid
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -11,7 +14,10 @@ import typer
 from vectraudit.evaluation.dataset import load_dataset
 from vectraudit.evaluation.policy import DEFAULT_POLICY, load_policy
 from vectraudit.evaluation.runfile import load_run
+from vectraudit.labelling.storage import task_lock
+from vectraudit.labelling.task import atomic_write
 from vectraudit.pipelines.benchmark import audit_benchmark
+from vectraudit.pipelines.checkpoint import validate_path
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
 from vectraudit.pipelines.monitor import monitor_check
 from vectraudit.pipelines.optimize import optimize
@@ -23,20 +29,7 @@ workbench_app = typer.Typer(
 
 
 def _write(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Unique temporary name and atomic replace keep scheduled readers from seeing partial JSON.
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=path.parent, delete=False
-    ) as f:
-        temporary = Path(f.name)
-        json.dump(data, f, indent=2, allow_nan=False, ensure_ascii=False)
-        f.write("\n")
-    try:
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    atomic_write(path, json.dumps(data, indent=2, allow_nan=False, ensure_ascii=False) + "\n")
 
 
 @workbench_app.command("run")
@@ -45,38 +38,81 @@ def run_command(
     out: Annotated[Path, typer.Option(help="Directory for run artifacts.")] = Path(
         "workbench-runs"
     ),
+    resume: Annotated[
+        Path | None, typer.Option(help="Resume the printed checkpoint directory.")
+    ] = None,
+    retry_errors: Annotated[
+        bool, typer.Option(help="Explicitly retry failed queries when resuming.")
+    ] = False,
 ) -> None:
     """Execute trusted Python, HTTP or built-in hybrid candidates from a local manifest."""
     try:
+        if retry_errors and resume is None:
+            raise ValueError("--retry-errors requires --resume")
         spec = load_manifest(manifest)
         if len(spec.candidates) > spec.max_candidates:
             raise ValueError("candidate count exceeds max_candidates")
         ds = load_dataset(manifest.parent / spec.dataset)
         if len({c.name for c in spec.candidates}) != len(spec.candidates):
             raise ValueError("candidate names must be unique")
-        incomplete = False
-        for candidate in spec.candidates:
-            config = candidate_config(candidate, manifest.parent)
-            pipeline = open_adapter(candidate.adapter, manifest.parent)
-            run = execute_pipeline(
-                ds,
-                pipeline,
-                PipelineOptions(
-                    k=spec.k,
-                    params=candidate.params,
-                    repeats=spec.repeats,
-                    warmup=0,
-                    label=candidate.name,
-                ),
-                config=config,
-                corpus_version=spec.corpus_version or config.get("corpus_sha256"),
-            )
-            _write(out / f"{run['run_id']}.run.json", run)
-            typer.echo(f"{candidate.name}: {run['status']} ({run['run_id']})")
-            incomplete |= run["status"] != "complete"
-        if incomplete:
-            raise typer.Exit(2)
-    except (OSError, ValueError, ImportError, AttributeError) as exc:
+        checkpoints = resume or out / ".checkpoints" / uuid.uuid4().hex
+        configs = [candidate_config(candidate, manifest.parent) for candidate in spec.candidates]
+        batch_identity = {
+            "dataset": ds.sha256,
+            "candidates": configs,
+            "k": spec.k,
+            "repeats": spec.repeats,
+            "corpus_version": spec.corpus_version,
+        }
+        batch_path = checkpoints / "batch.json"
+        validate_path(batch_path)
+        with task_lock(batch_path, timeout=0):
+            if resume:
+                batch = json.loads(batch_path.read_text())
+                if batch["identity"] != batch_identity:
+                    raise ValueError("Cannot resume: dataset, candidates or settings changed")
+            else:
+                batch = {"identity": batch_identity, "started": []}
+                _write(batch_path, batch)
+            typer.echo(f"Checkpoints: {checkpoints}")
+            incomplete = False
+            for candidate, config in zip(spec.candidates, configs, strict=True):
+                checkpoint = checkpoints / (
+                    hashlib.sha256(candidate.name.encode()).hexdigest() + ".sqlite"
+                )
+                if candidate.name in batch["started"] and not checkpoint.exists():
+                    raise ValueError(
+                        "A started checkpoint is missing; restore it or start a new batch"
+                    )
+                resuming = bool(resume) and checkpoint.exists()
+                pipeline = open_adapter(candidate.adapter, manifest.parent)
+                if candidate.name not in batch["started"]:
+                    batch["started"].append(candidate.name)
+                    _write(batch_path, batch)
+                run = execute_pipeline(
+                    ds,
+                    pipeline,
+                    PipelineOptions(
+                        k=spec.k,
+                        params=candidate.params,
+                        repeats=spec.repeats,
+                        warmup=0,
+                        label=candidate.name,
+                    ),
+                    config=config,
+                    corpus_version=spec.corpus_version or config.get("corpus_sha256"),
+                    checkpoint=checkpoint,
+                    resume=resuming,
+                    retry_errors=retry_errors and resuming,
+                )
+                _write(out / f"{run['run_id']}.run.json", run)
+                typer.echo(f"{candidate.name}: {run['status']} ({run['run_id']})")
+                incomplete |= run["status"] != "complete"
+                if run["status"] == "cancelled":
+                    break
+            if incomplete:
+                raise typer.Exit(2)
+    except (OSError, ValueError, ImportError, AttributeError, sqlite3.Error) as exc:
         typer.echo(f"Workbench configuration error: {exc}", err=True)
         raise typer.Exit(2) from exc
 

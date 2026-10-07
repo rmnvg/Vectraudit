@@ -76,6 +76,10 @@ vectraudit workbench benchmark examples/workbench/queries.jsonl --runs workbench
 vectraudit workbench monitor manifest.json baseline.run.json
 ```
 
+Evaluations save query progress locally. Resume from **Saved progress** in the browser
+or use `workbench run --resume CHECKPOINT_DIRECTORY`; failed-query retries are explicit.
+See [recovery details](docs/retrieval-workbench.md#resume-an-evaluation).
+
 See the [workbench guide](docs/retrieval-workbench.md) for adapter manifests, stage
 evidence, no-answer and permission assertions, and data-handling boundaries.
 

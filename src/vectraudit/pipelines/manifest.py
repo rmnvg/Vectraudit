@@ -37,6 +37,7 @@ class Adapter(Contract):
 class Candidate(Contract):
     name: str = Field(min_length=1, max_length=128)
     adapter: Adapter
+    pipeline_version: str | None = Field(default=None, min_length=1, max_length=256)
     params: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 
@@ -97,12 +98,16 @@ def open_adapter(adapter: Adapter, root: Path) -> Pipeline:
 
 def candidate_config(candidate: Candidate, root: Path) -> dict[str, Any]:
     """Safe identity for drift tracking; exclude endpoint credentials and local paths."""
-    raw = candidate.model_dump_json()
+    raw = candidate.model_dump_json(
+        exclude={"pipeline_version"} if candidate.pipeline_version is None else None
+    )
     out: dict[str, Any] = {
         "name": candidate.name,
         "adapter": candidate.adapter.kind,
         "sha256": hashlib.sha256(raw.encode()).hexdigest(),
     }
+    if candidate.pipeline_version:
+        out["pipeline_version"] = candidate.pipeline_version
     if candidate.adapter.kind == "hybrid":
         out["corpus_sha256"] = hashlib.sha256(
             (root / str(candidate.adapter.corpus)).read_bytes()

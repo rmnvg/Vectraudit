@@ -10,6 +10,7 @@ import { reviewRequestKey } from '../lib/benchmarkTools'
 import type { Irrelevant } from '../lib/benchmarkTools'
 import RegressionCases from './RegressionCases'
 import ReleaseExport from './ReleaseExport'
+import EvaluationRecovery from './EvaluationRecovery'
 import ReleasePolicy from './ReleasePolicy'
 import { policyLabel } from '../lib/release'
 import type { PolicyChoice, PolicyRef } from '../lib/release'
@@ -85,7 +86,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
           setJobId('')
           if (state.run) {
             const run = state.run
-            setRuns(previous => previous.some(r => r.run_id === run.run_id) ? previous : [...previous, run])
+            setRuns(previous => [...previous.filter(r => r.run_id !== run.run_id), run])
             setBaseId(previous => previous || run.run_id)
             setCandidateId(run.run_id)
           }
@@ -233,6 +234,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       {dirty && <p className="mt-4 text-sm text-amber-600">Save benchmark changes before running.</p>}
       <div className="mt-5 flex flex-wrap gap-3"><button className={primary} disabled={!draft || dirty || running || (mode === 'heldout' && !heldout) || (choice?.kind === 'http' && !remote)} onClick={() => void evaluate()}>{running ? 'Evaluation running…' : 'Run evaluation'}</button>{jobId && <button className={button} onClick={() => void guidedRequest(`jobs/${jobId}/cancel`, session.token, {}).catch(e => setError(String(e)))}>Cancel evaluation</button>}</div>
       {job && <div className="mt-5" role="status"><p className="text-sm">{job.status === 'done' ? `Evaluation ${job.run?.status || 'complete'}` : job.status} · {job.message}</p><progress aria-label="Evaluation progress" className="mt-2 w-full accent-teal-600" value={job.progress} max={1} />{job.error && <p className="mt-2 text-sm text-red-600">{job.error}</p>}<p className="mt-1 text-xs text-muted">Cancellation takes effect between queries. An active adapter call finishes first.</p></div>}
+      <EvaluationRecovery token={session.token} busy={running} onStart={id => { setJobId(id); setJob({ status: 'running', progress: 0, message: 'Loading saved evaluation' }) }} />
       {runs.length > 0 && <div className="mt-6 space-y-3"><h3 className="font-semibold">Recorded evaluations</h3>{runs.map(run => <div key={run.run_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4"><div><b className="text-sm">{run.label}</b><p className="mt-1 text-xs text-muted">{run.status} · {run.summary.n_queries} queries · nDCG {format(run.summary.metrics?.ndcg)} · p95 {format(run.summary.latency_ms?.p95)} ms</p></div><button className={button} onClick={() => onInspect(run, { query: '', doc: '' })}>Inspect failures</button></div>)}<button className={button} onClick={() => { setLabel('Candidate fix'); setStep(3) }}>Compare a fix</button></div>}
     </section>}
     {step === 3 && <section className={`${panel} space-y-5`}><div><h2 className="text-xl font-semibold">Compare a measured fix</h2><p className="mt-2 text-sm text-muted">Keep the benchmark and k unchanged. Change pipeline configuration, record another run, then inspect both results.</p></div><button className={button} onClick={() => { setLabel('Candidate fix'); setStep(2) }}>Evaluate another configuration</button>

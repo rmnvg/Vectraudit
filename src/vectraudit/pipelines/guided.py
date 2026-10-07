@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import secrets
+import sqlite3
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -22,6 +23,7 @@ from vectraudit.evaluation.triage import triage
 from vectraudit.labelling.storage import TaskBusy, task_lock
 from vectraudit.labelling.task import atomic_write
 from vectraudit.pipelines.benchmark import audit_benchmark
+from vectraudit.pipelines.checkpoint import checkpoint_state, validate_path
 from vectraudit.pipelines.lexical import hybrid_pipeline
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
 from vectraudit.pipelines.models import Contract
@@ -60,9 +62,15 @@ class EvaluationIn(Contract):
     k: int = Field(default=5, ge=1, le=100)
     repeats: int = Field(default=1, ge=1, le=5)
     depth: int = Field(default=50, ge=1, le=10000)
-    vector_weight: float = Field(default=0, ge=0, le=1)
+    vector_weight: float = Field(default=0.0, ge=0, le=1)
     reranker: Literal["none", "phrase"] = "none"
     corpus: str = Field(default="", max_length=MAX_BODY)
+
+
+class ResumeIn(Contract):
+    retry_errors: bool = False
+    confirm_remote: bool = False
+    confirm_heldout: bool = False
 
 
 class ComparisonIn(Contract):
@@ -197,7 +205,87 @@ class GuidedWorkspace:
             raise HTTPException(413, "Run exceeds the local size limit")
         return path
 
-    def start(self, body: EvaluationIn) -> str:
+    def evaluation_path(self, identifier: str) -> Path:
+        """Resolve only an opaque local evaluation ID."""
+        path = self.root / ".workbench" / "evaluations" / (_identifier(identifier) + ".json")
+        validate_path(path)
+        return path
+
+    def evaluations(self) -> list[dict[str, Any]]:
+        """Discover saved evaluations after a browser or server restart."""
+        directory = self.evaluation_path("0" * 32).parent
+        entries = []
+        for path in sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                saved = json.loads(self.evaluation_path(path.stem).read_text())
+                journal = path.with_suffix(".sqlite")
+                blocker = saved.get("resume_blocker")
+                try:
+                    if saved.get("started") and not journal.exists():
+                        raise ValueError("Missing checkpoint")
+                    state = (
+                        checkpoint_state(journal)
+                        if journal.exists()
+                        else {
+                            "status": "partial",
+                            "finished": 0,
+                            "failed": 0,
+                            "total": saved["total"],
+                        }
+                    )
+                except (sqlite3.Error, ValueError, OSError):
+                    state = {
+                        "status": "unavailable",
+                        "finished": 0,
+                        "failed": 0,
+                        "total": saved["total"],
+                    }
+                    blocker = (
+                        "Saved progress is missing or unreadable. "
+                        "Restore the checkpoint or start a new evaluation."
+                    )
+                if (
+                    state["status"] == "complete"
+                    and not (self.root / f"{state['run_id']}.run.json").is_file()
+                ):
+                    state["status"] = (
+                        "partial"  # Recover an export interrupted after journal commit.
+                    )
+                job = self.jobs.get(saved["job_id"])
+                entries.append(
+                    {
+                        "id": path.stem,
+                        "label": saved["body"]["label"],
+                        "job_id": saved["job_id"],
+                        "remote": saved["remote"],
+                        "heldout": saved["body"]["mode"] == "heldout",
+                        "resume_blocker": blocker,
+                        **state,
+                        "running": job is not None and job.as_dict()["status"] == "running",
+                    }
+                )
+            except (OSError, ValueError, sqlite3.Error, KeyError):
+                continue
+        return entries
+
+    def resume(self, identifier: str, body: ResumeIn) -> str:
+        """Revalidate the original request and require fresh transfer/held-out consent."""
+        path = self.evaluation_path(identifier)
+        if not path.is_file():
+            raise HTTPException(404, "Unknown evaluation")
+        saved = json.loads(path.read_text())
+        if saved.get("started") and not path.with_suffix(".sqlite").exists():
+            raise HTTPException(
+                409, "Saved progress is missing. Restore it or start a new evaluation."
+            )
+        original = EvaluationIn.model_validate(saved["body"])
+        original.confirm_remote = body.confirm_remote
+        original.confirm_heldout = body.confirm_heldout
+        return self.start(original, evaluation_id=identifier, retry_errors=body.retry_errors)
+
+    def start(
+        self, body: EvaluationIn, *, evaluation_id: str | None = None, retry_errors: bool = False
+    ) -> str:
         """Snapshot the draft and authorized configuration before queuing execution."""
         draft = self.load_draft(body.draft_id)
         if draft["revision"] != body.revision:
@@ -254,10 +342,34 @@ class GuidedWorkspace:
             k=body.k, repeats=body.repeats, warmup=0, label=body.label, params=params
         )
         identifier = uuid.uuid4().hex
+        evaluation_path = self.evaluation_path(evaluation_id or identifier)
+        journal = evaluation_path.with_suffix(".sqlite")
+        resuming = evaluation_id is not None and journal.exists()
+        saved = {
+            "body": body.model_dump(exclude={"confirm_remote", "confirm_heldout"}),
+            "job_id": identifier,
+            "started": journal.exists(),
+            "total": len(ds),
+            "resume_blocker": (
+                "This evaluation needs explicit pipeline_version and corpus_version to resume. "
+                "Set them in the manifest before starting a new evaluation."
+                if config.get("adapter") != "hybrid"
+                and (not corpus_version or not config.get("pipeline_version"))
+                else None
+            ),
+            "remote": body.pipeline != "builtin"
+            and self.registry[body.pipeline].adapter.kind == "http",
+        }
 
         def work(progress: ProgressFn) -> dict[str, Any]:
             progress(0, "Preparing pipeline")
             pipeline = factory()
+            with task_lock(evaluation_path):
+                metadata = json.loads(evaluation_path.read_text())
+                if metadata["job_id"] != identifier:
+                    raise TaskBusy("Another process resumed this evaluation")
+                metadata["started"] = True
+                _write(evaluation_path, metadata)
             run = execute_pipeline(
                 ds,
                 pipeline,
@@ -265,18 +377,37 @@ class GuidedWorkspace:
                 config=config,
                 corpus_version=corpus_version,
                 progress=lambda done, total: progress(done / total, f"{done}/{total} queries"),
+                checkpoint=journal,
+                resume=resuming,
+                retry_errors=retry_errors and resuming,
             )
-            progress(1, "Saving results")
             run["benchmark_source"] = {
                 "draft_id": draft["id"],
                 "revision": draft["revision"],
                 "sha256": source.sha256,
                 "split": body.mode,
             }
-            _write(self.root / f"{run['run_id']}.run.json", run)
+            # Cancelled runs remain in the journal; they are not release artifacts.
+            if run["status"] != "cancelled":
+                _write(self.root / f"{run['run_id']}.run.json", run)
             return run
 
-        self.jobs.get_or_start(identifier, work)
+        with task_lock(evaluation_path, timeout=0):
+            previous = json.loads(evaluation_path.read_text()) if evaluation_path.exists() else None
+            if previous:
+                active = self.jobs.get(previous["job_id"])
+                if active and active.as_dict()["status"] == "running":
+                    raise JobCapacityError("This evaluation is already running")
+            # Persist before scheduling: a process may stop before the worker starts.
+            _write(evaluation_path, saved)
+            try:
+                self.jobs.get_or_start(identifier, work)
+            except JobCapacityError:
+                if previous:
+                    _write(evaluation_path, previous)
+                else:
+                    evaluation_path.unlink(missing_ok=True)
+                raise
         return identifier
 
 
@@ -321,6 +452,19 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
                 429, "An evaluation is already running. Wait or cancel it."
             ) from exc
 
+    @router.get("/evaluations", dependencies=auth)
+    def evaluations() -> list[dict[str, Any]]:
+        return workspace.evaluations()
+
+    @router.post("/evaluations/{identifier}/resume", dependencies=auth, status_code=202)
+    def resume(identifier: str, body: ResumeIn) -> dict[str, str]:
+        try:
+            return {"id": workspace.resume(identifier, body)}
+        except JobCapacityError as exc:
+            raise HTTPException(
+                429, "An evaluation is already running. Wait or cancel it."
+            ) from exc
+
     @router.get("/jobs/{identifier}", dependencies=auth)
     def job(identifier: str) -> dict[str, Any]:
         found = workspace.jobs.get(_identifier(identifier))
@@ -329,7 +473,8 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
         state = found.as_dict()
         if state["error"]:
             state["error"] = (
-                "Evaluation failed. Use Test pipeline to diagnose the registered adapter."
+                "Evaluation failed. Check that saved inputs, pipeline/corpus versions and runner "
+                "environment are unchanged, or use Test pipeline to diagnose the adapter."
             )
         if found.is_done:
             state["run"] = found.result
