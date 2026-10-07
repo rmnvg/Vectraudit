@@ -118,6 +118,16 @@ jobs:
           uv venv "$RUNNER_TEMP/wheel-smoke"
           uv pip install --python "$RUNNER_TEMP/wheel-smoke/bin/python" dist/*.whl faiss-cpu httpx
           "$RUNNER_TEMP/wheel-smoke/bin/python" -I tests/package_smoke.py
+      - name: Reference search with installed wheel and independent application revisions
+        run: |
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -I examples/real_pipeline_case_study.py --out "$RUNNER_TEMP/reference-search"
+      - name: Preserve reference search reports and reproduction inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-search-case-study
+          path: ${{ runner.temp }}/reference-search
+          if-no-files-found: warn
 
   e2e:
     name: Browser smoke test
@@ -160,6 +170,17 @@ jobs:
           VECTRAUDIT_LOOKUP_SMOKE: "1"
       - name: Release policy and exported release check journey
         run: node scripts/release_smoke.mjs
+      - name: Reference search browser comparison and export
+        run: node scripts/reference_search_smoke.mjs
+        env:
+          VECTRAUDIT_REFERENCE_SMOKE_DIR: ${{ runner.temp }}/reference-browser
+      - name: Preserve reference browser screenshots and trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-search-browser
+          path: ${{ runner.temp }}/reference-browser
+          if-no-files-found: warn
       - name: Local labelling browser regression
         run: node scripts/labelling_smoke.mjs
       - uses: actions/upload-artifact@v4

@@ -1,0 +1,9 @@
+{
+  "version": "support-reference-v1",
+  "sha256": {
+    "corpus.jsonl": "51f5437b01ea3f274b44746410f498c072d157c476912f9c34e8d81f7e27410a",
+    "queries.jsonl": "70180075f43148168b4b9272bb572bd33a6e4d5cf6baa580cf0e9f740a545371",
+    "judgments.json": "edd19694c635ebf9acffbf8cf169fc45727c50f874ddfdc1e22333e8be160ea8",
+    "policy.json": "7776342edcc510cba21f71d631aee4078d16a4d7eeefbf6089800fff4f3c0beb"
+  }
+}

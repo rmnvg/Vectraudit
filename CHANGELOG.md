@@ -8,6 +8,15 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Reference support-search case study with actual BM25 ranking, measured stage latency,
+  tenant/current-document filters, independent baseline/candidate/fixed source revisions,
+  and guided/exported CLI verdict parity. Versioned fictional documents and varied questions
+  include proposed judgments explicitly awaiting human review. Installed-wheel CI preserves
+  the generated reports, source revisions, input hashes and reproduction records.
+- Reference-search browser coverage verifies failing repeat evidence, stage attribution,
+  export gating and the downloaded fixed release, with policy/metric parity against CLI
+  reports. CI retains desktop/mobile screenshots and a Playwright trace.
+
 - Pilot release rehearsal (`examples/pilot_release_demo.py`): synthetic improving-average
   regression, a critical miss on repeat 2, and a passing fix. The installed-wheel smoke
   now exercises guided comparison, export, independent checkout execution and JSON/HTML/
