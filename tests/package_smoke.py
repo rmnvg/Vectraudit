@@ -114,3 +114,18 @@ with (
 ):
     assert client.get("/api/info").json()["workbench"]
     assert client.get("/api/workbench").json()["artifacts"] == []
+
+# Exercise the guided API and exported CLI with the installed package, never the checkout.
+# The demo is an explicit input script; -I prevents its directory from supplying imports.
+with tempfile.TemporaryDirectory(prefix="vectraudit-wheel-release-") as directory:
+    subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            str(Path(__file__).resolve().parents[1] / "examples" / "pilot_release_demo.py"),
+            "--out",
+            str(Path(directory) / "demo"),
+        ],
+        cwd=directory,
+        check=True,
+    )

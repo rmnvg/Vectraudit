@@ -1,5 +1,13 @@
 # Vectraudit: next product–market fit priorities
 
+> **October 7 implementation update:** the four engineering milestones below have shipped:
+> release configurations (#29), passage-review queues (#30), pipeline diagnostics (#31),
+> and critical-question assertions (#33). Registered document lookup (#34), recovery (#36)
+> and repeat-aware assertions (#37) extend them. The October 6 observations below are
+> historical, not a current missing-feature list. The next milestone is
+> [pilot release validation](pilot-release-validation.md), followed by customer-owned
+> repeat evaluations. Customer demand and production readiness remain unverified here.
+
 Review date: October 6, 2026. Reviewed `main` at `cb26019`, which includes the five
 market-fit workflows merged in PR #28. This document supersedes the implementation
 priorities in the October 5 review; that earlier document remains a historical proposal.

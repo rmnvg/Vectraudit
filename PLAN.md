@@ -9,6 +9,9 @@
 > - CLI command: `vectraudit`
 > - Repo: `github.com/rmnvg/Vectraudit` (private)
 > - Distribution: private GitHub releases (no PyPI)
+> - Current milestone (October 7): [pilot release validation](docs/pilot-release-validation.md).
+>   The October 6 market-fit engineering priorities are implemented; validate the complete
+>   release journey and use observed pilot friction to choose subsequent work.
 
 ---
 

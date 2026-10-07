@@ -112,3 +112,14 @@ customer acceptance, deployment/restore evidence and support owner to the releas
 Keep customer text and credentials in customer-controlled storage; share aggregate reports
 only by explicit agreement. Re-run the affected evidence after changing code, dependencies,
 platform or deployment configuration.
+
+## Pilot release rehearsal
+
+See [pilot release validation](pilot-release-validation.md) for the current engineering
+milestone, a reproducible synthetic fail/fix demonstration, and a customer acceptance log.
+The isolated-wheel smoke now runs this demonstration with the installed package, covering
+the guided API, frozen benchmark export, independent Python pipeline checkouts, identical
+policy/critical evidence, and both failing and passing CLI reports. Main CI and tag checks
+also run `scripts/resume_smoke.mjs` to exercise browser recovery after a killed server.
+These checks establish software behavior; real application and customer evidence still
+need to be collected using the acceptance criteria above.

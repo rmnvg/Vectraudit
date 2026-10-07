@@ -148,6 +148,8 @@ jobs:
         run: node scripts/workbench_smoke.mjs
       - name: Guided workflow browser regression
         run: node scripts/guided_smoke.mjs
+      - name: Interrupted evaluation recovery browser journey
+        run: node scripts/resume_smoke.mjs
       - name: Benchmark and regression case browser journey
         run: node scripts/market_fit_smoke.mjs
       - name: Retrieved passage review browser journey
