@@ -31,6 +31,7 @@ CHECK_FORMAT_VERSION = 1
 SMALL_SAMPLE = 30
 EPS = 1e-9
 BOOTSTRAP_MAX_CELLS = 1_000_000
+MAX_CRITICAL_FAILURES = 10
 _ENVIRONMENT_KEYS = ("system", "machine", "cpu_count", "python")
 
 
@@ -128,29 +129,40 @@ class _Check:
                 self.flag(Verdict.FAIL, f"No-answer assertion failed for {candidate['query_id']}.")
 
     def _critical_queries(self) -> None:
-        """Judge the candidate's recorded ranking, independently of aggregate quality."""
+        """Judge every recorded candidate execution, independently of aggregate quality.
+
+        A critical document must meet its rank on each repeat, including repeats of earlier
+        failed attempts that a checkpoint retry replaced. Runs without per-repeat rankings
+        (recorded before this check existed) are insufficient evidence, never a pass.
+        """
         if not self.policy.critical_queries:
             return
         queries = {q["query_id"]: q for q in self.cand["queries"]}
+        repeats = (self.cand.get("timing") or {}).get("repeats")
         assertions = []
         for rule in self.policy.critical_queries:
             query = queries.get(rule.query_id)
             rank = None
+            executions: list[dict[str, Any]] = []
+            failures: list[dict[str, Any]] = []
             if query is None:
                 verdict, detail = Verdict.NOT_COMPARABLE, "query was not measured"
             elif rule.max_rank > self.cand["search"]["k"]:
                 verdict, detail = Verdict.NOT_COMPARABLE, "max_rank exceeds the run's k"
             elif query.get("error") or query.get("ids") is None:
                 verdict, detail = Verdict.ERROR, "query has no successful measurement"
+            elif (missing := _missing_repeat_evidence(query, repeats)) is not None:
+                verdict, detail = Verdict.NOT_COMPARABLE, missing
             else:
-                ids = query["ids"]
-                rank = ids.index(rule.doc_id) + 1 if rule.doc_id in ids else None
-                verdict = (
-                    Verdict.PASS if rank is not None and rank <= rule.max_rank else Verdict.FAIL
-                )
-                detail = (
-                    f"observed rank {rank}" if rank is not None else "document was not retrieved"
-                )
+                executions = _executions(query)
+                for execution in executions:
+                    ids = execution["ids"]
+                    execution["rank"] = ids.index(rule.doc_id) + 1 if rule.doc_id in ids else None
+                failures = [e for e in executions if e["rank"] is None or e["rank"] > rule.max_rank]
+                ranks = [e["rank"] for e in executions]
+                rank = None if None in ranks else max(ranks)
+                verdict = Verdict.FAIL if failures else Verdict.PASS
+                detail = _critical_detail(failures, len(executions))
             assertions.append(
                 {
                     "query_id": rule.query_id,
@@ -158,13 +170,16 @@ class _Check:
                     "max_rank": rule.max_rank,
                     "rank": rank,
                     "verdict": verdict.value,
+                    "executions": len(executions),
+                    "failed_executions": len(failures),
+                    "failures": failures[:MAX_CRITICAL_FAILURES],
                 }
             )
             if verdict != Verdict.PASS:
                 self.flag(
                     verdict,
                     f"Critical query {rule.query_id}: document {rule.doc_id} "
-                    f"must appear in the top {rule.max_rank}; {detail}.",
+                    f"must appear in the top {rule.max_rank} on every execution; {detail}.",
                 )
         self.out["critical_queries"] = assertions
 
@@ -525,6 +540,63 @@ def _value(q: Mapping[str, Any], name: str) -> float | None:
         metrics = q.get("metrics")
         v = metrics.get(name) if metrics else None
     return None if v is None else float(v)
+
+
+def _missing_repeat_evidence(query: Mapping[str, Any], repeats: Any) -> str | None:
+    """Why a query's per-repeat rankings cannot support a critical check, if they cannot."""
+    recorded = query.get("repeat_ids")
+    if recorded is None:
+        return (
+            "the run has no per-repeat rankings (recorded by an older version); "
+            "re-run the candidate"
+        )
+    if isinstance(repeats, int) and len(recorded) != repeats:
+        return f"only {len(recorded)} of {repeats} repeat rankings were recorded"
+    if not recorded or recorded[0] != query["ids"]:
+        return "the per-repeat rankings do not match the recorded ranking"
+    return None
+
+
+def _executions(query: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every observed ranking: repeats of earlier failed attempts, then the final attempt.
+
+    ``attempt`` is set only when the query was retried, so plain runs read ``repeat n``.
+    """
+    final = query.get("attempt_count")
+    retried = isinstance(final, int) and final > 1
+    out: list[dict[str, Any]] = []
+    for attempt in query.get("attempts") or []:
+        result = attempt.get("result") or {}
+        if attempt.get("status") == "failed":
+            out += [
+                {"attempt": attempt.get("attempt"), "repeat": n, "ids": ids}
+                for n, ids in enumerate(result.get("repeat_ids") or [], 1)
+            ]
+    out += [
+        {"attempt": final if retried else None, "repeat": n, "ids": ids}
+        for n, ids in enumerate(query["repeat_ids"], 1)
+    ]
+    return out
+
+
+def execution_label(execution: Mapping[str, Any]) -> str:
+    """``repeat 2``, or ``attempt 1, repeat 2`` when the query was retried."""
+    repeat = f"repeat {execution['repeat']}"
+    attempt = execution.get("attempt")
+    return repeat if attempt is None else f"attempt {attempt}, {repeat}"
+
+
+def _critical_detail(failures: Sequence[Mapping[str, Any]], total: int) -> str:
+    if not failures:
+        return f"held on all {total} executions"
+    first = failures[0]
+    observed = (
+        f"observed rank {first['rank']}"
+        if first["rank"] is not None
+        else "document was not retrieved"
+    )
+    where = execution_label(first)
+    return f"failed on {len(failures)} of {total} executions; first at {where}: {observed}"
 
 
 def _unavailable(name: str) -> str:

@@ -91,11 +91,29 @@ def _check_query(q: Any, k: int) -> None:
     _expect(isinstance(q.get("tags", []), list), "tags must be a list")
     error = q.get("error")
     _expect(error is None or isinstance(error, dict), "error must be an object or null")
+    repeat_ids = q.get("repeat_ids")
+    _expect(repeat_ids is None or _rankings(repeat_ids, k), "repeat_ids must be rankings")
+    attempts = q.get("attempts", [])
+    _expect(isinstance(attempts, list), "attempts must be a list")
+    for attempt in attempts:
+        _expect(isinstance(attempt, dict), "attempts must be objects")
+        result = attempt.get("result")
+        _expect(result is None or isinstance(result, dict), "attempt result must be an object")
+        _expect(
+            result is None
+            or result.get("repeat_ids") is None
+            or _rankings(result["repeat_ids"], k),
+            "attempt repeat_ids must be rankings",
+        )
     if error is not None:
         return
     ids = q.get("ids")
     _expect(isinstance(ids, list) and all(isinstance(i, str) for i in ids), "ids must be strings")
     _expect(len(ids) <= k, "more ids than k")
+    _expect(
+        repeat_ids is None or (bool(repeat_ids) and repeat_ids[0] == ids),
+        "repeat_ids must start with the recorded ranking",
+    )
     exact = q.get("exact_ids")
     _expect(
         exact is None or (isinstance(exact, list) and all(isinstance(i, str) for i in exact)),
@@ -135,6 +153,13 @@ def _dict(data: dict[str, Any], key: str) -> dict[str, Any]:
     _expect(isinstance(value, dict), f"{key} must be an object")
     assert isinstance(value, dict)
     return value
+
+
+def _rankings(x: Any, k: int) -> bool:
+    """A list of per-execution rankings, each at most ``k`` document ids."""
+    return isinstance(x, list) and all(
+        isinstance(r, list) and len(r) <= k and all(isinstance(i, str) for i in r) for r in x
+    )
 
 
 def _count(x: Any) -> bool:

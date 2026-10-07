@@ -258,6 +258,8 @@ def _run_query(
             latencies.append((time.perf_counter() - t0) * 1000)
         ids = results[0]
         entry["ids"] = ids
+        # Every execution's ranking: critical-document checks must hold on each of them.
+        entry["repeat_ids"] = results
         entry["no_answer_correct"] = all(not r for r in results) if q.no_answer else None
         entry["forbidden_ids"] = sorted({doc for r in results for doc in r} & set(q.forbidden))
         entry["permission_checked"] = bool(q.forbidden)

@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from vectraudit import __version__
+from vectraudit.evaluation.compare import execution_label
 from vectraudit.evaluation.evidence import describe_evidence
 
 NONE = "\u2013"  # en dash for missing values
@@ -107,15 +108,7 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     if result["reasons"]:
         out += [f"- {_md(r['message'])}" for r in result["reasons"]] + [""]
     if result.get("critical_queries"):
-        out += [
-            "**Critical questions (recorded candidate ranking)**",
-            "",
-            _md_table(
-                ["Query", "Document", "Maximum rank", "Observed rank", "Verdict"],
-                _critical_rows(result),
-            ),
-            "",
-        ]
+        out += _critical_section(result, markdown=True)
     findings = result.get("findings") or []
     if findings:
         out += ["**Diagnosis**", ""]
@@ -261,17 +254,66 @@ def _release_line(result: Mapping[str, Any], *, plain: bool = False) -> str:
     return text if plain else _md(text)
 
 
+_CRITICAL_HEADER = ["Query", "Document", "Maximum rank", "Worst rank", "Executions", "Verdict"]
+_CRITICAL_FAILURE_HEADER = ["Query", "Document", "Execution", "Observed rank", "Observed ranking"]
+
+
 def _critical_rows(result: Mapping[str, Any]) -> list[list[str]]:
+    rows = []
+    for rule in result["critical_queries"]:
+        total = rule.get("executions", 0)
+        failed = rule.get("failed_executions", 0)
+        if not total:
+            executions = "No repeat evidence"
+        elif failed:
+            executions = f"{failed} of {total} failed"
+        else:
+            executions = f"all {total} held"
+        rows.append(
+            [
+                str(rule["query_id"]),
+                str(rule["doc_id"]),
+                str(rule["max_rank"]),
+                str(rule["rank"]) if rule["rank"] is not None else "Not observed",
+                executions,
+                str(rule["verdict"]),
+            ]
+        )
+    return rows
+
+
+def _critical_failure_rows(result: Mapping[str, Any]) -> list[list[str]]:
+    """Which executions broke a critical rule, with the ranking each one returned."""
     return [
         [
             str(rule["query_id"]),
             str(rule["doc_id"]),
-            str(rule["max_rank"]),
-            str(rule["rank"]) if rule["rank"] is not None else "Not observed",
-            str(rule["verdict"]),
+            execution_label(failure),
+            str(failure["rank"]) if failure["rank"] is not None else "Not observed",
+            _ids(failure["ids"], limit=10) or "(no results)",
         ]
         for rule in result["critical_queries"]
+        for failure in rule.get("failures") or []
     ]
+
+
+def _critical_section(result: Mapping[str, Any], *, markdown: bool) -> list[str]:
+    title = "Critical questions (every candidate execution)"
+    table = _md_table if markdown else _html_table
+    out = [f"**{title}**" if markdown else f"<h2>{_e(title)}</h2>"]
+    if markdown:
+        out.append("")
+    out.append(table(_CRITICAL_HEADER, _critical_rows(result)))
+    failures = _critical_failure_rows(result)
+    if failures:
+        caption = "Failing executions"
+        if markdown:
+            out += ["", f"_{caption}_", "", _md_table(_CRITICAL_FAILURE_HEADER, failures)]
+        else:
+            out += [f"<h3>{caption}</h3>", _html_table(_CRITICAL_FAILURE_HEADER, failures, (4,))]
+    if markdown:
+        out.append("")
+    return out
 
 
 def render_html(result: Mapping[str, Any]) -> str:
@@ -298,13 +340,7 @@ def render_html(result: Mapping[str, Any]) -> str:
         )
         parts.append(f'<h2>Why</h2><ul class="reasons">{items}</ul>')
     if result.get("critical_queries"):
-        parts += [
-            "<h2>Critical questions (recorded candidate ranking)</h2>",
-            _html_table(
-                ["Query", "Document", "Maximum rank", "Observed rank", "Verdict"],
-                _critical_rows(result),
-            ),
-        ]
+        parts += _critical_section(result, markdown=False)
     if result.get("findings"):
         parts.append("<h2>Diagnosis</h2>")
         parts.append(

@@ -80,6 +80,7 @@ def test_pool_candidates_and_runs(inputs, tmp_path):
     task = pool(dataset, corpus, runs=[path, path], lexical=False, k=3)
     assert all(len(q.documents) == 3 for q in task.queries)
     result.run["queries"][0]["ids"] = ["chunk-id"]
+    result.run["queries"][0]["repeat_ids"] = [["chunk-id"]]
     save_run(result.run, path)
     with pytest.raises(ValueError, match="source documents"):
         pool(dataset, corpus, runs=[path])
