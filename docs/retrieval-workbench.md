@@ -41,10 +41,79 @@ a pipeline to a measured fix without editing JSON files:
    invalid JSON block saving. Saved benchmarks are versioned in `DIR/.workbench/drafts/`.
    A save based on an older revision is rejected rather than overwriting newer edits.
 3. **Evaluate & inspect.** Runs execute in a single local worker with progress and
-   cancellation. Cancelled runs are not saved. Completed runs are written to `DIR` as
+   cancellation. Query progress survives cancellation and server restarts in
+   `DIR/.workbench/evaluations/`; **Saved progress** resumes the original settings.
+   Cancelled evaluations remain checkpoints rather than release artifacts. Completed runs are written to `DIR` as
    ordinary `*.run.json` files, so **Inspect failures** opens them in the detailed trace view.
 4. **Compare a fix.** Choose a baseline and a candidate, run the release comparison
    (saved as `*.check.json`), and work through the ranked findings.
+
+### Resume an evaluation
+
+Every guided evaluation and `workbench run` writes a local SQLite checkpoint before
+and after each query. Resume skips successful queries and leaves recorded failures
+unchanged unless you explicitly select **Retry failed queries too** or pass
+`--retry-errors`. Previous attempt results, sanitized errors, elapsed time and attempt
+counts remain in the exported query evidence. An interrupted attempt has a start time
+but no fabricated duration or result.
+
+The CLI prints a checkpoint directory. Keep that directory and resume the same manifest:
+
+```sh
+vectraudit workbench run manifest.json --out workbench-runs
+# After interruption, use the exact directory printed by the first command:
+vectraudit workbench run manifest.json --out workbench-runs --resume workbench-runs/.checkpoints/BATCH_ID
+# Explicitly retry recorded failures as well:
+vectraudit workbench run manifest.json --out workbench-runs --resume workbench-runs/.checkpoints/BATCH_ID --retry-errors
+```
+
+In the browser, reopen **Evaluate & inspect → Saved progress → Resume evaluation**.
+You do not need to rebuild the editor state. The saved draft revision and evaluation
+settings are revalidated, and remote transfers and held-out evaluation require fresh
+confirmation. Changing the original draft requires a new evaluation. Reloading while
+a job is still active also offers **View progress**.
+
+Resume rejects changed dataset content, candidate configuration, corpus version,
+query execution options, local adapter/evaluator source, Python/runtime details or
+installed package versions. For Python and HTTP candidates, declare an immutable
+`pipeline_version` on the **candidate**, and `corpus_version` on the **manifest**, before
+starting the evaluation:
+
+```json
+{
+  "dataset": "queries.jsonl",
+  "corpus_version": "corpus-snapshot-2026-10-07",
+  "candidates": [{
+    "name": "production",
+    "pipeline_version": "deployment-42-model-v3",
+    "adapter": {"kind": "python", "target": "my_pipeline:retrieve"}
+  }]
+}
+```
+
+The pipeline version must cover external deployment, model, prompts, dependencies and
+other behavior not captured in the local adapter file. The corpus version must identify
+a fixed snapshot, not a mutable alias. Vectraudit cannot detect remote changes behind
+an unchanged version string. Built-in hybrid adapters derive corpus identity from the
+actual documents. Unversioned custom adapters can still run, but cannot resume safely.
+
+The Python API accepts `checkpoint=Path(...)`, `resume=True`, and `retry_errors=True`
+on `execute_pipeline`; custom callers supply `config={"pipeline_version": "..."}`
+and `corpus_version="..."`. Retry requires resume. Checkpoints are protected against
+concurrent writers; existing checkpoints cannot be accidentally replaced by a new run.
+
+A crash can occur after an adapter received a query but before its result was committed.
+That one unfinished query, including its warmup/repeats, may execute again. This is
+query-level recovery, not exactly-once remote execution. Successful query samples retain
+their original timings; `timing.wall_s` covers the latest invocation. A resumed evaluation
+keeps its run ID. Incomplete or failed query results never become a passing release check.
+
+Keep checkpoints on a local filesystem alongside the artifacts. The journal contains
+retrieval evidence; browser recovery metadata also retains the supplied built-in corpus.
+A missing/corrupt started journal fails closed: restore it or start a new evaluation.
+The guided editor retains its 500-question limit; the CLI supports larger datasets.
+Optimization, scheduled monitoring, and connector-only evaluation do not yet use this
+checkpoint workflow.
 
 ### Findings
 
