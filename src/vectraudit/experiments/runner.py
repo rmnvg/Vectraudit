@@ -180,6 +180,7 @@ def run_candidate(
                 "tags": list(q.tags),
                 "filtered": False,
                 "ids": docs,
+                "repeat_ids": [docs],
                 "no_answer_correct": not docs if q.no_answer else None,
                 "forbidden_ids": sorted(set(docs) & set(q.forbidden)),
                 "permission_checked": bool(q.forbidden),

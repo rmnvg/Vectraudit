@@ -35,7 +35,24 @@ export interface Triage {
 }
 export interface Comparison {
   baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }; policy: PolicyRef
-  check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: { query_id: string; doc_id: string; max_rank: number; rank: number | null; verdict: string }[] }
+  check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: CriticalResult[] }
+}
+export interface CriticalExecution { attempt: number | null; repeat: number; rank: number | null; ids: string[] }
+export interface CriticalResult {
+  query_id: string; doc_id: string; max_rank: number; rank: number | null; verdict: string
+  executions?: number; failed_executions?: number; failures?: CriticalExecution[]
+}
+
+/** How a critical rule held across every recorded candidate execution. */
+export function criticalSummary(rule: CriticalResult): string {
+  const total = rule.executions ?? 0
+  if (!total) return 'no per-repeat evidence'
+  const failed = rule.failed_executions ?? 0
+  return failed ? `failed on ${failed} of ${total} executions` : `held on all ${total} executions, worst rank ${rule.rank}`
+}
+
+export function executionLabel(execution: CriticalExecution): string {
+  return execution.attempt === null ? `Repeat ${execution.repeat}` : `Attempt ${execution.attempt}, repeat ${execution.repeat}`
 }
 
 export async function guidedRequest<T>(path: string, token = '', body?: unknown, signal?: AbortSignal): Promise<T> {

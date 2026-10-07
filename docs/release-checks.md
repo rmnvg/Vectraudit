@@ -248,7 +248,22 @@ candidate retrieves `current-guide` in the top three results for `invoice`:
 The workbench's release policy editor provides **Add critical assertion** and preserves
 these rules through JSON import, policy versions and release-check export. The browser,
 CLI, hosted checks and CI use the same comparison engine. JSON results include each rule's
-observed rank and verdict; HTML and Markdown reports include passed and failed assertions.
+verdict, the worst observed rank, the number of executions checked, and up to ten failing
+executions with their repeat (and attempt, for retried queries) and observed ranking. HTML and
+Markdown reports include passed and failed assertions and a table of failing executions.
+
+### Every repeat counts
+
+Runs record one ranking per execution (`repeat_ids`), and a critical document must meet its
+rank on **every** repeat, not just the first. A document ranked #2 on the first execution
+that disappears on the second fails the check. For checkpointed pipeline evaluations,
+rankings returned before a query failed are kept in its attempt history, and a retried query
+is judged on those rankings as well as the retry's, so a retry cannot hide a bad observation.
+
+Runs recorded before this check existed carry no per-repeat rankings, so a critical
+assertion against them is not comparable rather than passing; re-run the candidate. The same
+applies when fewer rankings are recorded than the run's `timing.repeats`, or when the first
+per-repeat ranking does not match the recorded ranking.
 
 These are absolute requirements on the candidate, even if the baseline also fails, average
 quality improves or `require_significance` is enabled. A missing document or rank beyond the

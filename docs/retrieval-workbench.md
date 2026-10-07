@@ -54,8 +54,9 @@ Every guided evaluation and `workbench run` writes a local SQLite checkpoint bef
 and after each query. Resume skips successful queries and leaves recorded failures
 unchanged unless you explicitly select **Retry failed queries too** or pass
 `--retry-errors`. Previous attempt results, sanitized errors, elapsed time and attempt
-counts remain in the exported query evidence. An interrupted attempt has a start time
-but no fabricated duration or result.
+counts remain in the exported query evidence, including the rankings a failed attempt
+returned before it failed; critical-question checks judge those rankings as well as the
+retry's. An interrupted attempt has a start time but no fabricated duration or result.
 
 The CLI prints a checkpoint directory. Keep that directory and resume the same manifest:
 

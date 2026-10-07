@@ -13,7 +13,7 @@ from vectraudit.cli import app
 from vectraudit.core.jobs import JobCancelledError
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import parse_dataset
-from vectraudit.evaluation.policy import Policy
+from vectraudit.evaluation.policy import CriticalQueryRule, Policy
 from vectraudit.evaluation.runfile import check_run
 from vectraudit.labelling.storage import TaskBusy, task_lock
 from vectraudit.pipelines.checkpoint import checkpoint_state
@@ -276,3 +276,72 @@ def test_missing_started_cli_checkpoint_fails_closed(tmp_path):
     assert result.exit_code == 2
     assert "checkpoint is missing" in result.output
     assert len(list(out.glob("*.run.json"))) == 1
+
+
+class Flaky:
+    """Returns ``guide`` on the first call per query, then drops it; optionally fails once."""
+
+    def __init__(self, fail_after_first=False):
+        self.calls = {}
+        self.fail_after_first = fail_after_first
+
+    def __call__(self, request):
+        n = self.calls[request.query_id] = self.calls.get(request.query_id, 0) + 1
+        if self.fail_after_first and n == 2:
+            raise RuntimeError("transient")
+        ids = ["intro", "guide"] if n == 1 else ["intro", "other"]
+        return PipelineResult(hits=[{"id": i} for i in ids])
+
+
+def critical(max_rank=2):
+    return Policy(
+        metrics=(),
+        critical_queries=(CriticalQueryRule("0", "guide", max_rank),),
+    )
+
+
+def test_critical_documents_are_checked_on_every_repeat_through_resume(tmp_path):
+    path = tmp_path / "run.sqlite"
+    options = PipelineOptions(warmup=0, repeats=2, k=2)
+
+    def cancel(done, total):
+        if done == 1:
+            raise JobCancelledError()
+
+    partial = execute_pipeline(dataset(2), Flaky(), options, checkpoint=path, progress=cancel)
+    assert partial["status"] == "cancelled"
+    run = execute_pipeline(dataset(2), Flaky(), options, checkpoint=path, resume=True)
+    query = check_run(run)["queries"][0]
+    assert query["repeat_ids"] == [["intro", "guide"], ["intro", "other"]]
+    result = compare_runs(run, run, critical())
+    assert result["verdict"] == "fail"
+    assert result["critical_queries"][0]["failures"] == [
+        {"attempt": None, "repeat": 2, "ids": ["intro", "other"], "rank": None}
+    ]
+
+
+def test_retry_cannot_hide_a_ranking_observed_before_the_failure(tmp_path):
+    path = tmp_path / "run.sqlite"
+    options = PipelineOptions(warmup=0, repeats=2, k=2)
+    pipe = Flaky(fail_after_first=True)
+    first = execute_pipeline(dataset(1), pipe, options, checkpoint=path)
+    assert first["queries"][0]["error"]
+    assert first["queries"][0]["repeat_ids"] == [["intro", "guide"]]
+    pipe.calls.clear()
+    pipe.fail_after_first = False
+    retried = execute_pipeline(
+        dataset(1), pipe, options, checkpoint=path, resume=True, retry_errors=True
+    )
+    query = check_run(retried)["queries"][0]
+    assert query["attempt_count"] == 2
+    assert query["attempts"][0]["result"]["repeat_ids"] == [["intro", "guide"]]
+    # The rule holds on the failed attempt's ranking but not on the retry's second repeat.
+    rule = compare_runs(retried, retried, critical())["critical_queries"][0]
+    assert rule["executions"] == 3
+    assert [(f["attempt"], f["repeat"]) for f in rule["failures"]] == [(2, 2)]
+    # A ranking lost on the failed attempt keeps failing after a clean retry.
+    query["attempts"][0]["result"]["repeat_ids"] = [["intro", "other"]]
+    query["repeat_ids"] = [["intro", "guide"]] * 2
+    query["ids"] = ["intro", "guide"]
+    rule = compare_runs(retried, retried, critical())["critical_queries"][0]
+    assert [(f["attempt"], f["repeat"]) for f in rule["failures"]] == [(1, 1)]

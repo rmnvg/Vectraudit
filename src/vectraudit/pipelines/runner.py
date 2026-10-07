@@ -164,6 +164,7 @@ def _execute(
                 "evidence": None,
                 "error": None,
             }
+            rankings: list[list[str]] = []
             try:
                 if index < options.warmup:
                     pipeline(request.model_copy(deep=True))
@@ -177,10 +178,12 @@ def _execute(
                     if len(result.hits) > options.k:
                         raise ValueError("pipeline returned more than k results")
                     results.append(result)
+                    rankings.append([h.id for h in result.hits])
                 result = results[0]
                 ids = [h.id for h in result.hits]
                 entry.update(
                     ids=ids,
+                    repeat_ids=rankings,
                     latency_ms=statistics.median(samples),
                     latency_samples_ms=samples,
                     metrics=semantic_metrics(ids, q.relevant, options.k) if q.relevant else None,
@@ -223,6 +226,9 @@ def _execute(
                     "message": "Pipeline call or response validation failed.",
                     "hint": "Validate the adapter locally against PipelineRequest/PipelineResult.",
                 }
+                # Rankings observed before the failure stay in the attempt history, so a
+                # retry cannot hide a critical document that went missing.
+                entry["repeat_ids"] = rankings or None
             entry["attempt_count"] = attempt
             entry["elapsed_ms"] = (time.perf_counter() - query_start) * 1000
             if journal:
