@@ -1,0 +1,13 @@
+{"query_id": "recover-account", "text": "Recover account without phone", "relevant": {"account-recovery": 2}, "context": {"tenant": "acme"}, "tags": ["security"], "forbidden": ["account-recovery-archive", "account-recovery-other"], "filter": {"current": true}}
+{"query_id": "download-invoice", "text": "Download monthly invoice PDF", "relevant": {"invoice-download": 2}, "context": {"tenant": "acme"}, "tags": ["billing"], "forbidden": ["invoice-download-archive", "invoice-download-other"], "filter": {"current": true}}
+{"query_id": "rotate-token", "text": "Rotate API token safely", "relevant": {"token-rotation": 2}, "context": {"tenant": "acme"}, "tags": ["security"], "forbidden": ["token-rotation-archive", "token-rotation-other"], "filter": {"current": true}}
+{"query_id": "invite-member", "text": "Invite teammate to workspace", "relevant": {"member-invite": 2}, "context": {"tenant": "acme"}, "tags": ["access"], "filter": {"current": true}}
+{"query_id": "export-audit", "text": "Export audit log CSV", "relevant": {"audit-export": 2}, "context": {"tenant": "acme"}, "tags": ["security"], "filter": {"current": true}}
+{"query_id": "webhook-retries", "text": "Webhook retry schedule", "relevant": {"webhook-retry": 2}, "context": {"tenant": "acme"}, "tags": ["integrations"], "filter": {"current": true}}
+{"query_id": "enforce-sso", "text": "Enforce SSO for members", "relevant": {"sso-enforcement": 2}, "context": {"tenant": "acme"}, "tags": ["security"], "filter": {"current": true}}
+{"query_id": "archive-project", "text": "Archive project without deleting data", "relevant": {"project-archive": 2}, "context": {"tenant": "acme"}, "tags": ["projects"], "filter": {"current": true}}
+{"query_id": "set-retention", "text": "Configure audit retention period", "relevant": {"retention-policy": 2}, "context": {"tenant": "acme"}, "tags": ["security"], "filter": {"current": true}}
+{"query_id": "usage-limit", "text": "What happens at API usage limit", "relevant": {"usage-limits": 2}, "context": {"tenant": "acme"}, "tags": ["integrations"], "filter": {"current": true}}
+{"query_id": "billing-email", "text": "Change billing contact email", "relevant": {"billing-contact": 2}, "context": {"tenant": "acme"}, "tags": ["billing"], "filter": {"current": true}}
+{"query_id": "refresh-document", "text": "Refresh uploaded document after edits", "relevant": {"document-refresh": 2}, "context": {"tenant": "acme"}, "tags": ["documents"], "filter": {"current": true}}
+{"query_id": "unsupported-quantum", "text": "Quantum entanglement calibration", "no_answer": true, "context": {"tenant": "acme"}, "tags": ["no-answer"], "filter": {"current": true}}

@@ -83,6 +83,7 @@ include = [
     "/tests",
     "/examples/*.py",
     "/examples/workbench/**",
+    "/examples/reference_search/**",
     "/examples/*.ipynb",
     "/benchmarks",
     "/README.md",

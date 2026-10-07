@@ -201,6 +201,9 @@ saved baselines, measurement methodology, caching and limitations.
 - [Launch readiness](docs/launch-readiness.md): validation and pilot acceptance evidence
 - [Pilot release rehearsal](docs/pilot-release-validation.md): reproduce an improving-average
   regression, inspect a critical repeat failure, and verify the fix through exported checks
+- [Reference support search](examples/reference_search/README.md): measure a real BM25/filter
+  regression on fictional documents, compare independent application revisions, and inspect
+  the exported reports (proposed labels await human review)
 
 ## Development
 

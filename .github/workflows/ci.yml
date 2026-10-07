@@ -118,16 +118,27 @@ jobs:
           uv venv "$RUNNER_TEMP/wheel-smoke"
           uv pip install --python "$RUNNER_TEMP/wheel-smoke/bin/python" dist/*.whl faiss-cpu httpx
           "$RUNNER_TEMP/wheel-smoke/bin/python" -I tests/package_smoke.py
+      - name: Reference search with installed wheel and independent application revisions
+        run: |
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -I examples/real_pipeline_case_study.py --out "$RUNNER_TEMP/reference-search"
+      - name: Preserve reference search reports and reproduction inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-search-case-study
+          path: ${{ runner.temp }}/reference-search
+          if-no-files-found: warn
 
   e2e:
     name: Browser smoke test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync --extra faiss-cpu --locked
+      - run: uv sync --extra faiss-cpu --extra dev --locked
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -138,9 +149,46 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Install browsers
+      - name: Configure bounded Ubuntu dependency downloads
+        timeout-minutes: 1
+        run: |
+          # Hosted runners can retry a stalled Azure APT mirror for tens of minutes.
+          # Keep the existing suites/components, but use the official HTTPS mirrors.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+
+          paths = [Path('/etc/apt/sources.list'), Path('/etc/apt/apt-mirrors.txt'),
+                   Path('/etc/apt/security-mirrors.txt')]
+          paths += list(Path('/etc/apt/sources.list.d').glob('*.list'))
+          paths += list(Path('/etc/apt/sources.list.d').glob('*.sources'))
+          for path in paths:
+              if not path.is_file():
+                  continue
+              original = path.read_text()
+              updated = original
+              for scheme in ('http', 'https'):
+                  updated = updated.replace(f'{scheme}://azure.archive.ubuntu.com/ubuntu',
+                                            'https://archive.ubuntu.com/ubuntu')
+              updated = updated.replace('http://archive.ubuntu.com/ubuntu',
+                                        'https://archive.ubuntu.com/ubuntu')
+              updated = updated.replace('http://security.ubuntu.com/ubuntu',
+                                        'https://security.ubuntu.com/ubuntu')
+              if updated != original:
+                  path.write_text(updated)
+          Path('/etc/apt/apt.conf.d/99-vectraudit-ci').write_text(
+              'Acquire::Retries "1";\n'
+              'Acquire::http::Timeout "20";\n'
+              'Acquire::https::Timeout "20";\n'
+          )
+          PY
+      - name: Install browser system dependencies
+        timeout-minutes: 6
         working-directory: frontend
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install-deps chromium firefox webkit
+      - name: Download browsers
+        timeout-minutes: 5
+        working-directory: frontend
+        run: npx playwright install chromium firefox webkit
       - name: Run smoke tests
         working-directory: frontend
         run: npm run e2e
@@ -160,6 +208,17 @@ jobs:
           VECTRAUDIT_LOOKUP_SMOKE: "1"
       - name: Release policy and exported release check journey
         run: node scripts/release_smoke.mjs
+      - name: Reference search browser comparison and export
+        run: node scripts/reference_search_smoke.mjs
+        env:
+          VECTRAUDIT_REFERENCE_SMOKE_DIR: ${{ runner.temp }}/reference-browser
+      - name: Preserve reference browser screenshots and trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-search-browser
+          path: ${{ runner.temp }}/reference-browser
+          if-no-files-found: warn
       - name: Local labelling browser regression
         run: node scripts/labelling_smoke.mjs
       - uses: actions/upload-artifact@v4

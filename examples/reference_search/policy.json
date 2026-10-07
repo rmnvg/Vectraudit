@@ -1,0 +1,7 @@
+{
+  "metrics": {"ndcg": {"max_drop": 0}, "recall": {"max_drop": 0}},
+  "min_queries": 12,
+  "critical_queries": [
+    {"query_id": "recover-account", "doc_id": "account-recovery", "max_rank": 1}
+  ]
+}

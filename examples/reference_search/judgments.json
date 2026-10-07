@@ -1,0 +1,96 @@
+{
+  "provenance": "AI-authored fictional support documents and proposed relevance judgments; no customer data or human review claimed.",
+  "version": "support-reference-v1",
+  "review_status": "pending_human_review",
+  "judgments": [
+    {
+      "query_id": "recover-account",
+      "doc_id": "account-recovery",
+      "proposed_grade": 2,
+      "evidence": "Account recovery when a phone is lost. Use a saved recovery code to sign in, then enroll a replacement device. Ask a workspace owner to verify your identity if no code remains.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "download-invoice",
+      "doc_id": "invoice-download",
+      "proposed_grade": 2,
+      "evidence": "Monthly billing invoices. Open Billing, select the billing month and choose Download PDF. Only billing administrators can access invoices.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "rotate-token",
+      "doc_id": "token-rotation",
+      "proposed_grade": 2,
+      "evidence": "API token rotation. Create a replacement token with the same scopes, deploy it to your clients, verify requests succeed, then revoke the previous token.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "invite-member",
+      "doc_id": "member-invite",
+      "proposed_grade": 2,
+      "evidence": "Invite a teammate. Workspace owners open Members and enter the teammate email address. An invitation expires after seven days and can be resent.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "export-audit",
+      "doc_id": "audit-export",
+      "proposed_grade": 2,
+      "evidence": "Export audit logs. In Security, open Audit Log, select a date range and choose CSV export. Only workspace owners can export the records.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "webhook-retries",
+      "doc_id": "webhook-retry",
+      "proposed_grade": 2,
+      "evidence": "Webhook retries use exponential backoff. Failed deliveries are retried after one minute, five minutes and thirty minutes. A successful response stops retries.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "enforce-sso",
+      "doc_id": "sso-enforcement",
+      "proposed_grade": 2,
+      "evidence": "Enforce single sign-on. Verify the identity provider connection in a second browser session before enabling Require SSO. Keep an emergency owner recovery code offline.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "archive-project",
+      "doc_id": "project-archive",
+      "proposed_grade": 2,
+      "evidence": "Archive a project from Project Settings. Archived projects become read-only while their documents and history remain available. An owner can restore the project.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "set-retention",
+      "doc_id": "retention-policy",
+      "proposed_grade": 2,
+      "evidence": "Configure audit retention in Security Settings. Select the retention period and save. The scheduled purge removes older events; exports already downloaded are unaffected.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "usage-limit",
+      "doc_id": "usage-limits",
+      "proposed_grade": 2,
+      "evidence": "API usage limits apply per workspace. Requests exceeding the limit return HTTP 429 with a Retry-After header. Wait for that interval before retrying.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "billing-email",
+      "doc_id": "billing-contact",
+      "proposed_grade": 2,
+      "evidence": "Change the billing contact in Billing Settings. Save the new email address and confirm it using the verification link. Future receipts go to the confirmed address.",
+      "status": "pending_human_review"
+    },
+    {
+      "query_id": "refresh-document",
+      "doc_id": "document-refresh",
+      "proposed_grade": 2,
+      "evidence": "Refresh an uploaded document by uploading its new version under the existing document ID. Indexing runs asynchronously. Wait for Ready status before evaluating retrieval.",
+      "status": "pending_human_review"
+    }
+  ],
+  "no_answer_review": {
+    "query_id": "unsupported-quantum",
+    "status": "pending_human_review",
+    "rationale": "No document covers quantum physics."
+  }
+}

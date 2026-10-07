@@ -1,0 +1,18 @@
+{"doc_id": "account-recovery", "text": "Account recovery when a phone is lost. Use a saved recovery code to sign in, then enroll a replacement device. Ask a workspace owner to verify your identity if no code remains.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "invoice-download", "text": "Monthly billing invoices. Open Billing, select the billing month and choose Download PDF. Only billing administrators can access invoices.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "token-rotation", "text": "API token rotation. Create a replacement token with the same scopes, deploy it to your clients, verify requests succeed, then revoke the previous token.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "member-invite", "text": "Invite a teammate. Workspace owners open Members and enter the teammate email address. An invitation expires after seven days and can be resent.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "audit-export", "text": "Export audit logs. In Security, open Audit Log, select a date range and choose CSV export. Only workspace owners can export the records.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "webhook-retry", "text": "Webhook retries use exponential backoff. Failed deliveries are retried after one minute, five minutes and thirty minutes. A successful response stops retries.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "sso-enforcement", "text": "Enforce single sign-on. Verify the identity provider connection in a second browser session before enabling Require SSO. Keep an emergency owner recovery code offline.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "project-archive", "text": "Archive a project from Project Settings. Archived projects become read-only while their documents and history remain available. An owner can restore the project.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "retention-policy", "text": "Configure audit retention in Security Settings. Select the retention period and save. The scheduled purge removes older events; exports already downloaded are unaffected.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "usage-limits", "text": "API usage limits apply per workspace. Requests exceeding the limit return HTTP 429 with a Retry-After header. Wait for that interval before retrying.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "billing-contact", "text": "Change the billing contact in Billing Settings. Save the new email address and confirm it using the verification link. Future receipts go to the confirmed address.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "document-refresh", "text": "Refresh an uploaded document by uploading its new version under the existing document ID. Indexing runs asynchronously. Wait for Ready status before evaluating retrieval.", "metadata": {"tenant": "acme", "current": true}}
+{"doc_id": "account-recovery-archive", "text": "Recover account without phone", "metadata": {"tenant": "acme", "current": false}}
+{"doc_id": "account-recovery-other", "text": "Recover account without phone", "metadata": {"tenant": "other", "current": true}}
+{"doc_id": "invoice-download-archive", "text": "Download monthly invoice PDF", "metadata": {"tenant": "acme", "current": false}}
+{"doc_id": "invoice-download-other", "text": "Download monthly invoice PDF", "metadata": {"tenant": "other", "current": true}}
+{"doc_id": "token-rotation-archive", "text": "Rotate API token safely", "metadata": {"tenant": "acme", "current": false}}
+{"doc_id": "token-rotation-other", "text": "Rotate API token safely", "metadata": {"tenant": "other", "current": true}}
