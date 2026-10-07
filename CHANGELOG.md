@@ -8,6 +8,19 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Pilot release rehearsal (`examples/pilot_release_demo.py`): synthetic improving-average
+  regression, a critical miss on repeat 2, and a passing fix. The installed-wheel smoke
+  now exercises guided comparison, export, independent checkout execution and JSON/HTML/
+  Markdown reports, checking policy and verdict parity and missing-benchmark rejection.
+- Interrupted workbench restart/resume browser coverage in the main and tagged-release CI.
+- Durable evaluation checkpoints with browser/CLI resume, explicit failed-query retry,
+  and preserved attempt history. Critical-question gates inspect every recorded repeat
+  and prior attempt; missing repeat evidence cannot pass.
+- Versioned release policies shared by guided comparison, case verification and exported
+  CLI/CI checks; exports bind a frozen benchmark and approved policy to pipeline execution.
+- Explicit pipeline connection diagnostics with bounded live execution and actionable
+  capability/error results in the workbench.
+
 - Registered document lookup for passage review: fetch bounded, context-scoped passages
   without importing a full corpus, inspect content versions, and reject mismatched snapshots.
 
