@@ -65,7 +65,24 @@ message and next action. Unclassified exceptions and unknown adapter codes remai
 `summary.errors_by_code`, counting each currently failed query once. Historical failed
 attempts remain in the checkpoint evidence but leave this count after a successful retry.
 A failed query still makes the run partial and prevents a passing release check.
-Retries are explicit through resume; automatic retry/backoff is not implemented yet.
+
+Transient failures retry automatically within a declared budget: `timeout`,
+`connection_failed`, `http_rate_limit` (HTTP 429) and `http_unavailable` (HTTP 502, 503 or
+504). Each pipeline call (warm-up or repeat) gets up to three tries, waiting 1 s, then 2 s
+(doubling, capped at 30 s), or as long as the endpoint's `Retry-After` asks. A `Retry-After`
+longer than the cap is not waited for. At most 100 retries happen per run invocation, so an
+endpoint that is down fails quickly instead of stalling CI. Authentication, 404, invalid
+responses and unclassified exceptions are never retried. Python adapters opt in by raising
+`PipelineCallError` with one of these codes.
+
+Each retry is recorded on its query (`retries`: call, code and delay) and counted in
+`summary.retries_by_code`; the policy is saved in `timing.retry`. Latency samples measure
+only the successful call. A query whose calls still fail keeps its cause and leaves the run
+partial; retries never turn missing evidence into a pass. Cancelling during a backoff wait
+stops the run promptly. On the command line, `--max-attempts 1` disables automatic retries
+and `--retry-budget N` changes the per-run limit; both are frozen into the checkpoint, so a
+resume must use the same values. Guided evaluations, release exports and optimization use
+the defaults; plain `RunOptions` in the Python API do not retry.
 
 The CLI prints a checkpoint directory. Keep that directory and resume the same manifest:
 

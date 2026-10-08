@@ -6,9 +6,16 @@ from __future__ import annotations
 class PipelineCallError(ValueError):
     """A known failure category, compatible with existing ValueError handlers."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, retry_after: float | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.retry_after = retry_after
+        """Seconds the endpoint asked us to wait (``Retry-After``), when it said."""
+
+
+# Transient categories that runs retry automatically within their retry budget. Retrieval
+# calls are reads, so repeating one cannot change what the benchmark measures.
+RETRYABLE = frozenset({"timeout", "connection_failed", "http_rate_limit", "http_unavailable"})
 
 
 # Only these stable categories may be persisted; adapters can supply arbitrary codes.
@@ -36,7 +43,13 @@ CALL_FAILURES = {
     ),
     "http_rate_limit": (
         "The endpoint rate-limited the request (HTTP 429).",
-        "Wait before retrying and check the endpoint's quota. Runs do not retry automatically.",
+        "Runs retry within their retry budget and honour Retry-After; if it persists, check "
+        "the endpoint's quota or lower the request rate.",
+    ),
+    "http_unavailable": (
+        "The endpoint was temporarily unavailable (HTTP 502, 503 or 504).",
+        "Runs retry within their retry budget; if it persists, check the deployment's health "
+        "and load.",
     ),
     "http_error": (
         "The endpoint returned an HTTP error.",

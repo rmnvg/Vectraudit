@@ -314,6 +314,9 @@ def summarize(queries: Sequence[Mapping[str, Any]], n_queries: int) -> dict[str,
             )
         ),
         "error_rate": n_errors / len(queries) if queries else 0.0,
+        "retries_by_code": dict(
+            sorted(Counter(r["code"] for q in queries for r in q.get("retries", [])).items())
+        ),
         "n_labelled": len(labelled),
         "n_labelled_families": family_count(labelled),
         "metrics": (

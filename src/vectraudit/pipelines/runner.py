@@ -5,7 +5,7 @@ from __future__ import annotations
 import statistics
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +15,44 @@ from vectraudit.evaluation.metrics import semantic_metrics
 from vectraudit.evaluation.runner import RunOptions, _skeleton, summarize
 from vectraudit.labelling.storage import task_lock
 from vectraudit.pipelines.checkpoint import Checkpoint, identity, validate_path
-from vectraudit.pipelines.errors import run_failure
+from vectraudit.pipelines.errors import RETRYABLE, PipelineCallError, run_failure
 from vectraudit.pipelines.models import PipelineRequest, PipelineResult
 from vectraudit.pipelines.runtime import Pipeline
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """Automatic retries of transient call failures (:data:`RETRYABLE` codes only).
+
+    Each pipeline call (warm-up or repeat) gets up to ``max_attempts`` tries, waiting
+    ``base_delay_s * 2**n`` between them (capped at ``max_delay_s``), or longer when the
+    endpoint sends ``Retry-After``. A ``Retry-After`` above ``max_delay_s`` is not waited for:
+    the call fails with its cause. ``max_retries`` bounds retries across one
+    run invocation, so an endpoint that is down fails quickly instead of stalling CI. A query
+    whose call still fails stays failed: retries never turn missing evidence into a pass.
+    """
+
+    max_attempts: int = 3
+    base_delay_s: float = 1.0
+    max_delay_s: float = 30.0
+    max_retries: int = 100
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.max_attempts <= 10:
+            raise ValueError("max_attempts must be between 1 and 10")
+        if not 0 <= self.base_delay_s <= self.max_delay_s <= 300:
+            raise ValueError("Require 0 <= base_delay_s <= max_delay_s <= 300 seconds")
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
+
+    def delay(self, retry: int, requested: float | None) -> float | None:
+        """Seconds before retry number ``retry`` (0-based); ``None`` if beyond the cap."""
+        if requested is not None and requested > self.max_delay_s:
+            return None
+        return min(max(self.base_delay_s * 2.0**retry, requested or 0.0), self.max_delay_s)
+
+
+NO_RETRY = RetryPolicy(max_attempts=1)
 
 
 @dataclass(frozen=True)
@@ -25,6 +60,50 @@ class PipelineOptions(RunOptions):
     """Pipeline parameters may include named rerankers and other nonnumeric choices."""
 
     params: Mapping[str, Any] = field(default_factory=dict)
+    retry: RetryPolicy = field(default_factory=RetryPolicy)
+
+
+@dataclass
+class _Calls:
+    """Invoke one query's pipeline calls, retrying transient failures within the budget."""
+
+    pipeline: Pipeline
+    request: PipelineRequest
+    policy: RetryPolicy
+    budget: list[int]
+    """Retries left in this run invocation, shared by every query."""
+    retries: list[dict[str, Any]]
+    progress: Callable[[int, int], None] | None
+    index: int
+    total: int
+
+    def __call__(self, label: str) -> tuple[Any, float]:
+        """Return the call's result and its start time; re-raise once retries are spent."""
+        tries = 0
+        while True:
+            t0 = time.perf_counter()
+            try:
+                return self.pipeline(self.request.model_copy(deep=True)), t0
+            except PipelineCallError as exc:
+                tries += 1
+                wait = (
+                    self.policy.delay(tries - 1, exc.retry_after)
+                    if exc.code in RETRYABLE and tries < self.policy.max_attempts
+                    else None
+                )
+                if wait is None or self.budget[0] <= 0:
+                    raise
+                self.budget[0] -= 1
+                self.retries.append({"call": label, "code": exc.code, "delay_s": wait})
+                self._wait(wait)
+
+    def _wait(self, seconds: float) -> None:
+        # Sleep in short slices; progress callbacks raise when the job is cancelled.
+        deadline = time.monotonic() + seconds
+        while (left := deadline - time.monotonic()) > 0:
+            if self.progress is not None:
+                self.progress(self.index, self.total)
+            time.sleep(min(left, 0.2))
 
 
 def failure_analysis(result: PipelineResult, relevant: dict[str, float]) -> list[dict[str, Any]]:
@@ -130,9 +209,16 @@ def _execute(
         "stage_traces": False,
     }
     record["timing"]["scope"] = "complete pipeline call; client wall clock; serial queries"
+    policy = options.retry if isinstance(options, PipelineOptions) else NO_RETRY
+    record["timing"]["retry"] = {
+        **asdict(policy),
+        "retryable": sorted(RETRYABLE),
+        "latency": "measured on the successful call only",
+    }
     if journal:
         journal.put("record", record)
     start = time.perf_counter()
+    budget = [policy.max_retries]
     try:
         for index, q in enumerate(dataset.queries):
             if progress is not None:
@@ -167,15 +253,17 @@ def _execute(
                 "error": None,
             }
             rankings: list[list[str]] = []
+            retries: list[dict[str, Any]] = []
+            calls = _Calls(
+                pipeline, request, policy, budget, retries, progress, index, len(dataset)
+            )
             try:
                 if index < options.warmup:
-                    pipeline(request.model_copy(deep=True))
+                    calls("warmup")
                 samples, results = [], []
-                for _ in range(options.repeats):
-                    t0 = time.perf_counter()
-                    result = PipelineResult.model_validate(
-                        pipeline(request.model_copy(deep=True)).model_dump()
-                    )
+                for repeat in range(options.repeats):
+                    raw, t0 = calls(f"repeat {repeat + 1}")
+                    result = PipelineResult.model_validate(raw.model_dump())
                     samples.append((time.perf_counter() - t0) * 1000)
                     if len(result.hits) > options.k:
                         raise ValueError("pipeline returned more than k results")
@@ -227,6 +315,8 @@ def _execute(
                 # Rankings observed before the failure stay in the attempt history, so a
                 # retry cannot hide a critical document that went missing.
                 entry["repeat_ids"] = rankings or None
+            if retries:
+                entry["retries"] = retries
             entry["attempt_count"] = attempt
             entry["elapsed_ms"] = (time.perf_counter() - query_start) * 1000
             if journal:

@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Automatic retries for transient pipeline failures (timeouts, dropped connections, HTTP 429
+  and the new `http_unavailable` for 502/503/504), with exponential backoff, `Retry-After`
+  support and a per-run budget. Every retry is recorded in the run; a query that still fails
+  keeps its cause and blocks the release check. `workbench run --max-attempts` and
+  `--retry-budget` adjust or disable it.
 - Independent query families: optional `family_id` groups related rows (permission
   scenarios inherit their source question's family). Quality metrics weight families
   equally, intervals resample families, and policy minimums count families. Reports,
