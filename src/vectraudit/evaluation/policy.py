@@ -77,7 +77,7 @@ class LatencyRule:
 
 @dataclass(frozen=True)
 class CohortRule:
-    """Per-tag limits; tags with fewer than ``min_queries`` queries are reported, not judged."""
+    """Per-tag limits; fewer than ``min_queries`` families are reported, not judged."""
 
     min_queries: int = 10
     metrics: dict[str, MetricRule] = field(default_factory=dict)
@@ -97,7 +97,7 @@ class Policy:
     metrics: dict[str, MetricRule]
     latency: LatencyRule = LatencyRule()
     min_queries: int = 1
-    """Minimum suite size and measured paired queries for each judged quality metric."""
+    """Minimum independent query families in the suite and each judged quality metric."""
     max_regressed_queries: int | None = None
     primary_metric: str | None = None
     """Metric whose per-query drops define "regressed queries"; default: first available."""

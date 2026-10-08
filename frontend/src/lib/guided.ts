@@ -12,6 +12,7 @@ export interface Draft extends DraftSummary {
   audit: { n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][] }
 }
 export interface QueryRow {
+  family_id?: string
   query_id: string; text?: string; vector?: number[]; relevant?: Record<string, number>
   no_answer?: boolean; forbidden?: string[]; context?: Record<string, string | number | boolean>
   filter?: Record<string, string | number | boolean>; tags?: string[]; split?: 'explore' | 'heldout'
@@ -35,7 +36,18 @@ export interface Triage {
 }
 export interface Comparison {
   baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }; policy: PolicyRef
-  check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: CriticalResult[] }
+  check: { verdict: string; n_queries?: number; n_families?: number; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: CriticalResult[] }
+  question_display?: { baseline: QuestionDisplay; candidate: QuestionDisplay }
+}
+export interface QuestionDisplay { texts: Record<string, string>; reason: string | null }
+
+export function questionText(display: QuestionDisplay | undefined, queryId: string): string | null {
+  return display && Object.hasOwn(display.texts, queryId) ? display.texts[queryId] : null
+}
+
+export function questionLabel(display: QuestionDisplay | undefined, queryId: string): string {
+  const text = questionText(display, queryId)
+  return text ? `${text} · ${queryId}` : queryId
 }
 export interface CriticalExecution { attempt: number | null; repeat: number; rank: number | null; ids: string[] }
 export interface CriticalResult {

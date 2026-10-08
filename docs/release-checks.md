@@ -51,6 +51,7 @@ One query per line:
 | Field | Required | Notes |
 |---|---|---|
 | `query_id` | yes | Unique, stable string. |
+| `family_id` | no | Shared independent question family. Omit to use `query_id`. Permission variants inherit their source's family; a family cannot cross exploratory/held-out splits. |
 | `vector` | one of `vector` / `text` | Query embedding from the same model as the corpus. |
 | `text` | one of `vector` / `text` | Embedded at run time with `--embedder MODEL` (sentence-transformers). |
 | `relevant` | no | Document id → grade (> 0 is relevant). Without it, a query only contributes ANN recall and latency. |
@@ -148,8 +149,10 @@ never an empty result.
   from matching runner environments (OS, CPU architecture and count, Python), unless the
   policy says otherwise. Embedding time is recorded separately.
 
-Changes are paired per query with seeded bootstrap 95% intervals. With fewer than 30 queries
-the report warns that one query moves the mean noticeably.
+Changes are paired per query, averaged within each declared family, then averaged with equal
+weight across families. Seeded 95% bootstrap intervals resample these family means. With fewer
+than 30 families the report warns about limited evidence. One family's interval cannot estimate
+between-family uncertainty, even if it has many scenario rows.
 
 ## Policy (JSON)
 
@@ -223,11 +226,30 @@ timing protocol, metric contract, provenance (commit SHA, CI run URL, runner env
 ids, latency, metrics and errors.
 
 
-Policy `min_queries` applies to both the suite size and the measured query pairs for every
-judged quality metric. A suite of 100 questions with two labels cannot satisfy a minimum
-of 30 for nDCG. `check` returns `not_comparable` and includes coverage in its warnings.
-Cohort metrics below their measured-pair minimum are reported without judging; their
-query count alone does not establish label coverage.
+Policy `min_queries` counts independent query families, both for the suite and for the paired
+measurements of each judged quality metric. Forty permission scenarios from one question count
+as one family, not forty; a large suite with only two labelled families cannot satisfy a minimum
+of 30 for nDCG. `check` returns `not_comparable` and reports both rows and families. Cohort
+thresholds also count measured families within each tag; undersized cohorts remain unjudged.
+
+Per-query relevance metrics are unchanged. Run-level relevance, ANN recall and no-answer
+accuracy average measured rows within each family, then weight families equally. Latency,
+execution/error counts and the explicit `max_regressed_queries` cap remain per-row measures.
+Permission, no-answer and critical-document assertions still inspect individual cases and
+executions; a passing family average cannot hide one of these failures.
+
+`family_id` is included in the dataset hash and retained in runs, checkpoints and label exports.
+Generated permission scenarios inherit `family_id` from their source (or the source query ID).
+A family cannot cross exploratory and held-out splits. Comparisons reject changed family
+assignments. Old datasets keep their hashes and old run files load normally; missing family IDs
+mean independent rows. Previously generated permission rows cannot be retrospectively grouped
+from their opaque IDs: regenerate them, or explicitly annotate their source families and rerun
+both sides. Saved run artifacts are never silently rewritten.
+Use the family-aware checker for both new runs; older checker binaries do not understand
+the optional family metadata and may still weight rows independently.
+
+This grouping does not correct multiple-cohort false alarms or prove that declared families
+are independent. A/A calibration and multiplicity control remain separate work.
 
 ## Critical-question assertions
 

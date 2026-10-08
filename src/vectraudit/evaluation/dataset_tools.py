@@ -139,10 +139,10 @@ def import_rows(records: Iterable[Mapping[str, Any]], columns: ColumnMap) -> lis
         }
         if filters:
             row["filter"] = filters
-        for key in ("no_answer", "context", "forbidden", "split"):
+        for key in ("no_answer", "context", "forbidden", "split", "family_id"):
             value = rec.get(key)
             if value not in (None, ""):
-                if isinstance(value, str) and key != "split":
+                if isinstance(value, str) and key not in {"split", "family_id"}:
                     value = json.loads(value)
                 row[key] = value
         rows.append(row)
@@ -195,6 +195,8 @@ def dataset_rows(ds: Dataset) -> list[dict[str, Any]]:
     rows = []
     for q in ds.queries:
         row: dict[str, Any] = {"query_id": q.query_id}
+        if q.family_id is not None:
+            row["family_id"] = q.family_id
         if q.text is not None:
             row["text"] = q.text
         if q.vector is not None:
@@ -265,6 +267,7 @@ def embed_dataset(
 
 def _query_fields(q: DatasetQuery) -> dict[str, Any]:
     return {
+        "family_id": q.family_id,
         "text": q.text,
         "vector": None if q.vector is None else [float(x) for x in q.vector],
         "relevant": q.relevant,
@@ -308,12 +311,16 @@ def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str
     positives = [sum(g > 0 for g in row.values()) for row in labels]
     grades = Counter(g for row in labels for g in row.values())
     tags = Counter(t for q in ds.queries for t in q.tags)
+    tag_families = {
+        tag: len({q.family_id or q.query_id for q in ds.queries if tag in q.tags}) for tag in tags
+    }
+    n_positive_families = len({q.family_id or q.query_id for q in labelled})
     texts = Counter(q.text.strip().lower() for q in ds.queries if q.text)
     warnings = []
-    if len(labelled) < SMALL_LABELLED:
+    if n_positive_families < SMALL_LABELLED:
         warnings.append(
-            f"Only {len(labelled)} labelled queries: changes smaller than about "
-            f"{1 / max(len(labelled), 1):.2f} on a metric are hard to tell from noise. "
+            f"Only {n_positive_families} labelled query families: changes smaller than about "
+            f"{1 / max(n_positive_families, 1):.2f} on a metric are hard to tell from noise. "
             f"Aim for {SMALL_LABELLED}+ (100+ for cohorts)."
         )
     if ds.n_labelled and ds.n_labelled < len(ds):
@@ -322,10 +329,10 @@ def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str
             "and latency only."
         )
     if cohort_minimum is not None:
-        small = sorted(t for t, n in tags.items() if n < cohort_minimum)
+        small = sorted(t for t, n in tag_families.items() if n < cohort_minimum)
         if small:
             warnings.append(
-                f"Cohorts below the policy minimum of {cohort_minimum} queries (reported, not "
+                f"Cohorts below the policy minimum of {cohort_minimum} families (reported, not "
                 f"judged): {', '.join(small)}."
             )
     dupes = sorted(t for t, n in texts.items() if n > 1)
@@ -339,6 +346,9 @@ def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str
     return {
         "sha256": ds.sha256,
         "n_queries": len(ds),
+        "n_families": len({q.family_id or q.query_id for q in ds.queries}),
+        "n_positive_families": n_positive_families,
+        "tag_families": tag_families,
         "n_labelled": ds.n_labelled,
         "n_positive": len(labelled),
         "n_no_answer": sum(q.no_answer for q in ds.queries),

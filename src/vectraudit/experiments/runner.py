@@ -22,6 +22,7 @@ import numpy as np
 
 from vectraudit.core._faiss import import_faiss
 from vectraudit.evaluation.dataset import Dataset, load_dataset
+from vectraudit.evaluation.families import family_mean
 from vectraudit.evaluation.metrics import (
     SEMANTIC_METRICS,
     ann_recall,
@@ -177,6 +178,7 @@ def run_candidate(
         queries.append(
             {
                 "query_id": q.query_id,
+                **({"family_id": q.family_id} if q.family_id is not None else {}),
                 "tags": list(q.tags),
                 "filtered": False,
                 "ids": docs,
@@ -196,7 +198,9 @@ def run_candidate(
         if q.relevant_spans:
             span_labels = chunk_labels(q.relevant_spans, chunks)
             if span_labels:
-                span_rows.append(semantic_metrics(chunk_ranking[:k], span_labels, k))
+                span_rows.append(
+                    (q.family_id or q.query_id, semantic_metrics(chunk_ranking[:k], span_labels, k))
+                )
 
     describe = spec.describe()
     run = {
@@ -262,7 +266,10 @@ def run_candidate(
     if span_rows:
         span_summary = {
             "n": len(span_rows),
-            "metrics": {m: float(np.mean([r[m] for r in span_rows])) for m in SEMANTIC_METRICS},
+            "n_families": len({key for key, _ in span_rows}),
+            "metrics": {
+                m: family_mean((key, row[m]) for key, row in span_rows) for m in SEMANTIC_METRICS
+            },
         }
     return CandidateResult(spec, run, stats, span_summary)
 

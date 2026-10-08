@@ -14,6 +14,7 @@ import statistics
 import subprocess
 import time
 import uuid
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -31,6 +32,7 @@ from vectraudit.connectors.base import (
     SearchRequest,
 )
 from vectraudit.evaluation.dataset import Dataset, DatasetQuery
+from vectraudit.evaluation.families import family_count, family_id, family_mean
 from vectraudit.evaluation.metrics import (
     SEMANTIC_METRICS,
     ann_recall,
@@ -239,6 +241,7 @@ def _run_query(
 ) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "query_id": q.query_id,
+        **({"family_id": q.family_id} if q.family_id is not None else {}),
         "tags": list(q.tags),
         "filtered": bool(q.filter),
         "ids": None,
@@ -301,23 +304,40 @@ def summarize(queries: Sequence[Mapping[str, Any]], n_queries: int) -> dict[str,
     return {
         "n_queries": n_queries,
         "n_executed": len(queries),
+        "n_families": family_count(queries),
+        "quality_aggregation": "equal_weight_family_means",
         "n_ok": len(ok),
         "n_errors": n_errors,
+        "errors_by_code": dict(
+            sorted(
+                Counter(q["error"].get("code", "unknown") for q in queries if q["error"]).items()
+            )
+        ),
         "error_rate": n_errors / len(queries) if queries else 0.0,
+        "retries_by_code": dict(
+            sorted(Counter(r["code"] for q in queries for r in q.get("retries", [])).items())
+        ),
         "n_labelled": len(labelled),
+        "n_labelled_families": family_count(labelled),
         "metrics": (
-            {m: statistics.fmean(q["metrics"][m] for q in labelled) for m in SEMANTIC_METRICS}
+            {
+                m: family_mean((family_id(q), q["metrics"][m]) for q in labelled)
+                for m in SEMANTIC_METRICS
+            }
             if labelled
             else None
         ),
-        "ann_recall": statistics.fmean(recalls) if recalls else None,
+        "ann_recall": family_mean(
+            (family_id(q), q["ann_recall"]) for q in ok if q["ann_recall"] is not None
+        ),
         "n_ann_recall": len(recalls),
+        "n_ann_recall_families": family_count(q for q in ok if q["ann_recall"] is not None),
         "latency_ms": latency_summary([q["latency_ms"] for q in ok]),
         "no_answer": {
             "n": sum(q.get("no_answer_correct") is not None for q in ok),
             "accuracy": (
-                statistics.fmean(
-                    float(q["no_answer_correct"])
+                family_mean(
+                    (family_id(q), float(q["no_answer_correct"]))
                     for q in ok
                     if q.get("no_answer_correct") is not None
                 )

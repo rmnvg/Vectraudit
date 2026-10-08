@@ -17,6 +17,7 @@ import numpy as np
 
 from vectraudit import __version__
 from vectraudit.evaluation.compare import compare_runs
+from vectraudit.evaluation.families import family_id, family_means
 from vectraudit.evaluation.metrics import SEMANTIC_METRICS
 from vectraudit.experiments.runner import CandidateResult
 
@@ -57,7 +58,8 @@ def rank(
     for position, r in enumerate(scored, 1):
         scores = _per_query(r.run, primary)
         shared = sorted(set(scores) & set(lead_scores))
-        deltas = np.asarray([scores[q] - lead_scores[q] for q in shared])
+        families = {q["query_id"]: family_id(q) for q in r.run["queries"]}
+        deltas = np.asarray(family_means((families[q], scores[q] - lead_scores[q]) for q in shared))
         low, high = _interval(deltas, seed)
         tied = r is leader or (low <= 0 <= high)
         findings = []
@@ -67,6 +69,8 @@ def rank(
         ranking.append(
             {
                 "rank": position,
+                "n": len(shared),
+                "n_families": len(deltas),
                 "name": r.spec.name,
                 "metrics": r.run["summary"]["metrics"],
                 "ann_recall": r.run["summary"].get("ann_recall"),
@@ -87,14 +91,20 @@ def rank(
         best = None
         for r in scored:
             vals = [
-                q["metrics"][primary]
+                (family_id(q), q["metrics"][primary])
                 for q in r.run["queries"]
                 if tag in q.get("tags", []) and q.get("metrics")
             ]
-            if vals and (best is None or float(np.mean(vals)) > best[1]):
-                best = (r.spec.name, float(np.mean(vals)), len(vals))
+            means = family_means(vals)
+            if means and (best is None or float(np.mean(means)) > best[1]):
+                best = (r.spec.name, float(np.mean(means)), len(vals), len(means))
         if best is not None:
-            cohorts[tag] = {"winner": best[0], primary: best[1], "n": best[2]}
+            cohorts[tag] = {
+                "winner": best[0],
+                primary: best[1],
+                "n": best[2],
+                "n_families": best[3],
+            }
     tied_names = [x["name"] for x in ranking if x["tied_with_leader"]]
     return {
         **summary,

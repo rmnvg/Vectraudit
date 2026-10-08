@@ -58,6 +58,32 @@ counts remain in the exported query evidence, including the rankings a failed at
 returned before it failed; critical-question checks judge those rankings as well as the
 retry's. An interrupted attempt has a start time but no fabricated duration or result.
 
+Failed queries retain known adapter error codes (for example `http_auth`,
+`http_rate_limit`, `timeout`, `connection_failed` and `invalid_response`) with a safe
+message and next action. Unclassified exceptions and unknown adapter codes remain
+`pipeline_error`; exception text is never saved. Run JSON includes
+`summary.errors_by_code`, counting each currently failed query once. Historical failed
+attempts remain in the checkpoint evidence but leave this count after a successful retry.
+A failed query still makes the run partial and prevents a passing release check.
+
+Transient failures retry automatically within a declared budget: `timeout`,
+`connection_failed`, `http_rate_limit` (HTTP 429) and `http_unavailable` (HTTP 502, 503 or
+504). Each pipeline call (warm-up or repeat) gets up to three tries, waiting 1 s, then 2 s
+(doubling, capped at 30 s), or as long as the endpoint's `Retry-After` asks. A `Retry-After`
+longer than the cap is not waited for. At most 100 retries happen per run invocation, so an
+endpoint that is down fails quickly instead of stalling CI. Authentication, 404, invalid
+responses and unclassified exceptions are never retried. Python adapters opt in by raising
+`PipelineCallError` with one of these codes.
+
+Each retry is recorded on its query (`retries`: call, code and delay) and counted in
+`summary.retries_by_code`; the policy is saved in `timing.retry`. Latency samples measure
+only the successful call. A query whose calls still fail keeps its cause and leaves the run
+partial; retries never turn missing evidence into a pass. Cancelling during a backoff wait
+stops the run promptly. On the command line, `--max-attempts 1` disables automatic retries
+and `--retry-budget N` changes the per-run limit; both are frozen into the checkpoint, so a
+resume must use the same values. Guided evaluations, release exports and optimization use
+the defaults; plain `RunOptions` in the Python API do not retry.
+
 The CLI prints a checkpoint directory. Keep that directory and resume the same manifest:
 
 ```sh
@@ -240,6 +266,32 @@ search = PythonPipeline(
     ]
 )
 ```
+
+### Concurrency and rate limits
+
+By default a candidate runs one query at a time. Set `concurrency` (1–32 queries in flight)
+and optionally `max_rps` (calls per second, retries and warm-ups included) on a candidate to
+run large suites faster without overloading the endpoint:
+
+```json
+{"name": "production", "adapter": {"kind": "http", "target": "https://retrieval.example/search"},
+ "concurrency": 8, "max_rps": 20}
+```
+
+Results are identical to a serial run apart from timing, and the run file lists queries in
+dataset order. All workers share one automatic-retry budget and one rate limit. Checkpoint
+writes stay on one thread, so cancel and resume work as before: queries that finished before
+cancellation are kept, and calls already running finish and are saved. HTTP adapters and
+the built-in hybrid baseline are thread-safe. A Python adapter that is not must use
+`concurrency` 1, or set `thread_safe = False` on the callable so higher values are refused.
+
+These settings change how fast queries run, not what the pipeline returns, so they are not
+part of the candidate's configuration identity. They are part of the checkpoint identity:
+resume with the same values. Runs record `timing.concurrency` and `timing.max_rps`. Latency
+measured with several queries in flight is latency under load, so release checks compare
+latency only between runs with the same concurrency and otherwise say why they did not.
+Guided evaluations use the registered candidate's settings; release exports and optimization
+still run serially.
 
 ### LangChain and LlamaIndex retrievers
 
@@ -617,6 +669,17 @@ It creates a policy, compares, exports, runs `vectraudit release` on the exporte
 and shows that a stricter policy version changes both the comparison and case verification.
 
 ## Persistent regression cases
+
+Findings and regression cases show question text beside IDs when the exact saved local
+benchmark is available. The join checks the recorded draft revision, full dataset hash
+and evaluated split hash; baseline and candidate text are resolved separately. A changed,
+missing or unreadable draft produces an explicit unavailable message. Vector-only queries
+and runs without a saved draft reference keep their IDs without invented question text.
+Only queries recorded in that run receive display text.
+
+This is a local display join: run/check artifacts, stored cases, cloud uploads and downloaded
+issue summaries do not gain question text. The workbench does not reconstruct older draft
+revisions or resolve text from unrelated benchmarks that happen to reuse the same IDs.
 
 In **Compare a fix**, select a finding and choose **Track finding**. A case preserves the
 original baseline/candidate IDs, benchmark hash and recorded finding. Assign an owner,

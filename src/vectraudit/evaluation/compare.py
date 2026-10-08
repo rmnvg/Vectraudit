@@ -8,8 +8,9 @@ Verdicts, in order of precedence:
 - ``fail``: a policy rule is broken.
 - ``pass``: every rule holds.
 
-Quality deltas are paired per query (candidate - baseline) with seeded bootstrap 95%
-intervals. Latency is compared only between runs from matching runner environments,
+Quality deltas are paired per query (candidate - baseline), averaged within each family,
+then averaged and bootstrapped across families with seeded 95% intervals.
+Latency is compared only between runs from matching runner environments,
 unless the policy allows otherwise.
 """
 
@@ -23,6 +24,7 @@ from typing import Any
 import numpy as np
 
 from vectraudit.evaluation.diagnose import diagnose
+from vectraudit.evaluation.families import family_count, family_id, family_means
 from vectraudit.evaluation.metrics import QUALITY_METRICS, SEMANTIC_METRICS
 from vectraudit.evaluation.policy import DEFAULT_POLICY, MetricRule, Policy
 
@@ -84,6 +86,8 @@ class _Check:
             "baseline": _run_brief(base),
             "candidate": _run_brief(cand),
             "n_queries": 0,
+            "n_families": 0,
+            "sampling_unit": "query_family",
             "metrics": {},
             "latency": None,
             "cohorts": {},
@@ -100,6 +104,7 @@ class _Check:
         if self._runs_complete() and self._comparable():
             pairs = self._pairs()
             self.out["n_queries"] = len(pairs)
+            self.out["n_families"] = family_count(b for b, _ in pairs)
             self._safety(pairs)
             self._critical_queries()
             self._quality(pairs)
@@ -220,22 +225,41 @@ class _Check:
         if {q["query_id"] for q in b["queries"]} != {q["query_id"] for q in c["queries"]}:
             self.flag(Verdict.NOT_COMPARABLE, "The runs measured different query sets.")
             return False
-        n = len(b["queries"])
+        paired = self._pairs()
+        if any(family_id(bq) != family_id(cq) for bq, cq in paired):
+            self.flag(Verdict.NOT_COMPARABLE, "Query family assignments differ between runs.")
+            return False
+        n = family_count(b["queries"])
+        self.out["n_queries"] = len(paired)
+        self.out["n_families"] = n
         if n < self.policy.min_queries:
             self.flag(
                 Verdict.NOT_COMPARABLE,
-                f"{n} queries is below the policy minimum of {self.policy.min_queries}.",
+                f"{n} query families ({len(paired)} rows) is below the policy minimum "
+                f"of {self.policy.min_queries}.",
             )
+            # Still inspect hard safety assertions; insufficient evidence never passes.
+        if not n:
             return False
+        if n < len(paired):
+            self.warnings.append(
+                f"{len(paired)} query rows represent {n} independent query families. "
+                "Quality means weight families equally; intervals resample whole families."
+            )
         self._context_warnings(n)
         return True
 
     def _context_warnings(self, n: int) -> None:
         b, c = self.base, self.cand
+        if n == 1:
+            self.warnings.append(
+                "One independent family cannot estimate between-family uncertainty; "
+                "a zero-width bootstrap interval is not evidence of certainty."
+            )
         if n < SMALL_SAMPLE:
             self.warnings.append(
-                f"Only {n} queries: intervals are wide and one query moves the mean by "
-                f"{1 / n:.2f}. Treat deltas as indicative."
+                f"Only {n} independent query families: sampling evidence is limited and one "
+                f"family can move the mean by up to {1 / n:.2f}. Treat deltas as indicative."
             )
         bs, cs = b["backend"].get("snapshot"), c["backend"].get("snapshot")
         if bs is None or cs is None:
@@ -280,17 +304,22 @@ class _Check:
             and not self.policy.cohorts.metrics
         ):
             return
-        safety_pairs = sum(
-            (b.get("no_answer_correct") is not None and c.get("no_answer_correct") is not None)
-            or bool(b.get("permission_checked") and c.get("permission_checked"))
+        safety_pairs = [
+            b
             for b, c in pairs
-        )
+            if (b.get("no_answer_correct") is not None and c.get("no_answer_correct") is not None)
+            or bool(b.get("permission_checked") and c.get("permission_checked"))
+        ]
         if (
             not available
-            and safety_pairs >= self.policy.min_queries
+            and family_count(safety_pairs) >= self.policy.min_queries
             and not any(rule.required for rule in self.policy.metrics.values())
         ):
-            self.out["safety"] = {"n": safety_pairs, "absolute_assertions": True}
+            self.out["safety"] = {
+                "n": len(safety_pairs),
+                "n_families": family_count(safety_pairs),
+                "absolute_assertions": True,
+            }
             return
         if not available:
             self.flag(
@@ -305,9 +334,9 @@ class _Check:
                     f"{name} was measured on {stats['n']}/{len(pairs)} paired queries; "
                     "unmeasured queries do not contribute to this metric."
                 )
-            if stats["n"] < SMALL_SAMPLE <= len(pairs):
+            if stats["n_families"] < SMALL_SAMPLE <= self.out["n_families"]:
                 self.warnings.append(
-                    f"Only {stats['n']} measured pairs for {name}: "
+                    f"Only {stats['n_families']} measured families for {name}: "
                     "treat its interval as indicative."
                 )
         judged = 0
@@ -316,10 +345,11 @@ class _Check:
                 if rule.required:
                     self.flag(Verdict.NOT_COMPARABLE, _unavailable(name))
                 continue
-            if available[name]["n"] < self.policy.min_queries:
+            if available[name]["n_families"] < self.policy.min_queries:
                 self.flag(
                     Verdict.NOT_COMPARABLE,
-                    f"{name} has {available[name]['n']} measured query pairs, below the policy "
+                    f"{name} has {available[name]['n']} measured query pairs in "
+                    f"{available[name]['n_families']} families, below the policy "
                     f"minimum of {self.policy.min_queries}. Add labels or an exact reference.",
                 )
                 continue
@@ -336,16 +366,18 @@ class _Check:
         for b, c in pairs:
             bv, cv = _value(b, name), _value(c, name)
             if bv is not None and cv is not None:
-                base_vals.append(bv)
-                cand_vals.append(cv)
+                base_vals.append((family_id(b), bv))
+                cand_vals.append((family_id(b), cv))
         if not base_vals:
             return None
-        deltas = np.asarray(cand_vals) - np.asarray(base_vals)
+        base_means, cand_means = family_means(base_vals), family_means(cand_vals)
+        deltas = np.asarray(cand_means) - np.asarray(base_means)
         low, high = self._bootstrap(deltas)
         return {
-            "n": len(deltas),
-            "baseline": statistics.fmean(base_vals),
-            "candidate": statistics.fmean(cand_vals),
+            "n": len(base_vals),
+            "n_families": len(deltas),
+            "baseline": statistics.fmean(base_means),
+            "candidate": statistics.fmean(cand_means),
             "delta": float(deltas.mean()),
             "ci_low": low,
             "ci_high": high,
@@ -402,12 +434,12 @@ class _Check:
             return
         if (
             self.policy.max_regressed_queries is not None
-            and available[primary]["n"] < self.policy.min_queries
+            and available[primary]["n_families"] < self.policy.min_queries
         ):
             self.flag(
                 Verdict.NOT_COMPARABLE,
-                f"Regressed-query rule needs {self.policy.min_queries} measured pairs "
-                f"for {primary}; only {available[primary]['n']} are available.",
+                f"Regressed-query rule needs {self.policy.min_queries} measured families "
+                f"for {primary}; only {available[primary]['n_families']} are available.",
             )
             return
         changes = []
@@ -418,6 +450,7 @@ class _Check:
             changes.append(
                 {
                     "query_id": b["query_id"],
+                    "family_id": family_id(b),
                     "tags": b.get("tags", []),
                     "filtered": bool(b.get("filtered")),
                     "baseline": bv,
@@ -436,6 +469,7 @@ class _Check:
         self.out["queries"] = {
             "primary_metric": primary,
             "regressed_count": len(regressed),
+            "regressed_families": family_count(regressed),
             "improved_count": improved,
             "unchanged_count": len(changes) - len(regressed) - improved,
             "regressed": regressed[:100],
@@ -457,7 +491,8 @@ class _Check:
                 stats = self._metric_stats(members, name)
                 if stats is not None:
                     metrics[name] = stats
-            enough_queries = len(members) >= rule.min_queries
+            n_families = family_count(b for b, _ in members)
+            enough_queries = n_families >= rule.min_queries
             judged_metrics = []
             if enough_queries:
                 for name, metric_rule in rule.metrics.items():
@@ -466,10 +501,10 @@ class _Check:
                             self.flag(
                                 Verdict.NOT_COMPARABLE, f"cohort {tag!r}: {_unavailable(name)}"
                             )
-                    elif metrics[name]["n"] < rule.min_queries:
+                    elif metrics[name]["n_families"] < rule.min_queries:
                         self.warnings.append(
                             f"Cohort {tag!r}: {name} reported without judging because only "
-                            f"{metrics[name]['n']} measured pairs are available "
+                            f"{metrics[name]['n_families']} measured families are available "
                             f"(minimum {rule.min_queries})."
                         )
                     else:
@@ -477,6 +512,7 @@ class _Check:
                         self._apply_rule(name, metric_rule, metrics[name], f"cohort {tag!r}: ")
             self.out["cohorts"][tag] = {
                 "n": len(members),
+                "n_families": n_families,
                 "judged": bool(judged_metrics) if rule.metrics else enough_queries,
                 "judged_metrics": judged_metrics,
                 "metrics": metrics,
@@ -492,7 +528,9 @@ class _Check:
         rule = self.policy.latency
         envs = [_environment(r) for r in (self.base, self.cand)]
         same_env = envs[0] == envs[1]
-        compared = same_env or not rule.require_same_environment
+        workers = [_concurrency(r) for r in (self.base, self.cand)]
+        # Latency under load is a different measurement from serial latency.
+        compared = workers[0] == workers[1] and (same_env or not rule.require_same_environment)
         change = {p: (cl[p] - bl[p]) / bl[p] * 100 if bl[p] > 0 else None for p in ("p50", "p95")}
         self.out["latency"] = {
             "baseline": bl,
@@ -502,7 +540,12 @@ class _Check:
             "same_environment": same_env,
             "compared": compared,
         }
-        if not compared:
+        if workers[0] != workers[1]:
+            self.warnings.append(
+                f"Latency was not compared: the runs used different concurrency "
+                f"({workers[0]} vs {workers[1]} queries in flight)."
+            )
+        elif not compared:
             self.warnings.append(
                 "Latency was not compared: the runs come from different runner environments "
                 f"({_env_label(envs[0])} vs {_env_label(envs[1])})."
@@ -607,6 +650,11 @@ def _unavailable(name: str) -> str:
 def _environment(run: Mapping[str, Any]) -> dict[str, Any]:
     runner = (run.get("provenance") or {}).get("runner") or {}
     return {k: runner.get(k) for k in _ENVIRONMENT_KEYS}
+
+
+def _concurrency(run: Mapping[str, Any]) -> int:
+    value = (run.get("timing") or {}).get("concurrency", 1)
+    return value if isinstance(value, int) else 1
 
 
 def _env_label(env: Mapping[str, Any]) -> str:

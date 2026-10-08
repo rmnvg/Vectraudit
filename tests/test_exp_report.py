@@ -57,6 +57,22 @@ def test_reports(ranked) -> None:
     assert "| 3 | lexical |" in md
 
 
+def test_experiments_keep_family_weights_and_counts(tmp_path):
+    path = write_fixture(tmp_path, [LEXICAL, SEMANTIC])
+    questions = tmp_path / "queries.jsonl"
+    rows = [json.loads(line) for line in questions.read_text().splitlines()]
+    for row in rows:
+        row["family_id"] = row["tags"][0]
+    questions.write_text("\n".join(map(json.dumps, rows)))
+    summary, results = run_experiment(
+        load_manifest(path), embedders={"synonyms": SynonymEmbedder()}
+    )
+    ranked = rank(summary, results)
+    assert all(r.run["summary"]["n_families"] == 5 for r in results)
+    assert all(r["n"] == 20 and r["n_families"] == 5 for r in ranked["ranking"])
+    assert all(c["n"] == 4 and c["n_families"] == 1 for c in ranked["cohorts"].values())
+
+
 def test_rank_errors(ranked, tmp_path) -> None:
     manifest = load_manifest(write_fixture(tmp_path, [LEXICAL]))
     summary, results = run_experiment(manifest)

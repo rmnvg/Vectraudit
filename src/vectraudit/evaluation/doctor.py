@@ -118,9 +118,11 @@ class Doctor:
                 "Run vectraudit dataset validate locally for the line-specific error.",
             )
             return None
+        stats = dataset_stats(ds)
         self.dataset = {
             "sha256": ds.sha256,
             "n_queries": len(ds),
+            "n_families": stats["n_families"],
             "n_labelled": ds.n_labelled,
             "dim": ds.dim,
             "needs_embedder": ds.needs_embedder,
@@ -128,34 +130,35 @@ class Doctor:
         self.add(
             "dataset.valid",
             "ok",
-            f"Dataset validates: {len(ds)} queries, {ds.n_labelled} labelled.",
+            f"Dataset validates: {len(ds)} rows, {stats['n_families']} families, "
+            f"{ds.n_labelled} labelled rows.",
         )
-        if len(ds) < policy.min_queries:
+        if stats["n_families"] < policy.min_queries:
             self.add(
                 "dataset.minimum",
                 "error",
-                "Suite is below the policy minimum query count.",
-                f"Add questions to reach {policy.min_queries}.",
+                "Suite is below the policy minimum independent-family count.",
+                f"Add independent question families to reach {policy.min_queries}.",
             )
         semantic = [
             name
             for name, rule in policy.metrics.items()
             if name in SEMANTIC_METRICS and rule.required
         ]
-        n_positive = sum(bool(q.relevant or q.relevant_spans) for q in ds.queries)
+        n_positive = stats["n_positive_families"]
         if semantic and n_positive < policy.min_queries:
             self.add(
                 "labels.minimum",
                 "error",
-                "Too few labelled queries for the required quality metrics.",
-                f"Label at least {policy.min_queries} queries "
+                "Too few labelled families for the required quality metrics.",
+                f"Label at least {policy.min_queries} independent families "
                 "with positive source-document relevance.",
             )
         elif n_positive < SMALL_LABELLED:
             self.add(
                 "labels.small",
                 "warning",
-                f"Only {n_positive} queries have positive labels.",
+                f"Only {n_positive} independent families have positive labels.",
                 "Use label pool/serve/export; aim for 30+ representative labelled queries.",
             )
         if ds.n_labelled < len(ds):
@@ -165,7 +168,6 @@ class Doctor:
                 "Some questions have no semantic quality labels.",
                 "Unlabelled questions contribute only ANN recall and latency.",
             )
-        stats = dataset_stats(ds)
         if any("query texts appear" in w for w in stats["warnings"]):
             self.add(
                 "dataset.duplicates",
@@ -173,7 +175,7 @@ class Doctor:
                 "Repeated question texts reduce evaluation diversity.",
                 "Review duplicates and sample distinct real intents.",
             )
-        small = [n for n in stats["tags"].values() if n < policy.cohorts.min_queries]
+        small = [n for n in stats["tag_families"].values() if n < policy.cohorts.min_queries]
         if small and policy.cohorts.metrics:
             self.add(
                 "cohorts.small",

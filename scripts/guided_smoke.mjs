@@ -92,6 +92,10 @@ try {
   // Findings: the lost relevant document is ranked, located at a stage, and linked to evidence.
   const findings = page.getByRole('list', { name: 'Findings' })
   await findings.getByRole('button', { name: /invoice/ }).waitFor()
+  assert.match(await findings.getByRole('button', { name: /invoice/ }).textContent(), /invoice export/)
+  // Text labels must not become the query IDs used for selection and case creation.
+  assert.equal(await page.getByLabel('Compare query').inputValue(), 'invoice')
+  assert.match(await page.getByLabel('Compare query').locator('option:checked').textContent(), /invoice export · invoice/)
   const finding = page.getByRole('region', { name: 'Finding invoice' })
   assert.match(await finding.textContent(), /lost relevant/)
   assert.match(await finding.textContent(), /First missing at keyword in the candidate/)
@@ -99,6 +103,15 @@ try {
   assert.equal(await page.getByLabel('Highlight document ID').inputValue(), 'current-guide')
   await page.getByText('current-guide dropped here').waitFor()
   await page.screenshot({ path: join(workspace, 'guided-compare.png'), fullPage: true })
+
+  const cases = page.getByRole('region', { name: 'Regression cases' })
+  await cases.getByRole('button', { name: 'Track finding', exact: true }).click()
+  await cases.locator('details').getByText('invoice export', { exact: true }).waitFor()
+  await cases.getByLabel('Case owner').fill('Browser reviewer')
+  await cases.getByRole('button', { name: 'Save case update' }).click()
+  await cases.locator('summary').getByText(/Browser reviewer/).waitFor()
+  await cases.getByRole('button', { name: 'Reload cases' }).click()
+  await cases.locator('details').getByText('invoice export', { exact: true }).waitFor()
 
   // Opening the evidence lands on the same query and document in the detailed trace view.
   await finding.getByRole('button', { name: 'Open in candidate run' }).click()
@@ -118,6 +131,21 @@ try {
   await steps.getByRole('button', { name: /Build benchmark/ }).click()
   const drafts = await page.getByLabel('Resume saved benchmark').locator('option').allTextContents()
   assert.ok(drafts.includes('Retrieval starter benchmark'), drafts.join(', '))
+
+  // Editing a saved draft must not silently relabel old evidence with new question text.
+  const session = await (await fetch(`${base}/api/guided/session`)).json()
+  const headers = { 'X-Workbench-Token': session.token, 'Content-Type': 'application/json' }
+  const saved = await (await fetch(`${base}/api/guided/drafts/${session.drafts[0].id}`, { headers })).json()
+  const update = await fetch(`${base}/api/guided/drafts`, { method: 'POST', headers, body: JSON.stringify({ id: saved.id, revision: saved.revision, name: 'Revised benchmark', dataset: saved.dataset.replace('invoice export', 'CHANGED question'), corpus: saved.corpus, irrelevant: saved.irrelevant }) })
+  assert.ok(update.ok)
+  await steps.getByRole('button', { name: /Compare a fix/ }).click()
+  await page.getByLabel('Baseline run').selectOption({ label: runs.find(r => r.startsWith('Baseline')) })
+  await page.getByLabel('Candidate run').selectOption({ label: runs.find(r => r.startsWith('Shallow depth')) })
+  await page.getByRole('button', { name: 'Compare runs' }).click()
+  await page.getByText('Release comparison: fail').waitFor()
+  await cases.locator('details').getByText('Question text unavailable: the saved benchmark has changed.').waitFor()
+  assert.equal(await page.getByLabel('Compare query').locator('option:checked').textContent(), 'invoice')
+  assert.equal(await page.getByText('CHANGED question', { exact: true }).count(), 0)
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: join(workspace, 'guided-mobile.png'), fullPage: true })

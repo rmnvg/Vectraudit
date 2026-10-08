@@ -179,7 +179,7 @@ def test_diff_and_stats() -> None:
     assert stats["grades"] == {"1.0": 2, "2.0": 1}
     assert stats["tags"] == {"x": 1}
     text = " ".join(stats["warnings"])
-    assert "Only 2 labelled queries" in text
+    assert "Only 2 labelled query families" in text
     assert "1 queries have no labels" in text
     assert "below the policy minimum of 5" in text
     assert "appear more than once" in text

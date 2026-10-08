@@ -130,6 +130,7 @@ def test_filtered_queries_on_faiss_make_a_partial_run(synthetic) -> None:
     run = execute_run(ds, FaissConnector(synthetic["flat_l2"]), RunOptions(k=3))
     assert run["status"] == "partial"
     assert run["summary"]["n_errors"] == 4
+    assert run["summary"]["errors_by_code"] == {"unsupported": 4}
     assert run["summary"]["error_rate"] == 1.0
     assert run["queries"][0]["error"]["code"] == "unsupported"
     assert run["summary"]["metrics"] is None

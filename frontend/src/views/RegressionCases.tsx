@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { guidedRequest } from '../lib/guided'
+import { guidedRequest, questionLabel } from '../lib/guided'
 import type { Comparison } from '../lib/guided'
 import type { Run } from '../lib/workbench'
 import { policyLabel } from '../lib/release'
@@ -11,6 +11,7 @@ export interface RegressionCase {
   id: string; revision: string; query_id: string; dataset_sha256: string
   baseline: string; candidate: string; status: string; owner: string
   finding: { findings: { message: string }[] }; policy?: PolicyRef
+  question_display?: { text: string | null; reason: string | null }
   history: { at: string; kind: string; status?: string; owner?: string; note?: string; candidate?: string; verdict?: string; verified?: boolean; policy?: PolicyRef }[]
 }
 export default function RegressionCases({ token, comparison, runs, policy, policyRef }: { token: string; comparison: Comparison | null; runs: Run[]; policy: string | null; policyRef: PolicyRef | null }) {
@@ -28,7 +29,7 @@ export default function RegressionCases({ token, comparison, runs, policy, polic
   async function reload() { setError(''); try { setCases(await guidedRequest<RegressionCase[]>('cases', token)) } catch (e) { setError(String(e)) } }
   return <section aria-label="Regression cases" className="space-y-3 rounded-xl border border-line p-4"><div className="flex flex-wrap justify-between gap-3"><h3 className="font-semibold">Track findings through verified fixes</h3><button className={button} disabled={busy} onClick={() => void reload()}>Reload cases</button></div>
     <p className="text-sm text-muted">Cases persist locally. Verification requires a new, complete, comparable run that passes the selected release policy ({policyLabel(policyRef)}) and has no unresolved finding for this question. Each verification records the policy version it used. Manual status changes never change release verdicts. Verify later runs again to detect recurrence.</p>
-    {!!unresolved.length && comparison && <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Finding to track<select className={input} value={selectedQuery} onChange={e => setQuery(e.target.value)}>{unresolved.map(q => <option key={q.query_id} value={q.query_id}>{q.query_id} · {q.severity}</option>)}</select></label><button className={button} disabled={busy} onClick={() => void perform('cases', { baseline: comparison.baseline.run_id, candidate: comparison.candidate.run_id, query_id: selectedQuery, policy: comparison.policy?.id ?? null })}>Track finding</button></div>}
+    {!!unresolved.length && comparison && <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Finding to track<select className={input} value={selectedQuery} onChange={e => setQuery(e.target.value)}>{unresolved.map(q => <option key={q.query_id} value={q.query_id}>{questionLabel(comparison.question_display?.baseline, q.query_id)} · {q.severity}</option>)}</select></label><button className={button} disabled={busy} onClick={() => void perform('cases', { baseline: comparison.baseline.run_id, candidate: comparison.candidate.run_id, query_id: selectedQuery, policy: comparison.policy?.id ?? null })}>Track finding</button></div>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {!cases.length && <p className="text-sm text-muted">Compare a baseline and candidate, then track a finding here.</p>}
     {cases.map(c => <CaseEditor key={`${c.id}-${c.revision}`} record={c} runs={runs} busy={busy} onAction={perform} policy={policy} policyRef={policyRef} />)}
@@ -45,6 +46,7 @@ function CaseEditor({ record, runs, busy, onAction, policy, policyRef }: { recor
     const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' })); const link = document.createElement('a'); link.href = url; link.download = `case-${record.id}.md`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
   return <details className="rounded-lg bg-surface-2 p-3" open><summary className="cursor-pointer text-sm font-semibold">{record.query_id} · {record.status} · {record.owner || 'Unassigned'}</summary><fieldset disabled={busy} className="mt-3 space-y-3">
+    <p className="whitespace-pre-wrap break-words text-sm">{record.question_display?.text ?? record.question_display?.reason ?? 'Question text unavailable for this query.'}</p>
     <p className="text-xs text-muted break-all">Evidence: {record.baseline}.run.json → {record.candidate}.run.json</p>
     <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Case owner<input className={input} value={owner} maxLength={128} onChange={e => setOwner(e.target.value)} /></label><label className="text-sm">Case status<select className={input} value={status} onChange={e => setStatus(e.target.value)}><option value="open">Open</option><option value="investigating">Investigating</option><option value="fix_proposed">Fix proposed</option></select></label></div>
     <label className="block text-sm">Investigation note<textarea className={input} maxLength={4000} value={note} onChange={e => setNote(e.target.value)} /></label>

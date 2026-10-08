@@ -6,6 +6,7 @@ import hashlib
 import json
 import sqlite3
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -21,7 +22,7 @@ from vectraudit.pipelines.checkpoint import validate_path
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
 from vectraudit.pipelines.monitor import monitor_check
 from vectraudit.pipelines.optimize import optimize
-from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
+from vectraudit.pipelines.runner import PipelineOptions, RetryPolicy, execute_pipeline
 
 workbench_app = typer.Typer(
     no_args_is_help=True, help="Test complete pipelines, compare fixes and guard releases locally."
@@ -44,9 +45,22 @@ def run_command(
     retry_errors: Annotated[
         bool, typer.Option(help="Explicitly retry failed queries when resuming.")
     ] = False,
+    max_attempts: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            max=10,
+            help="Tries per call for transient failures (timeout, rate limit, 502-504, "
+            "connection); 1 disables automatic retries.",
+        ),
+    ] = RetryPolicy().max_attempts,
+    retry_budget: Annotated[
+        int, typer.Option(min=0, help="Maximum automatic retries per candidate run.")
+    ] = RetryPolicy().max_retries,
 ) -> None:
     """Execute trusted Python, HTTP or built-in hybrid candidates from a local manifest."""
     try:
+        retry = RetryPolicy(max_attempts=max_attempts, max_retries=retry_budget)
         if retry_errors and resume is None:
             raise ValueError("--retry-errors requires --resume")
         spec = load_manifest(manifest)
@@ -63,6 +77,7 @@ def run_command(
             "k": spec.k,
             "repeats": spec.repeats,
             "corpus_version": spec.corpus_version,
+            **({} if retry == RetryPolicy() else {"retry": asdict(retry)}),
         }
         batch_path = checkpoints / "batch.json"
         validate_path(batch_path)
@@ -98,6 +113,9 @@ def run_command(
                         repeats=spec.repeats,
                         warmup=0,
                         label=candidate.name,
+                        retry=retry,
+                        concurrency=candidate.concurrency,
+                        max_rps=candidate.max_rps,
                     ),
                     config=config,
                     corpus_version=spec.corpus_version or config.get("corpus_sha256"),

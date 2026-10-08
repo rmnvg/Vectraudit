@@ -106,7 +106,14 @@ def pool(
     for q in dataset.queries:
         ids = sorted(pools[q.query_id])
         rng.shuffle(ids)
-        questions.append(Question(query_id=q.query_id, text=q.text or "", documents=ids))
+        questions.append(
+            Question(
+                query_id=q.query_id,
+                text=q.text or "",
+                documents=ids,
+                family_id=q.family_id,
+            )
+        )
     used = {d for q in questions for d in q.documents}
     return Task(
         name=name,

@@ -8,6 +8,22 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Concurrent pipeline runs: per-candidate `concurrency` (up to 32 queries in flight) and
+  `max_rps` rate limits in the workbench manifest, with results identical to serial runs,
+  a shared retry budget, and cancel/resume preserved. Release checks compare latency only
+  between runs with equal concurrency.
+
+- Automatic retries for transient pipeline failures (timeouts, dropped connections, HTTP 429
+  and the new `http_unavailable` for 502/503/504), with exponential backoff, `Retry-After`
+  support and a per-run budget. Every retry is recorded in the run; a query that still fails
+  keeps its cause and blocks the release check. `workbench run --max-attempts` and
+  `--retry-budget` adjust or disable it.
+- Independent query families: optional `family_id` groups related rows (permission
+  scenarios inherit their source question's family). Quality metrics weight families
+  equally, intervals resample families, and policy minimums count families. Reports,
+  preflight and the guided comparison show rows and families; individual safety and
+  critical assertions are unchanged.
+
 - Reference support-search case study with actual BM25 ranking, measured stage latency,
   tenant/current-document filters, independent baseline/candidate/fixed source revisions,
   and guided/exported CLI verdict parity. Versioned fictional documents and varied questions
@@ -115,6 +131,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   Qdrant (`vectraudit[qdrant]`: named vectors, payload filters, `hnsw_ef`, exact reference)
   and PostgreSQL + pgvector (`vectraudit[pgvector]`: read-only sessions, statement timeouts,
   filter columns, `hnsw.ef_search` / `ivfflat.probes`, exact reference, query plans).
+
+### Fixed
+
+- Cancelling a run during a retry backoff no longer records the in-flight query as a
+  `pipeline_error` failure; the attempt stays interrupted and is retried on resume.
 
 ### Changed
 

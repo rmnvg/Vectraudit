@@ -88,6 +88,12 @@ def check_run(data: Any) -> dict[str, Any]:
 def _check_query(q: Any, k: int) -> None:
     _expect(isinstance(q, dict), "must be an object")
     _expect(isinstance(q.get("query_id"), str), "query_id must be a string")
+    if "family_id" in q:
+        family = q["family_id"]
+        _expect(
+            isinstance(family, str) and bool(family.strip()) and len(family) <= 512,
+            "family_id must be a non-empty string of at most 512 characters",
+        )
     _expect(isinstance(q.get("tags", []), list), "tags must be a list")
     error = q.get("error")
     _expect(error is None or isinstance(error, dict), "error must be an object or null")
