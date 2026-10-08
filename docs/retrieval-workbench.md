@@ -627,6 +627,17 @@ and shows that a stricter policy version changes both the comparison and case ve
 
 ## Persistent regression cases
 
+Findings and regression cases show question text beside IDs when the exact saved local
+benchmark is available. The join checks the recorded draft revision, full dataset hash
+and evaluated split hash; baseline and candidate text are resolved separately. A changed,
+missing or unreadable draft produces an explicit unavailable message. Vector-only queries
+and runs without a saved draft reference keep their IDs without invented question text.
+Only queries recorded in that run receive display text.
+
+This is a local display join: run/check artifacts, stored cases, cloud uploads and downloaded
+issue summaries do not gain question text. The workbench does not reconstruct older draft
+revisions or resolve text from unrelated benchmarks that happen to reuse the same IDs.
+
 In **Compare a fix**, select a finding and choose **Track finding**. A case preserves the
 original baseline/candidate IDs, benchmark hash and recorded finding. Assign an owner,
 record investigation notes, and move it through open/investigating/fix proposed. Owners are

@@ -25,6 +25,7 @@ from vectraudit.labelling.task import atomic_write
 from vectraudit.pipelines.benchmark import audit_benchmark
 from vectraudit.pipelines.checkpoint import checkpoint_state, validate_path
 from vectraudit.pipelines.lexical import hybrid_pipeline
+from vectraudit.pipelines.local_display import run_questions
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
 from vectraudit.pipelines.models import Contract
 from vectraudit.pipelines.release import corpus_version as documents_version
@@ -506,6 +507,10 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
             "files": files,
             "baseline": baseline,
             "candidate": candidate,
+            "question_display": {
+                "baseline": run_questions(workspace, baseline),
+                "candidate": run_questions(workspace, candidate),
+            },
         }
 
     from vectraudit.pipelines.diagnostics import diagnostic_router

@@ -36,6 +36,17 @@ export interface Triage {
 export interface Comparison {
   baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }; policy: PolicyRef
   check: { verdict: string; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: CriticalResult[] }
+  question_display?: { baseline: QuestionDisplay; candidate: QuestionDisplay }
+}
+export interface QuestionDisplay { texts: Record<string, string>; reason: string | null }
+
+export function questionText(display: QuestionDisplay | undefined, queryId: string): string | null {
+  return display && Object.hasOwn(display.texts, queryId) ? display.texts[queryId] : null
+}
+
+export function questionLabel(display: QuestionDisplay | undefined, queryId: string): string {
+  const text = questionText(display, queryId)
+  return text ? `${text} · ${queryId}` : queryId
 }
 export interface CriticalExecution { attempt: number | null; repeat: number; rank: number | null; ids: string[] }
 export interface CriticalResult {

@@ -21,6 +21,7 @@ from vectraudit.evaluation.runfile import load_run
 from vectraudit.evaluation.triage import triage
 from vectraudit.labelling.storage import task_lock
 from vectraudit.labelling.task import atomic_write
+from vectraudit.pipelines.local_display import CaseQuestionDisplay
 from vectraudit.pipelines.models import Contract
 
 if TYPE_CHECKING:
@@ -399,7 +400,8 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
 
     @router.get("/cases")
     def list_cases() -> list[dict[str, Any]]:
-        return cases.list()
+        display = CaseQuestionDisplay(workspace)
+        return [display.decorate(record) for record in cases.list()]
 
     @router.post("/cases")
     def create_case(body: CaseIn) -> dict[str, Any]:
@@ -422,8 +424,8 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
         _, policy = workspace.policies.resolve(body.policy)
         with task_lock(cases.path(identifier)):
             if cases.path(identifier).exists():
-                return cases.read(identifier)
-            return cases.write(
+                return CaseQuestionDisplay(workspace).decorate(cases.read(identifier))
+            record = cases.write(
                 {
                     "id": identifier,
                     "format_version": 1,
@@ -438,6 +440,7 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
                     "history": [_event("created", candidate=body.candidate, policy=policy)],
                 }
             )
+            return CaseQuestionDisplay(workspace).decorate(record)
 
     @router.post("/cases/{identifier}")
     def update_case(identifier: str, body: CaseUpdate) -> dict[str, Any]:
@@ -448,7 +451,7 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
             record["history"].append(
                 _event("updated", status=body.status, owner=body.owner, note=body.note)
             )
-            return cases.write(record)
+            return CaseQuestionDisplay(workspace).decorate(cases.write(record))
 
     @router.post("/cases/{identifier}/verify")
     def verify_case(identifier: str, body: VerifyIn) -> dict[str, Any]:
@@ -492,6 +495,6 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
                     policy=policy,
                 )
             )
-            return cases.write(record)
+            return CaseQuestionDisplay(workspace).decorate(cases.write(record))
 
     return router
