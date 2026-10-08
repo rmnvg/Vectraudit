@@ -8,6 +8,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Independent query families: optional `family_id` groups related rows (permission
+  scenarios inherit their source question's family). Quality metrics weight families
+  equally, intervals resample families, and policy minimums count families. Reports,
+  preflight and the guided comparison show rows and families; individual safety and
+  critical assertions are unchanged.
+
 - Reference support-search case study with actual BM25 ranking, measured stage latency,
   tenant/current-document filters, independent baseline/candidate/fixed source revisions,
   and guided/exported CLI verdict parity. Versioned fictional documents and varied questions

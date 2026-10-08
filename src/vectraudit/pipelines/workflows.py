@@ -198,6 +198,7 @@ def permission_rows(body: PermissionIn) -> dict[str, Any]:
             not in ("relevant", "relevant_spans", "forbidden", "no_answer", "context", "filter")
         }
         row.update(
+            family_id=original.get("family_id", body.query_id),
             query_id=f"permission-{key}",
             context=scenario.context,
             filter=scenario.filters,

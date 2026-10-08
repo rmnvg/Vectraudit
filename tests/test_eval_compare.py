@@ -189,7 +189,7 @@ def test_min_queries_and_small_sample_warning() -> None:
     assert result["verdict"] == "not_comparable"
     assert "below the policy minimum of 10" in reasons(result)
     result = compare_runs(run, copy.deepcopy(run))
-    assert any("Only 5 queries" in w for w in result["warnings"])
+    assert any("Only 5 independent query families" in w for w in result["warnings"])
 
 
 def test_minimum_and_regressed_query_rules() -> None:

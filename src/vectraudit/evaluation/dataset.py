@@ -26,7 +26,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -38,6 +38,7 @@ MAX_QUERIES = 100_000
 MAX_ID_LENGTH = 512
 FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _KEYS = {
+    "family_id",
     "query_id",
     "vector",
     "text",
@@ -83,7 +84,9 @@ class DatasetQuery:
     no_answer: bool = False
     context: dict[str, FilterValue] = field(default_factory=dict)
     forbidden: tuple[str, ...] = ()
-    split: str = "explore"
+    split: Literal["explore", "heldout"] = "explore"
+    family_id: str | None = None
+    """Shared independent sampling unit; defaults to this query's own ID."""
 
     @property
     def labelled(self) -> bool:
@@ -119,6 +122,7 @@ class Dataset:
         return {
             "sha256": self.sha256,
             "n_queries": len(self.queries),
+            "n_families": len({q.family_id or q.query_id for q in self.queries}),
             "n_labelled": self.n_labelled,
             "n_filtered": sum(bool(q.filter) for q in self.queries),
             "dim": self.dim,
@@ -146,6 +150,7 @@ def parse_dataset(text: str) -> Dataset:
     dim: int | None = None
     meta: dict[str, Any] = {}
     first = True
+    family_splits: dict[str, str] = {}
     for line_no, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
@@ -161,6 +166,9 @@ def parse_dataset(text: str) -> Dataset:
             q = _parse_query(obj)
             if q.query_id in seen:
                 raise ValueError(f"duplicate query_id {q.query_id!r}")
+            family = q.family_id or q.query_id
+            if family_splits.setdefault(family, q.split) != q.split:
+                raise ValueError("a query family cannot cross the explore/heldout boundary")
             if q.vector is not None:
                 if dim is None:
                     dim = len(q.vector)
@@ -232,6 +240,7 @@ def _parse_query(obj: Any) -> DatasetQuery:
         forbidden=forbidden,
         split=split,
         query_id=query_id,
+        family_id=_identifier(obj["family_id"], "family_id") if "family_id" in obj else None,
         vector=vector,
         text=text,
         relevant=_relevant(obj.get("relevant")),
@@ -328,6 +337,7 @@ def _fingerprint(queries: list[DatasetQuery], meta: dict[str, Any]) -> str:
     rows = [
         {
             "query_id": q.query_id,
+            **({"family_id": q.family_id} if q.family_id is not None else {}),
             "vector": None if q.vector is None else [float(x) for x in q.vector],
             "text": q.text,
             "relevant": q.relevant,

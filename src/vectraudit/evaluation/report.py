@@ -53,6 +53,7 @@ def _metric_rows(metrics: Mapping[str, Any]) -> list[list[str]]:
             _num(m["delta"], signed=True),
             f"[{_num(m['ci_low'], signed=True)}, {_num(m['ci_high'], signed=True)}]",
             str(m["n"]),
+            str(m.get("n_families", m["n"])),
         ]
         for name, m in metrics.items()
     ]
@@ -99,7 +100,8 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         "",
         f"Baseline **{_md(b['label'] or b['run_id'])}** ({_md(b['backend'])}) vs candidate "
         f"**{_md(c['label'] or c['run_id'])}** ({_md(c['backend'])}), "
-        f"{result['n_queries']} queries, k = {_md(c['k'])}.",
+        f"{result['n_queries']} query rows / "
+        f"{result.get('n_families', result['n_queries'])} families, k = {_md(c['k'])}.",
         "",
     ]
     release = _release_line(result)
@@ -123,7 +125,7 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     if result["metrics"]:
         out += [
             _md_table(
-                ["Metric", "Baseline", "Candidate", "Change", "95% CI", "n"],
+                ["Metric", "Baseline", "Candidate", "Change", "95% CI", "Rows", "Families"],
                 _metric_rows(result["metrics"]),
             ),
             "",
@@ -323,7 +325,8 @@ def render_html(result: Mapping[str, Any]) -> str:
     parts = [
         f'<h1>Retrieval check <span class="badge {_e(verdict)}">'
         f"{_e(_VERDICT_TEXT[verdict])}</span></h1>",
-        f'<p class="muted">{result["n_queries"]} paired queries · k = {_e(c["k"])} · '
+        f'<p class="muted">{result["n_queries"]} paired rows / '
+        f"{result.get('n_families', result['n_queries'])} families · k = {_e(c['k'])} · "
         f"vectraudit {_e(__version__)}</p>",
         *(
             [f'<p class="muted">{_e(_release_line(result, plain=True))}</p>']
@@ -361,7 +364,15 @@ def render_html(result: Mapping[str, Any]) -> str:
         parts.append("<h2>Quality</h2>")
         parts.append(
             _html_table(
-                ["Metric", "Baseline", "Candidate", "Change", "95% CI of change", "Queries"],
+                [
+                    "Metric",
+                    "Baseline",
+                    "Candidate",
+                    "Change",
+                    "95% CI of change",
+                    "Rows",
+                    "Families",
+                ],
                 _metric_rows(result["metrics"]),
             )
         )
@@ -416,7 +427,8 @@ def render_html(result: Mapping[str, Any]) -> str:
                     [
                         tag,
                         str(cohort["n"]),
-                        "yes" if cohort["judged"] else "no (too few queries)",
+                        str(cohort.get("n_families", cohort["n"])),
+                        "yes" if cohort["judged"] else "no (too few measured families)",
                         _METRIC_NAMES.get(name, name),
                         _num(m["baseline"]),
                         _num(m["candidate"]),
@@ -426,7 +438,8 @@ def render_html(result: Mapping[str, Any]) -> str:
         parts.append("<h2>Cohorts</h2>")
         parts.append(
             _html_table(
-                ["Tag", "Queries", "Judged", "Metric", "Baseline", "Candidate", "Change"], rows
+                ["Tag", "Rows", "Families", "Judged", "Metric", "Baseline", "Candidate", "Change"],
+                rows,
             )
         )
     if result["config_diff"]:

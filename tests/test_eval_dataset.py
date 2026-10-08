@@ -43,6 +43,7 @@ def test_parse_full_query() -> None:
     assert ds.summary() == {
         "sha256": ds.sha256,
         "n_queries": 2,
+        "n_families": 2,
         "n_labelled": 1,
         "n_filtered": 1,
         "dim": 3,

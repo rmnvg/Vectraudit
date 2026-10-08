@@ -73,6 +73,19 @@ try {
   await page.getByRole('button', { name: 'Queue scenario' }).click()
   await page.getByRole('button', { name: 'Add permission cases' }).click()
   await page.getByRole('button', { name: /^permission-/ }).waitFor()
+  await page.getByRole('button', { name: 'Save benchmark', exact: true }).click()
+  await page.getByText(/Saved locally/).waitFor()
+  await page.getByRole('button', { name: 'Continue to evaluation' }).click()
+  await evaluate('Permission baseline', 50, 'none')
+  await evaluate('Permission candidate', 50, 'none')
+  await page.getByRole('button', { name: 'Compare a fix', exact: true }).click()
+  for (const [label, prefix] of [['Baseline run', 'Permission baseline'], ['Candidate run', 'Permission candidate']]) {
+    const choices = await page.getByLabel(label).locator('option').allTextContents()
+    await page.getByLabel(label).selectOption({ label: choices.find(value => value.startsWith(prefix)) })
+  }
+  await page.getByRole('button', { name: 'Compare runs' }).click()
+  await page.getByText('4 query rows · 3 independent families', { exact: true }).waitFor()
+  await steps.getByRole('button', { name: /Build benchmark/ }).click()
 
   // Import duplicate incident exports; do not import the supposed ground truth.
   await page.getByText('Import questions or production incidents', { exact: true }).click()

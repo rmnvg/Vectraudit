@@ -19,6 +19,7 @@ class Question(Model):
     query_id: str = Field(min_length=1, max_length=512)
     text: str = Field(min_length=1)
     documents: list[str]
+    family_id: str | None = Field(default=None, min_length=1, max_length=512)
 
 
 class Judgment(Model):
@@ -111,7 +112,12 @@ class Task(Model):
 
     def digest(self) -> str:
         """Hash all task content except the digest itself."""
-        blob = json.dumps(self.model_dump(exclude={"sha256"}), sort_keys=True, ensure_ascii=False)
+        content = self.model_dump(exclude={"sha256"})
+        # Preserve digests of tasks created before optional family provenance.
+        for query in content["queries"]:
+            if query["family_id"] is None:
+                del query["family_id"]
+        blob = json.dumps(content, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(blob.encode()).hexdigest()
 
 

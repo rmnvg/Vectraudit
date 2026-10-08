@@ -154,6 +154,7 @@ def _execute(
             )
             entry: dict[str, Any] = {
                 "query_id": q.query_id,
+                **({"family_id": q.family_id} if q.family_id is not None else {}),
                 "tags": list(q.tags),
                 "filtered": bool(q.filter),
                 "ids": None,

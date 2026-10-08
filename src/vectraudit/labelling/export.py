@@ -37,6 +37,8 @@ def export_dataset(task: Task) -> str:
             # rather than inventing a positive or changing the dataset contract.
             relevant = {}
         row: dict[str, Any] = {"query_id": q.query_id, "text": q.text, "relevant": relevant}
+        if q.family_id is not None:
+            row["family_id"] = q.family_id
         if spans:
             row["relevant_spans"] = spans
         rows.append(row)

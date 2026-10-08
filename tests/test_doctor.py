@@ -69,6 +69,17 @@ def test_preflight_blocks_sparse_labels_and_mismatched_dimensions(setup):
     assert codes == {"labels.minimum", "vectors.dimension"}
 
 
+def test_preflight_counts_families_not_scenario_rows(setup):
+    rows = [json.loads(line) for line in setup[1].read_text().splitlines()]
+    for row in rows:
+        row["family_id"] = "one-question"
+    setup[1].write_text("\n".join(map(json.dumps, rows)))
+    report = diagnose(connection=setup[0], dataset=setup[1], policy=setup[2])
+    assert report["dataset"]["n_families"] == 1
+    codes = {c["code"] for c in report["checks"] if c["status"] == "error"}
+    assert {"dataset.minimum", "labels.minimum"} <= codes
+
+
 def test_secret_presence_without_value_or_env_name(tmp_path, monkeypatch):
     connection = tmp_path / "connection.json"
     connection.write_text(
