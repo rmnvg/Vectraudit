@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { guidedRequest, questionLabel } from '../lib/guided'
 import type { Comparison } from '../lib/guided'
-import type { Run } from '../lib/workbench'
+import type { RunListing } from '../lib/workbench'
 import { policyLabel } from '../lib/release'
 import type { PolicyRef } from '../lib/release'
 
@@ -14,7 +14,7 @@ export interface RegressionCase {
   question_display?: { text: string | null; reason: string | null }
   history: { at: string; kind: string; status?: string; owner?: string; note?: string; candidate?: string; verdict?: string; verified?: boolean; policy?: PolicyRef }[]
 }
-export default function RegressionCases({ token, comparison, runs, policy, policyRef }: { token: string; comparison: Comparison | null; runs: Run[]; policy: string | null; policyRef: PolicyRef | null }) {
+export default function RegressionCases({ token, comparison, runs, policy, policyRef }: { token: string; comparison: Comparison | null; runs: RunListing[]; policy: string | null; policyRef: PolicyRef | null }) {
   const [cases, setCases] = useState<RegressionCase[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -35,7 +35,7 @@ export default function RegressionCases({ token, comparison, runs, policy, polic
     {cases.map(c => <CaseEditor key={`${c.id}-${c.revision}`} record={c} runs={runs} busy={busy} onAction={perform} policy={policy} policyRef={policyRef} />)}
   </section>
 }
-function CaseEditor({ record, runs, busy, onAction, policy, policyRef }: { record: RegressionCase; runs: Run[]; busy: boolean; onAction: (path: string, body: unknown) => Promise<void>; policy: string | null; policyRef: PolicyRef | null }) {
+function CaseEditor({ record, runs, busy, onAction, policy, policyRef }: { record: RegressionCase; runs: RunListing[]; busy: boolean; onAction: (path: string, body: unknown) => Promise<void>; policy: string | null; policyRef: PolicyRef | null }) {
   const [owner, setOwner] = useState(record.owner)
   const [note, setNote] = useState('')
   const [status, setStatus] = useState(record.status === 'verified' ? 'investigating' : record.status)

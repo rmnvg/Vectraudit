@@ -139,8 +139,10 @@ def prepare_import(body: ImportIn) -> dict[str, Any]:
             # Preserve separate identities and conflicting judgments for validation.
             unique[str(len(unique))] = row
     rows = list(unique.values())
-    if len(rows) > 500:
-        raise ValueError("Select at most 500 distinct questions before importing")
+    from vectraudit.pipelines.guided import MAX_QUERIES
+
+    if len(rows) > MAX_QUERIES:
+        raise ValueError(f"Select at most {MAX_QUERIES} distinct questions before importing")
     meta = {
         **({} if body.incident else source_meta),
         "provenance": {
@@ -381,23 +383,23 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
 
     @router.get("/runs")
     def list_runs() -> list[dict[str, Any]]:
+        """Newest runs as summaries; per-query records load one run at a time."""
         paths = sorted(
             workspace.root.glob("*.run.json"), key=lambda p: p.stat().st_mtime, reverse=True
         )
         result = []
-        total_bytes = 0
         for path in paths[:100]:
             if path.is_symlink():
                 continue
-            total_bytes += path.stat().st_size
-            if total_bytes > 20 * 1024 * 1024:
-                break
             try:
-                identifier = path.name.removesuffix(".run.json")
-                result.append(load_run(workspace.run_path(identifier)))
+                result.append(workspace.run_summary(path.name.removesuffix(".run.json")))
             except (ValueError, HTTPException):
                 continue
         return result
+
+    @router.get("/runs/{identifier}")
+    def get_run(identifier: str) -> dict[str, Any]:
+        return load_run(workspace.run_path(identifier))
 
     @router.get("/cases")
     def list_cases() -> list[dict[str, Any]]:

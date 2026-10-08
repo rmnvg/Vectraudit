@@ -394,6 +394,10 @@ def release_router(workspace: GuidedWorkspace) -> APIRouter:
                 pipeline=pipeline,
                 k=cand["search"]["k"],
                 repeats=body.repeats,
+                # CI repeats the measured protocol: the queries in flight and rate limit the
+                # comparison ran with, so its latency remains comparable.
+                concurrency=int((cand.get("timing") or {}).get("concurrency") or 1),
+                max_rps=(cand.get("timing") or {}).get("max_rps"),
                 corpus_version=version,
                 evidence={
                     "verdict": check["verdict"],

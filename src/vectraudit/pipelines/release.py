@@ -102,9 +102,27 @@ class ReleaseFile(Contract):
     pipeline: ReleasePipeline
     k: int = Field(ge=1, le=10000)
     repeats: int = Field(default=3, ge=1, le=100)
+    concurrency: int = Field(default=1, ge=1, le=32)
+    """Queries in flight on each side. The approved file's value runs both sides, so latency
+    stays comparable and a pull request cannot change its own measurement protocol."""
+    max_rps: float | None = Field(default=None, gt=0, le=1000)
+    """Optional cap on pipeline calls per second for each side, retries included."""
     corpus_version: str | None = None
     evidence: dict[str, Any] = Field(default_factory=dict)
     vectraudit_version: str = __version__
+
+
+_EXECUTION_DEFAULTS = {"concurrency": 1, "max_rps": None}
+
+
+def release_json(release: ReleaseFile) -> str:
+    """Serialize a release file. Execution settings appear only when changed from their
+    defaults, so default exports stay byte-identical and readable by earlier versions."""
+    data = json.loads(release.model_dump_json())
+    for key, default in _EXECUTION_DEFAULTS.items():
+        if data.get(key) == default:
+            del data[key]
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
 def load_release(path: str | Path) -> ReleaseFile:
@@ -289,6 +307,8 @@ def run_release(
         warmup=0,
         label=label or f"{release.name} v{release.version}",
         params=release.pipeline.params,
+        concurrency=approved.concurrency,
+        max_rps=approved.max_rps,
     )
     run = execute_pipeline(
         ds, pipeline, options, config=config, corpus_version=config.get("corpus_sha256")
@@ -346,6 +366,11 @@ def check_release(
             )
         if (proposed.k, proposed.repeats) != (approved.k, approved.repeats):
             changes.append("This change proposes a different k or repeat count.")
+        if (proposed.concurrency, proposed.max_rps) != (approved.concurrency, approved.max_rps):
+            changes.append(
+                "This change proposes different concurrency or rate limits; the approved "
+                "settings measured both sides and apply until it is merged."
+            )
     result["warnings"].extend(changes)
     result["release"] = {
         "configuration": approved.configuration,
@@ -422,6 +447,12 @@ def validate_release(path: Path, env: Mapping[str, str] | None = None) -> list[d
                 f"Module {module} is not under the release folder or python_path; it must be "
                 "installed, and then both sides run the same installed code.",
             )
+    if release.concurrency > 1 and p.kind == "python":
+        add(
+            "warning",
+            f"concurrency {release.concurrency} calls {p.target} from several threads; "
+            "confirm the adapter is thread-safe.",
+        )
     if release.vectraudit_version != __version__:
         add(
             "warning",
@@ -468,7 +499,7 @@ def update_release(path: Path) -> tuple[ReleaseFile, list[str]]:
             "vectraudit_version": __version__,
         }
     )
-    path.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    path.write_text(release_json(updated), encoding="utf-8")
     return updated, changes
 
 
@@ -491,7 +522,7 @@ def render_release_files(
 ) -> dict[str, str]:
     """Relative path -> content for the exported release check. Nothing is written here."""
     files = {
-        f"{RELEASE_DIR}/release.json": release.model_dump_json(indent=2) + "\n",
+        f"{RELEASE_DIR}/release.json": release_json(release),
         f"{RELEASE_DIR}/{release.benchmark.path}": benchmark,
         f"{RELEASE_DIR}/{release.policy.path}": json.dumps(policy, indent=2) + "\n",
         f"{RELEASE_DIR}/README.md": _readme(release, prerequisites, evaluated_destination),
@@ -572,7 +603,14 @@ def _readme(
         f"queries, version `{release.benchmark.sha256[:12]}`.",
         f"- Policy `{release.policy.path}`: {release.policy.name} v{release.policy.version}, "
         f"rules `{release.policy.sha256[:12]}`.",
-        f"- Pipeline: {p.name} ({p.kind}), k={release.k}, {release.repeats} repeats.",
+        f"- Pipeline: {p.name} ({p.kind}), k={release.k}, {release.repeats} repeats"
+        + (
+            f", {release.concurrency} queries in flight"
+            + (f" at most {release.max_rps:g} calls/s" if release.max_rps else "")
+            if release.concurrency > 1 or release.max_rps
+            else ""
+        )
+        + ".",
         "",
         "On each pull request the workflow runs the target branch's pipeline and the pull",
         "request's pipeline on the target branch's benchmark and judges them with the target",

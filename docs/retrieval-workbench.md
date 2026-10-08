@@ -290,8 +290,13 @@ part of the candidate's configuration identity. They are part of the checkpoint 
 resume with the same values. Runs record `timing.concurrency` and `timing.max_rps`. Latency
 measured with several queries in flight is latency under load, so release checks compare
 latency only between runs with the same concurrency and otherwise say why they did not.
-Guided evaluations use the registered candidate's settings; release exports and optimization
-still run serially.
+Guided evaluations use the registered candidate's settings. An exported release check copies
+the concurrency and rate limit its candidate run was measured with into `release.json`
+(`concurrency`, `max_rps`; omitted when serial, so earlier versions can still read the
+file). In CI the approved release's values run both sides, like `k` and `repeats`: a pull
+request that proposes different values gets a warning and they apply only after merge.
+`vectraudit release validate` warns when a Python adapter would run concurrently.
+Optimization still runs serially.
 
 ### LangChain and LlamaIndex retrievers
 
@@ -613,7 +618,8 @@ creates the next version. The configuration binds:
 
 - the frozen query split that was measured (the benchmark is frozen automatically if it
   has not changed since the runs; otherwise the export is refused),
-- the candidate pipeline and its parameters, k and the CI repeat count,
+- the candidate pipeline and its parameters, k, the CI repeat count, and the concurrency and
+  rate limit the candidate was measured with,
 - the policy and its rule hash, the corpus version, the Vectraudit version and the evidence
   (both run IDs and a saved check file).
 
@@ -705,8 +711,13 @@ verification evidence. Verification covers the baseline's
 recorded split, not any held-out queries that were never run. Case status never overrides
 release verdicts, and does not automatically update merely because a new run was recorded.
 
-The guided run selector reloads the newest local runs after restart (up to 100 files and
-20 MiB combined); artifact inspection remains available for other runs. Snapshot/case lists
+The guided run selector lists the newest 100 local runs as summaries (without per-question
+records, cached by file size and modification time); a run's questions load only when you
+inspect it. Guided benchmarks hold up to 1,000 questions. Pipeline run files are written as
+compact JSON and may be up to 64 MiB: a 1,000-question run with a six-stage trace at
+retrieval depth 100 is about 39 MiB (104 MiB if indented). In Chromium, comparing two such
+runs rendered in about 2 seconds. The run browser shows 500 questions at a time; search by
+ID or cohort to reach the rest. Snapshot/case lists
 show the newest 200 records. Local writes use version checks and file locks; stale edits
 must reload before retrying. Existing token, same-origin and request-size protections apply
 to all new guided APIs.

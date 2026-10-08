@@ -33,6 +33,10 @@ from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
 from vectraudit.pipelines.runtime import HTTPPipeline, Pipeline
 
 MAX_BODY = 5 * 1024 * 1024
+MAX_QUERIES = 1000
+"""Guided benchmark size: the PRD's 1,000-question pilot suite."""
+MAX_RUN_BYTES = 64 * 1024 * 1024
+"""A 1,000-question run with stage traces at retrieval depth 100 is about 22 MiB."""
 ID = re.compile(r"^[a-f0-9]{32}$")
 
 
@@ -91,6 +95,13 @@ def _write(path: Path, value: dict[str, Any]) -> None:
     atomic_write(path, json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2) + "\n")
 
 
+def write_run(path: Path, run: dict[str, Any]) -> None:
+    """Pipeline runs are written compactly: indentation nearly triples a 1,000-question run
+    with stage traces (39 MiB becomes 104 MiB). Readers parse JSON, so nothing else changes."""
+    text = json.dumps(run, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    atomic_write(path, text + "\n")
+
+
 class GuidedWorkspace:
     """One local artifact directory, durable drafts, and a single evaluation worker."""
 
@@ -115,6 +126,21 @@ class GuidedWorkspace:
             if candidate.adapter.kind == "http":
                 HTTPPipeline(str(candidate.adapter.target), timeout=candidate.adapter.timeout)
         self.policies = PolicyStore(self, policy)
+        self._run_summaries: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+
+    def run_summary(self, identifier: str) -> dict[str, Any]:
+        """A validated run without its per-query records, cached by file size and mtime."""
+        path = self.run_path(identifier)
+        stat = path.stat()
+        key = (stat.st_size, stat.st_mtime_ns)
+        cached = self._run_summaries.get(identifier)
+        if cached is None or cached[0] != key:
+            run = load_run(path)
+            summary = {k: v for k, v in run.items() if k != "queries"}
+            summary["queries_omitted"] = len(run["queries"])
+            cached = (key, summary)
+            self._run_summaries[identifier] = cached
+        return cached[1]
 
     def _draft_path(self, identifier: str) -> Path:
         path = self.drafts / f"{_identifier(identifier)}.json"
@@ -147,8 +173,8 @@ class GuidedWorkspace:
             positive |= {span.doc_id for span in query.relevant_spans}
             if positive & set(ids):
                 raise ValueError("A document cannot be both relevant and irrelevant")
-        if len(ds) > 500:
-            raise HTTPException(422, "Guided benchmarks support at most 500 queries")
+        if len(ds) > MAX_QUERIES:
+            raise HTTPException(422, f"Guided benchmarks support at most {MAX_QUERIES} queries")
         identifier = body.id or uuid.uuid4().hex
         path = self._draft_path(identifier)
         with task_lock(path):
@@ -202,7 +228,7 @@ class GuidedWorkspace:
         path = self.root / f"{_identifier(identifier)}.run.json"
         if path.is_symlink() or not path.is_file():
             raise HTTPException(404, "Run not found in this workspace")
-        if path.stat().st_size > 20 * 1024 * 1024:
+        if path.stat().st_size > MAX_RUN_BYTES:
             raise HTTPException(413, "Run exceeds the local size limit")
         return path
 
@@ -397,7 +423,7 @@ class GuidedWorkspace:
             }
             # Cancelled runs remain in the journal; they are not release artifacts.
             if run["status"] != "cancelled":
-                _write(self.root / f"{run['run_id']}.run.json", run)
+                write_run(self.root / f"{run['run_id']}.run.json", run)
             return run
 
         with task_lock(evaluation_path, timeout=0):
