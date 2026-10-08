@@ -114,6 +114,8 @@ def run_command(
                         warmup=0,
                         label=candidate.name,
                         retry=retry,
+                        concurrency=candidate.concurrency,
+                        max_rps=candidate.max_rps,
                     ),
                     config=config,
                     corpus_version=spec.corpus_version or config.get("corpus_sha256"),

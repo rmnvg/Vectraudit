@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import statistics
+import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor
+from concurrent.futures import wait as futures_wait
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from vectraudit.core.jobs import JobCancelledError
-from vectraudit.evaluation.dataset import Dataset
+from vectraudit.evaluation.dataset import Dataset, DatasetQuery
 from vectraudit.evaluation.metrics import semantic_metrics
 from vectraudit.evaluation.runner import RunOptions, _skeleton, summarize
 from vectraudit.labelling.storage import task_lock
@@ -61,6 +65,54 @@ class PipelineOptions(RunOptions):
 
     params: Mapping[str, Any] = field(default_factory=dict)
     retry: RetryPolicy = field(default_factory=RetryPolicy)
+    concurrency: int = 1
+    """Queries in flight at once. Above 1 the adapter must be safe to call from threads."""
+    max_rps: float | None = None
+    """Upper bound on pipeline calls per second (retries and warm-ups included)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not 1 <= self.concurrency <= 32:
+            raise ValueError("concurrency must be between 1 and 32")
+        if self.max_rps is not None and not 0 < self.max_rps <= 1000:
+            raise ValueError("max_rps must be in (0, 1000]")
+
+
+class _Shared:
+    """State shared by every query of one run invocation, safe across worker threads."""
+
+    def __init__(self, policy: RetryPolicy, max_rps: float | None) -> None:
+        self.policy = policy
+        self._lock = threading.Lock()
+        self._retries_left = policy.max_retries
+        self._interval = 1 / max_rps if max_rps else 0.0
+        self._next_call = 0.0
+
+    def take_retry(self) -> bool:
+        """Spend one retry from the run budget; False once it is exhausted."""
+        with self._lock:
+            if self._retries_left <= 0:
+                return False
+            self._retries_left -= 1
+            return True
+
+    def throttle(self, alive: Callable[[], None]) -> None:
+        """Reserve the next call slot under ``max_rps`` and wait for it."""
+        if not self._interval:
+            return
+        with self._lock:
+            now = time.monotonic()
+            slot = max(now, self._next_call)
+            self._next_call = slot + self._interval
+        wait(slot - now, alive)
+
+
+def wait(seconds: float, alive: Callable[[], None]) -> None:
+    """Sleep in short slices; ``alive`` raises when the run is cancelled."""
+    deadline = time.monotonic() + seconds
+    while (left := deadline - time.monotonic()) > 0:
+        alive()
+        time.sleep(min(left, 0.2))
 
 
 @dataclass
@@ -69,41 +121,30 @@ class _Calls:
 
     pipeline: Pipeline
     request: PipelineRequest
-    policy: RetryPolicy
-    budget: list[int]
-    """Retries left in this run invocation, shared by every query."""
-    retries: list[dict[str, Any]]
-    progress: Callable[[int, int], None] | None
-    index: int
-    total: int
+    shared: _Shared
+    alive: Callable[[], None]
+    retries: list[dict[str, Any]] = field(default_factory=list)
 
     def __call__(self, label: str) -> tuple[Any, float]:
         """Return the call's result and its start time; re-raise once retries are spent."""
+        policy = self.shared.policy
         tries = 0
         while True:
+            self.shared.throttle(self.alive)
             t0 = time.perf_counter()
             try:
                 return self.pipeline(self.request.model_copy(deep=True)), t0
             except PipelineCallError as exc:
                 tries += 1
-                wait = (
-                    self.policy.delay(tries - 1, exc.retry_after)
-                    if exc.code in RETRYABLE and tries < self.policy.max_attempts
+                delay = (
+                    policy.delay(tries - 1, exc.retry_after)
+                    if exc.code in RETRYABLE and tries < policy.max_attempts
                     else None
                 )
-                if wait is None or self.budget[0] <= 0:
+                if delay is None or not self.shared.take_retry():
                     raise
-                self.budget[0] -= 1
-                self.retries.append({"call": label, "code": exc.code, "delay_s": wait})
-                self._wait(wait)
-
-    def _wait(self, seconds: float) -> None:
-        # Sleep in short slices; progress callbacks raise when the job is cancelled.
-        deadline = time.monotonic() + seconds
-        while (left := deadline - time.monotonic()) > 0:
-            if self.progress is not None:
-                self.progress(self.index, self.total)
-            time.sleep(min(left, 0.2))
+                self.retries.append({"call": label, "code": exc.code, "delay_s": delay})
+                wait(delay, self.alive)
 
 
 def failure_analysis(result: PipelineResult, relevant: dict[str, float]) -> list[dict[str, Any]]:
@@ -208,8 +249,16 @@ def _execute(
         "stage_traces_supported": True,
         "stage_traces": False,
     }
-    record["timing"]["scope"] = "complete pipeline call; client wall clock; serial queries"
     policy = options.retry if isinstance(options, PipelineOptions) else NO_RETRY
+    workers = options.concurrency if isinstance(options, PipelineOptions) else 1
+    max_rps = options.max_rps if isinstance(options, PipelineOptions) else None
+    if workers > 1 and getattr(pipeline, "thread_safe", True) is False:
+        raise ValueError("This adapter declares thread_safe = False; use concurrency 1")
+    record["timing"]["scope"] = "complete pipeline call; client wall clock; " + (
+        "serial queries" if workers == 1 else f"{workers} concurrent queries"
+    )
+    record["timing"]["concurrency"] = workers
+    record["timing"]["max_rps"] = max_rps
     record["timing"]["retry"] = {
         **asdict(policy),
         "retryable": sorted(RETRYABLE),
@@ -218,115 +267,30 @@ def _execute(
     if journal:
         journal.put("record", record)
     start = time.perf_counter()
-    budget = [policy.max_retries]
+    shared = _Shared(policy, max_rps)
+    results: dict[int, dict[str, Any]] = {}
     try:
-        for index, q in enumerate(dataset.queries):
-            if progress is not None:
-                progress(index, len(dataset))
-            previous = journal.latest(q.query_id) if journal else None
-            if previous is not None and (not previous["error"] or not retry_errors):
-                record["queries"].append(previous)
-                continue
-            attempt = journal.begin(q.query_id) if journal else 1
-            query_start = time.perf_counter()
-            request = PipelineRequest(
-                query_id=q.query_id,
-                text=q.text,
-                vector=None if q.vector is None else q.vector.tolist(),
-                k=options.k,
-                filters=q.filter,
-                context=q.context,
-                params=dict(options.params),
+        if workers == 1:
+            _serial(dataset, pipeline, options, shared, progress, journal, retry_errors, results)
+        else:
+            _concurrent(
+                dataset,
+                pipeline,
+                options,
+                shared,
+                workers,
+                progress,
+                journal,
+                retry_errors,
+                results,
             )
-            entry: dict[str, Any] = {
-                "query_id": q.query_id,
-                **({"family_id": q.family_id} if q.family_id is not None else {}),
-                "tags": list(q.tags),
-                "filtered": bool(q.filter),
-                "ids": None,
-                "exact_ids": None,
-                "latency_ms": None,
-                "metrics": None,
-                "ann_recall": None,
-                "nondeterministic": False,
-                "evidence": None,
-                "error": None,
-            }
-            rankings: list[list[str]] = []
-            retries: list[dict[str, Any]] = []
-            calls = _Calls(
-                pipeline, request, policy, budget, retries, progress, index, len(dataset)
-            )
-            try:
-                if index < options.warmup:
-                    calls("warmup")
-                samples, results = [], []
-                for repeat in range(options.repeats):
-                    raw, t0 = calls(f"repeat {repeat + 1}")
-                    result = PipelineResult.model_validate(raw.model_dump())
-                    samples.append((time.perf_counter() - t0) * 1000)
-                    if len(result.hits) > options.k:
-                        raise ValueError("pipeline returned more than k results")
-                    results.append(result)
-                    rankings.append([h.id for h in result.hits])
-                result = results[0]
-                ids = [h.id for h in result.hits]
-                entry.update(
-                    ids=ids,
-                    repeat_ids=rankings,
-                    latency_ms=statistics.median(samples),
-                    latency_samples_ms=samples,
-                    metrics=semantic_metrics(ids, q.relevant, options.k) if q.relevant else None,
-                    nondeterministic=any(r.hits != result.hits for r in results[1:]),
-                    no_answer_correct=all(not r.hits for r in results) if q.no_answer else None,
-                    forbidden_ids=sorted(
-                        {h.id for r in results for h in r.hits} & set(q.forbidden)
-                    ),
-                    permission_checked=bool(q.forbidden),
-                    abstained=result.abstained,
-                    cost_usd=(
-                        statistics.fmean(r.cost_usd for r in results if r.cost_usd is not None)
-                        if all(r.cost_usd is not None for r in results)
-                        else None
-                    ),
-                    memory_bytes=(
-                        max(r.memory_bytes for r in results if r.memory_bytes is not None)
-                        if all(r.memory_bytes is not None for r in results)
-                        else None
-                    ),
-                    repeat_safety=[
-                        {
-                            "forbidden_ids": sorted({h.id for h in r.hits} & set(q.forbidden)),
-                            "no_answer_correct": not r.hits if q.no_answer else None,
-                        }
-                        for r in results
-                    ],
-                    evidence={
-                        "kind": "pipeline",
-                        "stages": [s.model_dump() for s in result.stages],
-                        "failures": failure_analysis(result, q.relevant),
-                    }
-                    if options.evidence
-                    else None,
-                )
-            except Exception as exc:
-                # Do not persist exception text: user callables can expose secrets or queries.
-                entry["error"] = run_failure(exc)
-                # Rankings observed before the failure stay in the attempt history, so a
-                # retry cannot hide a critical document that went missing.
-                entry["repeat_ids"] = rankings or None
-            if retries:
-                entry["retries"] = retries
-            entry["attempt_count"] = attempt
-            entry["elapsed_ms"] = (time.perf_counter() - query_start) * 1000
-            if journal:
-                journal.finish(entry, attempt)
-            record["queries"].append(entry)
         if progress is not None:
             progress(len(dataset), len(dataset))
-        record["status"] = "partial" if any(q["error"] for q in record["queries"]) else "complete"
+        status = "partial" if any(e["error"] for e in results.values()) else "complete"
     except (KeyboardInterrupt, JobCancelledError):
-        record["status"] = "cancelled"
+        status = "cancelled"
+    record["queries"] = [results[i] for i in sorted(results)]
+    record["status"] = status
     record["timing"]["wall_s"] = time.perf_counter() - start
     if journal:
         record["timing"]["scope"] += (
@@ -341,3 +305,201 @@ def _execute(
             entry["attempts"] = journal.history(entry["query_id"])
         journal.put("record", record)
     return record
+
+
+def _reuse(journal: Checkpoint | None, query_id: str, retry_errors: bool) -> dict[str, Any] | None:
+    """A saved result to keep instead of calling the pipeline again, if there is one."""
+    previous = journal.latest(query_id) if journal else None
+    if previous is not None and (not previous["error"] or not retry_errors):
+        return previous
+    return None
+
+
+def _serial(
+    dataset: Dataset,
+    pipeline: Pipeline,
+    options: RunOptions,
+    shared: _Shared,
+    progress: Callable[[int, int], None] | None,
+    journal: Checkpoint | None,
+    retry_errors: bool,
+    results: dict[int, dict[str, Any]],
+) -> None:
+    for index, q in enumerate(dataset.queries):
+        if progress is not None:
+            progress(index, len(dataset))
+        if (previous := _reuse(journal, q.query_id, retry_errors)) is not None:
+            results[index] = previous
+            continue
+        attempt = journal.begin(q.query_id) if journal else 1
+
+        def alive(index: int = index) -> None:
+            if progress is not None:
+                progress(index, len(dataset))
+
+        entry = _measure(q, index, pipeline, options, shared, alive)
+        _finish(entry, attempt, journal)
+        results[index] = entry
+
+
+def _concurrent(
+    dataset: Dataset,
+    pipeline: Pipeline,
+    options: RunOptions,
+    shared: _Shared,
+    workers: int,
+    progress: Callable[[int, int], None] | None,
+    journal: Checkpoint | None,
+    retry_errors: bool,
+    results: dict[int, dict[str, Any]],
+) -> None:
+    """Keep at most ``workers`` queries in flight; journal writes stay on this thread."""
+    stop = threading.Event()
+
+    def alive() -> None:
+        if stop.is_set():
+            raise JobCancelledError("Run cancelled.")
+
+    queue: deque[tuple[int, DatasetQuery]] = deque()
+    for index, q in enumerate(dataset.queries):
+        if (previous := _reuse(journal, q.query_id, retry_errors)) is not None:
+            results[index] = previous
+        else:
+            queue.append((index, q))
+    pending: dict[Future[dict[str, Any]], tuple[int, int]] = {}
+    pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="vectraudit-query")
+    try:
+        while queue or pending:
+            if progress is not None:
+                progress(len(results), len(dataset))
+            while queue and len(pending) < workers:
+                index, q = queue.popleft()
+                attempt = journal.begin(q.query_id) if journal else 1
+                future = pool.submit(_measure, q, index, pipeline, options, shared, alive)
+                pending[future] = (index, attempt)
+            finished, _ = futures_wait(pending, timeout=0.2, return_when=FIRST_COMPLETED)
+            for future in finished:
+                index, attempt = pending.pop(future)
+                entry = future.result()
+                _finish(entry, attempt, journal)
+                results[index] = entry
+    except BaseException:
+        # Stop retry waits and new calls; calls already running cannot be interrupted, so
+        # wait for them and keep whatever finished. Unfinished attempts stay "interrupted".
+        stop.set()
+        for future, (index, attempt) in pending.items():
+            try:
+                entry = future.result()
+            except JobCancelledError:
+                continue
+            _finish(entry, attempt, journal)
+            results[index] = entry
+        raise
+    finally:
+        pool.shutdown(wait=True)
+
+
+def _finish(entry: dict[str, Any], attempt: int, journal: Checkpoint | None) -> None:
+    entry["attempt_count"] = attempt
+    if journal:
+        journal.finish(entry, attempt)
+
+
+def _measure(
+    q: DatasetQuery,
+    index: int,
+    pipeline: Pipeline,
+    options: RunOptions,
+    shared: _Shared,
+    alive: Callable[[], None],
+) -> dict[str, Any]:
+    """Execute one query's calls and build its record; never touches the journal."""
+    query_start = time.perf_counter()
+    request = PipelineRequest(
+        query_id=q.query_id,
+        text=q.text,
+        vector=None if q.vector is None else q.vector.tolist(),
+        k=options.k,
+        filters=q.filter,
+        context=q.context,
+        params=dict(options.params),
+    )
+    entry: dict[str, Any] = {
+        "query_id": q.query_id,
+        **({"family_id": q.family_id} if q.family_id is not None else {}),
+        "tags": list(q.tags),
+        "filtered": bool(q.filter),
+        "ids": None,
+        "exact_ids": None,
+        "latency_ms": None,
+        "metrics": None,
+        "ann_recall": None,
+        "nondeterministic": False,
+        "evidence": None,
+        "error": None,
+    }
+    rankings: list[list[str]] = []
+    calls = _Calls(pipeline, request, shared, alive)
+    try:
+        if index < options.warmup:
+            calls("warmup")
+        samples, results = [], []
+        for repeat in range(options.repeats):
+            raw, t0 = calls(f"repeat {repeat + 1}")
+            result = PipelineResult.model_validate(raw.model_dump())
+            samples.append((time.perf_counter() - t0) * 1000)
+            if len(result.hits) > options.k:
+                raise ValueError("pipeline returned more than k results")
+            results.append(result)
+            rankings.append([h.id for h in result.hits])
+        result = results[0]
+        ids = [h.id for h in result.hits]
+        entry.update(
+            ids=ids,
+            repeat_ids=rankings,
+            latency_ms=statistics.median(samples),
+            latency_samples_ms=samples,
+            metrics=semantic_metrics(ids, q.relevant, options.k) if q.relevant else None,
+            nondeterministic=any(r.hits != result.hits for r in results[1:]),
+            no_answer_correct=all(not r.hits for r in results) if q.no_answer else None,
+            forbidden_ids=sorted({h.id for r in results for h in r.hits} & set(q.forbidden)),
+            permission_checked=bool(q.forbidden),
+            abstained=result.abstained,
+            cost_usd=(
+                statistics.fmean(r.cost_usd for r in results if r.cost_usd is not None)
+                if all(r.cost_usd is not None for r in results)
+                else None
+            ),
+            memory_bytes=(
+                max(r.memory_bytes for r in results if r.memory_bytes is not None)
+                if all(r.memory_bytes is not None for r in results)
+                else None
+            ),
+            repeat_safety=[
+                {
+                    "forbidden_ids": sorted({h.id for h in r.hits} & set(q.forbidden)),
+                    "no_answer_correct": not r.hits if q.no_answer else None,
+                }
+                for r in results
+            ],
+            evidence={
+                "kind": "pipeline",
+                "stages": [s.model_dump() for s in result.stages],
+                "failures": failure_analysis(result, q.relevant),
+            }
+            if options.evidence
+            else None,
+        )
+    except JobCancelledError:
+        # Cancellation is not a pipeline failure: leave this attempt unfinished.
+        raise
+    except Exception as exc:
+        # Do not persist exception text: user callables can expose secrets or queries.
+        entry["error"] = run_failure(exc)
+        # Rankings observed before the failure stay in the attempt history, so a
+        # retry cannot hide a critical document that went missing.
+        entry["repeat_ids"] = rankings or None
+    if calls.retries:
+        entry["retries"] = calls.retries
+    entry["elapsed_ms"] = (time.perf_counter() - query_start) * 1000
+    return entry

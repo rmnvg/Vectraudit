@@ -39,6 +39,10 @@ class Candidate(Contract):
     adapter: Adapter
     pipeline_version: str | None = Field(default=None, min_length=1, max_length=256)
     params: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    concurrency: int = Field(default=1, ge=1, le=32)
+    """Queries in flight at once; above 1 the adapter must be thread-safe."""
+    max_rps: float | None = Field(default=None, gt=0, le=1000)
+    """Upper bound on calls per second to this pipeline, retries included."""
 
 
 class Manifest(Contract):
@@ -98,9 +102,12 @@ def open_adapter(adapter: Adapter, root: Path) -> Pipeline:
 
 def candidate_config(candidate: Candidate, root: Path) -> dict[str, Any]:
     """Safe identity for drift tracking; exclude endpoint credentials and local paths."""
-    raw = candidate.model_dump_json(
-        exclude={"pipeline_version"} if candidate.pipeline_version is None else None
-    )
+    # Execution settings change how fast queries run, not what the pipeline returns, so they
+    # stay out of the configuration identity (and existing identities stay unchanged).
+    excluded = {"concurrency", "max_rps"}
+    if candidate.pipeline_version is None:
+        excluded.add("pipeline_version")
+    raw = candidate.model_dump_json(exclude=excluded)
     out: dict[str, Any] = {
         "name": candidate.name,
         "adapter": candidate.adapter.kind,

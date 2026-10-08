@@ -339,8 +339,15 @@ class GuidedWorkspace:
             def factory() -> Pipeline:
                 return open_adapter(adapter, self.manifest_root)
 
+        registered = self.registry.get(body.pipeline)
         options = PipelineOptions(
-            k=body.k, repeats=body.repeats, warmup=0, label=body.label, params=params
+            k=body.k,
+            repeats=body.repeats,
+            warmup=0,
+            label=body.label,
+            params=params,
+            concurrency=registered.concurrency if registered else 1,
+            max_rps=registered.max_rps if registered else None,
         )
         identifier = uuid.uuid4().hex
         evaluation_path = self.evaluation_path(evaluation_id or identifier)

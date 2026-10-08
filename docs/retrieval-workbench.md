@@ -267,6 +267,32 @@ search = PythonPipeline(
 )
 ```
 
+### Concurrency and rate limits
+
+By default a candidate runs one query at a time. Set `concurrency` (1–32 queries in flight)
+and optionally `max_rps` (calls per second, retries and warm-ups included) on a candidate to
+run large suites faster without overloading the endpoint:
+
+```json
+{"name": "production", "adapter": {"kind": "http", "target": "https://retrieval.example/search"},
+ "concurrency": 8, "max_rps": 20}
+```
+
+Results are identical to a serial run apart from timing, and the run file lists queries in
+dataset order. All workers share one automatic-retry budget and one rate limit. Checkpoint
+writes stay on one thread, so cancel and resume work as before: queries that finished before
+cancellation are kept, and calls already running finish and are saved. HTTP adapters and
+the built-in hybrid baseline are thread-safe. A Python adapter that is not must use
+`concurrency` 1, or set `thread_safe = False` on the callable so higher values are refused.
+
+These settings change how fast queries run, not what the pipeline returns, so they are not
+part of the candidate's configuration identity. They are part of the checkpoint identity:
+resume with the same values. Runs record `timing.concurrency` and `timing.max_rps`. Latency
+measured with several queries in flight is latency under load, so release checks compare
+latency only between runs with the same concurrency and otherwise say why they did not.
+Guided evaluations use the registered candidate's settings; release exports and optimization
+still run serially.
+
 ### LangChain and LlamaIndex retrievers
 
 Evaluate the retriever your application already builds, without rewriting it. Put a small

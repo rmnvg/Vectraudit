@@ -528,7 +528,9 @@ class _Check:
         rule = self.policy.latency
         envs = [_environment(r) for r in (self.base, self.cand)]
         same_env = envs[0] == envs[1]
-        compared = same_env or not rule.require_same_environment
+        workers = [_concurrency(r) for r in (self.base, self.cand)]
+        # Latency under load is a different measurement from serial latency.
+        compared = workers[0] == workers[1] and (same_env or not rule.require_same_environment)
         change = {p: (cl[p] - bl[p]) / bl[p] * 100 if bl[p] > 0 else None for p in ("p50", "p95")}
         self.out["latency"] = {
             "baseline": bl,
@@ -538,7 +540,12 @@ class _Check:
             "same_environment": same_env,
             "compared": compared,
         }
-        if not compared:
+        if workers[0] != workers[1]:
+            self.warnings.append(
+                f"Latency was not compared: the runs used different concurrency "
+                f"({workers[0]} vs {workers[1]} queries in flight)."
+            )
+        elif not compared:
             self.warnings.append(
                 "Latency was not compared: the runs come from different runner environments "
                 f"({_env_label(envs[0])} vs {_env_label(envs[1])})."
@@ -643,6 +650,11 @@ def _unavailable(name: str) -> str:
 def _environment(run: Mapping[str, Any]) -> dict[str, Any]:
     runner = (run.get("provenance") or {}).get("runner") or {}
     return {k: runner.get(k) for k in _ENVIRONMENT_KEYS}
+
+
+def _concurrency(run: Mapping[str, Any]) -> int:
+    value = (run.get("timing") or {}).get("concurrency", 1)
+    return value if isinstance(value, int) else 1
 
 
 def _env_label(env: Mapping[str, Any]) -> str:
