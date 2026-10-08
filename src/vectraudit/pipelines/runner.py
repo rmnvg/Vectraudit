@@ -15,6 +15,7 @@ from vectraudit.evaluation.metrics import semantic_metrics
 from vectraudit.evaluation.runner import RunOptions, _skeleton, summarize
 from vectraudit.labelling.storage import task_lock
 from vectraudit.pipelines.checkpoint import Checkpoint, identity, validate_path
+from vectraudit.pipelines.errors import run_failure
 from vectraudit.pipelines.models import PipelineRequest, PipelineResult
 from vectraudit.pipelines.runtime import Pipeline
 
@@ -219,13 +220,9 @@ def _execute(
                     if options.evidence
                     else None,
                 )
-            except Exception:
+            except Exception as exc:
                 # Do not persist exception text: user callables can expose secrets or queries.
-                entry["error"] = {
-                    "code": "pipeline_error",
-                    "message": "Pipeline call or response validation failed.",
-                    "hint": "Validate the adapter locally against PipelineRequest/PipelineResult.",
-                }
+                entry["error"] = run_failure(exc)
                 # Rankings observed before the failure stay in the attempt history, so a
                 # retry cannot hide a critical document that went missing.
                 entry["repeat_ids"] = rankings or None

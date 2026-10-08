@@ -17,6 +17,7 @@ from vectraudit.evaluation.policy import CriticalQueryRule, Policy
 from vectraudit.evaluation.runfile import check_run
 from vectraudit.labelling.storage import TaskBusy, task_lock
 from vectraudit.pipelines.checkpoint import checkpoint_state
+from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.models import PipelineResult
 from vectraudit.pipelines.runner import PipelineOptions
 from vectraudit.pipelines.runner import execute_pipeline as run_pipeline
@@ -72,25 +73,36 @@ def test_cancel_resume_and_release_safety(tmp_path):
     assert pipe.calls == ["0", "1", "2"]
 
 
-def test_failed_queries_need_explicit_retry_and_preserve_evidence(tmp_path):
-    pipe = Adapter()
+@pytest.mark.parametrize("code", [None, "http_rate_limit", "timeout"])
+def test_failed_queries_need_explicit_retry_and_preserve_evidence(tmp_path, code):
+    class FailingAdapter(Adapter):
+        def __call__(self, request):
+            if code and request.query_id in self.fail:
+                self.calls.append(request.query_id)
+                raise PipelineCallError(code, "secret must not appear in the journal")
+            return super().__call__(request)
+
+    pipe = FailingAdapter()
     pipe.fail = {"1"}
     path = tmp_path / "run.sqlite"
     first = execute_pipeline(dataset(), pipe, checkpoint=path)
     assert first["status"] == "partial"
+    assert first["summary"]["errors_by_code"] == {code or "pipeline_error": 1}
     pipe.fail.clear()
     same = execute_pipeline(dataset(), pipe, checkpoint=path, resume=True)
     assert same["status"] == "partial"
+    assert same["summary"]["errors_by_code"] == first["summary"]["errors_by_code"]
     assert pipe.calls == ["0", "1", "2"]
     recovered = execute_pipeline(dataset(), pipe, checkpoint=path, resume=True, retry_errors=True)
     assert pipe.calls == ["0", "1", "2", "1"]
     query = recovered["queries"][1]
     assert query["attempt_count"] == 2
     assert [a["status"] for a in query["attempts"]] == ["failed", "complete"]
-    assert query["attempts"][0]["result"]["error"]["code"] == "pipeline_error"
+    assert query["attempts"][0]["result"]["error"]["code"] == (code or "pipeline_error")
     assert query["attempts"][0]["result"]["elapsed_ms"] >= 0
     assert "secret" not in json.dumps(recovered)
     assert recovered["status"] == "complete"
+    assert recovered["summary"]["errors_by_code"] == {}
 
 
 @pytest.mark.parametrize(

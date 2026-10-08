@@ -20,6 +20,7 @@ from vectraudit.pipelines import (
     StageTrace,
     execute_pipeline,
 )
+from vectraudit.pipelines.errors import PipelineCallError
 
 
 def dataset(**fields):
@@ -112,6 +113,63 @@ def test_errors_are_redacted_and_never_pass():
     assert run["status"] == "partial"
     assert "secret=123" not in json.dumps(run)
     assert compare_runs(run, run)["verdict"] == "error"
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "http_auth",
+        "http_not_found",
+        "http_rate_limit",
+        "http_error",
+        "timeout",
+        "connection_failed",
+        "response_too_large",
+        "invalid_response",
+        "too_many_hits",
+        "text_required",
+        "context_unsupported",
+        "document_id_missing",
+    ],
+)
+def test_typed_errors_keep_causes_without_exception_text(code):
+    def broken(q):
+        raise PipelineCallError(code, "SECRET-token and private query")
+
+    run = check_run(execute_pipeline(dataset(), broken))
+    assert run["queries"][0]["error"]["code"] == code
+    assert run["queries"][0]["error"]["hint"]
+    assert run["summary"]["errors_by_code"] == {code: 1}
+    assert run["status"] == "partial"
+    assert "SECRET" not in json.dumps(run)
+    assert compare_runs(run, run)["verdict"] == "error"
+
+
+def test_unknown_typed_error_codes_are_redacted():
+    def broken(q):
+        raise PipelineCallError("SECRET-in-code", "SECRET-in-message")
+
+    run = execute_pipeline(dataset(), broken)
+    assert run["queries"][0]["error"]["code"] == "pipeline_error"
+    assert run["summary"]["errors_by_code"] == {"pipeline_error": 1}
+    assert "SECRET" not in json.dumps(run)
+
+
+def test_failure_summary_counts_failed_queries_by_cause():
+    ds = parse_dataset(
+        "\n".join(json.dumps({"query_id": str(i), "text": "invoice"}) for i in range(4))
+    )
+
+    def mixed(q):
+        if q.query_id != "3":
+            code = "timeout" if q.query_id in {"0", "1"} else "http_auth"
+            raise PipelineCallError(code, "private")
+        return PipelineResult(hits=[Hit(id="a")])
+
+    run = execute_pipeline(ds, mixed, RunOptions(warmup=0, repeats=2))
+    assert run["summary"]["errors_by_code"] == {"http_auth": 1, "timeout": 2}
+    assert run["summary"]["n_errors"] == 3
+    assert run["summary"]["n_ok"] == 1
 
 
 def test_invalid_traces_and_overflow():

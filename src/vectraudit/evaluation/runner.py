@@ -14,6 +14,7 @@ import statistics
 import subprocess
 import time
 import uuid
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -303,6 +304,11 @@ def summarize(queries: Sequence[Mapping[str, Any]], n_queries: int) -> dict[str,
         "n_executed": len(queries),
         "n_ok": len(ok),
         "n_errors": n_errors,
+        "errors_by_code": dict(
+            sorted(
+                Counter(q["error"].get("code", "unknown") for q in queries if q["error"]).items()
+            )
+        ),
         "error_rate": n_errors / len(queries) if queries else 0.0,
         "n_labelled": len(labelled),
         "metrics": (

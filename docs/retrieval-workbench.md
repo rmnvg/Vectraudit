@@ -58,6 +58,15 @@ counts remain in the exported query evidence, including the rankings a failed at
 returned before it failed; critical-question checks judge those rankings as well as the
 retry's. An interrupted attempt has a start time but no fabricated duration or result.
 
+Failed queries retain known adapter error codes (for example `http_auth`,
+`http_rate_limit`, `timeout`, `connection_failed` and `invalid_response`) with a safe
+message and next action. Unclassified exceptions and unknown adapter codes remain
+`pipeline_error`; exception text is never saved. Run JSON includes
+`summary.errors_by_code`, counting each currently failed query once. Historical failed
+attempts remain in the checkpoint evidence but leave this count after a successful retry.
+A failed query still makes the run partial and prevents a passing release check.
+Retries are explicit through resume; automatic retry/backoff is not implemented yet.
+
 The CLI prints a checkpoint directory. Keep that directory and resume the same manifest:
 
 ```sh
