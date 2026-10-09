@@ -94,8 +94,8 @@ contains. Rows are kept until their project or workspace is deleted, appear in w
 exports, and are not counted against stored-run limits.
 
 The project page's **Release timeline** shows decisions and baseline pins, newest first,
-with a link to the full report while the check still exists and "Expired under retention"
-afterwards. The same timeline is available as JSON, paginated like the other histories:
+with a **Summary** link and a link to the full report while the check still exists
+("Report expired under retention" afterwards). The same timeline is available as JSON, paginated like the other histories:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -108,6 +108,44 @@ existing deployment, record decisions for checks made before the ledger existed 
 ```bash
 docker compose run --rm api backfill-decisions
 ```
+
+## Release summaries and trends for the lead
+
+These views read only the decision ledger, so they keep working after runs expire.
+
+**Plain-language summary.** For each decision: a headline and the action it implies, and
+then:
+- **what changed:** quality metrics in words, p95 latency and the names of changed settings;
+- **why it matters:** failing rules, accepted exceptions, critical questions and questions
+  that scored lower;
+- **what is uncertain:** changes whose 95% interval includes zero, fewer than 30 independent
+  question families, warnings, and a report that has expired.
+
+A failure that is within the noise still reads as a failure, because the policy judges the
+measured change. An accepted failure reads "fail, accepted", never pass. The project page
+shows the latest decision this way. The summary page (`/app/WORKSPACE/PROJECT/decisions/CHECK_ID`)
+offers a Markdown download, and the same summary is available from
+`GET .../decisions/CHECK_ID/summary` and the command line:
+
+```bash
+vectraudit cloud summary CHECK_ID            # Markdown; `--json` for the structured form
+vectraudit cloud summary "$CHECK_ID" >> "$GITHUB_STEP_SUMMARY"
+```
+
+`check cloud:main --upload` prints the matching `cloud summary` command. Labels and reasons
+are escaped in the Markdown, so an uploaded label cannot inject links or HTML into an issue
+or chat.
+
+**Trends.** `/app/WORKSPACE/PROJECT/trends` (and `GET .../trends?limit=200`) plots each
+check's candidate value against its baseline, coloured by verdict, plus p95 latency, oldest
+on the left.
+- Each benchmark version (dataset SHA-256) is a separate series. Scores on different
+  questions are not comparable, so no line crosses a benchmark change.
+- A dotted rule marks a policy change: verdicts on either side were judged by different
+  rules.
+- Charts are inline SVG, so the dashboard stays script-free.
+- Points are spaced by check, not by time, and a rejected candidate is plotted as checked;
+  the line shows what was proposed, not only what shipped.
 
 ## Audited exceptions
 

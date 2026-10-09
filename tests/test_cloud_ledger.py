@@ -144,7 +144,7 @@ def test_dashboard_shows_the_timeline_after_expiry(world, cloud_app, decided) ->
     browser = sign_in(cloud_app, world.tokens["acme_viewer"])
     page = browser.get("/app/acme/search").text
     assert "Release timeline" in page
-    assert "Expired under retention" in page
+    assert "Report expired under retention" in page
     assert "candidate-v2" in page
     assert "Baseline pinned" in page
     assert "ndcg 0.750 → 0.000 (-0.750)" in page
