@@ -1,3 +1,5 @@
+import RepeatSelector from '../components/RepeatSelector'
+import { executionView } from '../lib/repeats'
 import { useMemo, useState } from 'react'
 import { questionLabel, questionText } from '../lib/guided'
 import type { Comparison, Finding, QuestionDisplay, Severity, StageLoss, TriageItem } from '../lib/guided'
@@ -55,7 +57,7 @@ export default function Findings({ comparison, onInspect, onReview, reviewableQu
       </div>
     </div>}
     <div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Compare query<select aria-label="Compare query" value={selected} className="mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-sm" onChange={e => setSelected(e.target.value)}>{baseline.queries.map(q => <option key={q.query_id} value={q.query_id}>{questionLabel(display?.baseline, q.query_id)}</option>)}</select></label><label className="text-sm">Highlight document ID<input aria-label="Highlight document ID" className="mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-sm" value={doc} onChange={e => setDoc(e.target.value)} /></label></div>
-    <div className="grid gap-4 xl:grid-cols-2">{[baseline, candidate].map((run, i) => <TraceComparison key={run.run_id} title={i === 0 ? 'Baseline' : 'Candidate'} run={run} queryId={selected} document={doc} onDocument={setDoc} divergedAt={i === 1 ? diverged : null} display={i === 0 ? display?.baseline : display?.candidate} />)}</div>
+    <div className="grid gap-4 xl:grid-cols-2">{[baseline, candidate].map((run, i) => <TraceComparison key={`${run.run_id}-${selected}`} title={i === 0 ? 'Baseline' : 'Candidate'} run={run} queryId={selected} document={doc} onDocument={setDoc} divergedAt={i === 1 ? diverged : null} display={i === 0 ? display?.baseline : display?.candidate} />)}</div>
   </div>
 }
 
@@ -71,21 +73,24 @@ function FindingCard({ finding, doc, onDocument, file }: { finding: Finding; doc
 }
 
 function TraceComparison({ title, run, queryId, document, onDocument, divergedAt, display }: { title: string; run: Run; queryId: string; document: string; onDocument: (id: string) => void; divergedAt: string | null; display?: QuestionDisplay }) {
+  const [repeat, setRepeat] = useState(0)
   const query = run.queries.find(q => q.query_id === queryId)
-  const dropped = new Set(query?.evidence?.failures?.filter(f => f.doc_id === document && f.stage).map(f => f.stage) || [])
-  if (divergedAt) dropped.add(divergedAt)
+  const evidence = executionView(query, repeat).evidence
+  const dropped = new Set(evidence?.failures?.filter(f => f.doc_id === document && f.stage).map(f => f.stage) || [])
+  if (divergedAt && repeat === 0) dropped.add(divergedAt)
   const forbidden = new Set(query?.forbidden_ids || [])
   const text = questionText(display, queryId)
-  return <div className="min-w-0 rounded-xl border border-line p-4"><h3 className="font-semibold">{title} · {run.label}</h3><p className="mt-2 text-sm text-muted">nDCG {format(query?.metrics?.ndcg)} · {format(query?.latency_ms)} ms</p>{!!query?.error && <p className="mt-3 text-sm text-red-600">Query failed; no quality score.</p>}
+  return <div className="min-w-0 rounded-xl border border-line p-4"><h3 className="font-semibold">{title} · {run.label}</h3><p className="mt-2 text-sm text-muted">nDCG {query?.repeat_metrics ? 'mean ' : ''}{format(query?.metrics?.ndcg)} · {format(query?.latency_ms)} ms</p>{!!query?.error && <p className="mt-3 text-sm text-red-600">Query failed; no quality score.</p>}
     <p className="mt-3 text-xs text-muted">Question · {queryId}</p>
     <p className="mt-1 whitespace-pre-wrap break-words text-sm">{text ?? display?.reason ?? 'Question text unavailable for this query.'}</p>
+    {query && <RepeatSelector query={query} index={repeat} onChange={setRepeat} />}
     {!!query?.forbidden_ids?.length && <p className="mt-3 text-sm text-red-600">Forbidden delivered: {query.forbidden_ids.join(', ')}</p>}
     {query?.no_answer_correct != null && <p className={`mt-3 text-sm ${query.no_answer_correct ? '' : 'text-red-600'}`}>No-answer check: {query.no_answer_correct ? 'passed' : 'failed'}</p>}
-    {query?.evidence?.stages?.map(stage => {
+    {evidence?.stages?.map(stage => {
       const has = !!document && stage.hits.some(h => h.id === document)
       const lost = dropped.has(stage.name)
       return <div key={stage.name} data-dropped={lost || undefined} className={`mt-3 rounded-lg border p-3 ${lost ? 'border-red-500 bg-red-500/5' : has ? 'border-teal-500 bg-teal-500/5' : 'border-line'}`}><div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm">{stage.name}</b>{lost && <span className="text-xs font-semibold text-red-600">{document} dropped here</span>}</div><p className="text-xs text-muted">{stage.hits.length} documents · {format(stage.latency_ms)} ms · {stage.source}</p><div className="mt-2 flex max-h-24 flex-wrap gap-1 overflow-auto">{stage.hits.slice(0, 50).map(h => <button className={`rounded px-2 py-1 font-mono text-xs ${document === h.id ? 'bg-teal-600 text-white' : forbidden.has(h.id) ? 'bg-red-500/10 text-red-600' : 'bg-surface-2'}`} key={h.id} onClick={() => onDocument(h.id)}>{h.id}</button>)}</div></div>
     })}
-    {!query?.evidence?.stages?.length && <p className="mt-3 text-sm text-muted">No recorded stage evidence.</p>}
+    {!evidence?.stages?.length && <p className="mt-3 text-sm text-muted">No recorded stage evidence.</p>}
   </div>
 }

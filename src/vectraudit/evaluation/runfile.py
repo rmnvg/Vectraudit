@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 from pathlib import Path
 from typing import Any
 
-from vectraudit.evaluation.metrics import SEMANTIC_METRICS
+from vectraudit.evaluation.metrics import SEMANTIC_METRICS, ann_recall
 from vectraudit.evaluation.runner import RUN_FORMAT, RUN_FORMAT_VERSION
 
 RUN_STATUSES = frozenset({"complete", "partial", "failed", "cancelled"})
@@ -67,6 +68,14 @@ def check_run(data: Any) -> dict[str, Any]:
     _expect(isinstance(search.get("params"), dict), "search.params must be an object")
     contract = _dict(data, "metric_contract")
     _expect(_count(contract.get("version")), "metric_contract.version must be an integer")
+    timing = data.get("timing")
+    _expect(timing is None or isinstance(timing, dict), "timing must be an object or null")
+    repeats: Any = (timing or {}).get("repeats")
+    if contract["version"] == 2:
+        _expect(
+            contract.get("repeat_aggregation") == "mean_per_query", "unknown repeat aggregation"
+        )
+        _expect(_count(repeats) and repeats >= 1, "repeat-quality contract requires timing.repeats")
     for key in ("backend", "capabilities"):
         _expect(data.get(key) is None or isinstance(data[key], dict), f"{key} must be an object")
     _expect(data["status"] == "failed" or isinstance(data.get("backend"), dict), "missing backend")
@@ -76,6 +85,8 @@ def check_run(data: Any) -> dict[str, Any]:
     for n, q in enumerate(queries):
         try:
             _check_query(q, search["k"])
+            if contract["version"] == 2 and q.get("error") is None:
+                _check_repeat_quality(q, repeats)
         except RunFileError as e:
             raise RunFileError(f"queries[{n}]: {e}") from e
         _expect(q["query_id"] not in seen, f"duplicate query_id {q['query_id']!r}")
@@ -83,6 +94,85 @@ def check_run(data: Any) -> dict[str, Any]:
     _expect(len(queries) <= dataset["n_queries"], "more queries than the dataset has")
     record: dict[str, Any] = data
     return record
+
+
+def _check_repeat_quality(q: dict[str, Any], repeats: int) -> None:
+    rankings: Any = q.get("repeat_ids")
+    _expect(
+        isinstance(rankings, list) and len(rankings) == repeats,
+        "repeat-quality ranking count must match timing.repeats",
+    )
+    samples: Any = q.get("repeat_metrics")
+    _expect(
+        isinstance(samples, list) and len(samples) == repeats,
+        "repeat_metrics must contain one entry per repeat",
+    )
+    for sample in samples:
+        _expect(
+            sample is None
+            or (
+                isinstance(sample, dict)
+                and all(_fraction(sample.get(name)) for name in SEMANTIC_METRICS)
+            ),
+            "repeat metrics must be finite fractions or null",
+        )
+    if q.get("metrics") is None:
+        _expect(
+            all(sample is None for sample in samples), "missing mean for measured repeat metrics"
+        )
+    else:
+        _expect(
+            all(sample is not None for sample in samples), "repeat quality coverage is incomplete"
+        )
+        for name in SEMANTIC_METRICS:
+            _expect(
+                math.isclose(
+                    q["metrics"][name],
+                    statistics.fmean(s[name] for s in samples),
+                    rel_tol=1e-12,
+                    abs_tol=1e-12,
+                ),
+                f"metrics.{name} must equal the mean of repeat_metrics",
+            )
+    recalls: Any = q.get("repeat_ann_recall")
+    _expect(
+        isinstance(recalls, list) and len(recalls) == repeats,
+        "repeat_ann_recall must contain one entry per repeat",
+    )
+    expected = [
+        ann_recall(ids, q["exact_ids"]) if q.get("exact_ids") is not None else None
+        for ids in rankings
+    ]
+    for actual, expected_value in zip(recalls, expected, strict=True):
+        _expect(
+            actual is None
+            if expected_value is None
+            else _fraction(actual) and math.isclose(actual, expected_value, abs_tol=1e-12),
+            "repeat ANN recall must match its ranking and exact reference",
+        )
+    mean = (
+        statistics.fmean(v for v in expected if v is not None) if expected[0] is not None else None
+    )
+    _expect(
+        q.get("ann_recall") is None
+        if mean is None
+        else _fraction(q.get("ann_recall")) and math.isclose(q["ann_recall"], mean, abs_tol=1e-12),
+        "ann_recall must equal the mean across repeats",
+    )
+    if "repeat_evidence" in q:
+        changed = q["repeat_evidence"]
+        _expect(
+            isinstance(changed, dict)
+            and all(
+                isinstance(key, str)
+                and key.isdigit()
+                and str(int(key)) == key
+                and 2 <= int(key) <= repeats
+                and isinstance(value, dict)
+                for key, value in changed.items()
+            ),
+            "repeat_evidence must map later repeat numbers to evidence objects",
+        )
 
 
 def _check_query(q: Any, k: int) -> None:

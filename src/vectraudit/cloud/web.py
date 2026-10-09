@@ -1001,6 +1001,7 @@ def project_page(
         f'<div class="crumbs"><a href="/app">Workspaces</a> / '
         f'<a href="/app/{quote(workspace)}">{e(workspace)}</a> / {e(project)}</div>'
         f"<h1>{e(access.project.name)}</h1>{notice}"
+        f'<p><a href="{base}/records">Shared cases, benchmarks and saved policies</a></p>'
         "<h2>Baselines</h2>"
         + _table(
             ["Name", "Run", "Label", "Pinned by", "Pinned at", "Note"],

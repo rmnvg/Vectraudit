@@ -122,6 +122,8 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         f"{result.get('n_families', result['n_queries'])} families, k = {_md(c['k'])}.",
         "",
     ]
+    if result.get("repeat_quality"):
+        out += [_repeat_note(result), ""]
     release = _release_line(result)
     if release:
         out += [release, ""]
@@ -336,6 +338,17 @@ def _critical_section(result: Mapping[str, Any], *, markdown: bool) -> list[str]
     return out
 
 
+def _repeat_note(result: Mapping[str, Any]) -> str:
+    protocol = result["repeat_quality"]
+    return (
+        f"Quality averages every repeat within each query "
+        f"(baseline {protocol['baseline_repeats']}, candidate {protocol['candidate_repeats']}), "
+        "then weights query families equally. Repeats do not increase the independent sample size. "
+        "Ranked-ID lists and primary stage evidence show repeat 1; inspect individual repeats "
+        "for intermittent losses. Critical and permission rules still check every execution."
+    )
+
+
 def render_html(result: Mapping[str, Any]) -> str:
     """A self-contained HTML investigation report."""
     verdict = result["verdict"]
@@ -353,6 +366,8 @@ def render_html(result: Mapping[str, Any]) -> str:
         ),
         f'<div class="runs">{_run_card("Baseline", b)}{_run_card("Candidate", c)}</div>',
     ]
+    if result.get("repeat_quality"):
+        parts.append(f'<p class="muted">{_e(_repeat_note(result))}</p>')
     if result["reasons"]:
         items = "".join(
             f'<li><span class="badge {_e(r["verdict"])}">{_e(_VERDICT_TEXT[r["verdict"]])}'

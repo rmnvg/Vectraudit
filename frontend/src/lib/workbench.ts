@@ -1,11 +1,18 @@
 export type Hit = { id: string; score?: number }
-export type Stage = { name: string; kind: string; parents: string[]; hits: Hit[]; latency_ms: number; source: string }
-export type Query = { query_id: string; ids: string[] | null; latency_ms: number | null; tags: string[]; metrics: Record<string, number> | null; no_answer_correct?: boolean | null; forbidden_ids?: string[]; error?: unknown; evidence?: { stages?: Stage[]; failures?: { doc_id: string; stage: string | null; reason: string }[] } }
-export type Run = { format: 'vectraudit.run'; run_id: string; created_at: string; status: string; label?: string; queries: Query[]; backend?: { config?: Record<string, unknown> } | null; benchmark_source?: { split: string } | null; summary: { n_queries: number; n_ok: number; metrics: Record<string, number> | null; latency_ms: { p95: number } | null; permissions?: { violations: number }; no_answer?: { n: number; accuracy: number | null } } }
+export type Stage = { name: string; kind: string; parents: string[]; hits: Hit[]; latency_ms: number | null; source: string }
+export type Evidence = { stages?: Stage[]; failures?: { doc_id: string; stage: string | null; reason: string }[] }
+export type Query = { query_id: string; ids: string[] | null; latency_ms: number | null; tags: string[]; metrics: Record<string, number> | null; no_answer_correct?: boolean | null; forbidden_ids?: string[]; error?: unknown; evidence?: Evidence | null; repeat_ids?: string[][] | null; repeat_metrics?: (Record<string, number> | null)[]; repeat_ann_recall?: (number | null)[]; repeat_evidence?: Record<string, Evidence> }
+export type Run = { metric_contract?: { version: number; repeat_aggregation?: string }; format: 'vectraudit.run'; run_id: string; created_at: string; status: string; label?: string; queries: Query[]; backend?: { config?: Record<string, unknown> } | null; benchmark_source?: { split: string } | null; summary: { n_queries: number; n_ok: number; metrics: Record<string, number> | null; latency_ms: { p95: number } | null; permissions?: { violations: number }; no_answer?: { n: number; accuracy: number | null } } }
 /** A run as listed by the guided workspace: per-query records load on demand. */
 export type RunListing = Omit<Run, 'queries'> & { queries?: Query[]; queries_omitted?: number }
-export type Candidate = { name: string; ndcg: number | null; p95_ms: number | null; cost_usd: number | null; memory_bytes: number | null; feasible: boolean; reasons: string[]; run: Run }
-export type Optimization = { format: 'vectraudit.optimization'; candidates: Candidate[]; selected: string | null; eligible: boolean; heldout: Candidate | null }
+export type PolicyScreen = { verdict: string; failing_rules: string[]; reasons: string[] }
+export type Candidate = { name: string; ndcg: number | null; p95_ms: number | null; cost_usd: number | null; memory_bytes: number | null; feasible: boolean; reasons: string[]; run: Run; policy_screen?: PolicyScreen | null; check?: PolicyScreen | null }
+export type Optimization = {
+  format: 'vectraudit.optimization'; candidates: Candidate[]; selected: string | null; eligible: boolean; heldout: Candidate | null
+  /** Present from format version 2: older artifacts are exploratory by construction. */
+  status?: 'exploratory_only' | 'no_feasible_candidate' | 'baseline_remains_best' | 'approved_under_policy' | 'not_approved'
+  status_label?: string; approved?: boolean; policy?: { sha256: string; baseline: string } | null
+}
 export type Benchmark = { format: 'vectraudit.benchmark'; n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][]; unannotated: string[]; suggestions: { category: string; instruction: string }[]; judgment_queue: { query_id: string; doc_id: string; reason: string }[] }
 export type Monitor = { format: 'vectraudit.monitor'; created_at: string; verdict: string; drift: { corpus: string; configuration: string; results: unknown[] }; alerts: { message: string }[]; summary: Run['summary'] }
 export type Artifact = Run | Optimization | Benchmark | Monitor
@@ -27,6 +34,17 @@ export function parseArtifact(value: unknown): Artifact {
   const numeric = (v: unknown) => v == null || (typeof v === 'number' && Number.isFinite(v))
   const metrics = (v: unknown) => v == null || (object(v) && Object.values(v).every(numeric))
   const summary = (v: unknown) => object(v) && numeric(v.n_queries) && numeric(v.n_ok) && metrics(v.metrics) && metrics(v.latency_ms)
+  const evidence = (value: unknown): boolean => {
+      if (value == null) return true
+      if (!object(value)) return false
+      const stages = value.stages
+      if (stages != null && (!Array.isArray(stages) || !stages.every(st => {
+        if (!object(st) || typeof st.name !== 'string' || typeof st.kind !== 'string' || typeof st.source !== 'string') return false
+        return numeric(st.latency_ms) && strings(st.parents) && Array.isArray(st.hits) && st.hits.every(h => object(h) && typeof h.id === 'string')
+      }))) return false
+      const failures = value.failures
+      return failures == null || (Array.isArray(failures) && failures.every(f => object(f) && typeof f.doc_id === 'string' && typeof f.reason === 'string' && (f.stage == null || typeof f.stage === 'string')))
+  }
   const run = (v: unknown): boolean => {
     if (!object(v) || typeof v.run_id !== 'string' || !summary(v.summary) || !Array.isArray(v.queries)) return false
     return v.queries.every(q => {
@@ -34,15 +52,11 @@ export function parseArtifact(value: unknown): Artifact {
       if (q.ids != null && !strings(q.ids)) return false
       if (!numeric(q.latency_ms) || !metrics(q.metrics)) return false
       if (q.forbidden_ids != null && !strings(q.forbidden_ids)) return false
-      if (q.evidence == null) return true
-      if (!object(q.evidence)) return false
-      const stages = q.evidence.stages
-      if (stages != null && (!Array.isArray(stages) || !stages.every(st => {
-        if (!object(st) || typeof st.name !== 'string' || typeof st.kind !== 'string' || typeof st.source !== 'string') return false
-        return numeric(st.latency_ms) && strings(st.parents) && Array.isArray(st.hits) && st.hits.every(h => object(h) && typeof h.id === 'string')
-      }))) return false
-      const failures = q.evidence.failures
-      return failures == null || (Array.isArray(failures) && failures.every(f => object(f) && typeof f.doc_id === 'string' && typeof f.reason === 'string' && (f.stage == null || typeof f.stage === 'string')))
+      if (q.repeat_ids != null && (!Array.isArray(q.repeat_ids) || !q.repeat_ids.every(strings))) return false
+      if (q.repeat_metrics != null && (!Array.isArray(q.repeat_metrics) || !q.repeat_metrics.every(metrics))) return false
+      if (q.repeat_ann_recall != null && (!Array.isArray(q.repeat_ann_recall) || !q.repeat_ann_recall.every(numeric))) return false
+      if (q.repeat_evidence != null && (!object(q.repeat_evidence) || !Object.values(q.repeat_evidence).every(evidence))) return false
+      return evidence(q.evidence)
     })
   }
   let valid = false

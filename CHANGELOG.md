@@ -8,6 +8,19 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench share WORKSPACE KIND ID` uploads one saved regression case,
+  benchmark snapshot or policy revision to a hosted project as an allowlisted projection
+  (`--preview` shows it offline; question text only with `--share-query-text`). Revisions
+  are immutable; the dashboard lists them under **Shared cases** for a second engineer or
+  lead; they survive run retention, are exported and go with their project.
+- Quality metrics now average every execution within each query, retaining per-repeat
+  scores and rankings. The workbench can inspect individual repeats and changed pipeline
+  traces. Metric contract v2 requires re-recording both sides of older comparisons;
+  family bootstrap sampling and all-execution safety checks remain in effect.
+- `vectraudit workbench optimize --policy POLICY --baseline NAME` screens candidates against
+  the baseline under the release policy and approves a candidate only if the policy passes on
+  held-out questions; results are labelled approved, not approved, baseline remains best or
+  exploratory only, and a quality tie keeps the baseline.
 - A/A calibration: `vectraudit calibrate RUN... --policy policy.json` compares recordings
   of an unchanged system, counts false alarms by rule, and drafts a policy that only raises
   noise-driven thresholds; critical, safety and absolute-floor failures are reported, never

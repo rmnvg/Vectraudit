@@ -13,7 +13,7 @@ from typing import Annotated, Any
 import typer
 
 from vectraudit.evaluation.dataset import load_dataset
-from vectraudit.evaluation.policy import DEFAULT_POLICY, load_policy
+from vectraudit.evaluation.policy import DEFAULT_POLICY, PolicyError, load_policy
 from vectraudit.evaluation.runfile import load_run
 from vectraudit.labelling.storage import task_lock
 from vectraudit.labelling.task import atomic_write
@@ -138,9 +138,26 @@ def run_command(
 
 
 @workbench_app.command("optimize")
-def optimize_command(manifest: Path, out: Path = Path("optimization.json")) -> None:
-    """Bounded candidate search; one held-out validation; recommendations require review."""
+def optimize_command(
+    manifest: Path,
+    out: Path = Path("optimization.json"),
+    policy: Annotated[
+        Path | None, typer.Option(help="Release policy that must approve the chosen candidate.")
+    ] = None,
+    baseline: Annotated[
+        str | None, typer.Option(help="Candidate name of the current configuration.")
+    ] = None,
+) -> None:
+    """Bounded candidate search; one held-out validation; recommendations require review.
+
+    With --policy and --baseline, only a candidate that passes the release policy against the
+    baseline on held-out questions is reported as approved (exit 0; 3 otherwise). Without a
+    policy the result is a best exploratory candidate, never a release approval.
+    """
     try:
+        if (policy is None) != (baseline is None):
+            raise ValueError("--policy and --baseline are used together")
+        rules = load_policy(policy) if policy is not None else None
         spec = load_manifest(manifest)
         if len(spec.candidates) > spec.max_candidates:
             raise ValueError("candidate count exceeds max_candidates")
@@ -158,14 +175,23 @@ def optimize_command(manifest: Path, out: Path = Path("optimization.json")) -> N
             max_memory_bytes=spec.max_memory_bytes,
             repeats=spec.repeats,
             corpus_version=spec.corpus_version,
+            policy=rules,
+            baseline=baseline,
         )
         _write(out, result)
-        typer.echo(
-            f"Selected: {result['selected'] or 'none'}; held-out eligible: {result['eligible']}"
-        )
-        if not result["eligible"]:
+        typer.echo(f"{result['status_label']}: {result['selected'] or 'none'}")
+        check = (result["heldout"] or {}).get("check")
+        if check is not None:
+            typer.echo(f"Held-out release check: {check['verdict']}")
+            for reason in check["reasons"]:
+                typer.echo(f"  - {reason}")
+        if rules is None:
+            ok = result["eligible"]
+        else:
+            ok = result["status"] in ("approved_under_policy", "baseline_remains_best")
+        if not ok:
             raise typer.Exit(3)
-    except (OSError, ValueError, ImportError, AttributeError) as exc:
+    except (OSError, ValueError, ImportError, AttributeError, PolicyError) as exc:
         typer.echo(f"Optimization error: {exc}", err=True)
         raise typer.Exit(2) from exc
 
@@ -291,3 +317,58 @@ def export_command(
         typer.echo(f"warning: {item}")
     if skipped:
         raise typer.Exit(1)
+
+
+@workbench_app.command("share")
+def share_command(
+    workspace: Path,
+    kind: str,
+    identifier: str,
+    project: Annotated[str | None, typer.Option(help="Hosted workspace/project.")] = None,
+    preview: Annotated[
+        bool, typer.Option(help="Show transfer metadata without connecting or uploading.")
+    ] = False,
+    share_query_text: Annotated[
+        bool,
+        typer.Option(
+            help="Explicitly include available question text; never passages, notes or context."
+        ),
+    ] = False,
+) -> None:
+    """Share one saved case, benchmark snapshot or policy revision with a project."""
+    from typing import cast
+
+    from fastapi import HTTPException
+
+    from vectraudit.integrations.cloud import CloudClient, CloudClientError, CloudTarget
+    from vectraudit.integrations.shared_records import Kind, preview_record, project_record
+    from vectraudit.pipelines.guided import GuidedWorkspace
+    from vectraudit.pipelines.local_display import CaseQuestionDisplay
+    from vectraudit.pipelines.workflows import LocalRecords
+
+    try:
+        categories = {"case": "cases", "benchmark": "benchmarks", "policy": "policies"}
+        if kind not in categories:
+            raise ValueError("Kind must be case, benchmark or policy")
+        if not workspace.is_dir():
+            raise ValueError("Workspace directory does not exist")
+        local = GuidedWorkspace(workspace)
+        record = LocalRecords(local, categories[kind]).read(identifier)
+        if kind == "case" and share_query_text:
+            record = CaseQuestionDisplay(local).decorate(record)
+        projected = project_record(cast(Kind, kind), record, share_query_text=share_query_text)
+        transfer = preview_record(projected)
+        if preview:
+            typer.echo(json.dumps({"preview": transfer}, indent=2))
+            return
+        result = CloudClient(CloudTarget.from_env(project)).upload_record(projected)
+        typer.echo(json.dumps({"uploaded": result, "transfer": transfer}, indent=2))
+    except (ValueError, OSError, KeyError, TypeError, HTTPException, CloudClientError) as exc:
+        # Pydantic and dataset validation can contain rejected source text.
+        message = (
+            exc.message
+            if isinstance(exc, CloudClientError)
+            else "Cannot share this record. Check its kind, ID, schema and workspace path."
+        )
+        typer.echo(message, err=True)
+        raise typer.Exit(2) from None

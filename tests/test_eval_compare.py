@@ -142,7 +142,7 @@ def test_error_takes_precedence_over_not_comparable() -> None:
     [
         ({"dataset": {"sha256": "e" * 64, "n_queries": 5}}, "different dataset versions"),
         ({"search": {"k": 3, "params": {}}}, "different k"),
-        ({"metric_contract": {"version": 2, "k": 2}}, "metric contract"),
+        ({"metric_contract": {"version": 99, "k": 2}}, "metric contract"),
     ],
 )
 def test_incompatible_runs_are_not_comparable(change, message) -> None:

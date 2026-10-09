@@ -202,7 +202,9 @@ def _query_findings(
                     "doc_ids": dropped,
                     "message": f"{primary} fell from {bv:.3f} to {cv:.3f}"
                     + (
-                        f"; results no longer returned: {', '.join(dropped)}."
+                        "; quality averages repeats. Inspect individual executions for losses."
+                        if c.get("repeat_metrics") and len(c["repeat_metrics"]) > 1
+                        else f"; results no longer returned: {', '.join(dropped)}."
                         if dropped
                         else "; the same documents are ranked lower."
                     ),
@@ -217,6 +219,10 @@ def _query_findings(
                 "message": f"{primary} rose from {bv:.3f} to {cv:.3f}.",
             }
         )
+    if any(len(q.get("repeat_ids") or []) > 1 for q in (b, c)):
+        for finding in findings:
+            if finding["kind"] in {"lost_relevant", "recovered_relevant", "still_missing"}:
+                finding["message"] += " This stage evidence describes repeat 1 only."
     return findings, bv, cv
 
 

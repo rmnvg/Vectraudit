@@ -138,6 +138,39 @@ vectraudit cloud revoke-exception EXCEPTION_ID
   decision records which exceptions covered it and its verdict before exceptions. The
   project page lists exceptions under **Accepted regressions** with a revoke button.
 
+## Shared cases, benchmarks and policies
+
+A second engineer or lead can read the workbench records that matter for a release without
+access to the first engineer's machine. Share one saved regression case, benchmark snapshot
+or policy revision with a project:
+
+```bash
+vectraudit workbench share WORKSPACE_DIR case CASE_ID --preview     # no credentials, no upload
+vectraudit workbench share WORKSPACE_DIR case CASE_ID --project acme/search
+vectraudit workbench share WORKSPACE_DIR benchmark SNAPSHOT_ID [--share-query-text]
+vectraudit workbench share WORKSPACE_DIR policy POLICY_ID
+```
+
+- The upload is an allowlisted projection (profile `workbench-metadata-v1`), validated on
+  both ends. Cases keep IDs, status, finding kinds and document IDs, the policy identity
+  and the verification history; snapshots keep dataset identity and judgments (relevant,
+  irrelevant and forbidden IDs, spans, no-answer, split, family); policies keep their rules,
+  hash and lineage. Owners, investigation notes, passages, context and any unknown field
+  never leave the machine, and the server rejects a record carrying them without echoing it.
+- Question text is sent only with `--share-query-text`; the record and the page say so.
+- Each local revision is immutable once uploaded: retrying the same content returns the same
+  record, while different content under the same revision is refused (409). A new local
+  revision uploads as a new record, so the history of a case stays readable.
+- Runner tokens and engineers can upload; viewers can read. Records are listed under
+  **Shared cases** on the project page (`/app/WORKSPACE/PROJECT/records`, filterable by kind)
+  and through `GET .../records` and `GET .../records/ID/file`. Each upload is an audit event.
+- Records are kept after run retention, included in workspace export, and deleted with their
+  project or workspace. A record is at most 4 MiB.
+
+Shared records are read-only evidence from the workbench. They do not synchronize, and a
+case marked verified locally is not a hosted release approval; only hosted checks and the
+decision ledger are.
+
 ## Scheduled jobs
 
 | When | Command | Why |

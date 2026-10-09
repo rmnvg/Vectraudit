@@ -36,10 +36,9 @@ from vectraudit.evaluation.dataset import Dataset, DatasetQuery
 from vectraudit.evaluation.families import family_count, family_id, family_mean
 from vectraudit.evaluation.metrics import (
     SEMANTIC_METRICS,
-    ann_recall,
     latency_summary,
     metric_contract,
-    semantic_metrics,
+    repeat_quality,
 )
 
 RUN_FORMAT = "vectraudit.run"
@@ -280,12 +279,11 @@ def _run_query(
         entry["permission_checked"] = bool(q.forbidden)
         entry["latency_ms"] = statistics.median(latencies)
         entry["nondeterministic"] = any(r != ids for r in results[1:])
-        if q.relevant:
-            entry["metrics"] = semantic_metrics(ids, q.relevant, options.k)
+        exact = None
         if use_exact:
             exact = connector.search(_request(q, v, options, exact=True))
             entry["exact_ids"] = exact
-            entry["ann_recall"] = ann_recall(ids, exact)
+        entry.update(repeat_quality(results, q.relevant, options.k, exact))
         if options.evidence:
             entry["evidence"] = _evidence(connector, _request(q, v, options, exact=False), entry)
     except ConnectorError as e:

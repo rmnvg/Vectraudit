@@ -48,6 +48,23 @@ a pipeline to a measured fix without editing JSON files:
 4. **Compare a fix.** Choose a baseline and a candidate, run the release comparison
    (saved as `*.check.json`), and work through the ranked findings.
 
+### Inspect repeated executions
+
+Quality scores average all successful measured repeats within a query, then weight query
+families equally. The **Execution** selector in run details and finding comparisons shows
+each ranking, its nDCG, the observed range and any captured pipeline stage losses. Identical
+pipeline outputs share the first trace; their later per-stage timings are not retained.
+Connector traces and hosted projections may lack later stage evidence; the UI labels it
+unavailable. The default ranking in exported comparison tables remains repeat 1.
+
+New recordings use metric contract v2. Re-record both baseline and candidate to compare
+against an older recording, and use the same repeat count. Old recordings still load and
+compare with each other. Repeats are not additional independent bootstrap samples: intervals
+still describe variation across query families, not all sources of provider randomness.
+Critical-document, permission and no-answer checks still inspect every execution. A failed
+query has no quality average; after a successful retry the average uses that completed
+attempt, while earlier failed-attempt rankings remain available to critical checks.
+
 ### Resume an evaluation
 
 Every guided evaluation and `workbench run` writes a local SQLite checkpoint before
@@ -421,6 +438,33 @@ cost/memory measurements cannot satisfy those constraints. These two measurement
 from adapters; they are not estimated or fabricated. Python calls are trusted code and
 must implement their own cancellation/timeouts; HTTP calls have bounded timeouts.
 
+### Optimize under the release policy
+
+Without a policy, the result is only a **best exploratory candidate; not checked under a
+release policy**. To decide whether a candidate may be released, give the same policy CI
+uses and name the candidate that represents today's configuration:
+
+```bash
+vectraudit workbench optimize manifest.json --policy retrieval/policy.json --baseline production
+```
+
+- Every other candidate is compared with the baseline under the policy on exploratory
+  questions; one that fails is excluded, with its failing rule keys listed. An inconclusive
+  screen (for example fewer exploratory questions than `min_queries`) does not exclude.
+- A candidate must beat the baseline on nDCG to be chosen; on a tie the baseline stays, so
+  latency jitter alone never recommends a change.
+- The chosen candidate and the baseline then run on held-out questions, and the full policy
+  decides. Only a pass reads **approved under the release policy**; otherwise the result is
+  **not approved**, with the verdict and reasons. Too little held-out evidence for
+  `min_queries` is not approved.
+- Critical-question rules are checked in the split that holds their question: exploratory
+  ones in the screen, held-out ones in the approval check. The report lists which.
+- Exit codes with a policy: 0 when approved or when the baseline remains best, 3 otherwise.
+  Without a policy they are unchanged (3 when held-out constraints are not met).
+
+The workbench's Experiments tab shows the same status, the held-out release check and each
+candidate's policy screen. Nothing is deployed, and the report still requires review.
+
 ## Scheduled monitoring
 
 Create a manifest with exactly one deployed candidate and retain a complete baseline run:
@@ -705,7 +749,8 @@ and runs without a saved draft reference keep their IDs without invented questio
 Only queries recorded in that run receive display text.
 
 This is a local display join: run/check artifacts, stored cases, cloud uploads and downloaded
-issue summaries do not gain question text. The workbench does not reconstruct older draft
+issue summaries do not gain question text, except a case or snapshot shared with
+`workbench share --share-query-text` (see below). The workbench does not reconstruct older draft
 revisions or resolve text from unrelated benchmarks that happen to reuse the same IDs.
 
 In **Compare a fix**, select a finding and choose **Track finding**. A case preserves the
@@ -742,6 +787,12 @@ ID or cohort to reach the rest. Snapshot/case lists
 show the newest 200 records. Local writes use version checks and file locks; stale edits
 must reload before retrying. Existing token, same-origin and request-size protections apply
 to all new guided APIs.
+
+To let a second engineer or lead read a case, a benchmark snapshot or a policy revision,
+share it with a hosted project: `vectraudit workbench share WORKSPACE_DIR case CASE_ID
+--project acme/search`. Add `--preview` to see exactly what would be sent without
+credentials. Owners, notes, passages and context are never sent; question text only with
+`--share-query-text`. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).
 
 Reproduce the full browser journey with `node scripts/market_fit_smoke.mjs` after building
 the UI. It tests grading/reload, snapshots, findings, incident review, permission creation

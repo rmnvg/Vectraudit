@@ -101,6 +101,10 @@ def victim(world, cloud_app):
         s.add(exception)
         s.flush()
         exception_id = exception.id
+    from tests.test_shared_records import case
+    from vectraudit.integrations.shared_records import project_record
+
+    record_id = client.upload_record(project_record("case", case()))["id"]
     members = world.client.get(
         "/api/v1/workspaces/acme/members", headers=world.as_("acme_owner")
     ).json()
@@ -114,6 +118,7 @@ def victim(world, cloud_app):
         "name": "main",
         "check_id": check["id"],
         "exception_id": exception_id,
+        "record_id": record_id,
         "token_id": tokens[0]["id"],
         "user_id": next(m["user"]["id"] for m in members if m["role"] == "engineer"),
     }

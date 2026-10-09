@@ -233,7 +233,38 @@ class _Check:
                 f"The runs used different k ({b['search']['k']} vs {c['search']['k']}).",
             )
         if b["metric_contract"]["version"] != c["metric_contract"]["version"]:
-            self.flag(Verdict.NOT_COMPARABLE, "The runs use different metric contract versions.")
+            self.flag(
+                Verdict.NOT_COMPARABLE,
+                "The runs use different metric contract versions; re-record both sides "
+                "to compare quality across all repeats.",
+            )
+        for run in (b, c):
+            version = run["metric_contract"]["version"]
+            if version not in (1, 2):
+                self.flag(Verdict.NOT_COMPARABLE, "Unsupported metric contract version.")
+            if version == 2:
+                from vectraudit.evaluation.runfile import RunFileError, check_run
+
+                try:
+                    check_run(run)
+                except RunFileError as exc:
+                    self.flag(Verdict.NOT_COMPARABLE, f"Invalid repeat-quality evidence: {exc}")
+        if len(self.reasons) > before:
+            return False
+        if b["metric_contract"]["version"] == c["metric_contract"]["version"] == 2:
+            br = (b.get("timing") or {}).get("repeats")
+            cr = (c.get("timing") or {}).get("repeats")
+            self.out["repeat_quality"] = {
+                "aggregation": "mean_per_query",
+                "baseline_repeats": br,
+                "candidate_repeats": cr,
+                "ranking_display": "first_repeat",
+            }
+            if br != cr:
+                self.flag(
+                    Verdict.NOT_COMPARABLE,
+                    "Repeat counts differ; re-record under the same repeat protocol.",
+                )
         if len(self.reasons) > before:
             return False
         if {q["query_id"] for q in b["queries"]} != {q["query_id"] for q in c["queries"]}:
@@ -478,6 +509,16 @@ class _Check:
                     "candidate_ids": c["ids"],
                     "baseline_evidence": b.get("evidence"),
                     "candidate_evidence": c.get("evidence"),
+                    **(
+                        {
+                            "baseline_repeat_ids": b.get("repeat_ids"),
+                            "candidate_repeat_ids": c.get("repeat_ids"),
+                            "baseline_repeat_metrics": b.get("repeat_metrics"),
+                            "candidate_repeat_metrics": c.get("repeat_metrics"),
+                        }
+                        if self.cand["metric_contract"]["version"] == 2
+                        else {}
+                    ),
                 }
             )
         regressed = sorted((x for x in changes if x["delta"] < -EPS), key=lambda x: x["delta"])

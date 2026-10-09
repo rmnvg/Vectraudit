@@ -312,3 +312,25 @@ class Invite(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
     used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class SharedRecord(Base):
+    """Immutable workbench revision; survives raw-run retention, scoped to its project."""
+
+    __tablename__ = "shared_records"
+    __table_args__ = (
+        UniqueConstraint("project_id", "kind", "source_id", "revision", "query_text"),
+        Index("ix_shared_records_project_uploaded", "project_id", "uploaded_at", "id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16))
+    source_id: Mapped[str] = mapped_column(String(32))
+    revision: Mapped[str] = mapped_column(String(32))
+    query_text: Mapped[bool] = mapped_column(Boolean)
+    digest: Mapped[str] = mapped_column(String(64))
+    uploaded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    uploaded_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONType)
