@@ -23,6 +23,7 @@ from vectraudit.cloud.errors import CloudError
 from vectraudit.cloud.models import Run, Workspace
 from vectraudit.cloud.service import find_run
 from vectraudit.evaluation.runfile import RunFileError, check_run
+from vectraudit.integrations.sharing import project_run
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace}/projects/{project}", tags=["runs"])
 DIGEST_HEADER = "x-vectraudit-digest"
@@ -104,7 +105,7 @@ async def upload_run(
                 "The upload was corrupted or altered in transit; retry.",
             )
     try:
-        record = check_run(json.loads(raw))
+        record = project_run(check_run(json.loads(raw)))
     except (ValueError, RunFileError) as e:
         raise CloudError(422, "invalid_run", f"Not a valid run file: {e}") from e
     n_queries = int(record["dataset"]["n_queries"])
@@ -184,7 +185,7 @@ def get_run(
 def get_run_file(
     workspace: str, project: str, run_id: str, session: SessionDep, principal: PrincipalDep
 ) -> dict[str, Any]:
-    """The run file exactly as uploaded (validated), for `vectraudit check` and audits."""
+    """The retained hosted projection, for release checks and audits."""
     access = repo.authorize(session, principal, workspace, "read", project)
     assert access.project is not None
     return find_run(session, access.workspace.id, access.project.id, run_id).data

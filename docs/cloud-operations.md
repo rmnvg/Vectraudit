@@ -3,7 +3,36 @@
 The hosted control plane stores uploaded runs, pinned baselines, checks and reports for
 workspaces of customers. It is one Docker image plus PostgreSQL, with no cloud-specific
 services, so it runs on any provider. Customer credentials never reach it: runners execute
-in the customer's CI and upload run files (ids, metrics, timings).
+in the customer's CI and upload an allowlisted projection of each run file (see below).
+
+## What an upload contains
+
+Uploads send a versioned projection (`release-metadata-v1`), never the raw run file, which
+stays unchanged on disk. The projection keeps what a release check needs: query, document
+and family IDs, tags, run labels, metrics, timings, safety assertions, retry and attempt
+rankings, corpus and runner identity, numeric and boolean search parameters, text search
+parameters as SHA-256 fingerprints, and pipeline identity (adapter kind, name, configuration
+hash and versions). It excludes request context and filters, vectors, endpoint hosts, module
+paths and other adapter configuration, raw stage evidence and source observations, error
+messages, dataset descriptions and provenance, and unknown fields. Query text and
+conversation history are excluded unless `--share-query-text` is given explicitly. IDs, tags
+and labels can themselves be sensitive; review them before uploading.
+
+Preview a transfer without credentials or a network call, and optionally write the exact
+payload to a new file for review:
+
+```bash
+vectraudit cloud preview runs/candidate.run.json
+vectraudit cloud preview runs/candidate.run.json --out review/candidate.projection.json
+vectraudit cloud push runs/candidate.run.json            # sends that projection
+```
+
+The service projects every upload again, so an older client that sends a raw run file still
+stores only the projection, and it rejects a projection with fields outside its profile or a
+digest mismatch. Uploading the same run ID with different sharing settings conflicts rather
+than rewriting history. `check cloud:<baseline>` compares projections on both sides, so its
+local report and the hosted check show the same verdict and the same changed settings. Runs
+stored before this change keep their original content.
 
 ## Deploy with Docker Compose
 

@@ -97,6 +97,24 @@ def _check_query(q: Any, k: int) -> None:
     _expect(isinstance(q.get("tags", []), list), "tags must be a list")
     error = q.get("error")
     _expect(error is None or isinstance(error, dict), "error must be an object or null")
+    if "observations" in q:
+        from pydantic import ValidationError
+
+        from vectraudit.pipelines.models import EvidenceObservation
+
+        observations = q["observations"]
+        _expect(isinstance(observations, list), "observations must be a list")
+        try:
+            for item in observations:
+                observed = EvidenceObservation.model_validate(item)
+                _expect(
+                    error is not None
+                    or observed.coverage is None
+                    or observed.coverage.ranked_output == "observed",
+                    "incomplete ranked observations require a query error",
+                )
+        except ValidationError as exc:
+            raise RunFileError("invalid versioned evidence observation") from exc
     repeat_ids = q.get("repeat_ids")
     _expect(repeat_ids is None or _rankings(repeat_ids, k), "repeat_ids must be rankings")
     attempts = q.get("attempts", [])

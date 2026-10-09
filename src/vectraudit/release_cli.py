@@ -78,6 +78,9 @@ def cloud_push(
     project: Annotated[
         str | None, typer.Option(help="workspace/project (or VECTRAUDIT_CLOUD_PROJECT).")
     ] = None,
+    share_query_text: Annotated[
+        bool, typer.Option(help="Explicitly share recorded query text/history. Preview first.")
+    ] = False,
 ) -> None:
     """Upload run files. Retrying is safe: a run is stored once."""
     client = _cloud_client(project)
@@ -89,9 +92,44 @@ def cloud_push(
             err_console.print(f"[bold red]Error:[/] {escape(str(e))}")
             ok = False
             continue
-        ok = _upload(client, run) and ok
+        from vectraudit.integrations.sharing import project_run
+
+        try:
+            projected = project_run(run, share_query_text=share_query_text)
+        except ValueError as e:
+            err_console.print(f"[bold red]Error:[/] {escape(str(e))}")
+            ok = False
+            continue
+        ok = _upload(client, projected) and ok
     if not ok:
         raise typer.Exit(code=1)
+
+
+@cloud_app.command("preview")
+def cloud_preview(
+    run: Path,
+    share_query_text: Annotated[
+        bool, typer.Option(help="Preview explicit query text/history sharing.")
+    ] = False,
+    out: Annotated[
+        Path | None, typer.Option(help="Write the exact projection to a separate local file.")
+    ] = None,
+) -> None:
+    """Preview a transfer without credentials or a network request. Raw run stays unchanged."""
+    from vectraudit.integrations.sharing import project_run, transfer_preview
+
+    try:
+        record = load_run(run)
+        projected = project_run(record, share_query_text=share_query_text)
+        if out is not None:
+            if out.resolve() == run.resolve() or out.exists():
+                raise ValueError(
+                    "Choose a new output file; existing artifacts are never overwritten."
+                )
+            save_run(projected, out)
+        console.print_json(data=transfer_preview(projected))
+    except (ValueError, OSError) as e:
+        raise _fail(str(e)) from e
 
 
 def _fail(message: str, hint: str | None = None) -> typer.Exit:
@@ -606,10 +644,15 @@ def check(
         cand = load_run(candidate)
         if cloud_baseline:
             base, pol = _cloud_baseline_and_policy(client, str(baseline)[6:], policy)
+            # The hosted baseline is a sharing projection; project the candidate the same way
+            # so this report and the hosted check compare identical fields.
+            from vectraudit.integrations.sharing import project_run
+
+            cand = project_run(cand)
         else:
             pol = DEFAULT_POLICY if policy is None else load_policy(policy)
             base = load_run(baseline)
-    except (PolicyError, RunFileError) as e:
+    except (PolicyError, RunFileError, ValueError) as e:
         raise _fail(str(e)) from e
     result = compare_runs(base, cand, pol)
     verdict = Verdict(result["verdict"])

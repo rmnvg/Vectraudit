@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -28,6 +28,7 @@ from vectraudit.connectors.base import (
     Connector,
     ConnectorError,
     ErrorCode,
+    FilterValue,
     ParamValue,
     SearchRequest,
 )
@@ -105,9 +106,14 @@ def execute_run(
             )
         record["search"]["exact_reference"] = use_exact
         record["search"]["exact_reference_note"] = caps.exact_reference_note if use_exact else None
-        if any(q.context for q in dataset.queries):
+        if any(q.context or q.history for q in dataset.queries):
             raise ConnectorError(
-                ErrorCode.UNSUPPORTED, "Permission contexts require a full-pipeline adapter."
+                ErrorCode.UNSUPPORTED,
+                "Permission contexts and conversation history require a full-pipeline adapter.",
+            )
+        if any(isinstance(v, (list, dict)) for q in dataset.queries for v in q.filter.values()):
+            raise ConnectorError(
+                ErrorCode.UNSUPPORTED, "List/range filters require a full-pipeline adapter."
             )
         vectors, embedding_s = _query_vectors(dataset, embed, info.dim)
         record["timing"]["embedding_s"] = embedding_s
@@ -233,7 +239,13 @@ def _warm_up(
 
 
 def _request(q: DatasetQuery, v: FloatArray, options: RunOptions, *, exact: bool) -> SearchRequest:
-    return SearchRequest(v, options.k, filter=q.filter, params=options.params, exact=exact)
+    return SearchRequest(
+        v,
+        options.k,
+        filter=cast(Mapping[str, FilterValue], q.filter),
+        params=options.params,
+        exact=exact,
+    )
 
 
 def _run_query(

@@ -20,6 +20,10 @@ RETRYABLE = frozenset({"timeout", "connection_failed", "http_rate_limit", "http_
 
 # Only these stable categories may be persisted; adapters can supply arbitrary codes.
 CALL_FAILURES = {
+    "incomplete_evidence": (
+        "The adapter did not observe a complete final ranking.",
+        "Record the complete delivered ranking; partial or unavailable observations cannot pass.",
+    ),
     "text_required": (
         "This retriever requires a text query.",
         "Supply sample text for the framework retriever.",

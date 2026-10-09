@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import Field, ValidationError
 
+from vectraudit.contracts import Context, Filters, History
 from vectraudit.pipelines.diagnostic_report import DiagnosticReport, failure_report
 from vectraudit.pipelines.models import Contract, PipelineRequest
 
@@ -35,8 +36,9 @@ class DiagnosticIn(Contract):
     text: str = Field(min_length=1, max_length=10000)
     vector: list[float] | None = Field(default=None, max_length=4096)
     k: int = Field(default=5, ge=1, le=100)
-    filters: dict[str, Scalar] = Field(default_factory=dict, max_length=32)
-    context: dict[str, Scalar] = Field(default_factory=dict, max_length=32)
+    filters: Filters = Field(default_factory=dict, max_length=32)
+    context: Context = Field(default_factory=dict, max_length=32)
+    history: History = Field(default_factory=list)
     forbidden: list[str] = Field(default_factory=list, max_length=1000)
     no_answer: bool = False
     corpus: str = Field(default="", max_length=5 * 1024 * 1024)
@@ -129,6 +131,7 @@ def diagnostic_payload(workspace: GuidedWorkspace, body: DiagnosticIn) -> dict[s
         k=body.k,
         filters=body.filters,
         context=body.context,
+        history=body.history,
     )
     payload: dict[str, Any] = {
         "documents": documents,

@@ -48,7 +48,8 @@ def pool(
 ) -> Task:
     """Union top-k documents per source, validating every id against the corpus."""
     if any(
-        q.no_answer or q.context or q.forbidden or q.split == "heldout" for q in dataset.queries
+        q.no_answer or q.context or q.history or q.forbidden or q.split == "heldout"
+        for q in dataset.queries
     ):
         raise ValueError(
             "This annotation workflow accepts exploratory positive-label queries only. "

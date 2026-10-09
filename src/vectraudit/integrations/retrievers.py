@@ -95,10 +95,10 @@ def _require_text(request: PipelineRequest) -> str:
 
 def _reject_unforwarded(request: PipelineRequest, how: str) -> None:
     """Fail rather than silently ignore filters or tenant context the retriever never saw."""
-    if request.filters or request.context:
+    if request.filters or request.context or request.history:
         raise PipelineCallError(
             "context_unsupported",
-            f"query {request.query_id} has filters or tenant context; {how} to apply them",
+            f"query {request.query_id} has filters, tenant context or history; {how} to apply them",
         )
 
 

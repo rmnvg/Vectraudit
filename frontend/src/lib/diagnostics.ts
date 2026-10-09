@@ -1,7 +1,6 @@
 /** Live pipeline connection check: one bounded sample call to a registered adapter. */
-import type { QueryRow } from './guided'
+import type { ContextValue, FilterValue, ConversationTurn, QueryRow } from './guided'
 
-type Scalar = string | number | boolean
 export type FindingStatus = 'ok' | 'warning' | 'error' | 'unknown' | 'skipped'
 export interface DiagnosticFinding { code: string; status: FindingStatus; message: string; hint: string }
 export interface DiagnosticReport {
@@ -11,7 +10,7 @@ export interface DiagnosticReport {
 }
 export interface DiagnosticResponse { pipeline: string; report: DiagnosticReport }
 export interface DiagnosticSample {
-  text: string; k: number; filters: Record<string, Scalar>; context: Record<string, Scalar>
+  text: string; k: number; filters: Record<string, FilterValue>; context: Record<string, ContextValue>; history?: ConversationTurn[]
   forbidden: string[]; no_answer: boolean
 }
 
@@ -21,6 +20,7 @@ export function sampleFromRows(rows: QueryRow[], k: number): DiagnosticSample {
   return {
     text: row?.text || '', k,
     filters: row?.filter || {}, context: row?.context || {},
+    ...(row?.history?.length ? { history: row.history } : {}),
     forbidden: row?.forbidden || [], no_answer: !!row?.no_answer,
   }
 }

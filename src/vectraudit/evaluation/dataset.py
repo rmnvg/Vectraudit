@@ -30,9 +30,18 @@ from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
+from pydantic import ValidationError
+
+from vectraudit.contracts import (
+    CONTEXT,
+    FILTERS,
+    HISTORY,
+    ContextValue,
+    ConversationTurn,
+    FilterValue,
+)
 
 FloatArray = npt.NDArray[np.float32]
-FilterValue = str | int | float | bool
 
 MAX_QUERIES = 100_000
 MAX_ID_LENGTH = 512
@@ -50,6 +59,7 @@ _KEYS = {
     "context",
     "forbidden",
     "split",
+    "history",
 }
 _META_KEYS = {"name", "description", "embedding_model", "normalized", "provenance"}
 
@@ -82,11 +92,12 @@ class DatasetQuery:
     tags: tuple[str, ...] = ()
 
     no_answer: bool = False
-    context: dict[str, FilterValue] = field(default_factory=dict)
+    context: dict[str, ContextValue] = field(default_factory=dict)
     forbidden: tuple[str, ...] = ()
     split: Literal["explore", "heldout"] = "explore"
     family_id: str | None = None
     """Shared independent sampling unit; defaults to this query's own ID."""
+    history: tuple[ConversationTurn, ...] = ()
 
     @property
     def labelled(self) -> bool:
@@ -174,6 +185,10 @@ def parse_dataset(text: str) -> Dataset:
                     dim = len(q.vector)
                 elif len(q.vector) != dim:
                     raise ValueError(f"vector has dimension {len(q.vector)}, expected {dim}")
+        except ValidationError as e:
+            # Keep the dataset's single-line error convention; do not echo history contents.
+            detail = "; ".join(error["msg"] for error in e.errors(include_input=False))
+            raise DatasetError(f"Line {line_no}: {detail}") from e
         except (ValueError, TypeError) as e:
             raise DatasetError(f"Line {line_no}: {e}") from e
         seen.add(q.query_id)
@@ -236,7 +251,8 @@ def _parse_query(obj: Any) -> DatasetQuery:
         raise ValueError("split must be explore or heldout")
     return DatasetQuery(
         no_answer=no_answer,
-        context=_filter(obj.get("context")),
+        context=CONTEXT.validate_python({} if obj.get("context") is None else obj["context"]),
+        history=tuple(HISTORY.validate_python(obj.get("history", []))),
         forbidden=forbidden,
         split=split,
         query_id=query_id,
@@ -288,21 +304,7 @@ def _relevant(value: Any) -> dict[str, float]:
 def _filter(value: Any) -> dict[str, FilterValue]:
     if value is None:
         return {}
-    if not isinstance(value, dict):
-        raise ValueError("filter must be an object of field -> value")
-    out: dict[str, FilterValue] = {}
-    for key, v in value.items():
-        if not FIELD_NAME.fullmatch(key):
-            raise ValueError(f"filter field {key!r} must be a dotted identifier")
-        if type(v) not in (str, int, float, bool):
-            raise ValueError(
-                f"filter value for {key!r} must be a string, number or boolean "
-                "(portable filters are equality only)"
-            )
-        if isinstance(v, float) and not math.isfinite(v):
-            raise ValueError(f"filter value for {key!r} must be finite")
-        out[key] = v
-    return out
+    return FILTERS.validate_python(value)
 
 
 def _spans(value: Any) -> tuple[Span, ...]:
@@ -345,6 +347,7 @@ def _fingerprint(queries: list[DatasetQuery], meta: dict[str, Any]) -> str:
             "tags": list(q.tags),
             **({"no_answer": True} if q.no_answer else {}),
             **({"context": q.context} if q.context else {}),
+            **({"history": [turn.model_dump() for turn in q.history]} if q.history else {}),
             **({"forbidden": list(q.forbidden)} if q.forbidden else {}),
             **({"split": q.split} if q.split != "explore" else {}),
             # Only present when used, so datasets without spans keep their versions.
