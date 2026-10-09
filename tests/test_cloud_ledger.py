@@ -80,7 +80,10 @@ def test_each_check_records_one_compact_decision(world, cloud_app, decided) -> N
             "changed_settings",
             "verdict_before_exceptions",
             "accepted",
+            "drift",
         }
+        assert summary["drift"] is None  # only monitor checks record drift
+        assert worse.trigger == "release"
 
 
 def test_decisions_survive_retention_and_the_timeline_says_so(world, cloud_app, decided) -> None:

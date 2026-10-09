@@ -188,8 +188,14 @@ class CloudClient:
         )
         return result
 
-    def create_check(self, candidate_run_id: str, baseline: str = "main") -> dict[str, Any]:
-        body = json.dumps({"candidate_run_id": candidate_run_id, "baseline": baseline}).encode()
+    def create_check(
+        self, candidate_run_id: str, baseline: str = "main", *, trigger: str = "release"
+    ) -> dict[str, Any]:
+        """Record a hosted check; ``trigger="monitor"`` marks a scheduled monitor run."""
+        payload = {"candidate_run_id": candidate_run_id, "baseline": baseline}
+        if trigger != "release":
+            payload["trigger"] = trigger
+        body = json.dumps(payload).encode()
         result: dict[str, Any] = self._call("POST", f"{self.project_path}/checks", body)
         return result
 

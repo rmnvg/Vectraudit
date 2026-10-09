@@ -219,17 +219,44 @@ def benchmark_command(
 @workbench_app.command("monitor")
 def monitor_command(
     manifest: Path,
-    baseline: Path,
+    baseline: Annotated[
+        str, typer.Argument(help="Frozen baseline run file, or cloud:NAME for a pinned one.")
+    ],
     history: Path = Path("monitor-history"),
     policy: Path | None = None,
+    upload: Annotated[
+        bool,
+        typer.Option(
+            help="Upload the run and record a hosted monitor check (needs a cloud:NAME baseline)."
+        ),
+    ] = False,
+    project: Annotated[str | None, typer.Option(help="Hosted workspace/project.")] = None,
 ) -> None:
-    """One scheduled check against a frozen baseline. Exit 3 alerts the scheduler."""
+    """One scheduled check against a frozen baseline. Exit 3 alerts the scheduler.
+
+    Exit codes: 0 pass (or every failure accepted by exception), 3 alert, 2 invalid local
+    input or failed run, 1 hosted service error. With ``--upload`` the check appears in the
+    project's timeline, trends and monitor status; the local history is written first.
+    """
+    cloud = baseline.startswith("cloud:")
+    if upload and not cloud:
+        typer.echo("--upload compares with a pinned baseline: pass cloud:<name>.", err=True)
+        raise typer.Exit(2)
+    client = None
+    if cloud:
+        from vectraudit.release_cli import _cloud_baseline_and_policy, _cloud_client
+
+        client = _cloud_client(project)
     try:
         spec = load_manifest(manifest)
         if len(spec.candidates) != 1:
             raise ValueError("monitor manifest must select exactly one candidate")
         ds = load_dataset(manifest.parent / spec.dataset)
-        base = load_run(baseline)
+        if cloud:
+            base, rules = _cloud_baseline_and_policy(client, baseline[6:], policy)
+        else:
+            base = load_run(Path(baseline))
+            rules = load_policy(policy) if policy else DEFAULT_POLICY
         if base["status"] != "complete" or base["dataset"]["sha256"] != ds.sha256:
             raise ValueError("monitor needs a complete baseline from this frozen benchmark")
         candidate = spec.candidates[0]
@@ -241,15 +268,36 @@ def monitor_command(
             config=config,
             corpus_version=spec.corpus_version or config.get("corpus_sha256"),
         )
-        result = monitor_check(base, run, load_policy(policy) if policy else DEFAULT_POLICY)
+        compared = run
+        if cloud:
+            # The hosted baseline is a sharing projection: compare like with like, as the
+            # hosted check will, and apply the project's active audited exceptions.
+            from vectraudit.integrations.sharing import project_run
+            from vectraudit.release_cli import _apply_cloud_exceptions
+
+            compared = project_run(run)
+        result = monitor_check(base, compared, rules)
+        if cloud:
+            result["check"] = _apply_cloud_exceptions(client, result["check"], rules)
+            result["verdict"] = result["check"]["verdict"]
+            result["alerts"] = [
+                r
+                for r in result["check"]["reasons"]
+                if r["verdict"] != "pass" and "accepted" not in r
+            ]
         write_run(history / f"{run['run_id']}.run.json", run)
         _write(history / f"{run['run_id']}.monitor.json", result)
-        typer.echo(json.dumps({"verdict": result["verdict"], "alerts": result["alerts"]}))
-        if result["verdict"] != "pass":
-            raise typer.Exit(3)
-    except (OSError, ValueError, ImportError, AttributeError) as exc:
+    except (OSError, ValueError, ImportError, AttributeError, PolicyError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
+    if upload:
+        from vectraudit.evaluation.compare import Verdict
+        from vectraudit.release_cli import _record_cloud_check
+
+        _record_cloud_check(client, compared, baseline[6:], Verdict(result["verdict"]), "monitor")
+    typer.echo(json.dumps({"verdict": result["verdict"], "alerts": result["alerts"]}))
+    if result["verdict"] not in ("pass", "accepted"):
+        raise typer.Exit(3)
 
 
 @workbench_app.command("serve")

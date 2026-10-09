@@ -803,7 +803,7 @@ def _apply_cloud_exceptions(client: Any, result: dict[str, Any], policy: Any) ->
 
 
 def _record_cloud_check(
-    client: Any, cand: dict[str, Any], baseline: str, verdict: Verdict
+    client: Any, cand: dict[str, Any], baseline: str, verdict: Verdict, trigger: str = "release"
 ) -> str | None:
     """Upload the candidate and store the hosted check; returns the hosted report URL."""
     from vectraudit.integrations.cloud import CloudClientError
@@ -811,7 +811,7 @@ def _record_cloud_check(
     if not _upload(client, cand):
         raise typer.Exit(code=1)
     try:
-        stored = client.create_check(cand["run_id"], baseline)
+        stored = client.create_check(cand["run_id"], baseline, trigger=trigger)
     except CloudClientError as e:
         err_console.print(f"[bold red]Hosted check failed:[/] {escape(e.message)}")
         raise typer.Exit(code=1) from e

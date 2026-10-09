@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.policy import DEFAULT_POLICY, Policy
 
 
-def monitor_check(
-    baseline: dict[str, Any], candidate: dict[str, Any], policy: Policy = DEFAULT_POLICY
-) -> dict[str, Any]:
-    """Classify observed changes independently from their cause; never roll the baseline."""
-    check = compare_runs(baseline, candidate, policy)
+def _state(old: Any, new: Any) -> str:
+    if old is None or new is None:
+        return "unknown"
+    return "changed" if old != new else "unchanged"
+
+
+def drift(baseline: Mapping[str, Any], candidate: Mapping[str, Any]) -> dict[str, Any]:
+    """What moved between two runs of one frozen benchmark, independent of the verdict.
+
+    Corpus version, retrieval configuration (excluding the corpus hash, which is its own
+    dimension) and per-question result sets. ``unknown`` means a side did not record it.
+    """
     old = baseline.get("backend") or {}
     new = candidate.get("backend") or {}
-    corpus_old, corpus_new = old.get("corpus_version"), new.get("corpus_version")
     config_old, config_new = old.get("config"), new.get("config")
     # Corpus content is its own drift dimension, not a retrieval configuration change.
     if config_old is not None:
@@ -34,6 +41,21 @@ def monitor_check(
                     "added": sorted(set(query.get("ids") or []) - set(previous.get("ids") or [])),
                 }
             )
+    return {
+        "corpus": _state(old.get("corpus_version"), new.get("corpus_version")),
+        "configuration": _state(config_old, config_new),
+        "results": changes,
+        "coverage_note": (
+            "Result coverage only; corpus inventory requires an adapter-supplied version."
+        ),
+    }
+
+
+def monitor_check(
+    baseline: dict[str, Any], candidate: dict[str, Any], policy: Policy = DEFAULT_POLICY
+) -> dict[str, Any]:
+    """Classify observed changes independently from their cause; never roll the baseline."""
+    check = compare_runs(baseline, candidate, policy)
     alerts = [reason for reason in check["reasons"] if reason["verdict"] != "pass"]
     return {
         "format": "vectraudit.monitor",
@@ -45,21 +67,6 @@ def monitor_check(
         "verdict": check["verdict"],
         "alerts": alerts,
         "check": check,
-        "drift": {
-            "corpus": "unknown"
-            if corpus_old is None or corpus_new is None
-            else "changed"
-            if corpus_old != corpus_new
-            else "unchanged",
-            "configuration": "unknown"
-            if config_old is None or config_new is None
-            else "changed"
-            if config_old != config_new
-            else "unchanged",
-            "results": changes,
-            "coverage_note": (
-                "Result coverage only; corpus inventory requires an adapter-supplied version."
-            ),
-        },
+        "drift": drift(baseline, candidate),
         "summary": candidate["summary"],
     }

@@ -213,6 +213,7 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
             )
             continue
         summary = entry["summary"] or {}
+        monitor = ' <span class="muted">Monitor</span>' if entry.get("trigger") == "monitor" else ""
         reasons = summary.get("reasons") or []
         candidate = entry["candidate_label"] or entry["candidate_run_id"][:12]
         if entry["candidate_commit"]:
@@ -229,7 +230,7 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
         rows.append(
             [
                 when,
-                _badge(entry["verdict"]),
+                _badge(entry["verdict"]) + monitor,
                 e(candidate),
                 _metric_change(summary),
                 e(reasons[0] if reasons else "All policy rules hold."),
@@ -239,15 +240,66 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
     return rows
 
 
+def _monitor_card(session: Session, access: repo.Access, base: str) -> str:
+    """Scheduled-monitor state: alerting since when, or healthy and what resolved it."""
+    from vectraudit.cloud import lead
+
+    assert access.project is not None
+    rows = ledger.history(session, access.project, limit=500, trigger="monitor")
+    status = lead.monitor_status(rows)
+    if status["state"] == "none":
+        return ""
+    last = status["last"]
+    alert = status["alert"]
+
+    def link(check_id: str | None, text: str) -> str:
+        if not check_id:
+            return e(text)
+        return f'<a href="{base}/decisions/{quote(check_id)}">{e(text)}</a>'
+
+    def when(at: datetime) -> str:
+        return e(at.strftime("%Y-%m-%d %H:%M"))
+
+    if status["state"] == "alerting":
+        runs = alert["failing_runs"]
+        more = "" if alert["complete"] else " or more"
+        streak = (
+            "the latest scheduled run did not pass."
+            if runs == 1 and alert["complete"]
+            else f"{runs}{more} scheduled runs in a row did not pass."
+        )
+        body = (
+            f"{_badge('fail')} <strong>Alerting since {when(alert['opened_at'])} UTC</strong>: "
+            f"{streak} "
+            + link(alert["alert_id"], "First failing run")
+            + " · "
+            + link(last["check_id"], "Latest run")
+        )
+    else:
+        body = f"{_badge('pass')} <strong>Healthy</strong>: the latest scheduled run passed."
+        if alert:
+            body += (
+                f" The last alert (opened {when(alert['opened_at'])} UTC, "
+                f"{alert['failing_runs']} failing run{'s' * (alert['failing_runs'] != 1)}) was "
+                f"resolved {when(alert['resolved_at'])} UTC by "
+                + link(alert["resolved_by"], "a passing run")
+                + "."
+            )
+    return (
+        '<div class="card"><div class="muted">Scheduled monitor · last run '
+        f"{when(last['at'])} UTC</div><p>{body}</p></div>"
+    )
+
+
 def _latest_decision(session: Session, access: repo.Access, base: str) -> str:
     """The newest release decision in plain language, for a lead opening the project."""
     from vectraudit.cloud import lead
     from vectraudit.cloud.web_lead import summary_html
 
     assert access.project is not None
-    newest = ledger.history(session, access.project, limit=1)
+    newest = ledger.history(session, access.project, limit=1, trigger="release")
     if not newest:
-        return ""
+        return _monitor_card(session, access, base)
     latest = newest[0]
     if latest["check_id"]:
         latest = ledger.decision(session, access.project, latest["check_id"]) or latest
@@ -259,7 +311,10 @@ def _latest_decision(session: Session, access: repo.Access, base: str) -> str:
     )
     return (
         '<div class="card"><div class="muted">Latest release decision · '
-        f"{e(when)} UTC</div>" + summary_html(lead.explain(latest)) + f"<p>{link}</p></div>"
+        f"{e(when)} UTC</div>"
+        + summary_html(lead.explain(latest))
+        + f"<p>{link}</p></div>"
+        + _monitor_card(session, access, base)
     )
 
 

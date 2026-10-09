@@ -202,6 +202,8 @@ class Check(Base):
     result: Mapped[dict[str, Any]] = mapped_column(JSONType)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trigger: Mapped[str] = mapped_column(String(16), default="release", server_default="release")
+    """``release`` (a check of a proposed change) or ``monitor`` (a scheduled run)."""
 
 
 class Decision(Base):
@@ -235,6 +237,8 @@ class Decision(Base):
     decided_at: Mapped[datetime] = mapped_column(UTCDateTime)
     """When the check was made; ``recorded_at`` is when this row was written."""
     decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trigger: Mapped[str] = mapped_column(String(16), default="release", server_default="release")
+    """``release`` or ``monitor``, copied from the check."""
     recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     summary: Mapped[dict[str, Any]] = mapped_column(JSONType)
 

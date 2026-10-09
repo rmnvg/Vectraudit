@@ -12,7 +12,7 @@ import base64
 import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
@@ -76,6 +76,8 @@ class TimelineEntry(BaseModel):
     candidate_commit: str | None = None
     policy_digest: str | None = None
     decided_by: str | None = None
+    trigger: str | None = None
+    """For decisions: ``release`` or ``monitor`` (a scheduled run)."""
     check_id: str | None = None
     evidence_available: bool | None = None
     """Whether the full check and its report still exist (False once retention purged it)."""
@@ -259,6 +261,8 @@ class LeadSummary(BaseModel):
 
     check_id: str | None
     verdict: str
+    trigger: str
+    """``release`` or ``monitor`` (a scheduled run of an unchanged setup)."""
     candidate: str
     headline: str
     action: str
@@ -298,6 +302,8 @@ class TrendPoint(BaseModel):
     at: datetime
     check_id: str | None
     verdict: str
+    trigger: str
+    """``release`` or ``monitor``."""
     candidate: str
     policy_digest: str | None
     value: float
@@ -351,6 +357,47 @@ def trends(
     assert access.project is not None
     rows = ledger.history(session, access.project, limit=limit)
     return TrendsOut(series=[TrendSeries(**s) for s in lead.trends(rows)], decisions=len(rows))
+
+
+class MonitorRun(BaseModel):
+    at: datetime
+    check_id: str | None
+    verdict: str
+
+
+class MonitorAlert(BaseModel):
+    alert_id: str | None
+    """Check ID of the run that opened the alert; stable until a run passes."""
+    opened_at: datetime
+    failing_runs: int
+    complete: bool
+    """False if the streak reaches the oldest monitor decision read, so it may be longer."""
+    resolved_at: datetime | None
+    resolved_by: str | None
+
+
+class MonitorStatus(BaseModel):
+    """Scheduled-monitor state, derived from monitor decisions in the ledger."""
+
+    state: Literal["none", "healthy", "alerting"]
+    last: MonitorRun | None
+    alert: MonitorAlert | None
+    """The open alert while alerting; the most recently resolved one while healthy."""
+
+
+MONITOR_WINDOW = 500
+
+
+@router.get(f"{PROJECT}/monitor")
+def monitor_status(
+    workspace: str, project: str, session: SessionDep, principal: PrincipalDep
+) -> MonitorStatus:
+    """Whether scheduled monitor runs currently alert, since when, and what resolved the last
+    alert. Read from the decision ledger, so it outlives run retention."""
+    access = repo.authorize(session, principal, workspace, "read", project)
+    assert access.project is not None
+    rows = ledger.history(session, access.project, limit=MONITOR_WINDOW, trigger="monitor")
+    return MonitorStatus(**lead.monitor_status(rows))
 
 
 def _check(session: SessionDep, workspace_id: str, project_id: str, check_id: str) -> Check:
