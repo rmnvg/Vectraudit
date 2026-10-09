@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field
 
-from vectraudit.cloud import repo, service
+from vectraudit.cloud import exceptions, repo, service
 from vectraudit.cloud.deps import PrincipalDep, SessionDep, SettingsDep
 from vectraudit.cloud.errors import CloudError
 from vectraudit.cloud.models import Baseline, Check, Run
@@ -109,9 +109,19 @@ def set_policy(
     access = repo.authorize(session, principal, workspace, "manage_project", project)
     assert access.project is not None
     try:
-        parse_policy(body)
+        proposed = parse_policy(body)
     except PolicyError as e:
         raise CloudError(422, "invalid_policy", str(e)) from e
+    # Who may accept regressions is governance: only an owner may change it.
+    if proposed.exceptions != service.project_policy(access.project).exceptions and (
+        access.role != "owner"
+    ):
+        raise CloudError(
+            403,
+            "forbidden",
+            "Changing the policy's exceptions block needs the owner role.",
+            "Ask a workspace owner, or keep the current exceptions block.",
+        )
     access.project.policy = body
     repo.audit(
         session,
@@ -218,3 +228,65 @@ def get_check(
     return _check_out(
         check, base, cand, _check_url(settings.public_url, workspace, project, check.id)
     )
+
+
+# --- audited exceptions --------------------------------------------------------------------
+
+
+class ExceptionIn(BaseModel):
+    rule: str = Field(min_length=1, max_length=1200)
+    """A failing reason's rule key in this check, e.g. ``metric:ndcg.max_drop``."""
+    reason: str = Field(min_length=1, max_length=2000)
+    owner: str = Field(min_length=1, max_length=200)
+    """Who follows up on the accepted regression."""
+    expires_at: datetime
+    max_checks: int | None = Field(default=None, ge=1, le=1000)
+    """Optional: stop after covering this many checks (including this one)."""
+
+
+@router.post("/checks/{check_id}/exceptions", status_code=201)
+def grant_exception(
+    workspace: str,
+    project: str,
+    check_id: str,
+    body: ExceptionIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """Accept one failing rule of this check, as the project policy allows, until expiry."""
+    access = repo.authorize(session, principal, workspace, "grant_exception", project)
+    granted = exceptions.grant(
+        session,
+        access,
+        check_id,
+        rule=body.rule,
+        reason=body.reason,
+        owner=body.owner,
+        expires_at=body.expires_at,
+        max_checks=body.max_checks,
+    )
+    return exceptions.payload(session, granted)
+
+
+@router.get("/exceptions")
+def list_exceptions(
+    workspace: str,
+    project: str,
+    session: SessionDep,
+    principal: PrincipalDep,
+    active: bool = False,
+) -> list[dict[str, Any]]:
+    """Exceptions newest first; ``active=true`` returns only those that apply to new checks."""
+    access = repo.authorize(session, principal, workspace, "read", project)
+    assert access.project is not None
+    rows = exceptions.listing(session, access.project, active_only=active)
+    return [exceptions.payload(session, e) for e in rows]
+
+
+@router.post("/exceptions/{exception_id}/revoke")
+def revoke_exception(
+    workspace: str, project: str, exception_id: str, session: SessionDep, principal: PrincipalDep
+) -> dict[str, Any]:
+    """Stop an exception covering future checks; earlier decisions keep their record."""
+    access = repo.authorize(session, principal, workspace, "grant_exception", project)
+    return exceptions.payload(session, exceptions.revoke(session, access, exception_id))

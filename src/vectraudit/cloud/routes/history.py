@@ -85,6 +85,11 @@ class TimelineEntry(BaseModel):
     previous_run_id: str | None = None
     note: str | None = None
     actor: str | None = None
+    action: str | None = None
+    """For ``exception`` entries: ``granted`` or ``revoked``."""
+    rule: str | None = None
+    expires_at: str | None = None
+    owner: str | None = None
 
 
 class TimelinePage(Page):

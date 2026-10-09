@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vectraudit.cloud import ledger, repo
+from vectraudit.cloud import exceptions, ledger, repo
 from vectraudit.cloud.errors import CloudError, not_found
 from vectraudit.cloud.models import (
     ApiToken,
@@ -150,6 +150,7 @@ def run_check(
     found = session.scalars(same).first()
     if found is not None:
         ledger.record_decision(session, found, base, cand, baseline_name)
+        exceptions.apply_to_check(session, access.project, found)
         return found, base, cand, False
     result = compare_runs(base.data, cand.data, policy)
     check = Check(
@@ -168,8 +169,10 @@ def run_check(
     except IntegrityError:
         found = session.scalars(same).one()
         ledger.record_decision(session, found, base, cand, baseline_name)
+        exceptions.apply_to_check(session, access.project, found)
         return found, base, cand, False
     ledger.record_decision(session, check, base, cand, baseline_name)
+    exceptions.apply_to_check(session, access.project, check)
     return check, base, cand, True
 
 

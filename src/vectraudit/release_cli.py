@@ -28,12 +28,21 @@ from vectraudit.evaluation.report import render_html, render_markdown
 from vectraudit.evaluation.runfile import RunFileError, load_run, save_run
 from vectraudit.evaluation.runner import RunOptions, TextEmbedder, execute_run, failed_run
 
-EXIT_CODES = {Verdict.PASS: 0, Verdict.ERROR: 1, Verdict.FAIL: 3, Verdict.NOT_COMPARABLE: 4}
+# Accepted means every failing rule is covered by an active audited exception: it unblocks
+# the release, and every report still says "fail, accepted", never "pass".
+EXIT_CODES = {
+    Verdict.PASS: 0,
+    Verdict.ACCEPTED: 0,
+    Verdict.ERROR: 1,
+    Verdict.FAIL: 3,
+    Verdict.NOT_COMPARABLE: 4,
+}
 _VERDICT_STYLE = {
     Verdict.PASS: "bold green",
     Verdict.FAIL: "bold red",
     Verdict.ERROR: "bold yellow",
     Verdict.NOT_COMPARABLE: "bold magenta",
+    Verdict.ACCEPTED: "bold yellow",
 }
 
 console = Console()
@@ -655,6 +664,8 @@ def check(
     except (PolicyError, RunFileError, ValueError) as e:
         raise _fail(str(e)) from e
     result = compare_runs(base, cand, pol)
+    if cloud_baseline:
+        result = _apply_cloud_exceptions(client, result, pol)
     verdict = Verdict(result["verdict"])
     if upload:
         hosted = _record_cloud_check(client, cand, str(baseline)[6:], verdict)
@@ -770,6 +781,27 @@ def _cloud_baseline_and_policy(
     return base, DEFAULT_POLICY if remote is None else parse_policy(remote)
 
 
+def _apply_cloud_exceptions(client: Any, result: dict[str, Any], policy: Any) -> dict[str, Any]:
+    """Apply the project's active audited exceptions, as the hosted check will.
+
+    If they cannot be read, the verdict is left as computed: a failure stays a failure.
+    """
+    from vectraudit.evaluation.exceptions import apply_exceptions
+    from vectraudit.integrations.cloud import CloudClientError
+
+    if result["verdict"] != Verdict.FAIL.value:
+        return result
+    try:
+        active = client.list_exceptions(active=True)
+    except CloudClientError as e:
+        err_console.print(
+            f"[yellow]Warning:[/] could not read audited exceptions ({escape(e.message)}); "
+            "the verdict ignores them."
+        )
+        return result
+    return apply_exceptions(result, active, policy)
+
+
 def _record_cloud_check(
     client: Any, cand: dict[str, Any], baseline: str, verdict: Verdict
 ) -> str | None:
@@ -863,12 +895,19 @@ def cloud_baselines(
 
 
 def _print_check(result: dict[str, Any], verdict: Verdict) -> None:
-    console.print(
-        f"[{_VERDICT_STYLE[verdict]}]{verdict.value.replace('_', ' ').upper()}[/] · "
-        f"{result['n_queries']} paired queries"
-    )
+    label = verdict.value.replace("_", " ").upper()
+    if verdict == Verdict.ACCEPTED:
+        label = "FAIL, ACCEPTED"
+    console.print(f"[{_VERDICT_STYLE[verdict]}]{label}[/] · {result['n_queries']} paired queries")
     for r in result["reasons"]:
-        console.print(f"  • {escape(r['message'])}")
+        accepted = r.get("accepted")
+        note = (
+            f" [yellow](accepted by {escape(accepted['accepted_by'])} until "
+            f"{escape(accepted['expires_at'][:10])}: {escape(accepted['reason'])})[/]"
+            if accepted
+            else ""
+        )
+        console.print(f"  • {escape(r['message'])}{note}")
     if result["metrics"]:
         table = Table("Metric", "Baseline", "Candidate", "Change", "95% CI")
         for name, m in result["metrics"].items():
@@ -882,3 +921,88 @@ def _print_check(result: dict[str, Any], verdict: Verdict) -> None:
         console.print(table)
     for w in result["warnings"]:
         console.print(f"[yellow]Warning:[/] {escape(w)}")
+
+
+@cloud_app.command("accept")
+def cloud_accept(
+    check_id: Annotated[str, typer.Argument(help="Hosted check in which the rule failed.")],
+    rule: Annotated[str, typer.Argument(help="Failing rule key, e.g. metric:ndcg.max_drop.")],
+    reason: Annotated[str, typer.Option(help="Why this regression is acceptable.")],
+    owner: Annotated[str, typer.Option(help="Who follows up, e.g. an email.")],
+    expires: Annotated[str, typer.Option(help="Expiry date YYYY-MM-DD (UTC end of day).")],
+    max_checks: Annotated[
+        int | None, typer.Option(min=1, max=1000, help="Stop after covering N checks.")
+    ] = None,
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """Accept one failing rule through an audited, expiring exception (as the policy allows)."""
+    from datetime import date, datetime, time, timezone
+
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        day = date.fromisoformat(expires)
+    except ValueError as e:
+        raise _fail("--expires must be a date such as 2026-11-01.") from e
+    until = datetime.combine(day, time(23, 59, 59), tzinfo=timezone.utc).isoformat()
+    try:
+        granted = _cloud_client(project).grant_exception(
+            check_id,
+            rule=rule,
+            reason=reason,
+            owner=owner,
+            expires_at=until,
+            max_checks=max_checks,
+        )
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    console.print(
+        f"Accepted {escape(granted['rule'])} until {escape(granted['expires_at'][:10])} "
+        f"(exception {escape(granted['id'])}). Checks it covers read FAIL, ACCEPTED."
+    )
+
+
+@cloud_app.command("exceptions")
+def cloud_exceptions(
+    all_: Annotated[bool, typer.Option("--all", help="Include revoked and expired ones.")] = False,
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """Audited exceptions of the project, newest first (active ones by default)."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        rows = _cloud_client(project).list_exceptions(active=not all_)
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    if not rows:
+        console.print("No exceptions.")
+        return
+    table = Table("Rule", "Status", "Accepted by", "Owner", "Expires", "Uses", "Reason", "ID")
+    for row in rows:
+        uses = f"{row['uses']}/{row['max_checks']}" if row["max_checks"] else str(row["uses"])
+        table.add_row(
+            escape(row["rule"]),
+            row["status"],
+            escape(row["accepted_by"]),
+            escape(row["owner"]),
+            row["expires_at"][:10],
+            uses,
+            escape(row["reason"]),
+            row["id"],
+        )
+    console.print(table)
+
+
+@cloud_app.command("revoke-exception")
+def cloud_revoke_exception(
+    exception_id: Annotated[str, typer.Argument(help="Exception id from `cloud exceptions`.")],
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """Stop an exception covering future checks; earlier decisions keep their record."""
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        revoked = _cloud_client(project).revoke_exception(exception_id)
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    console.print(f"Revoked exception {escape(revoked['id'])} ({escape(revoked['rule'])}).")

@@ -180,6 +180,43 @@ class CloudClient:
         result: dict[str, Any] = self._call("POST", f"{self.project_path}/checks", body)
         return result
 
+    def list_exceptions(self, *, active: bool = False) -> list[dict[str, Any]]:
+        """Audited exceptions, newest first; ``active`` ones apply to new checks."""
+        suffix = "?active=true" if active else ""
+        result: list[dict[str, Any]] = self._call("GET", f"{self.project_path}/exceptions{suffix}")
+        return result
+
+    def grant_exception(
+        self,
+        check_id: str,
+        *,
+        rule: str,
+        reason: str,
+        owner: str,
+        expires_at: str,
+        max_checks: int | None = None,
+    ) -> dict[str, Any]:
+        """Accept one failing rule of a hosted check (engineer/owner as the policy says)."""
+        body = json.dumps(
+            {
+                "rule": rule,
+                "reason": reason,
+                "owner": owner,
+                "expires_at": expires_at,
+                "max_checks": max_checks,
+            }
+        ).encode()
+        result: dict[str, Any] = self._call(
+            "POST", f"{self.project_path}/checks/{quote(check_id, safe='')}/exceptions", body
+        )
+        return result
+
+    def revoke_exception(self, exception_id: str) -> dict[str, Any]:
+        result: dict[str, Any] = self._call(
+            "POST", f"{self.project_path}/exceptions/{quote(exception_id, safe='')}/revoke", b""
+        )
+        return result
+
     def list_runs(self, limit: int = 20, **filters: str) -> dict[str, Any]:
         """``{"runs": [...], "next_cursor": ...}``, newest first."""
         from urllib.parse import urlencode

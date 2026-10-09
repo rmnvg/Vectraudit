@@ -9,6 +9,7 @@ neither fails this test until someone reviews it.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -77,6 +78,29 @@ def victim(world, cloud_app):
     client.upload_run(a_run("victim-run"))
     pin(world, "acme_engineer", "victim-run")
     check = client.create_check("victim-run")
+    from vectraudit.cloud.db import transaction
+    from vectraudit.cloud.models import PolicyException, Project, Workspace, utcnow
+
+    # A real exception row in the victim project, so revoke is aimed at a real id.
+    with transaction(cloud_app.state.sessions) as s:
+        acme = s.query(Workspace).filter(Workspace.slug == "acme").one()
+        project = (
+            s.query(Project).filter(Project.workspace_id == acme.id, Project.slug == "search").one()
+        )
+        exception = PolicyException(
+            workspace_id=project.workspace_id,
+            project_id=project.id,
+            rule="metric:ndcg.max_drop",
+            reason="victim",
+            owner="victim",
+            origin_check_id=check["id"],
+            created_by="user:victim",
+            expires_at=utcnow() + timedelta(days=1),
+            uses=0,
+        )
+        s.add(exception)
+        s.flush()
+        exception_id = exception.id
     members = world.client.get(
         "/api/v1/workspaces/acme/members", headers=world.as_("acme_owner")
     ).json()
@@ -89,6 +113,7 @@ def victim(world, cloud_app):
         "run_id": "victim-run",
         "name": "main",
         "check_id": check["id"],
+        "exception_id": exception_id,
         "token_id": tokens[0]["id"],
         "user_id": next(m["user"]["id"] for m in members if m["role"] == "engineer"),
     }
@@ -118,6 +143,10 @@ def test_workspace_routes_reject_other_tenants(world, cloud_app, victim, intrude
         "exports_enabled": True,
         "retention_days": 30,
         "roles": None,
+        "rule": "metric:ndcg.max_drop",
+        "reason": "intruder",
+        "owner": "intruder",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
     }
     checked = 0
     for method, path in _routes(cloud_app):

@@ -26,8 +26,15 @@ _CONCLUSIONS = {
     "fail": "failure",
     "error": "failure",
     "not_comparable": "failure",
+    "accepted": "neutral",
 }
-_TITLES = {"pass": "Pass", "fail": "Fail", "error": "Error", "not_comparable": "Not comparable"}
+_TITLES = {
+    "pass": "Pass",
+    "fail": "Fail",
+    "error": "Error",
+    "not_comparable": "Not comparable",
+    "accepted": "Fail, accepted by exception",
+}
 
 
 class GitHubError(RuntimeError):

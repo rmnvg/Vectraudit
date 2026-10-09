@@ -22,8 +22,15 @@ _VERDICT_TEXT = {
     "fail": "Fail",
     "error": "Error",
     "not_comparable": "Not comparable",
+    "accepted": "Fail, accepted by exception",
 }
-_VERDICT_EMOJI = {"pass": "✅", "fail": "❌", "error": "⚠️", "not_comparable": "⏸️"}
+_VERDICT_EMOJI = {
+    "pass": "✅",
+    "fail": "❌",
+    "error": "⚠️",
+    "not_comparable": "⏸️",
+    "accepted": "🟡",
+}
 _METRIC_NAMES = {
     "recall": "Recall@k",
     "precision": "Precision@k",
@@ -79,6 +86,17 @@ def _latency_rows(latency: Mapping[str, Any] | None) -> list[list[str]]:
 # --- Markdown ----------------------------------------------------------------------------
 
 
+def _accepted_note(reason: Mapping[str, Any]) -> str:
+    """`` (accepted by X until 2026-11-01: why)`` for a failure an exception covers."""
+    accepted = reason.get("accepted")
+    if not accepted:
+        return ""
+    return (
+        f" (accepted by {accepted['accepted_by']} until {str(accepted['expires_at'])[:10]}: "
+        f"{accepted['reason']})"
+    )
+
+
 def _md(text: Any) -> str:
     """Escape a value for a Markdown table cell (GitHub renders inline HTML)."""
     s = html.escape(str(text), quote=False)
@@ -108,7 +126,7 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     if release:
         out += [release, ""]
     if result["reasons"]:
-        out += [f"- {_md(r['message'])}" for r in result["reasons"]] + [""]
+        out += [f"- {_md(r['message'])}{_accepted_note(r)}" for r in result["reasons"]] + [""]
     if result.get("critical_queries"):
         out += _critical_section(result, markdown=True)
     findings = result.get("findings") or []
@@ -179,7 +197,7 @@ h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:16px; margin:28px 0 8px; }
 .badge { display:inline-block; padding:2px 10px; border-radius:999px; color:#fff;
   font-weight:600; font-size:13px; vertical-align:middle; }
 .pass{background:var(--pass)} .fail{background:var(--fail)} .error{background:var(--error)}
-.not_comparable{background:var(--nc)}
+.not_comparable{background:var(--nc)} .accepted{background:var(--error)}
 .runs { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; }
 .card dl { display:grid; grid-template-columns:max-content 1fr; gap:2px 12px; margin:0; }
@@ -338,7 +356,7 @@ def render_html(result: Mapping[str, Any]) -> str:
     if result["reasons"]:
         items = "".join(
             f'<li><span class="badge {_e(r["verdict"])}">{_e(_VERDICT_TEXT[r["verdict"]])}'
-            f"</span> {_e(r['message'])}</li>"
+            f"</span> {_e(r['message'])}{_e(_accepted_note(r))}</li>"
             for r in result["reasons"]
         )
         parts.append(f'<h2>Why</h2><ul class="reasons">{items}</ul>')
