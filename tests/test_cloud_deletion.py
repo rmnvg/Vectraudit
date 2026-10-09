@@ -103,6 +103,7 @@ def test_delete_project(populated, cloud_app) -> None:
     done = w.client.request("DELETE", url, json={"confirm": "search"}, headers=w.as_("acme_owner"))
     assert done.status_code == 200
     assert done.json() == {
+        "shared_records": 0,
         "decisions": 1,
         "checks": 1,
         "baselines": 1,

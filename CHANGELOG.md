@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench share WORKSPACE KIND ID` uploads one saved regression case,
+  benchmark snapshot or policy revision to a hosted project as an allowlisted projection
+  (`--preview` shows it offline; question text only with `--share-query-text`). Revisions
+  are immutable; the dashboard lists them under **Shared cases** for a second engineer or
+  lead; they survive run retention, are exported and go with their project.
 - Quality metrics now average every execution within each query, retaining per-repeat
   scores and rankings. The workbench can inspect individual repeats and changed pipeline
   traces. Metric contract v2 requires re-recording both sides of older comparisons;

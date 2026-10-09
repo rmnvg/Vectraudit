@@ -24,6 +24,7 @@ from vectraudit.cloud.models import (
     Membership,
     Project,
     Run,
+    SharedRecord,
     User,
     WebSession,
     Workspace,
@@ -305,6 +306,19 @@ def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
                     }
                     for d in decisions
                 ],
+                "shared_records": [
+                    {
+                        "id": r.id,
+                        "uploaded_at": r.uploaded_at.isoformat(),
+                        "uploaded_by": r.uploaded_by,
+                        "record": r.data,
+                    }
+                    for r in session.scalars(
+                        select(SharedRecord)
+                        .where(SharedRecord.project_id == p.id)
+                        .order_by(SharedRecord.uploaded_at)
+                    )
+                ],
             }
         )
     audit = [
@@ -343,6 +357,7 @@ def _delete_project_rows(session: Session, project_ids: list[str]) -> dict[str, 
     """Delete in dependency order (baselines block deleting their runs)."""
     counts = {}
     for name, model, column in (
+        ("shared_records", SharedRecord, SharedRecord.project_id),
         ("decisions", Decision, Decision.project_id),
         ("checks", Check, Check.project_id),
         ("baselines", Baseline, Baseline.project_id),

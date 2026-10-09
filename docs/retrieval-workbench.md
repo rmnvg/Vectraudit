@@ -749,7 +749,8 @@ and runs without a saved draft reference keep their IDs without invented questio
 Only queries recorded in that run receive display text.
 
 This is a local display join: run/check artifacts, stored cases, cloud uploads and downloaded
-issue summaries do not gain question text. The workbench does not reconstruct older draft
+issue summaries do not gain question text, except a case or snapshot shared with
+`workbench share --share-query-text` (see below). The workbench does not reconstruct older draft
 revisions or resolve text from unrelated benchmarks that happen to reuse the same IDs.
 
 In **Compare a fix**, select a finding and choose **Track finding**. A case preserves the
@@ -786,6 +787,12 @@ ID or cohort to reach the rest. Snapshot/case lists
 show the newest 200 records. Local writes use version checks and file locks; stale edits
 must reload before retrying. Existing token, same-origin and request-size protections apply
 to all new guided APIs.
+
+To let a second engineer or lead read a case, a benchmark snapshot or a policy revision,
+share it with a hosted project: `vectraudit workbench share WORKSPACE_DIR case CASE_ID
+--project acme/search`. Add `--preview` to see exactly what would be sent without
+credentials. Owners, notes, passages and context are never sent; question text only with
+`--share-query-text`. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).
 
 Reproduce the full browser journey with `node scripts/market_fit_smoke.mjs` after building
 the UI. It tests grading/reload, snapshots, findings, incident review, permission creation

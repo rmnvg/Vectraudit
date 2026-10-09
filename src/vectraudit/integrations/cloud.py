@@ -132,6 +132,19 @@ class CloudClient:
             )
         return data
 
+    def upload_record(self, record: Mapping[str, Any]) -> dict[str, Any]:
+        """Upload an explicitly projected workbench revision, with transfer integrity."""
+        from vectraudit.integrations.shared_records import encoded, validate_record
+
+        body = encoded(validate_record(record))
+        result: dict[str, Any] = self._call(
+            "POST",
+            f"{self.project_path}/records",
+            body,
+            {"X-Vectraudit-Digest": "sha256=" + hashlib.sha256(body).hexdigest()},
+        )
+        return result
+
     def upload_run(
         self, record: Mapping[str, Any], *, share_query_text: bool = False
     ) -> dict[str, Any]:

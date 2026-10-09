@@ -317,3 +317,58 @@ def export_command(
         typer.echo(f"warning: {item}")
     if skipped:
         raise typer.Exit(1)
+
+
+@workbench_app.command("share")
+def share_command(
+    workspace: Path,
+    kind: str,
+    identifier: str,
+    project: Annotated[str | None, typer.Option(help="Hosted workspace/project.")] = None,
+    preview: Annotated[
+        bool, typer.Option(help="Show transfer metadata without connecting or uploading.")
+    ] = False,
+    share_query_text: Annotated[
+        bool,
+        typer.Option(
+            help="Explicitly include available question text; never passages, notes or context."
+        ),
+    ] = False,
+) -> None:
+    """Share one saved case, benchmark snapshot or policy revision with a project."""
+    from typing import cast
+
+    from fastapi import HTTPException
+
+    from vectraudit.integrations.cloud import CloudClient, CloudClientError, CloudTarget
+    from vectraudit.integrations.shared_records import Kind, preview_record, project_record
+    from vectraudit.pipelines.guided import GuidedWorkspace
+    from vectraudit.pipelines.local_display import CaseQuestionDisplay
+    from vectraudit.pipelines.workflows import LocalRecords
+
+    try:
+        categories = {"case": "cases", "benchmark": "benchmarks", "policy": "policies"}
+        if kind not in categories:
+            raise ValueError("Kind must be case, benchmark or policy")
+        if not workspace.is_dir():
+            raise ValueError("Workspace directory does not exist")
+        local = GuidedWorkspace(workspace)
+        record = LocalRecords(local, categories[kind]).read(identifier)
+        if kind == "case" and share_query_text:
+            record = CaseQuestionDisplay(local).decorate(record)
+        projected = project_record(cast(Kind, kind), record, share_query_text=share_query_text)
+        transfer = preview_record(projected)
+        if preview:
+            typer.echo(json.dumps({"preview": transfer}, indent=2))
+            return
+        result = CloudClient(CloudTarget.from_env(project)).upload_record(projected)
+        typer.echo(json.dumps({"uploaded": result, "transfer": transfer}, indent=2))
+    except (ValueError, OSError, KeyError, TypeError, HTTPException, CloudClientError) as exc:
+        # Pydantic and dataset validation can contain rejected source text.
+        message = (
+            exc.message
+            if isinstance(exc, CloudClientError)
+            else "Cannot share this record. Check its kind, ID, schema and workspace path."
+        )
+        typer.echo(message, err=True)
+        raise typer.Exit(2) from None
