@@ -235,7 +235,7 @@ class GuidedWorkspace:
     def evaluation_path(self, identifier: str) -> Path:
         """Resolve only an opaque local evaluation ID."""
         path = self.root / ".workbench" / "evaluations" / (_identifier(identifier) + ".json")
-        validate_path(path)
+        validate_path(path, self.root)
         return path
 
     def evaluations(self) -> list[dict[str, Any]]:

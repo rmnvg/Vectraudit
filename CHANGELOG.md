@@ -139,6 +139,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Fixed
 
+- `vectraudit workbench run` works when the output folder sits below a symlinked system
+  folder, such as macOS `/tmp` or `/var`. Links inside folders Vectraudit manages are still
+  refused.
 - Cancelling a run during a retry backoff no longer records the in-flight query as a
   `pipeline_error` failure; the attempt stays interrupted and is retried on resume.
 

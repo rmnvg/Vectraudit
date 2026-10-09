@@ -81,7 +81,8 @@ def run_command(
             **({} if retry == RetryPolicy() else {"retry": asdict(retry)}),
         }
         batch_path = checkpoints / "batch.json"
-        validate_path(batch_path)
+        # --out (or --resume) is the user's choice; folders created inside it must not be links.
+        validate_path(batch_path, resume or out)
         with task_lock(batch_path, timeout=0):
             if resume:
                 batch = json.loads(batch_path.read_text())
