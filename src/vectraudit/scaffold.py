@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
+from vectraudit import __version__
+
 BACKENDS = ("faiss", "qdrant", "pgvector", "pinecone", "weaviate")
+INSTALL_ACTION = ".github/actions/install-vectraudit"
 
 
 @dataclass(frozen=True)
@@ -38,9 +41,18 @@ def render_workflow(backend: str) -> str:
         )
     return (
         _template("retrieval-check.yml.tmpl")
-        .replace("[__EXTRAS__]", f"[{settings.extras}]" if settings.extras else "")
+        .replace("__EXTRAS__", settings.extras)
+        .replace("__VERSION__", __version__.split("+")[0])
         .replace("__ENV_BLOCK__", env_block)
     )
+
+
+def installer_files() -> dict[str, str]:
+    """Shared, self-contained install action for init and workbench release exports."""
+    return {
+        f"{INSTALL_ACTION}/action.yml": _template("install-action.yml"),
+        f"{INSTALL_ACTION}/install.py": _template("install_wheel.py"),
+    }
 
 
 def scaffold_files(backend: str) -> dict[str, str]:
@@ -55,6 +67,7 @@ def scaffold_files(backend: str) -> dict[str, str]:
     )
     ci_secret = f" and `{secret}` (a read-only credential)" if secret else ""
     return {
+        **installer_files(),
         "retrieval/connection.json": _template(f"connection-{backend}.json"),
         "retrieval/policy.json": _template("policy.json"),
         "retrieval/queries.csv": _template("queries.csv"),

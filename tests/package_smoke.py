@@ -14,11 +14,18 @@ from fastapi.testclient import TestClient
 import vectraudit
 from vectraudit.pipelines import PipelineResult, execute_pipeline
 from vectraudit.pipelines.web import create_workbench
+from vectraudit.scaffold import scaffold_files
 from vectraudit.server.app import STATIC_DIR, create_app
 from vectraudit.session import Session
 
 assert Path(vectraudit.__file__).is_relative_to(Path(sys.prefix)), vectraudit.__file__
 assert (STATIC_DIR / "index.html").is_file()
+scaffold = scaffold_files("faiss")
+assert ".github/actions/install-vectraudit/action.yml" in scaffold
+installer = scaffold[".github/actions/install-vectraudit/install.py"]
+compile(installer, "install.py", "exec")
+assert "--sha256" in installer
+assert "./.github/actions/install-vectraudit" in scaffold[".github/workflows/retrieval-check.yml"]
 x = np.array([[0, 0], [1, 0], [2, 0]], dtype=np.float32)
 index = faiss.IndexFlatL2(2)
 index.add(x)

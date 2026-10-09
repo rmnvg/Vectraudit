@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Private distribution foundations: wheel-only release staging with SHA-256 manifests,
+  optional publishing to a separate private repository, and one shared installer in
+  `init` and workbench exports. CI pins version and checksum, rejects the source repository
+  as a download target, and verifies package identity before pip runs. Channel provisioning
+  and customer credential/revocation acceptance remain required before outside installs.
 - Exported release checks carry `concurrency` and `max_rps`; in CI the approved values run
   both sides so latency stays comparable. Serial exports are unchanged byte for byte.
 - Guided benchmarks hold up to 1,000 questions. Pipeline run files are written as compact

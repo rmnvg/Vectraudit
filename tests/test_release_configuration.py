@@ -205,6 +205,8 @@ def test_exported_release_check_runs_from_a_clean_checkout(client, tmp_path, rul
         "retrieval/release/corpus.jsonl",
         "retrieval/release/README.md",
         ".github/workflows/retrieval-release-check.yml",
+        ".github/actions/install-vectraudit/action.yml",
+        ".github/actions/install-vectraudit/install.py",
     }
     release = json.loads(files["retrieval/release/release.json"])
     assert release["policy"]["sha256"] == policy["sha256"]
