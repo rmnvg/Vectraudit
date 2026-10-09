@@ -123,6 +123,46 @@ def record_missing(session: Session, checks: list[Check]) -> int:
     return written
 
 
+def _entry(d: Decision, evidence_available: bool) -> dict[str, Any]:
+    return {
+        "kind": "decision",
+        "at": d.decided_at,
+        "verdict": d.verdict,
+        "baseline_name": d.baseline_name,
+        "baseline_run_id": d.baseline_run_id,
+        "candidate_run_id": d.candidate_run_id,
+        "candidate_label": d.candidate_label,
+        "candidate_commit": d.candidate_commit,
+        "policy_digest": d.policy_digest,
+        "decided_by": d.decided_by,
+        "check_id": d.check_id,
+        "evidence_available": evidence_available,
+        "summary": d.summary,
+    }
+
+
+def decision(session: Session, project: Project, check_id: str) -> dict[str, Any] | None:
+    """One decision of ``project`` as a timeline entry, or ``None``."""
+    row = session.scalars(
+        select(Decision).where(Decision.project_id == project.id, Decision.check_id == check_id)
+    ).first()
+    if row is None:
+        return None
+    live = session.scalars(select(Check.id).where(Check.id == check_id)).first() is not None
+    return _entry(row, live)
+
+
+def history(session: Session, project: Project, *, limit: int = 200) -> list[dict[str, Any]]:
+    """The newest ``limit`` decisions of ``project`` with their benchmark version, for trends."""
+    rows = session.scalars(
+        select(Decision)
+        .where(Decision.project_id == project.id)
+        .order_by(Decision.decided_at.desc(), Decision.id.desc())
+        .limit(limit)
+    )
+    return [{**_entry(d, False), "dataset_sha256": d.dataset_sha256} for d in rows]
+
+
 def timeline(
     session: Session, project: Project, *, before: datetime | None = None, limit: int = 50
 ) -> list[dict[str, Any]]:
@@ -154,24 +194,7 @@ def timeline(
     if before is not None:
         pins_stmt = pins_stmt.where(AuditEvent.created_at < before)
     pins = list(session.scalars(pins_stmt.order_by(AuditEvent.created_at.desc()).limit(limit)))
-    entries: list[dict[str, Any]] = [
-        {
-            "kind": "decision",
-            "at": d.decided_at,
-            "verdict": d.verdict,
-            "baseline_name": d.baseline_name,
-            "baseline_run_id": d.baseline_run_id,
-            "candidate_run_id": d.candidate_run_id,
-            "candidate_label": d.candidate_label,
-            "candidate_commit": d.candidate_commit,
-            "policy_digest": d.policy_digest,
-            "decided_by": d.decided_by,
-            "check_id": d.check_id,
-            "evidence_available": d.check_id in live,
-            "summary": d.summary,
-        }
-        for d in decisions
-    ]
+    entries: list[dict[str, Any]] = [_entry(d, d.check_id in live) for d in decisions]
     entries += [
         {
             "kind": "baseline_pin",

@@ -816,6 +816,7 @@ def _record_cloud_check(
         err_console.print(f"[bold red]Hosted check failed:[/] {escape(e.message)}")
         raise typer.Exit(code=1) from e
     console.print(f"Hosted check: {escape(stored['url'])}")
+    console.print(f"Plain-language summary: vectraudit cloud summary {escape(stored['id'])}")
     if stored["verdict"] != verdict.value:
         err_console.print(
             f"[bold red]Warning:[/] the hosted verdict is {stored['verdict']} but the local one "
@@ -960,6 +961,28 @@ def cloud_accept(
         f"Accepted {escape(granted['rule'])} until {escape(granted['expires_at'][:10])} "
         f"(exception {escape(granted['id'])}). Checks it covers read FAIL, ACCEPTED."
     )
+
+
+@cloud_app.command("summary")
+def cloud_summary(
+    check_id: Annotated[str, typer.Argument(help="Check id, as `check --upload` prints it.")],
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print the structured summary.")] = False,
+) -> None:
+    """A release decision in plain language, as Markdown for an issue, chat or CI summary.
+
+    Works after the check's runs expire under retention. In GitHub Actions:
+    ``vectraudit cloud summary "$CHECK_ID" >> "$GITHUB_STEP_SUMMARY"``.
+    """
+    from vectraudit.integrations.cloud import CloudClientError
+
+    try:
+        summary = _cloud_client(project).decision_summary(check_id)
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    typer.echo(json.dumps(summary, indent=2) if as_json else summary["markdown"], nl=False)
+    if as_json:
+        typer.echo()
 
 
 @cloud_app.command("exceptions")

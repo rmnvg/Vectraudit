@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- A release view for the engineering lead, read from the decision ledger so it outlives run
+  retention. Each decision gets a plain-language summary (what changed, why it matters,
+  what is uncertain, what to do), shown on the project page and on its own page, with a
+  Markdown download. The trends page charts quality and p95 latency against the baseline
+  for each benchmark version and marks policy changes. Both are also in the API
+  (`.../decisions/CHECK_ID/summary`, `.../trends`), and `vectraudit cloud summary CHECK_ID`
+  prints the Markdown, for example into `$GITHUB_STEP_SUMMARY`.
 - `vectraudit workbench share WORKSPACE KIND ID` uploads one saved regression case,
   benchmark snapshot or policy revision to a hosted project as an allowlisted projection
   (`--preview` shows it offline; question text only with `--share-query-text`). Revisions

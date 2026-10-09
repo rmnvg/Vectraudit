@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import aliased
 
-from vectraudit.cloud import ledger, repo
+from vectraudit.cloud import lead, ledger, repo
 from vectraudit.cloud.deps import PrincipalDep, SessionDep, SettingsDep
 from vectraudit.cloud.errors import CloudError, not_found
 from vectraudit.cloud.models import Check, Run, utcnow
@@ -252,6 +252,105 @@ def list_decisions(
         entries=[TimelineEntry(**entry) for entry in entries],
         next_cursor=_encode_cursor(entries[-1]["at"], entries[-1]["kind"]) if more else None,
     )
+
+
+class LeadSummary(BaseModel):
+    """A release decision in plain language, for an engineering lead."""
+
+    check_id: str | None
+    verdict: str
+    candidate: str
+    headline: str
+    action: str
+    changes: list[str]
+    """What changed: quality metrics, p95 latency and recorded settings."""
+    matters: list[str]
+    """Why it matters: failing rules, accepted exceptions, critical and regressed questions."""
+    uncertain: list[str]
+    """What this evidence cannot show: noise-sized changes, small samples, expired reports."""
+    evidence_available: bool | None
+    report_url: str | None = None
+    markdown: str
+
+
+@router.get(f"{PROJECT}/decisions/{{check_id}}/summary")
+def decision_summary(
+    workspace: str,
+    project: str,
+    check_id: str,
+    session: SessionDep,
+    principal: PrincipalDep,
+    settings: SettingsDep,
+) -> LeadSummary:
+    """One release decision in plain language; available after its runs expire."""
+    access = repo.authorize(session, principal, workspace, "read", project)
+    assert access.project is not None
+    entry = ledger.decision(session, access.project, check_id)
+    if entry is None:
+        raise not_found("Decision")
+    url = None
+    if entry["evidence_available"]:
+        url = report_url(settings, workspace, project, check_id)
+    return LeadSummary(**lead.explain(entry), report_url=url)
+
+
+class TrendPoint(BaseModel):
+    at: datetime
+    check_id: str | None
+    verdict: str
+    candidate: str
+    policy_digest: str | None
+    value: float
+    baseline: float | None
+    ci_low: float | None = None
+    ci_high: float | None = None
+
+
+class TrendMetric(BaseModel):
+    label: str
+    points: list[TrendPoint]
+    change: float
+    """Latest minus first candidate value in this series."""
+
+
+class TrendLatency(BaseModel):
+    points: list[TrendPoint]
+    change: float | None
+
+
+class TrendSeries(BaseModel):
+    """Checks against one benchmark version; a new version starts a new series."""
+
+    dataset_sha256: str
+    decisions: int
+    first_at: datetime
+    last_at: datetime
+    primary_metric: str | None
+    verdicts: dict[str, int]
+    metrics: dict[str, TrendMetric]
+    latency_p95: TrendLatency
+    policy_changes: list[datetime]
+
+
+class TrendsOut(BaseModel):
+    series: list[TrendSeries]
+    decisions: int
+    """Decisions read (the newest ``limit``)."""
+
+
+@router.get(f"{PROJECT}/trends")
+def trends(
+    workspace: str,
+    project: str,
+    session: SessionDep,
+    principal: PrincipalDep,
+    limit: int = Query(default=200, ge=2, le=1000),
+) -> TrendsOut:
+    """Candidate quality and p95 latency per benchmark version, from the decision ledger."""
+    access = repo.authorize(session, principal, workspace, "read", project)
+    assert access.project is not None
+    rows = ledger.history(session, access.project, limit=limit)
+    return TrendsOut(series=[TrendSeries(**s) for s in lead.trends(rows)], decisions=len(rows))
 
 
 def _check(session: SessionDep, workspace_id: str, project_id: str, check_id: str) -> Check:

@@ -220,8 +220,12 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
         evidence = (
             f'<a href="{base}/checks/{quote(entry["check_id"])}">Report</a>'
             if entry["evidence_available"]
-            else '<span class="muted">Expired under retention</span>'
+            else '<span class="muted">Report expired under retention</span>'
         )
+        if entry["check_id"]:
+            evidence = (
+                f'<a href="{base}/decisions/{quote(entry["check_id"])}">Summary</a> · {evidence}'
+            )
         rows.append(
             [
                 when,
@@ -233,6 +237,30 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
             ]
         )
     return rows
+
+
+def _latest_decision(session: Session, access: repo.Access, base: str) -> str:
+    """The newest release decision in plain language, for a lead opening the project."""
+    from vectraudit.cloud import lead
+    from vectraudit.cloud.web_lead import summary_html
+
+    assert access.project is not None
+    newest = ledger.history(session, access.project, limit=1)
+    if not newest:
+        return ""
+    latest = newest[0]
+    if latest["check_id"]:
+        latest = ledger.decision(session, access.project, latest["check_id"]) or latest
+    when = latest["at"].strftime("%Y-%m-%d %H:%M")
+    link = (
+        f'<a href="{base}/decisions/{quote(latest["check_id"])}">Full summary</a>'
+        if latest.get("check_id")
+        else ""
+    )
+    return (
+        '<div class="card"><div class="muted">Latest release decision · '
+        f"{e(when)} UTC</div>" + summary_html(lead.explain(latest)) + f"<p>{link}</p></div>"
+    )
 
 
 def _accept_section(web: Web, access: repo.Access, check: Any, base: str) -> str:
@@ -1001,7 +1029,9 @@ def project_page(
         f'<div class="crumbs"><a href="/app">Workspaces</a> / '
         f'<a href="/app/{quote(workspace)}">{e(workspace)}</a> / {e(project)}</div>'
         f"<h1>{e(access.project.name)}</h1>{notice}"
-        f'<p><a href="{base}/records">Shared cases, benchmarks and saved policies</a></p>'
+        + _latest_decision(session, access, base)
+        + f'<p><a href="{base}/trends">Quality and latency trends</a> · '
+        f'<a href="{base}/records">Shared cases, benchmarks and saved policies</a></p>'
         "<h2>Baselines</h2>"
         + _table(
             ["Name", "Run", "Label", "Pinned by", "Pinned at", "Note"],
@@ -1078,6 +1108,7 @@ def check_page(
         + f'<p class="muted">Commit {e((cand.commit_sha or "unknown")[:12])} · '
         f"{e(check.created_at.strftime('%Y-%m-%d %H:%M'))} UTC · by "
         f"{e(_actor(session, check.created_by))}</p>"
+        + f'<p><a href="{base}/decisions/{quote(check.id)}">Plain-language summary</a></p>'
         + (f"<h2>Diagnosis</h2>{findings}" if findings else "")
         + accept
         + "<h2>Full report</h2>"

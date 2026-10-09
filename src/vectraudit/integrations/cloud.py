@@ -193,6 +193,13 @@ class CloudClient:
         result: dict[str, Any] = self._call("POST", f"{self.project_path}/checks", body)
         return result
 
+    def decision_summary(self, check_id: str) -> dict[str, Any]:
+        """A release decision in plain language (``headline``, ``markdown``, …)."""
+        result: dict[str, Any] = self._call(
+            "GET", f"{self.project_path}/decisions/{quote(check_id)}/summary"
+        )
+        return result
+
     def list_exceptions(self, *, active: bool = False) -> list[dict[str, Any]]:
         """Audited exceptions, newest first; ``active`` ones apply to new checks."""
         suffix = "?active=true" if active else ""

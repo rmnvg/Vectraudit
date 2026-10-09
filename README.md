@@ -194,7 +194,8 @@ saved baselines, measurement methodology, caching and limitations.
 ## Hosted service and deployment
 
 - [Running Vectraudit Cloud](docs/cloud-operations.md): hosted baselines, history, reports
-  and the dashboard (`vectraudit record --upload`, `check cloud:main --upload`)
+  and the dashboard (`vectraudit record --upload`, `check cloud:main --upload`), with
+  plain-language release summaries and quality trends for the lead (`cloud summary`)
 - [Enterprise deployment](docs/enterprise-deployment.md): local, private-runner and hosted
   profiles, SSO, roles and recovery
 - [Threat model](docs/threat-model.md) and [incident response](docs/incident-response.md)

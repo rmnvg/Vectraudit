@@ -24,6 +24,9 @@ def register(app: FastAPI) -> None:
     from vectraudit.cloud.web_records import router as records_web
 
     app.include_router(records_web)
+    from vectraudit.cloud.web_lead import router as lead_web
+
+    app.include_router(lead_web)
 
     @app.exception_handler(web._Redirect)
     async def redirect(_: Request, exc: web._Redirect) -> Response:
