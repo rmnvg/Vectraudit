@@ -52,6 +52,33 @@ ACTIONS = {
 }
 
 
+MONITOR_HEADLINES = {
+    "pass": "Scheduled monitor: {candidate} still passes the release policy.",
+    "fail": "Scheduled monitor: {candidate} now breaks {n} release rule{s}.",
+    "accepted": (
+        "Scheduled monitor: {candidate} breaks the release policy; every failure is accepted "
+        "by exception."
+    ),
+    "error": "Scheduled monitor: the run of {candidate} could not be completed.",
+    "not_comparable": "Scheduled monitor: {candidate} could not be compared with the baseline.",
+}
+MONITOR_ACTIONS = {
+    "pass": "No action needed: the monitored setup still meets the policy.",
+    "fail": (
+        "Nothing new was released, yet the monitored setup no longer meets the policy. Check "
+        "what drifted (corpus, configuration or an external service) before the next release."
+    ),
+    "accepted": "The failures are accepted by exception; review them before they expire.",
+    "error": "Fix the monitor run (endpoint, credentials or adapter); an error is never a pass.",
+    "not_comparable": (
+        "The monitor no longer measures the frozen benchmark it was set up with; re-check its "
+        "baseline and dataset."
+    ),
+}
+ALERTING = ("fail", "error", "not_comparable")
+"""Monitor verdicts that open or keep an alert; ``accepted`` was deliberately allowed."""
+
+
 def metric_label(name: str) -> str:
     """A readable name for a metric key, e.g. ``ndcg`` → ``nDCG (ranking quality)``."""
     return METRICS.get(name, name)
@@ -143,6 +170,80 @@ def _uncertain(entry: Mapping[str, Any], summary: Mapping[str, Any]) -> list[str
     return notes
 
 
+def _drift(drift: Mapping[str, Any] | None) -> list[str]:
+    """Monitor drift in words; ``unknown`` says what was not recorded."""
+    if not drift:
+        return []
+    words = {
+        "changed": "changed since the baseline",
+        "unchanged": "unchanged",
+        "unknown": "not recorded by one of the runs",
+    }
+    lines = [
+        f"Corpus version {words[str(drift.get('corpus') or 'unknown')]}.",
+        f"Retrieval configuration {words[str(drift.get('configuration') or 'unknown')]}.",
+    ]
+    n = drift.get("changed_results") or 0
+    lines.append(
+        f"Returned documents changed for {n} question{'s' * (n != 1)}."
+        if n
+        else "Every question returned the same documents as the baseline."
+    )
+    return lines
+
+
+def monitor_status(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The project's scheduled-monitor state from its monitor decisions, newest first.
+
+    ``alerting`` while the newest runs fail, error or are not comparable: the alert opens at
+    the oldest run of that unbroken streak, and its ``alert_id`` (that run's check ID) stays
+    the same until a run passes, so a notifier can deliver it once. ``healthy`` after a pass,
+    with the most recently resolved alert if there is one in ``decisions``. ``complete`` is
+    False when the streak reaches the oldest decision supplied, so it may have started
+    earlier.
+    """
+    runs = [d for d in decisions if d.get("trigger") == "monitor"]
+    if not runs:
+        return {"state": "none", "last": None, "alert": None}
+    latest = runs[0]
+    last = {"at": latest["at"], "check_id": latest.get("check_id"), "verdict": latest["verdict"]}
+    streak = 0
+    while streak < len(runs) and runs[streak]["verdict"] in ALERTING:
+        streak += 1
+    if streak:
+        opened = runs[streak - 1]
+        return {
+            "state": "alerting",
+            "last": last,
+            "alert": {
+                "alert_id": opened.get("check_id"),
+                "opened_at": opened["at"],
+                "failing_runs": streak,
+                "complete": streak < len(runs),
+                "resolved_at": None,
+                "resolved_by": None,
+            },
+        }
+    passes = 0
+    while passes < len(runs) and runs[passes]["verdict"] not in ALERTING:
+        passes += 1
+    alert = None
+    if passes < len(runs):
+        end = passes
+        while end < len(runs) and runs[end]["verdict"] in ALERTING:
+            end += 1
+        resolver = runs[passes - 1]
+        alert = {
+            "alert_id": runs[end - 1].get("check_id"),
+            "opened_at": runs[end - 1]["at"],
+            "failing_runs": end - passes,
+            "complete": end < len(runs),
+            "resolved_at": resolver["at"],
+            "resolved_by": resolver.get("check_id"),
+        }
+    return {"state": "healthy", "last": last, "alert": alert}
+
+
 def explain(entry: Mapping[str, Any]) -> dict[str, Any]:
     """A plain-language summary of one ledger decision (a ``timeline`` decision entry).
 
@@ -157,7 +258,9 @@ def explain(entry: Mapping[str, Any]) -> dict[str, Any]:
     failing = summary.get("n_reasons") or 0
     if verdict == "fail":
         failing = max(failing - len(accepted), 1)  # accepted rules no longer block
-    headline = HEADLINES.get(verdict, "{candidate}: " + verdict).format(
+    monitor = entry.get("trigger") == "monitor"
+    headlines = MONITOR_HEADLINES if monitor else HEADLINES
+    headline = headlines.get(verdict, "{candidate}: " + verdict).format(
         candidate=candidate,
         n=failing,
         s="s" * (failing != 1),
@@ -173,6 +276,7 @@ def explain(entry: Mapping[str, Any]) -> dict[str, Any]:
         changes.append(f"Changed settings: {shown}{more}.")
     elif verdict not in ("error", "not_comparable"):
         changes.append("No configuration change was recorded between the two runs.")
+    changes += _drift(summary.get("drift"))
 
     matters = []
     if verdict in ("fail", "accepted", "error", "not_comparable"):
@@ -208,7 +312,8 @@ def explain(entry: Mapping[str, Any]) -> dict[str, Any]:
         "verdict": verdict,
         "candidate": candidate,
         "headline": headline,
-        "action": ACTIONS.get(verdict, ""),
+        "trigger": entry.get("trigger") or "release",
+        "action": (MONITOR_ACTIONS if monitor else ACTIONS).get(verdict, ""),
         "changes": changes,
         "matters": matters,
         "uncertain": uncertain,
@@ -266,6 +371,7 @@ def _point(decision: Mapping[str, Any], value: float, baseline: float | None) ->
         "at": decision["at"],
         "check_id": decision.get("check_id"),
         "verdict": decision["verdict"],
+        "trigger": decision.get("trigger") or "release",
         "candidate": candidate_name(decision),
         "policy_digest": decision.get("policy_digest"),
         "value": value,

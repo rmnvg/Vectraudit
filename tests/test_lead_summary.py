@@ -211,3 +211,56 @@ def test_a_failure_inside_the_noise_still_stands():
     assert "includes zero for nDCG (-0.070 to +0.020)" in note
     assert note.endswith("so the failure still stands.")
     assert result["headline"] == "x is blocked: 1 release rule fails."
+
+
+def runs(*verdicts):
+    """Monitor decisions, newest first, from verdicts listed oldest first."""
+    rows = [
+        {"at": T0 + timedelta(hours=i), "check_id": f"m{i}", "verdict": v, "trigger": "monitor"}
+        for i, v in enumerate(verdicts)
+    ]
+    return list(reversed(rows))
+
+
+def test_monitor_status_opens_one_alert_per_streak_and_resolves_it():
+    from vectraudit.cloud.lead import monitor_status
+
+    assert monitor_status([]) == {"state": "none", "last": None, "alert": None}
+    assert monitor_status(runs("pass", "pass"))["alert"] is None
+
+    alerting = monitor_status(runs("pass", "fail", "error", "fail"))
+    assert alerting["state"] == "alerting"
+    assert alerting["last"]["check_id"] == "m3"
+    assert alerting["alert"]["alert_id"] == "m1"  # stable while the streak lasts
+    assert alerting["alert"]["failing_runs"] == 3
+    assert alerting["alert"]["complete"] is True
+
+    healthy = monitor_status(runs("fail", "not_comparable", "pass", "pass"))
+    assert healthy["state"] == "healthy"
+    assert healthy["alert"]["alert_id"] == "m0"
+    assert healthy["alert"]["resolved_by"] == "m2"  # the first passing run after it
+    assert healthy["alert"]["complete"] is False  # it reached the oldest decision read
+
+    # An accepted failure was allowed deliberately; it neither opens nor extends an alert.
+    assert monitor_status(runs("fail", "accepted"))["state"] == "healthy"
+    release = [dict(r, trigger="release", verdict="fail") for r in runs("x")]
+    assert monitor_status(release)["state"] == "none"
+
+
+def test_monitor_summaries_say_nothing_was_released_and_name_the_drift():
+    result = check([1.0] * 40, [1.0] * 20 + [0.0] * 20)
+    summary_row = entry(result, trigger="monitor")
+    summary_row["summary"]["drift"] = {
+        "corpus": "changed",
+        "configuration": "unchanged",
+        "changed_results": 20,
+    }
+    summary = explain(summary_row)
+    assert summary["trigger"] == "monitor"
+    assert summary["headline"].startswith("Scheduled monitor: reranker-v2")
+    assert "breaks 1 release rule" in summary["headline"]
+    assert summary["action"].startswith("Nothing new was released")
+    assert "Corpus version changed since the baseline." in summary["changes"]
+    assert "Retrieval configuration unchanged." in summary["changes"]
+    assert "Returned documents changed for 20 questions." in summary["changes"]
+    assert explain(entry(result))["trigger"] == "release"

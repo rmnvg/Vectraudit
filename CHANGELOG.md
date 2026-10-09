@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Scheduled monitor runs in hosted history: `vectraudit workbench monitor MANIFEST cloud:main
+  --upload` compares with the pinned hosted baseline under the project policy and records a
+  check marked `monitor`, with corpus, configuration and result drift. Monitor runs appear
+  labelled in the timeline, trends and summaries. A derived monitor status
+  (`GET .../monitor` and the project page) reports when an alert opened and which run
+  resolved it, with one stable alert ID per failing streak. Migration 0009 adds the
+  `trigger` column to checks and decisions.
 - A release view for the engineering lead, read from the decision ledger so it outlives run
   retention. Each decision gets a plain-language summary (what changed, why it matters,
   what is uncertain, what to do), shown on the project page and on its own page, with a

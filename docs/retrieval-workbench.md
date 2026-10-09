@@ -481,6 +481,27 @@ setup failed. Failed query runs never pass. Connect these exit codes to your sch
 alerting. A self-hosted GitHub Actions schedule template lives in `deploy/monitor/`;
 cron can execute the same command. No external alert messages are sent by Vectraudit.
 
+### Record monitor runs in the hosted project
+
+Pin the frozen baseline in the hosted project, then monitor against it and upload:
+
+```sh
+vectraudit workbench monitor monitor.json cloud:main --history monitor-history --upload
+```
+
+- **What is uploaded:** the run's allowlisted projection, the same as `record --upload`.
+- **What is recorded:** a hosted check marked as a scheduled monitor run, with what drifted
+  (corpus version, configuration, and the number of questions whose results changed).
+- **Comparison:** against the projected baseline, with the project's policy (unless
+  `--policy` is given) and its active audited exceptions, exactly as the hosted check
+  compares.
+- **Local history:** still written first.
+- **Exit codes:** as above, plus 1 when the hosted service rejects the upload or check.
+  The last output line is the JSON verdict.
+
+See [monitor history](cloud-operations.md#scheduled-monitor-history) for what the project
+then shows.
+
 Import several monitor artifacts to review history. Reports separately identify corpus
 version changes, configuration changes, and added/removed result IDs. Without a supplied
 corpus version, corpus drift is **unknown**. Result coverage is measured; whole-corpus

@@ -29,8 +29,9 @@ from vectraudit.cloud.models import (
 
 MAX_REASONS = 10
 MAX_CHANGES = 50
-SUMMARY_VERSION = 2
-"""2 adds verdict_before_exceptions and accepted (exceptions that covered failing rules)."""
+SUMMARY_VERSION = 3
+"""2 adds verdict_before_exceptions and accepted (exceptions that covered failing rules);
+3 adds drift (monitor checks only: corpus, configuration and changed-result counts)."""
 
 
 def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
@@ -44,6 +45,7 @@ def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
     }
     latency = result.get("latency") or None
     critical = result.get("critical_queries") or []
+    drift = result.get("drift")
     return {
         "version": SUMMARY_VERSION,
         "n_queries": result.get("n_queries"),
@@ -71,6 +73,13 @@ def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
             {"rule": a.get("rule"), "exception_id": a.get("exception_id")}
             for a in result.get("exceptions_applied", [])
         ],
+        "drift": {
+            "corpus": drift.get("corpus"),
+            "configuration": drift.get("configuration"),
+            "changed_results": len(drift.get("results") or []),
+        }
+        if drift
+        else None,
     }
 
 
@@ -97,6 +106,7 @@ def record_decision(
         candidate_commit=cand.commit_sha,
         decided_at=check.created_at,
         decided_by=check.created_by,
+        trigger=check.trigger,
         summary=summarize_check(check.result),
     )
     try:
@@ -135,6 +145,7 @@ def _entry(d: Decision, evidence_available: bool) -> dict[str, Any]:
         "candidate_commit": d.candidate_commit,
         "policy_digest": d.policy_digest,
         "decided_by": d.decided_by,
+        "trigger": d.trigger,
         "check_id": d.check_id,
         "evidence_available": evidence_available,
         "summary": d.summary,
@@ -152,13 +163,16 @@ def decision(session: Session, project: Project, check_id: str) -> dict[str, Any
     return _entry(row, live)
 
 
-def history(session: Session, project: Project, *, limit: int = 200) -> list[dict[str, Any]]:
-    """The newest ``limit`` decisions of ``project`` with their benchmark version, for trends."""
+def history(
+    session: Session, project: Project, *, limit: int = 200, trigger: str | None = None
+) -> list[dict[str, Any]]:
+    """The newest ``limit`` decisions of ``project`` with their benchmark version, newest
+    first; ``trigger`` keeps only ``release`` or ``monitor`` decisions."""
+    stmt = select(Decision).where(Decision.project_id == project.id)
+    if trigger is not None:
+        stmt = stmt.where(Decision.trigger == trigger)
     rows = session.scalars(
-        select(Decision)
-        .where(Decision.project_id == project.id)
-        .order_by(Decision.decided_at.desc(), Decision.id.desc())
-        .limit(limit)
+        stmt.order_by(Decision.decided_at.desc(), Decision.id.desc()).limit(limit)
     )
     return [{**_entry(d, False), "dataset_sha256": d.dataset_sha256} for d in rows]
 

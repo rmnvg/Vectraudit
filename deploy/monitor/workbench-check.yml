@@ -19,3 +19,13 @@ jobs:
       - name: Check the deployed pipeline
         working-directory: /opt/retrieval
         run: vectraudit workbench monitor monitor.json baseline.run.json --history monitor-history
+      # To record each run in the hosted project's history instead (timeline, trends and
+      # monitor status), compare with a pinned hosted baseline and upload the projected run.
+      # Replace the step above with this one and set the three secrets:
+      # - name: Check the deployed pipeline and record it
+      #   working-directory: /opt/retrieval
+      #   env:
+      #     VECTRAUDIT_CLOUD_URL: ${{ secrets.VECTRAUDIT_CLOUD_URL }}
+      #     VECTRAUDIT_CLOUD_PROJECT: ${{ secrets.VECTRAUDIT_CLOUD_PROJECT }}
+      #     VECTRAUDIT_CLOUD_TOKEN: ${{ secrets.VECTRAUDIT_CLOUD_TOKEN }}
+      #   run: vectraudit workbench monitor monitor.json cloud:main --history monitor-history --upload

@@ -20,6 +20,7 @@ from vectraudit.cloud.errors import CloudError, not_found
 router = APIRouter(include_in_schema=False)
 e = web.e
 WIDTH, HEIGHT, PAD = 640, 170, 28
+MONITOR_TAG = ' <span class="muted">Monitor</span>'
 COLORS = {
     "pass": "var(--pass)",
     "fail": "var(--fail)",
@@ -90,9 +91,15 @@ def chart(
         )
         if p.get("baseline") is not None:
             tip += f" (baseline {fmt(p['baseline'])})"
+        color = COLORS.get(p["verdict"], "var(--nc)")
+        if p.get("trigger") == "monitor":  # hollow: a scheduled run, not a proposed change
+            tip = "Scheduled monitor · " + tip
+            paint = f'fill="var(--bg)" stroke="{color}" stroke-width="2"'
+        else:
+            paint = f'fill="{color}"'
         parts.append(
-            f'<circle cx="{x(i):.1f}" cy="{y(p["value"]):.1f}" r="4" '
-            f'fill="{COLORS.get(p["verdict"], "var(--nc)")}"><title>{e(tip)}</title></circle>'
+            f'<circle cx="{x(i):.1f}" cy="{y(p["value"]):.1f}" r="4" {paint}>'
+            f"<title>{e(tip)}</title></circle>"
         )
     parts.append("</svg>")
     return "".join(parts)
@@ -216,8 +223,9 @@ def trends_page(
     body = (
         f'<div class="crumbs"><a href="{base}">{e(project)}</a> / trends</div>'
         "<h1>Quality and latency trends</h1>"
-        '<p class="muted">Each release check, oldest on the left: the candidate (solid, '
-        "dot coloured by verdict) against its baseline (dashed). Each benchmark version is a "
+        '<p class="muted">Each check, oldest on the left: the candidate (solid, dot coloured '
+        "by verdict; hollow for a scheduled monitor run) against its baseline (dashed). Each "
+        "benchmark version is a "
         "separate series, because scores on different questions are not comparable. A dotted "
         "rule marks a policy change: verdicts on either side were judged by different rules. "
         "Read from the decision ledger, so checks whose runs expired still appear. "
@@ -281,7 +289,7 @@ def trends_page(
                 [
                     [
                         e(p["at"].strftime("%Y-%m-%d %H:%M")),
-                        web._badge(p["verdict"]),
+                        web._badge(p["verdict"]) + MONITOR_TAG * (p["trigger"] == "monitor"),
                         e(p["candidate"]),
                         f"{p['value']:.3f}",
                         f"{p['baseline']:.3f}" if p.get("baseline") is not None else "",

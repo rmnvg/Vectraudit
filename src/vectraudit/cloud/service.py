@@ -134,9 +134,18 @@ def pin_baseline(
 
 
 def run_check(
-    session: Session, access: repo.Access, baseline_name: str, candidate_run_id: str
+    session: Session,
+    access: repo.Access,
+    baseline_name: str,
+    candidate_run_id: str,
+    trigger: str = "release",
 ) -> tuple[Check, Run, Run, bool]:
-    """Compare a run with a pinned baseline. Returns (check, base, cand, created)."""
+    """Compare a run with a pinned baseline. Returns (check, base, cand, created).
+
+    ``trigger`` is ``release`` or ``monitor``; a monitor check also records what drifted
+    (corpus version, configuration, result sets). Repeating an identical check returns the
+    first one with its original trigger.
+    """
     assert access.project is not None
     _, base = get_baseline(session, access.project, baseline_name)
     cand = find_run(session, access.workspace.id, access.project.id, candidate_run_id)
@@ -154,6 +163,10 @@ def run_check(
         exceptions.apply_to_check(session, access.project, found)
         return found, base, cand, False
     result = compare_runs(base.data, cand.data, policy)
+    if trigger == "monitor":
+        from vectraudit.pipelines.monitor import drift
+
+        result["drift"] = drift(base.data, cand.data)
     check = Check(
         workspace_id=access.workspace.id,
         project_id=access.project.id,
@@ -163,6 +176,7 @@ def run_check(
         verdict=result["verdict"],
         result=result,
         created_by=access.principal.actor,
+        trigger=trigger,
     )
     try:
         with session.begin_nested():  # a concurrent identical check may win the race

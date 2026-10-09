@@ -147,6 +147,32 @@ on the left.
 - Points are spaced by check, not by time, and a rejected candidate is plotted as checked;
   the line shows what was proposed, not only what shipped.
 
+## Scheduled monitor history
+
+`vectraudit workbench monitor MANIFEST cloud:main --upload` records each scheduled run as a
+hosted check marked `monitor` (see the [workbench guide](retrieval-workbench.md#record-monitor-runs-in-the-hosted-project)).
+API clients can create the same with `"trigger": "monitor"` on `POST .../checks`.
+
+- **Drift:** monitor checks also record what drifted: corpus version, configuration (each
+  `changed`, `unchanged` or `unknown`) and how many questions returned different documents.
+- **Where they appear:** in the release timeline (labelled **Monitor**), in trends (hollow
+  points) and in plain-language summaries ("Scheduled monitor: … now breaks 2 release
+  rules"; nothing was released, so the action is to check what drifted).
+- **Release card:** the project page's latest-release card ignores monitor runs.
+
+**Monitor status.** The project page and `GET .../monitor` derive the monitor state from
+the ledger, so it outlives run retention.
+- **`alerting`:** while the newest runs fail, error or are not comparable. The alert opens at
+  the first run of that unbroken streak, and its `alert_id` (that run's check ID) stays the
+  same until a run passes.
+- **`healthy`:** after a pass, with the most recently resolved alert and the run that
+  resolved it.
+- **Accepted failures:** a failure accepted by an audited exception neither opens nor
+  extends an alert.
+
+A notifier can therefore deliver each alert once and announce its resolution. Vectraudit
+does not send notifications itself yet.
+
 ## Audited exceptions
 
 An approver can accept one failing rule of a hosted check when the project policy opens that

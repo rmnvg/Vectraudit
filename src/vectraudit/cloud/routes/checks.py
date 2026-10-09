@@ -8,7 +8,7 @@ effect of a check, and only complete runs can be pinned. Checks reuse
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field
@@ -41,6 +41,8 @@ class CheckIn(BaseModel):
     candidate_run_id: str = Field(min_length=1, max_length=64)
     baseline: str = Field(default="main", min_length=1, max_length=100)
     """Name of the pinned baseline to compare against."""
+    trigger: Literal["release", "monitor"] = "release"
+    """``monitor`` for a scheduled run of an unchanged setup (``workbench monitor``)."""
 
 
 class CheckOut(BaseModel):
@@ -50,6 +52,7 @@ class CheckOut(BaseModel):
     candidate_run_id: str
     created_at: datetime
     created_by: str | None
+    trigger: str
     result: dict[str, Any]
     url: str
     report_url: str
@@ -75,6 +78,7 @@ def _check_out(c: Check, base: Run, cand: Run, url: str) -> CheckOut:
         candidate_run_id=cand.run_id,
         created_at=c.created_at,
         created_by=c.created_by,
+        trigger=c.trigger,
         result=c.result,
         url=url,
         report_url=f"{url}/report",
@@ -204,7 +208,7 @@ def create_check(
     """Compare an uploaded run with a pinned baseline under the project policy."""
     access = repo.authorize(session, principal, workspace, "write_checks", project)
     check, base, cand, created = service.run_check(
-        session, access, body.baseline, body.candidate_run_id
+        session, access, body.baseline, body.candidate_run_id, body.trigger
     )
     if not created:
         response.status_code = 200
