@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { criticalSummary, demoCorpus, demoQueries, executionLabel, guidedRequest, parseQueries, serializeQueries } from '../lib/guided'
+import { MAX_QUESTIONS, criticalSummary, demoCorpus, demoQueries, executionLabel, guidedRequest, parseQueries, serializeQueries } from '../lib/guided'
 import type { Comparison, Draft, GuidedSession, JobState, QueryRow } from '../lib/guided'
-import type { Run } from '../lib/workbench'
+import type { Run, RunListing } from '../lib/workbench'
 import Findings from './Findings'
 import { BenchmarkSnapshots, ImportQuestions, PermissionBuilder } from './BenchmarkTools'
 import PassageReview from './PassageReview'
@@ -53,7 +53,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   const [heldout, setHeldout] = useState(false)
   const [jobId, setJobId] = useState('')
   const [job, setJob] = useState<JobState | null>(null)
-  const [runs, setRuns] = useState<Run[]>([])
+  const [runs, setRuns] = useState<RunListing[]>([])
   const [baseId, setBaseId] = useState('')
   const [candidateId, setCandidateId] = useState('')
   const [comparison, setComparison] = useState<Comparison | null>(null)
@@ -100,7 +100,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   useEffect(() => {
     if (!session?.token) return
     const controller = new AbortController()
-    guidedRequest<Run[]>('runs', session.token, undefined, controller.signal).then(saved => {
+    guidedRequest<RunListing[]>('runs', session.token, undefined, controller.signal).then(saved => {
       setRuns(previous => [...saved.filter(r => !previous.some(p => p.run_id === r.run_id)), ...previous])
       setBaseId(previous => previous || saved.at(-1)?.run_id || '')
       setCandidateId(previous => previous || saved[0]?.run_id || '')
@@ -160,6 +160,14 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       setJob({ status: 'running', progress: 0, message: 'Preparing evaluation' }); setJobId(started.id)
     } catch (e) { setError(String(e)) } finally { setSubmitting(false) }
   }
+  /** Listed runs omit per-query records; fetch the one being inspected. */
+  async function inspect(run: RunListing) {
+    if (!session) return
+    try {
+      const full = run.queries ? run as Run : await guidedRequest<Run>(`runs/${encodeURIComponent(run.run_id)}`, session.token)
+      onInspect(full, { query: '', doc: '' })
+    } catch (e) { setError(String(e)) }
+  }
   async function compare() {
     if (!session) return
     setComparing(true); setError('')
@@ -171,7 +179,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   function addRows(additions: QueryRow[], importHeader?: Record<string, unknown>) {
     const ids = new Set(rows.map(r => r.query_id))
     if (additions.some(r => ids.has(r.query_id))) { setError('Some question IDs already exist. Rename them before importing; existing questions were kept.'); return }
-    if (rows.length + additions.length > 500) { setError('Guided benchmarks support at most 500 questions.'); return }
+    if (rows.length + additions.length > MAX_QUESTIONS) { setError(`Guided benchmarks support at most ${MAX_QUESTIONS} questions.`); return }
     setRows(previous => [...previous, ...additions]); setDirty(true); setError('')
     if (importHeader) {
       const oldMeta = (header?.dataset || {}) as Record<string, unknown>
@@ -235,7 +243,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       <div className="mt-5 flex flex-wrap gap-3"><button className={primary} disabled={!draft || dirty || running || (mode === 'heldout' && !heldout) || (choice?.kind === 'http' && !remote)} onClick={() => void evaluate()}>{running ? 'Evaluation running…' : 'Run evaluation'}</button>{jobId && <button className={button} onClick={() => void guidedRequest(`jobs/${jobId}/cancel`, session.token, {}).catch(e => setError(String(e)))}>Cancel evaluation</button>}</div>
       {job && <div className="mt-5" role="status"><p className="text-sm">{job.status === 'done' ? `Evaluation ${job.run?.status || 'complete'}` : job.status} · {job.message}</p><progress aria-label="Evaluation progress" className="mt-2 w-full accent-teal-600" value={job.progress} max={1} />{job.error && <p className="mt-2 text-sm text-red-600">{job.error}</p>}<p className="mt-1 text-xs text-muted">Cancellation takes effect between queries. An active adapter call finishes first.</p></div>}
       <EvaluationRecovery token={session.token} busy={running} onStart={id => { setJobId(id); setJob({ status: 'running', progress: 0, message: 'Loading saved evaluation' }) }} />
-      {runs.length > 0 && <div className="mt-6 space-y-3"><h3 className="font-semibold">Recorded evaluations</h3>{runs.map(run => <div key={run.run_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4"><div><b className="text-sm">{run.label}</b><p className="mt-1 text-xs text-muted">{run.status} · {run.summary.n_queries} queries · nDCG {format(run.summary.metrics?.ndcg)} · p95 {format(run.summary.latency_ms?.p95)} ms</p></div><button className={button} onClick={() => onInspect(run, { query: '', doc: '' })}>Inspect failures</button></div>)}<button className={button} onClick={() => { setLabel('Candidate fix'); setStep(3) }}>Compare a fix</button></div>}
+      {runs.length > 0 && <div className="mt-6 space-y-3"><h3 className="font-semibold">Recorded evaluations</h3>{runs.map(run => <div key={run.run_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4"><div><b className="text-sm">{run.label}</b><p className="mt-1 text-xs text-muted">{run.status} · {run.summary.n_queries} queries · nDCG {format(run.summary.metrics?.ndcg)} · p95 {format(run.summary.latency_ms?.p95)} ms</p></div><button className={button} onClick={() => void inspect(run)}>Inspect failures</button></div>)}<button className={button} onClick={() => { setLabel('Candidate fix'); setStep(3) }}>Compare a fix</button></div>}
     </section>}
     {step === 3 && <section className={`${panel} space-y-5`}><div><h2 className="text-xl font-semibold">Compare a measured fix</h2><p className="mt-2 text-sm text-muted">Keep the benchmark and k unchanged. Change pipeline configuration, record another run, then inspect both results.</p></div><button className={button} onClick={() => { setLabel('Candidate fix'); setStep(2) }}>Evaluate another configuration</button>
       <ReleasePolicy token={session.token} value={policyId} onChange={(id, ref) => { setPolicyId(id); setPolicyRef(ref) }} />

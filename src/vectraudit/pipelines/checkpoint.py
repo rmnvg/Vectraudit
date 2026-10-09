@@ -66,11 +66,19 @@ def identity(
     return hashlib.sha256(_json(value).encode()).hexdigest()
 
 
-def validate_path(path: Path) -> None:
-    """Do not follow symlinks for journals, locks or SQLite companion files."""
+def validate_path(path: Path, root: Path | None = None) -> None:
+    """Do not follow symlinks for journals, locks, SQLite companion files, or directories
+    Vectraudit manages below ``root``.
+
+    ``root`` (default: the file's own directory) is the folder the caller chose, so it and its
+    ancestors are trusted as given. That keeps system links such as macOS ``/tmp`` and
+    ``/var`` usable while still refusing a link planted inside a managed directory.
+    """
+    base = path.parent if root is None else root
+    managed = [p for p in path.parents if p != base and p.is_relative_to(base)]
     for item in (
         path,
-        *path.parents,
+        *managed,
         *(Path(str(path) + suffix) for suffix in (".lock", "-journal", "-wal", "-shm")),
     ):
         if item.is_symlink():

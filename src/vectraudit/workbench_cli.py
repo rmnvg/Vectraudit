@@ -19,6 +19,7 @@ from vectraudit.labelling.storage import task_lock
 from vectraudit.labelling.task import atomic_write
 from vectraudit.pipelines.benchmark import audit_benchmark
 from vectraudit.pipelines.checkpoint import validate_path
+from vectraudit.pipelines.guided import write_run
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
 from vectraudit.pipelines.monitor import monitor_check
 from vectraudit.pipelines.optimize import optimize
@@ -80,7 +81,8 @@ def run_command(
             **({} if retry == RetryPolicy() else {"retry": asdict(retry)}),
         }
         batch_path = checkpoints / "batch.json"
-        validate_path(batch_path)
+        # --out (or --resume) is the user's choice; folders created inside it must not be links.
+        validate_path(batch_path, resume or out)
         with task_lock(batch_path, timeout=0):
             if resume:
                 batch = json.loads(batch_path.read_text())
@@ -123,7 +125,7 @@ def run_command(
                     resume=resuming,
                     retry_errors=retry_errors and resuming,
                 )
-                _write(out / f"{run['run_id']}.run.json", run)
+                write_run(out / f"{run['run_id']}.run.json", run)
                 typer.echo(f"{candidate.name}: {run['status']} ({run['run_id']})")
                 incomplete |= run["status"] != "complete"
                 if run["status"] == "cancelled":
@@ -214,7 +216,7 @@ def monitor_command(
             corpus_version=spec.corpus_version or config.get("corpus_sha256"),
         )
         result = monitor_check(base, run, load_policy(policy) if policy else DEFAULT_POLICY)
-        _write(history / f"{run['run_id']}.run.json", run)
+        write_run(history / f"{run['run_id']}.run.json", run)
         _write(history / f"{run['run_id']}.monitor.json", result)
         typer.echo(json.dumps({"verdict": result["verdict"], "alerts": result["alerts"]}))
         if result["verdict"] != "pass":

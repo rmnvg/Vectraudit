@@ -15,7 +15,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import Response
 
 from vectraudit.labelling.storage import TaskBusy
-from vectraudit.pipelines.guided import MAX_BODY, GuidedWorkspace, guided_router
+from vectraudit.pipelines.guided import MAX_BODY, MAX_RUN_BYTES, GuidedWorkspace, guided_router
 from vectraudit.server.app import STATIC_DIR, _mount_frontend
 
 
@@ -82,7 +82,7 @@ def create_workbench(
         for path in sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[
             :200
         ]:
-            if path.is_symlink() or path.stat().st_size > 20 * 1024 * 1024:
+            if path.is_symlink() or path.stat().st_size > MAX_RUN_BYTES:
                 continue
             entries.append({"name": path.name, "bytes": path.stat().st_size})
         return {"local": True, "artifacts": entries}
@@ -97,8 +97,8 @@ def create_workbench(
             or not path.is_file()
         ):
             raise HTTPException(404, "Artifact not found")
-        if path.stat().st_size > 20 * 1024 * 1024:
-            raise HTTPException(413, "Artifact is larger than 20 MiB")
+        if path.stat().st_size > MAX_RUN_BYTES:
+            raise HTTPException(413, "Artifact is larger than 64 MiB")
         try:
             result = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(result, dict) or not str(result.get("format", "")).startswith(

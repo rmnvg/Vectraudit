@@ -2,6 +2,8 @@ export type Hit = { id: string; score?: number }
 export type Stage = { name: string; kind: string; parents: string[]; hits: Hit[]; latency_ms: number; source: string }
 export type Query = { query_id: string; ids: string[] | null; latency_ms: number | null; tags: string[]; metrics: Record<string, number> | null; no_answer_correct?: boolean | null; forbidden_ids?: string[]; error?: unknown; evidence?: { stages?: Stage[]; failures?: { doc_id: string; stage: string | null; reason: string }[] } }
 export type Run = { format: 'vectraudit.run'; run_id: string; created_at: string; status: string; label?: string; queries: Query[]; backend?: { config?: Record<string, unknown> } | null; benchmark_source?: { split: string } | null; summary: { n_queries: number; n_ok: number; metrics: Record<string, number> | null; latency_ms: { p95: number } | null; permissions?: { violations: number }; no_answer?: { n: number; accuracy: number | null } } }
+/** A run as listed by the guided workspace: per-query records load on demand. */
+export type RunListing = Omit<Run, 'queries'> & { queries?: Query[]; queries_omitted?: number }
 export type Candidate = { name: string; ndcg: number | null; p95_ms: number | null; cost_usd: number | null; memory_bytes: number | null; feasible: boolean; reasons: string[]; run: Run }
 export type Optimization = { format: 'vectraudit.optimization'; candidates: Candidate[]; selected: string | null; eligible: boolean; heldout: Candidate | null }
 export type Benchmark = { format: 'vectraudit.benchmark'; n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][]; unannotated: string[]; suggestions: { category: string; instruction: string }[]; judgment_queue: { query_id: string; doc_id: string; reason: string }[] }

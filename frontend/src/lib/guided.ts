@@ -67,6 +67,9 @@ export function executionLabel(execution: CriticalExecution): string {
   return execution.attempt === null ? `Repeat ${execution.repeat}` : `Attempt ${execution.attempt}, repeat ${execution.repeat}`
 }
 
+/** Guided benchmarks hold at most this many questions (the server enforces the same). */
+export const MAX_QUESTIONS = 1000
+
 export async function guidedRequest<T>(path: string, token = '', body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`api/guided/${path}`, {
     method: body === undefined ? 'GET' : 'POST', signal,

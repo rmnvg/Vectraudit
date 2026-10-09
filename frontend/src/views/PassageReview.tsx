@@ -3,7 +3,7 @@ import { guidedRequest, parseQueries } from '../lib/guided'
 import type { Draft, QueryRow } from '../lib/guided'
 import type { LookupResponse, ReviewPool } from '../lib/benchmarkTools'
 import { reviewRequestKey } from '../lib/benchmarkTools'
-import type { Run } from '../lib/workbench'
+import type { RunListing } from '../lib/workbench'
 import { PassageGrader } from './BenchmarkTools'
 
 const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40'
@@ -11,7 +11,7 @@ const input = 'mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-
 
 /** The parent keys this session by saved revision, corpus and retrieval request, not labels. */
 export default function PassageReview({ token, draft, dirty, runs, baseline, candidate, onBaseline, onCandidate, corpus, row, irrelevant, onGrade }: {
-  token: string; draft: Draft | null; dirty: boolean; runs: Run[]
+  token: string; draft: Draft | null; dirty: boolean; runs: RunListing[]
   baseline: string; candidate: string; onBaseline: (id: string) => void; onCandidate: (id: string) => void
   corpus: string; row: QueryRow; irrelevant: string[]; onGrade: (row: QueryRow, irrelevant: string[]) => void
 }) {

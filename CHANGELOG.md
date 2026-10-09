@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Exported release checks carry `concurrency` and `max_rps`; in CI the approved values run
+  both sides so latency stays comparable. Serial exports are unchanged byte for byte.
+- Guided benchmarks hold up to 1,000 questions. Pipeline run files are written as compact
+  JSON (about a third of the size), the per-run limit is 64 MiB, and the run list loads
+  summaries, fetching a run's questions only when inspected.
 - Concurrent pipeline runs: per-candidate `concurrency` (up to 32 queries in flight) and
   `max_rps` rate limits in the workbench manifest, with results identical to serial runs,
   a shared retry budget, and cancel/resume preserved. Release checks compare latency only
@@ -134,6 +139,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Fixed
 
+- `vectraudit workbench run` works when the output folder sits below a symlinked system
+  folder, such as macOS `/tmp` or `/var`. Links inside folders Vectraudit manages are still
+  refused.
 - Cancelling a run during a retry backoff no longer records the in-flight query as a
   `pipeline_error` failure; the attempt stays interrupted and is retried on resume.
 
