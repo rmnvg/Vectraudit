@@ -15,7 +15,7 @@ from typing import Any
 
 from vectraudit.core.jobs import JobCancelledError
 from vectraudit.evaluation.dataset import Dataset, DatasetQuery
-from vectraudit.evaluation.metrics import semantic_metrics
+from vectraudit.evaluation.metrics import repeat_quality
 from vectraudit.evaluation.runner import RunOptions, _skeleton, summarize
 from vectraudit.labelling.storage import task_lock
 from vectraudit.pipelines.checkpoint import Checkpoint, identity, validate_path
@@ -473,7 +473,7 @@ def _measure(
             repeat_ids=rankings,
             latency_ms=statistics.median(samples),
             latency_samples_ms=samples,
-            metrics=semantic_metrics(ids, q.relevant, options.k) if q.relevant else None,
+            **repeat_quality(rankings, q.relevant, options.k),
             nondeterministic=any(r.hits != result.hits for r in results[1:]),
             no_answer_correct=all(not r.hits for r in results) if q.no_answer else None,
             forbidden_ids=sorted({h.id for r in results for h in r.hits} & set(q.forbidden)),
@@ -504,6 +504,25 @@ def _measure(
             if options.evidence
             else None,
         )
+        if options.evidence and len(results) > 1:
+            # Store only changed stage outputs; unchanged repeats reference the first trace.
+            # Ignore timing-only changes: end-to-end latency samples remain per execution.
+            def trace_signature(r: PipelineResult) -> list[dict[str, Any]]:
+                return [s.model_dump(exclude={"latency_ms"}) for s in r.stages]
+
+            first = trace_signature(results[0])
+            changed = {
+                str(i): {
+                    "kind": "pipeline",
+                    "stages": [s.model_dump() for s in r.stages],
+                    "failures": failure_analysis(r, q.relevant),
+                }
+                for i, r in enumerate(results[1:], 2)
+                if trace_signature(r) != first
+                or r.coverage != results[0].coverage
+                or r.hits != results[0].hits
+            }
+            entry["repeat_evidence"] = changed
     except JobCancelledError:
         # Cancellation is not a pipeline failure: leave this attempt unfinished.
         raise

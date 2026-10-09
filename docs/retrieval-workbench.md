@@ -48,6 +48,23 @@ a pipeline to a measured fix without editing JSON files:
 4. **Compare a fix.** Choose a baseline and a candidate, run the release comparison
    (saved as `*.check.json`), and work through the ranked findings.
 
+### Inspect repeated executions
+
+Quality scores average all successful measured repeats within a query, then weight query
+families equally. The **Execution** selector in run details and finding comparisons shows
+each ranking, its nDCG, the observed range and any captured pipeline stage losses. Identical
+pipeline outputs share the first trace; their later per-stage timings are not retained.
+Connector traces and hosted projections may lack later stage evidence; the UI labels it
+unavailable. The default ranking in exported comparison tables remains repeat 1.
+
+New recordings use metric contract v2. Re-record both baseline and candidate to compare
+against an older recording, and use the same repeat count. Old recordings still load and
+compare with each other. Repeats are not additional independent bootstrap samples: intervals
+still describe variation across query families, not all sources of provider randomness.
+Critical-document, permission and no-answer checks still inspect every execution. A failed
+query has no quality average; after a successful retry the average uses that completed
+attempt, while earlier failed-attempt rankings remain available to critical checks.
+
 ### Resume an evaluation
 
 Every guided evaluation and `workbench run` writes a local SQLite checkpoint before

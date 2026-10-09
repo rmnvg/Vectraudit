@@ -25,8 +25,8 @@ from vectraudit.evaluation.dataset import Dataset, load_dataset
 from vectraudit.evaluation.families import family_mean
 from vectraudit.evaluation.metrics import (
     SEMANTIC_METRICS,
-    ann_recall,
     metric_contract,
+    repeat_quality,
     semantic_metrics,
 )
 from vectraudit.evaluation.runner import (
@@ -190,8 +190,7 @@ def run_candidate(
                 "permission_checked": bool(q.forbidden),
                 "exact_ids": exact_docs,
                 "latency_ms": latency_ms,
-                "metrics": semantic_metrics(docs, labels, k) if labels else None,
-                "ann_recall": ann_recall(docs, exact_docs) if exact_docs is not None else None,
+                **repeat_quality([docs], labels, k, exact_docs),
                 "nondeterministic": False,
                 "evidence": None,
                 "error": None,

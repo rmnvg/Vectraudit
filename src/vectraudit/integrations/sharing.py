@@ -102,6 +102,13 @@ def _query(
                 out[key] = value
     if "repeat_ids" in query:
         out["repeat_ids"] = query["repeat_ids"]  # validated by check_run, including attempts
+    if "repeat_metrics" in query:
+        out["repeat_metrics"] = [
+            _scalars(sample, "recall precision mrr ndcg") if sample is not None else None
+            for sample in query["repeat_metrics"]
+        ]
+    if "repeat_ann_recall" in query:
+        out["repeat_ann_recall"] = query["repeat_ann_recall"]
     out["error"] = _error(query.get("error"))
     out.setdefault("ann_recall", None)
     out.setdefault("nondeterministic", False)
@@ -185,7 +192,7 @@ def _payload(
     out["timing"] = _scalars(
         record.get("timing"), "warmup repeats concurrency max_rps wall_s embedding_s"
     )
-    out["metric_contract"] = _scalars(record["metric_contract"], "version k")
+    out["metric_contract"] = _scalars(record["metric_contract"], "version k repeat_aggregation")
     provenance = record.get("provenance") or {}
     out["provenance"] = {
         **_scalars(provenance, "commit_sha"),

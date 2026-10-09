@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Quality metrics now average every execution within each query, retaining per-repeat
+  scores and rankings. The workbench can inspect individual repeats and changed pipeline
+  traces. Metric contract v2 requires re-recording both sides of older comparisons;
+  family bootstrap sampling and all-execution safety checks remain in effect.
 - `vectraudit workbench optimize --policy POLICY --baseline NAME` screens candidates against
   the baseline under the release policy and approves a candidate only if the policy passes on
   held-out questions; results are labelled approved, not approved, baseline remains best or

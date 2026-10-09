@@ -11,6 +11,7 @@ Two kinds of quality are kept apart and never substituted for each other:
 
 from __future__ import annotations
 
+import statistics
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -18,7 +19,7 @@ import numpy as np
 
 from vectraudit.core.relevance import relevance_metrics
 
-METRIC_CONTRACT_VERSION = 1
+METRIC_CONTRACT_VERSION = 2
 SEMANTIC_METRICS = ("recall", "precision", "mrr", "ndcg")
 QUALITY_METRICS = (*SEMANTIC_METRICS, "ann_recall")
 
@@ -27,6 +28,7 @@ def metric_contract(k: int) -> dict[str, Any]:
     """Everything that must match for two runs' metrics to be comparable."""
     return {
         "version": METRIC_CONTRACT_VERSION,
+        "repeat_aggregation": "mean_per_query",
         "k": k,
         "relevant": "grade > 0",
         "gain": "linear: grade / max grade of the query",
@@ -35,6 +37,32 @@ def metric_contract(k: int) -> dict[str, Any]:
         "ties": "backend order",
         "precision": "relevant hits / k",
         "ann_recall": "|top-k ∩ exact top-k| / |exact top-k|",
+    }
+
+
+def repeat_quality(
+    rankings: Sequence[Sequence[str]],
+    labels: Mapping[str, float],
+    k: int,
+    exact: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Score each execution, then average within the query (never extra sample units)."""
+    if not rankings:
+        raise ValueError("Quality requires at least one recorded ranking")
+    metrics = [semantic_metrics(ids, labels, k) if labels else None for ids in rankings]
+    recalls = [ann_recall(ids, exact) if exact is not None else None for ids in rankings]
+    return {
+        "repeat_metrics": metrics,
+        "metrics": {
+            name: statistics.fmean(m[name] for m in metrics if m is not None)
+            for name in SEMANTIC_METRICS
+        }
+        if labels
+        else None,
+        "repeat_ann_recall": recalls,
+        "ann_recall": statistics.fmean(r for r in recalls if r is not None)
+        if all(r is not None for r in recalls)
+        else None,
     }
 
 
