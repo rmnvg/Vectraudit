@@ -83,11 +83,37 @@ Plans set runs per month, queries per run, stored runs and retention days (pilot
 2,000, 1,000 and 30 days). Over-limit uploads get a clear 413/429 error; retries of an
 already stored run are never blocked.
 
+## Decision ledger and release timeline
+
+Retention deletes runs and the checks that reference them, but not the decisions. Every
+release check also writes a small ledger row: verdict, policy digest, baseline name, run
+IDs and digests, candidate label and commit, per-metric changes with intervals, latency,
+critical-question counts, the first ten reasons and the names of changed settings. It holds
+no query text, document text or raw evidence, only what the upload projection already
+contains. Rows are kept until their project or workspace is deleted, appear in workspace
+exports, and are not counted against stored-run limits.
+
+The project page's **Release timeline** shows decisions and baseline pins, newest first,
+with a link to the full report while the check still exists and "Expired under retention"
+afterwards. The same timeline is available as JSON, paginated like the other histories:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "$VECTRAUDIT_CLOUD_URL/api/v1/workspaces/acme/projects/search/decisions?limit=50"
+```
+
+The purge records any missing decision before it deletes a check. After upgrading an
+existing deployment, record decisions for checks made before the ledger existed once:
+
+```bash
+docker compose run --rm api backfill-decisions
+```
+
 ## Scheduled jobs
 
 | When | Command | Why |
 |---|---|---|
-| Daily | `docker compose run --rm api purge` | Deletes runs past retention; pinned baselines are kept. |
+| Daily | `docker compose run --rm api purge` | Deletes runs past retention; pinned baselines and ledger decisions are kept. |
 | Nightly | `./backup.sh` and copy `backups/` off the host | Restore point (beta targets: RPO 24 h, RTO 8 h). |
 
 ## Backups and restore

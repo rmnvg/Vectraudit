@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Hosted decision ledger: each release check records a compact decision that is kept after
+  retention deletes its runs and check. The project page shows a release timeline of
+  decisions and baseline pins, also available from `GET .../decisions`; the purge records
+  missing decisions first, and `vectraudit-cloud backfill-decisions` records older checks.
 - Request contract: list-valued `context` (such as user groups), list and numeric-range
   `filter` values, and conversation `history` in datasets, imports, permission scenarios,
   connection tests and document lookup. Existing dataset versions are unchanged.

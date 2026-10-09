@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from vectraudit import __version__
-from vectraudit.cloud import quotas, repo, service
+from vectraudit.cloud import ledger, quotas, repo, service
 from vectraudit.cloud.auth import Principal, authenticate
 from vectraudit.cloud.deps import SessionDep, SettingsDep, client_key, record_failure
 from vectraudit.cloud.errors import CloudError
@@ -159,6 +159,57 @@ def _actor(session: Session, actor: str | None) -> str:
 
 def _badge(verdict: str) -> str:
     return f'<span class="badge {e(verdict)}">{e(VERDICT.get(verdict, verdict))}</span>'
+
+
+def _metric_change(summary: Mapping[str, Any]) -> str:
+    """``ndcg 0.812 → 0.799 (-0.013)`` for the decision's primary (or first) metric."""
+    metrics = summary.get("metrics") or {}
+    name = summary.get("primary_metric") or next(iter(metrics), None)
+    stats = metrics.get(name) if name else None
+    if not stats or stats.get("baseline") is None or stats.get("candidate") is None:
+        return ""
+    delta = stats.get("delta") or 0.0
+    return f"{e(name)} {stats['baseline']:.3f} → {stats['candidate']:.3f} ({delta:+.3f})"
+
+
+def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -> list[list[str]]:
+    rows = []
+    for entry in entries:
+        when = e(entry["at"].strftime("%Y-%m-%d %H:%M"))
+        if entry["kind"] == "baseline_pin":
+            rows.append(
+                [
+                    when,
+                    '<span class="muted">Baseline pinned</span>',
+                    f"{e(entry['baseline_name'] or '')} → "
+                    f'<span class="mono">{e((entry["run_id"] or "")[:12])}</span>',
+                    "",
+                    e(entry["note"] or ""),
+                    e(_actor(session, entry["actor"])),
+                ]
+            )
+            continue
+        summary = entry["summary"] or {}
+        reasons = summary.get("reasons") or []
+        candidate = entry["candidate_label"] or entry["candidate_run_id"][:12]
+        if entry["candidate_commit"]:
+            candidate += f" @ {entry['candidate_commit'][:10]}"
+        evidence = (
+            f'<a href="{base}/checks/{quote(entry["check_id"])}">Report</a>'
+            if entry["evidence_available"]
+            else '<span class="muted">Expired under retention</span>'
+        )
+        rows.append(
+            [
+                when,
+                _badge(entry["verdict"]),
+                e(candidate),
+                _metric_change(summary),
+                e(reasons[0] if reasons else "All policy rules hold."),
+                evidence,
+            ]
+        )
+    return rows
 
 
 def _csrf_field(web: Web) -> str:
@@ -855,6 +906,14 @@ def project_page(
             ["Name", "Run", "Label", "Pinned by", "Pinned at", "Note"],
             baseline_rows,
             "No baseline yet: pin a complete run below.",
+        )
+        + "<h2>Release timeline</h2>"
+        + '<p class="muted">Decisions and baseline changes. Decisions stay after their runs '
+        "expire under retention; the full report is available while the check exists.</p>"
+        + _table(
+            ["When", "Event", "Candidate", "Quality change", "Why", "Evidence"],
+            _timeline_rows(session, ledger.timeline(session, access.project, limit=30), base),
+            "No release decisions yet.",
         )
         + "<h2>Recent checks</h2>"
         + _table(

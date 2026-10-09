@@ -162,6 +162,18 @@ def purge() -> None:
     )
 
 
+@app.command("backfill-decisions")
+def backfill_decisions() -> None:
+    """Record ledger decisions for checks made before the decision ledger existed."""
+    from vectraudit.cloud.db import transaction
+    from vectraudit.cloud.ledger import record_missing
+    from vectraudit.cloud.models import Check
+
+    with transaction(_sessions()) as session:
+        written = record_missing(session, list(session.scalars(select(Check))))
+    console.print(f"Recorded {written:,} decisions; existing ones were left unchanged.")
+
+
 @app.command()
 def usage(
     month: Annotated[str, typer.Option(help="YYYY-MM (default: this month).")] = "",

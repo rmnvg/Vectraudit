@@ -12,13 +12,14 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vectraudit.cloud import repo
+from vectraudit.cloud import ledger, repo
 from vectraudit.cloud.errors import CloudError, not_found
 from vectraudit.cloud.models import (
     ApiToken,
     AuditEvent,
     Baseline,
     Check,
+    Decision,
     Invite,
     Membership,
     Project,
@@ -148,6 +149,7 @@ def run_check(
     )
     found = session.scalars(same).first()
     if found is not None:
+        ledger.record_decision(session, found, base, cand, baseline_name)
         return found, base, cand, False
     result = compare_runs(base.data, cand.data, policy)
     check = Check(
@@ -164,7 +166,10 @@ def run_check(
         with session.begin_nested():  # a concurrent identical check may win the race
             session.add(check)
     except IntegrityError:
-        return session.scalars(same).one(), base, cand, False
+        found = session.scalars(same).one()
+        ledger.record_decision(session, found, base, cand, baseline_name)
+        return found, base, cand, False
+    ledger.record_decision(session, check, base, cand, baseline_name)
     return check, base, cand, True
 
 
@@ -230,6 +235,9 @@ def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
             select(Check).where(Check.project_id == p.id).order_by(Check.created_at)
         )
         tokens = session.scalars(select(ApiToken).where(ApiToken.project_id == p.id))
+        decisions = session.scalars(
+            select(Decision).where(Decision.project_id == p.id).order_by(Decision.decided_at)
+        )
         projects.append(
             {
                 "slug": p.slug,
@@ -277,6 +285,23 @@ def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
                     }
                     for c in checks
                 ],
+                "decisions": [
+                    {
+                        "check_id": d.check_id,
+                        "verdict": d.verdict,
+                        "decided_at": d.decided_at.isoformat(),
+                        "decided_by": d.decided_by,
+                        "baseline_name": d.baseline_name,
+                        "baseline_run_id": d.baseline_run_id,
+                        "candidate_run_id": d.candidate_run_id,
+                        "candidate_label": d.candidate_label,
+                        "candidate_commit": d.candidate_commit,
+                        "policy_digest": d.policy_digest,
+                        "dataset_sha256": d.dataset_sha256,
+                        "summary": d.summary,
+                    }
+                    for d in decisions
+                ],
             }
         )
     audit = [
@@ -315,6 +340,7 @@ def _delete_project_rows(session: Session, project_ids: list[str]) -> dict[str, 
     """Delete in dependency order (baselines block deleting their runs)."""
     counts = {}
     for name, model, column in (
+        ("decisions", Decision, Decision.project_id),
         ("checks", Check, Check.project_id),
         ("baselines", Baseline, Baseline.project_id),
         ("runs", Run, Run.project_id),
