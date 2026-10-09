@@ -204,6 +204,41 @@ class Check(Base):
     created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class Decision(Base):
+    """A release decision kept after its runs and check expire under retention.
+
+    Small by design: verdict, policy digest, run identities and per-metric changes, never
+    query text or evidence. ``check_id`` deliberately has no foreign key, so the row
+    survives when retention deletes the check it summarizes.
+    """
+
+    __tablename__ = "decisions"
+    __table_args__ = (
+        UniqueConstraint("check_id"),
+        Index("ix_decisions_project_decided", "project_id", "decided_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    check_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    baseline_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    verdict: Mapped[str] = mapped_column(String(16))
+    policy_digest: Mapped[str] = mapped_column(String(64))
+    dataset_sha256: Mapped[str] = mapped_column(String(64))
+    baseline_run_id: Mapped[str] = mapped_column(String(64))
+    baseline_digest: Mapped[str] = mapped_column(String(64))
+    candidate_run_id: Mapped[str] = mapped_column(String(64))
+    candidate_digest: Mapped[str] = mapped_column(String(64))
+    candidate_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    candidate_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    """When the check was made; ``recorded_at`` is when this row was written."""
+    decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONType)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     __table_args__ = (Index("ix_audit_workspace_created", "workspace_id", "created_at"),)

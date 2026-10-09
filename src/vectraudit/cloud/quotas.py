@@ -140,8 +140,11 @@ def check_upload(session: Session, ws: Workspace, n_queries: int) -> None:
 def purge_expired(session: Session, now: datetime | None = None) -> dict[str, int]:
     """Delete runs older than their workspace's retention; pinned baselines are kept.
 
-    Checks that reference a deleted run go with it. Returns runs deleted per workspace slug.
+    Checks that reference a deleted run go with it, after their decisions are written to
+    the ledger, which outlives retention. Returns runs deleted per workspace slug.
     """
+    from vectraudit.cloud.ledger import record_missing
+
     now = now or utcnow()
     pinned = select(Baseline.run_pk)
     deleted: dict[str, int] = {}
@@ -155,11 +158,15 @@ def purge_expired(session: Session, now: datetime | None = None) -> dict[str, in
             )
         )
         for run in expired:
-            for check in session.scalars(
-                select(Check).where(
-                    (Check.baseline_run_pk == run.id) | (Check.candidate_run_pk == run.id)
+            checks = list(
+                session.scalars(
+                    select(Check).where(
+                        (Check.baseline_run_pk == run.id) | (Check.candidate_run_pk == run.id)
+                    )
                 )
-            ):
+            )
+            record_missing(session, checks)
+            for check in checks:
                 session.delete(check)
             session.delete(run)
         if expired:

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import aliased
 
-from vectraudit.cloud import repo
+from vectraudit.cloud import ledger, repo
 from vectraudit.cloud.deps import PrincipalDep, SessionDep, SettingsDep
 from vectraudit.cloud.errors import CloudError, not_found
 from vectraudit.cloud.models import Check, Run, utcnow
@@ -62,6 +62,33 @@ class CheckSummary(BaseModel):
 
 class CheckPage(Page):
     checks: list[CheckSummary]
+
+
+class TimelineEntry(BaseModel):
+    kind: str
+    """``decision`` (a release check, kept after retention) or ``baseline_pin``."""
+    at: datetime
+    verdict: str | None = None
+    baseline_name: str | None = None
+    baseline_run_id: str | None = None
+    candidate_run_id: str | None = None
+    candidate_label: str | None = None
+    candidate_commit: str | None = None
+    policy_digest: str | None = None
+    decided_by: str | None = None
+    check_id: str | None = None
+    evidence_available: bool | None = None
+    """Whether the full check and its report still exist (False once retention purged it)."""
+    report_url: str | None = None
+    summary: dict[str, Any] | None = None
+    run_id: str | None = None
+    previous_run_id: str | None = None
+    note: str | None = None
+    actor: str | None = None
+
+
+class TimelinePage(Page):
+    entries: list[TimelineEntry]
 
 
 class ShareIn(BaseModel):
@@ -193,6 +220,32 @@ def list_checks(
             for c, b_id, c_id, c_label, c_commit in rows
         ],
         next_cursor=_encode_cursor(rows[-1][0].created_at, rows[-1][0].id) if more else None,
+    )
+
+
+@router.get(f"{PROJECT}/decisions")
+def list_decisions(
+    workspace: str,
+    project: str,
+    session: SessionDep,
+    principal: PrincipalDep,
+    settings: SettingsDep,
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: str | None = None,
+) -> TimelinePage:
+    """Release decisions and baseline pins, newest first; kept after runs expire."""
+    access = repo.authorize(session, principal, workspace, "read", project)
+    assert access.project is not None
+    before = _decode_cursor(cursor)[0] if cursor else None
+    entries = ledger.timeline(session, access.project, before=before, limit=limit + 1)
+    more = len(entries) > limit
+    entries = entries[:limit]
+    for entry in entries:
+        if entry.get("evidence_available"):
+            entry["report_url"] = report_url(settings, workspace, project, entry["check_id"])
+    return TimelinePage(
+        entries=[TimelineEntry(**entry) for entry in entries],
+        next_cursor=_encode_cursor(entries[-1]["at"], entries[-1]["kind"]) if more else None,
     )
 
 

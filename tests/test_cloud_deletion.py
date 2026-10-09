@@ -102,7 +102,13 @@ def test_delete_project(populated, cloud_app) -> None:
     )
     done = w.client.request("DELETE", url, json={"confirm": "search"}, headers=w.as_("acme_owner"))
     assert done.status_code == 200
-    assert done.json() == {"checks": 1, "baselines": 1, "runs": 2, "runner_tokens": 1}
+    assert done.json() == {
+        "decisions": 1,
+        "checks": 1,
+        "baselines": 1,
+        "runs": 2,
+        "runner_tokens": 1,
+    }
     assert w.client.get(url, headers=w.as_("acme_owner")).status_code == 404
     assert w.client.get("/api/v1/workspaces/acme", headers=w.as_("acme_runner")).status_code == 401
     assert rows(cloud_app, Run, "globex") == 2
