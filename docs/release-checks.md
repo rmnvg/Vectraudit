@@ -189,6 +189,36 @@ between-family uncertainty, even if it has many scenario rows.
   check | update` runs in CI under the target branch's approved policy. See
   [Release policies and exported release checks](retrieval-workbench.md#release-policies-and-exported-release-checks).
 
+## Calibrate the policy (A/A)
+
+A threshold tighter than your system's normal run-to-run noise fails releases that changed
+nothing, and a gate that cries wolf gets switched off. Measure the noise instead of guessing:
+record the **same, unchanged** setup several times (5 or more) on the runner and endpoint
+CI uses, then calibrate the policy against those recordings:
+
+```bash
+for i in 1 2 3 4 5; do
+  vectraudit record --connection main.json --dataset dataset.jsonl --out aa/run-$i.json --label aa-$i
+done
+vectraudit calibrate aa/run-*.json --policy policy.json --draft policy.calibrated.json --json calibration.json
+```
+
+Every recording is compared with every other in both directions (5 runs give 20
+comparisons). Nothing changed between them, so each failure is a false alarm, reported by its
+rule key. The draft policy only raises noise-driven thresholds to the worst observed
+variation times `--margin` (default 1.5), rounded up: metric and cohort `max_drop`,
+`latency.min_increase_ms` (for percentage latency rules) and `max_regressed_queries`. The
+report shows false alarms under the current policy and under the draft.
+
+Calibration never loosens a requirement. If an unchanged system misses a critical question,
+delivers a forbidden document, fails a no-answer assertion, or breaks an absolute floor
+(`min`, `p95_max_ms`), it is listed as **not noise**: retrieval is intermittent or already
+out of budget, so investigate it. The draft is a proposal: review it, then adopt it like any
+policy change. `calibrate` never overwrites a file. Few runs underestimate rare noise, and
+comparisons reuse the same runs, so a low false-alarm count is evidence for that setup, not
+a guarantee; re-run after infrastructure changes. Recording costs the same as `record`:
+runs × queries × repeats calls to your backend.
+
 ## Audited exceptions
 
 Sometimes a team deliberately ships a known regression. Instead of loosening the policy or

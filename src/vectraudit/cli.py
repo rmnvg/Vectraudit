@@ -926,7 +926,14 @@ def cache_clear(
 
 
 # Release checks (backend-neutral): defined in release_cli to keep this module FAISS-focused.
-from vectraudit.release_cli import check, cloud_app, dataset_app, init, record  # noqa: E402
+from vectraudit.release_cli import (  # noqa: E402
+    calibrate,
+    check,
+    cloud_app,
+    dataset_app,
+    init,
+    record,
+)
 
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(cloud_app, name="cloud")
@@ -937,6 +944,7 @@ app.add_typer(experiment_app, name="experiment")
 app.command()(record)
 app.command()(check)
 app.command()(init)
+app.command()(calibrate)
 
 runs_app = typer.Typer(
     help="Compare saved sweep runs (vectraudit sweep --save).", no_args_is_help=True

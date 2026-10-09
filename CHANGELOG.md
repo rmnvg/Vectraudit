@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- A/A calibration: `vectraudit calibrate RUN... --policy policy.json` compares recordings
+  of an unchanged system, counts false alarms by rule, and drafts a policy that only raises
+  noise-driven thresholds; critical, safety and absolute-floor failures are reported, never
+  loosened.
 - Audited exceptions: an approver can accept one named failing rule of a hosted check with a
   reason, owner and expiry, as the policy's new `exceptions` block allows. Checks whose
   failures are all covered read "fail, accepted" (exit code 0, neutral GitHub check), never
