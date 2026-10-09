@@ -4,8 +4,14 @@ export type Query = { query_id: string; ids: string[] | null; latency_ms: number
 export type Run = { format: 'vectraudit.run'; run_id: string; created_at: string; status: string; label?: string; queries: Query[]; backend?: { config?: Record<string, unknown> } | null; benchmark_source?: { split: string } | null; summary: { n_queries: number; n_ok: number; metrics: Record<string, number> | null; latency_ms: { p95: number } | null; permissions?: { violations: number }; no_answer?: { n: number; accuracy: number | null } } }
 /** A run as listed by the guided workspace: per-query records load on demand. */
 export type RunListing = Omit<Run, 'queries'> & { queries?: Query[]; queries_omitted?: number }
-export type Candidate = { name: string; ndcg: number | null; p95_ms: number | null; cost_usd: number | null; memory_bytes: number | null; feasible: boolean; reasons: string[]; run: Run }
-export type Optimization = { format: 'vectraudit.optimization'; candidates: Candidate[]; selected: string | null; eligible: boolean; heldout: Candidate | null }
+export type PolicyScreen = { verdict: string; failing_rules: string[]; reasons: string[] }
+export type Candidate = { name: string; ndcg: number | null; p95_ms: number | null; cost_usd: number | null; memory_bytes: number | null; feasible: boolean; reasons: string[]; run: Run; policy_screen?: PolicyScreen | null; check?: PolicyScreen | null }
+export type Optimization = {
+  format: 'vectraudit.optimization'; candidates: Candidate[]; selected: string | null; eligible: boolean; heldout: Candidate | null
+  /** Present from format version 2: older artifacts are exploratory by construction. */
+  status?: 'exploratory_only' | 'no_feasible_candidate' | 'baseline_remains_best' | 'approved_under_policy' | 'not_approved'
+  status_label?: string; approved?: boolean; policy?: { sha256: string; baseline: string } | null
+}
 export type Benchmark = { format: 'vectraudit.benchmark'; n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][]; unannotated: string[]; suggestions: { category: string; instruction: string }[]; judgment_queue: { query_id: string; doc_id: string; reason: string }[] }
 export type Monitor = { format: 'vectraudit.monitor'; created_at: string; verdict: string; drift: { corpus: string; configuration: string; results: unknown[] }; alerts: { message: string }[]; summary: Run['summary'] }
 export type Artifact = Run | Optimization | Benchmark | Monitor

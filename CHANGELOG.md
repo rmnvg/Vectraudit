@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench optimize --policy POLICY --baseline NAME` screens candidates against
+  the baseline under the release policy and approves a candidate only if the policy passes on
+  held-out questions; results are labelled approved, not approved, baseline remains best or
+  exploratory only, and a quality tie keeps the baseline.
 - A/A calibration: `vectraudit calibrate RUN... --policy policy.json` compares recordings
   of an unchanged system, counts false alarms by rule, and drafts a policy that only raises
   noise-driven thresholds; critical, safety and absolute-floor failures are reported, never

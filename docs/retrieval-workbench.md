@@ -421,6 +421,33 @@ cost/memory measurements cannot satisfy those constraints. These two measurement
 from adapters; they are not estimated or fabricated. Python calls are trusted code and
 must implement their own cancellation/timeouts; HTTP calls have bounded timeouts.
 
+### Optimize under the release policy
+
+Without a policy, the result is only a **best exploratory candidate; not checked under a
+release policy**. To decide whether a candidate may be released, give the same policy CI
+uses and name the candidate that represents today's configuration:
+
+```bash
+vectraudit workbench optimize manifest.json --policy retrieval/policy.json --baseline production
+```
+
+- Every other candidate is compared with the baseline under the policy on exploratory
+  questions; one that fails is excluded, with its failing rule keys listed. An inconclusive
+  screen (for example fewer exploratory questions than `min_queries`) does not exclude.
+- A candidate must beat the baseline on nDCG to be chosen; on a tie the baseline stays, so
+  latency jitter alone never recommends a change.
+- The chosen candidate and the baseline then run on held-out questions, and the full policy
+  decides. Only a pass reads **approved under the release policy**; otherwise the result is
+  **not approved**, with the verdict and reasons. Too little held-out evidence for
+  `min_queries` is not approved.
+- Critical-question rules are checked in the split that holds their question: exploratory
+  ones in the screen, held-out ones in the approval check. The report lists which.
+- Exit codes with a policy: 0 when approved or when the baseline remains best, 3 otherwise.
+  Without a policy they are unchanged (3 when held-out constraints are not met).
+
+The workbench's Experiments tab shows the same status, the held-out release check and each
+candidate's policy screen. Nothing is deployed, and the report still requires review.
+
 ## Scheduled monitoring
 
 Create a manifest with exactly one deployed candidate and retain a complete baseline run:
