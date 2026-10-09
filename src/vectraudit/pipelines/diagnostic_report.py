@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from vectraudit.contracts import matches_filter
 from vectraudit.pipelines.errors import CALL_FAILURES
 from vectraudit.pipelines.models import Contract, PipelineRequest, PipelineResult
 
@@ -106,6 +107,19 @@ def inspect_result(
         )
 
     add("response", "ok", "The sample call returned a valid response within the time limit.")
+    if result.coverage is not None:
+        for field in ("ranked_output", "stage_trace", "source_mapping"):
+            status = getattr(result.coverage, field)
+            add(
+                "coverage_" + field,
+                "ok"
+                if status == "observed"
+                else "error"
+                if field == "ranked_output"
+                else "unknown",
+                f"Adapter declares {field.replace('_', ' ')}: {status}.",
+                "Reported coverage is not independently verified.",
+            )
     add(
         "ranking",
         "ok" if ids else "warning",
@@ -169,7 +183,9 @@ def inspect_result(
         mismatched = [
             doc
             for doc in known
-            if any(by_id[doc]["metadata"][k] != v for k, v in request.filters.items())
+            if any(
+                not matches_filter(by_id[doc]["metadata"][k], v) for k, v in request.filters.items()
+            )
         ]
         add(
             "filter_results",

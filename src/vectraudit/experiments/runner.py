@@ -141,8 +141,10 @@ def run_candidate(
     cache: EmbeddingCache | None = None,
     embedder: Embedder | None = None,
 ) -> CandidateResult:
-    if any(q.context for q in dataset.queries):
-        raise ExperimentError("Permission contexts require workbench pipeline adapters.")
+    if any(q.context or q.history for q in dataset.queries):
+        raise ExperimentError(
+            "Permission contexts and conversation history require workbench pipeline adapters."
+        )
     chunks = chunk_corpus(corpus, spec.chunking)
     if not chunks:
         raise ExperimentError(f"{spec.name}: chunking produced no chunks.")

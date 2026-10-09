@@ -33,6 +33,7 @@ from vectraudit.pipelines.lexical import hybrid_pipeline
 from vectraudit.pipelines.models import Contract
 from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
 from vectraudit.pipelines.runtime import HTTPPipeline, Pipeline
+from vectraudit.scaffold import installer_files
 
 RELEASE_FORMAT = "vectraudit.release"
 RELEASE_DIR = "retrieval/release"
@@ -522,6 +523,7 @@ def render_release_files(
 ) -> dict[str, str]:
     """Relative path -> content for the exported release check. Nothing is written here."""
     files = {
+        **installer_files(),
         f"{RELEASE_DIR}/release.json": release_json(release),
         f"{RELEASE_DIR}/{release.benchmark.path}": benchmark,
         f"{RELEASE_DIR}/{release.policy.path}": json.dumps(policy, indent=2) + "\n",
@@ -590,7 +592,10 @@ def _readme(
         )
     if p.token_env:
         secrets.append(f"`{p.token_env}`: a read-only credential for the pipeline")
-    secrets.append("`VECTRAUDIT_DOWNLOAD_TOKEN`: read access to the Vectraudit release")
+    secrets.append(
+        "`VECTRAUDIT_DOWNLOAD_TOKEN`: customer-specific read-only access to the private "
+        "distribution repository, never the source repository"
+    )
     lines = [
         f"# Retrieval release check: {release.name} (configuration v{release.version})",
         "",
@@ -624,6 +629,14 @@ def _readme(
         "## Repository secrets",
         "",
         *(f"- {item}" for item in secrets),
+        "",
+        "## Installation pins",
+        "",
+        "Commit `.github/actions/install-vectraudit/` alongside the workflow. Set repository",
+        "variable `VECTRAUDIT_DISTRIBUTION_REPOSITORY` to the distribution repository provided",
+        "during onboarding. In the workflow, set `VECTRAUDIT_VERSION` and replace",
+        "`VECTRAUDIT_SHA256` with the reviewed release wheel checksum. Missing or mismatched",
+        "pins fail before installation. Review and update both pins together when upgrading.",
         "",
     ]
     if evaluated_destination:

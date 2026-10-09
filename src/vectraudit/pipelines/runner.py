@@ -161,7 +161,7 @@ def failure_analysis(result: PipelineResult, relevant: dict[str, float]) -> list
                 appeared = True
                 continue
             parents = [p for p in stage.parents if doc in {h.id for h in stages[p].hits}]
-            if parents:
+            if parents and (result.coverage is None or result.coverage.stage_trace == "observed"):
                 findings.append(
                     {
                         "doc_id": doc,
@@ -422,6 +422,7 @@ def _measure(
         k=options.k,
         filters=q.filter,
         context=q.context,
+        history=list(q.history),
         params=dict(options.params),
     )
     entry: dict[str, Any] = {
@@ -452,6 +453,19 @@ def _measure(
                 raise ValueError("pipeline returned more than k results")
             results.append(result)
             rankings.append([h.id for h in result.hits])
+            if any(r.coverage is not None or any(h.source for h in r.hits) for r in results):
+                entry["observations"] = [
+                    {
+                        "format_version": 1,
+                        "coverage": r.coverage.model_dump() if r.coverage else None,
+                        "hits": [h.model_dump(exclude_none=True) for h in r.hits],
+                    }
+                    for r in results
+                ]
+            if result.coverage is not None and result.coverage.ranked_output != "observed":
+                raise PipelineCallError(
+                    "incomplete_evidence", "The final ranking was not fully observed"
+                )
         result = results[0]
         ids = [h.id for h in result.hits]
         entry.update(

@@ -191,3 +191,32 @@ def test_cli_cloud_baseline_workflow(world, tmp_path, monkeypatch) -> None:
     assert missing.exit_code == 1
     assert "Baseline 'release' not found" in missing.output
     assert json.loads(worse.read_text())["run_id"] == "cli-worse"
+
+
+def test_cli_cloud_check_reports_only_real_changes(world, tmp_path, monkeypatch) -> None:
+    """The local report against a hosted (projected) baseline must not invent differences."""
+    monkeypatch.setattr(cloud_client, "urllib_send", via(world.client))
+    monkeypatch.setenv("VECTRAUDIT_CLOUD_URL", "http://testserver")
+    monkeypatch.setenv("VECTRAUDIT_CLOUD_PROJECT", "acme/search")
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    runner = CliRunner()
+    base_run = a_run("params-base")
+    base_run["search"]["params"] = {"depth": 50, "reranker": "none"}
+    base_run["backend"]["config"] = {"name": "search", "destination": "https://internal.example"}
+    cand_run = json.loads(json.dumps(base_run))
+    cand_run["run_id"] = "params-cand"
+    cand_run["search"]["params"]["depth"] = 20
+    base = save_run(base_run, tmp_path / "base.json")
+    cand = save_run(cand_run, tmp_path / "cand.json")
+    monkeypatch.setenv("VECTRAUDIT_CLOUD_TOKEN", world.tokens["acme_runner"])
+    assert runner.invoke(cli, ["cloud", "push", str(base)]).exit_code == 0
+    monkeypatch.setenv("VECTRAUDIT_CLOUD_TOKEN", world.tokens["acme_engineer"])
+    assert runner.invoke(cli, ["cloud", "pin", "params-base"]).exit_code == 0
+    out = tmp_path / "check.json"
+    result = runner.invoke(
+        cli, ["check", "cloud:main", str(cand), "--json", str(out), "--no-github-summary"]
+    )
+    assert result.exit_code == 0, result.output
+    changed = [d["path"] for d in json.loads(out.read_text())["config_diff"]]
+    assert changed == ["search.params.depth"]
+    assert "internal.example" not in out.read_text()

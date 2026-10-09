@@ -14,6 +14,7 @@ from typing import Annotated, Literal
 from fastapi import HTTPException
 from pydantic import Field, model_validator
 
+from vectraudit.contracts import Context, Filters
 from vectraudit.pipelines.diagnostics import _kill
 from vectraudit.pipelines.models import Contract
 
@@ -40,8 +41,8 @@ DocumentId = Annotated[str, Field(min_length=1, max_length=512)]
 class LookupRequest(Contract):
     query_id: str = Field(min_length=1, max_length=512)
     doc_ids: list[DocumentId] = Field(min_length=1, max_length=10)
-    context: dict[str, str | int | float | bool] = Field(default_factory=dict)
-    filters: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    context: Context = Field(default_factory=dict)
+    filters: Filters = Field(default_factory=dict)
     corpus_version: str | None = Field(default=None, max_length=512)
     run_id: str
 

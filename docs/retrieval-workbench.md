@@ -230,7 +230,8 @@ Use environment variable names for HTTP credentials; never put secrets in parame
 ```
 
 An HTTP adapter POSTs a `PipelineRequest` containing `query_id`, `text`, `vector`, `k`,
-`filters`, `context`, and `params`. It expects a `PipelineResult` JSON object:
+`filters`, `context`, `params` and, when the benchmark question has one, `history`. It
+expects a `PipelineResult` JSON object:
 
 ```json
 {"hits":[{"id":"doc-1","score":0.9}],"abstained":false,"stages":[
@@ -245,6 +246,26 @@ stage must match delivered results. Duplicate IDs, non-finite measurements, cont
 abstention and more than `k` delivered hits fail the query. Responses are limited to 8 MiB,
 64 stages and 10,000 hits per stage. Redirects and ambient proxies are disabled. Private
 endpoints are intentionally supported; configuration is trusted local input.
+
+**Request values.** `context` values are scalars or lists of scalars (for example a user's
+`groups`). `filters` add lists (match any) and numeric ranges (`gt`, `gte`, `lt`, `lte`) to
+equality. `history` carries earlier conversation turns for assistants that rewrite queries;
+it is sent only when non-empty, so existing strict endpoints keep working. The built-in
+baseline and framework adapters that cannot use history or forwarded filters fail the query
+with `context_unsupported` instead of silently ignoring them.
+
+**Evidence coverage (optional, version 1).** A result may say what it actually observed:
+`"coverage": {"ranked_output": "observed" | "partial" | "unrecorded" | "unsupported",
+"stage_trace": ..., "source_mapping": ...}`. A final ranking that was not fully observed
+fails the query with `incomplete_evidence`, so it can never pass or read as an abstention.
+A stage trace that is not fully observed is shown but not used to claim where a document was
+lost. Coverage is reported by the adapter, not independently verified.
+
+**Source identity (optional).** A hit may carry `"source": {"source_id": ..., "source_revision":
+..., "chunk_id": ..., "start": ..., "end": ...}` when the delivered ID is a chunk of a larger
+source. `id` stays the identity that relevance labels use. When any hit has a source or the
+result declares coverage, the run records each repeat's observation for local inspection;
+these records are never uploaded (see cloud operations).
 
 For custom Python, use `{"kind":"python","target":"my_package.retrieval:search"}`.
 The callable accepts `PipelineRequest` and returns `PipelineResult`. A module in the

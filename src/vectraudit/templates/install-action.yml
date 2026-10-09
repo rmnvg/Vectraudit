@@ -1,0 +1,33 @@
+name: Install pinned Vectraudit
+description: Download a private distribution wheel and verify the reviewed version and SHA-256.
+inputs:
+  repository:
+    description: Private distribution repository (owner/name); never the source repository.
+    required: true
+  version:
+    description: Exact package version, without v.
+    required: true
+  sha256:
+    description: Reviewed wheel SHA-256, committed alongside the version.
+    required: true
+  token:
+    description: Customer-specific read-only token scoped to the distribution repository.
+    required: true
+  extras:
+    description: Optional backend extras, separated by commas.
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Verify and install wheel
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        VA_REPOSITORY: ${{ inputs.repository }}
+        VA_VERSION: ${{ inputs.version }}
+        VA_SHA256: ${{ inputs.sha256 }}
+        VA_EXTRAS: ${{ inputs.extras }}
+        VA_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python "$VA_ACTION_PATH/install.py" --repository "$VA_REPOSITORY" \
+          --version "$VA_VERSION" --sha256 "$VA_SHA256" --extras "$VA_EXTRAS"

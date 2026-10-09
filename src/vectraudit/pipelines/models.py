@@ -6,14 +6,53 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from vectraudit.contracts import Context, Filters, History
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
+class SourceReference(Contract):
+    """Optional source/chunk identity; ``Hit.id`` remains the relevance-label identity."""
+
+    source_id: str = Field(min_length=1, max_length=512)
+    source_revision: str | None = Field(default=None, min_length=1, max_length=512)
+    chunk_id: str | None = Field(default=None, min_length=1, max_length=512)
+    start: int | None = Field(default=None, ge=0, strict=True)
+    end: int | None = Field(default=None, ge=1, strict=True)
+
+    @model_validator(mode="after")
+    def span(self) -> SourceReference:
+        if (self.start is None) != (self.end is None):
+            raise ValueError("source spans require both start and end")
+        if self.start is not None and self.end is not None and self.start >= self.end:
+            raise ValueError("source spans require start < end")
+        return self
+
+
+Observation = Literal["observed", "partial", "unrecorded", "unsupported"]
+
+
+class EvidenceCoverage(Contract):
+    """Version 1 declares observation completeness, not inferred application capabilities."""
+
+    format_version: Literal[1] = 1
+    ranked_output: Observation = "observed"
+    stage_trace: Observation = "unrecorded"
+    source_mapping: Observation = "unrecorded"
+
+
 class Hit(Contract):
     id: str = Field(min_length=1, max_length=512)
     score: float | None = None
+    source: SourceReference | None = None
+
+
+class EvidenceObservation(Contract):
+    format_version: Literal[1] = 1
+    coverage: EvidenceCoverage | None = None
+    hits: list[Hit] = Field(default_factory=list, max_length=10000)
 
 
 class PipelineRequest(Contract):
@@ -21,8 +60,9 @@ class PipelineRequest(Contract):
     text: str | None = None
     vector: list[float] | None = None
     k: int = Field(default=10, ge=1, le=10000)
-    filters: dict[str, str | int | float | bool] = Field(default_factory=dict)
-    context: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    filters: Filters = Field(default_factory=dict)
+    context: Context = Field(default_factory=dict)
+    history: History = Field(default_factory=list)
     params: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -47,9 +87,21 @@ class PipelineResult(Contract):
     abstained: bool = False
     cost_usd: float | None = Field(default=None, ge=0)
     memory_bytes: int | None = Field(default=None, ge=0)
+    coverage: EvidenceCoverage | None = None
 
     @model_validator(mode="after")
     def coherent(self) -> PipelineResult:
+        if self.coverage is not None:
+            if self.coverage.ranked_output in {"unrecorded", "unsupported"} and (
+                self.hits or self.abstained
+            ):
+                raise ValueError("unobserved ranking cannot contain hits or assert abstention")
+            if self.coverage.stage_trace in {"unrecorded", "unsupported"} and self.stages:
+                raise ValueError("unobserved stage trace cannot contain stages")
+            if self.coverage.source_mapping == "observed" and any(
+                hit.source is None for hit in self.hits
+            ):
+                raise ValueError("observed source mapping requires sources for every delivered hit")
         if len({h.id for h in self.hits}) != len(self.hits):
             raise ValueError("result contains duplicate document ids")
         if self.abstained and self.hits:

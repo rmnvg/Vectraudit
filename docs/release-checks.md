@@ -55,7 +55,9 @@ One query per line:
 | `vector` | one of `vector` / `text` | Query embedding from the same model as the corpus. |
 | `text` | one of `vector` / `text` | Embedded at run time with `--embedder MODEL` (sentence-transformers). |
 | `relevant` | no | Document id → grade (> 0 is relevant). Without it, a query only contributes ANN recall and latency. |
-| `filter` | no | Portable filter: field → string / number / boolean, all AND-ed. |
+| `filter` | no | Portable filter: field → string / number / boolean (equality), a non-empty list (any of; up to 256 values) or a numeric range such as `{"gte": 2024, "lt": 2027}`. All fields are AND-ed. Lists and ranges need a full-pipeline adapter; vector connectors accept only equality. |
+| `context` | no | Request context such as `{"tenant": "acme", "groups": ["support", "billing"]}`: scalars or lists of scalars, at most 64 fields and 32 KiB. Needs a full-pipeline adapter. |
+| `history` | no | Earlier conversation turns, oldest first: `[{"role": "user", "content": "..."}]` (roles `system`, `user`, `assistant`; up to 64 turns and 64 KiB). The current question stays in `text`. Part of the dataset version; needs a full-pipeline adapter. |
 | `tags` | no | Cohorts, judged separately when the policy has cohort rules. |
 
 An optional first line `{"dataset": {"name": ..., "description": ..., "embedding_model": ...,

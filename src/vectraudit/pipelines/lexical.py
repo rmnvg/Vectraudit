@@ -9,6 +9,8 @@ from typing import Any
 
 import numpy as np
 
+from vectraudit.contracts import matches_filter
+from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.models import Hit, PipelineRequest
 from vectraudit.pipelines.runtime import PythonPipeline, Stage
 
@@ -29,6 +31,8 @@ def hybrid_pipeline(documents: list[dict[str, Any]]) -> PythonPipeline:
     by_id = dict(zip(ids, documents, strict=True))
 
     def keyword(q: PipelineRequest, parents: dict[str, list[Hit]]) -> list[Hit]:
+        if q.history:
+            raise PipelineCallError("context_unsupported", "The baseline does not use history")
         terms = set(re.findall(r"\w+", (q.text or "").casefold()))
         scores = []
         for doc, words, length in zip(ids, tokens, lengths, strict=True):
@@ -83,7 +87,8 @@ def hybrid_pipeline(documents: list[dict[str, Any]]) -> PythonPipeline:
             h
             for h in parents["fusion"]
             if all(
-                by_id[h.id].get("metadata", {}).get(key) == value for key, value in required.items()
+                matches_filter(by_id[h.id].get("metadata", {}).get(key), value)
+                for key, value in required.items()
             )
         ]
 

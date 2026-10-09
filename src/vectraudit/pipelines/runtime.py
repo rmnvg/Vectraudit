@@ -122,7 +122,12 @@ class HTTPPipeline:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         req = urllib.request.Request(
-            self.url, data=request.model_dump_json().encode(), headers=headers, method="POST"
+            self.url,
+            data=request.model_dump_json(
+                exclude={"history"} if not request.history else set()
+            ).encode(),
+            headers=headers,
+            method="POST",
         )
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
         try:

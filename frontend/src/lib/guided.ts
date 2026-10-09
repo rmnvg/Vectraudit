@@ -11,11 +11,15 @@ export interface Draft extends DraftSummary {
   irrelevant?: Record<string, string[]>
   audit: { n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][] }
 }
+export type Scalar = string | number | boolean
+export type ContextValue = Scalar | Scalar[]
+export type FilterValue = ContextValue | Partial<Record<'gt' | 'gte' | 'lt' | 'lte', number>>
+export type ConversationTurn = { role: 'system' | 'user' | 'assistant'; content: string }
 export interface QueryRow {
   family_id?: string
   query_id: string; text?: string; vector?: number[]; relevant?: Record<string, number>
-  no_answer?: boolean; forbidden?: string[]; context?: Record<string, string | number | boolean>
-  filter?: Record<string, string | number | boolean>; tags?: string[]; split?: 'explore' | 'heldout'
+  no_answer?: boolean; forbidden?: string[]; context?: Record<string, ContextValue>; history?: ConversationTurn[]
+  filter?: Record<string, FilterValue>; tags?: string[]; split?: 'explore' | 'heldout'
   relevant_spans?: { doc_id: string; start: number; end: number; grade: number }[]
 }
 export interface JobState { status: 'running' | 'done' | 'failed' | 'cancelled'; progress: number; message: string; error?: string; run?: Run }

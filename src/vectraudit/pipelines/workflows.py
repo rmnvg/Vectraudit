@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
 
+from vectraudit.contracts import Context, Filters
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import parse_dataset
 from vectraudit.evaluation.dataset_tools import ColumnMap, dataset_rows, import_rows, render_dataset
@@ -125,7 +126,12 @@ def prepare_import(body: ImportIn) -> dict[str, Any]:
     unique: dict[str, dict[str, Any]] = {}
     refs: dict[str, list[str]] = {}
     for row in mapped:
-        key = digest({k: row.get(k) for k in ("text", "context", "filter")})
+        key = digest(
+            {
+                **{k: row.get(k) for k in ("text", "context", "filter")},
+                **({"history": row["history"]} if row.get("history") else {}),
+            }
+        )
         if body.incident:
             reference = row["query_id"]
             row["query_id"] = "incident-" + key[:20]
@@ -166,8 +172,8 @@ def prepare_import(body: ImportIn) -> dict[str, Any]:
 
 class PermissionScenario(Contract):
     name: str = Field(min_length=1, max_length=80)
-    context: dict[str, str | int | float | bool] = Field(default_factory=dict)
-    filters: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    context: Context = Field(default_factory=dict)
+    filters: Filters = Field(default_factory=dict)
     allowed: list[str] = Field(default_factory=list, max_length=500)
     forbidden: list[str] = Field(default_factory=list, max_length=500)
     no_answer: bool = False

@@ -24,7 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      VECTRAUDIT_VERSION: v__VERSION__
+      VECTRAUDIT_VERSION: "__VERSION__"
+      # Copy the wheel hash from the reviewed release handoff, then commit this pin.
+      VECTRAUDIT_SHA256: "REPLACE_WITH_64_HEX_SHA256"
       RELEASE: __RELEASE__
     steps:
       - uses: actions/checkout@v4
@@ -36,13 +38,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install vectraudit
-        env:
-          # A fine-grained token with read access to the vectraudit release you were given.
-          GH_TOKEN: ${{ secrets.VECTRAUDIT_DOWNLOAD_TOKEN }}
-        run: |
-          gh release download "$VECTRAUDIT_VERSION" --repo rmnvg/Vectraudit \
-            --pattern '*.whl' --dir "$RUNNER_TEMP/vectraudit"
-          pip install "$(ls "$RUNNER_TEMP"/vectraudit/*.whl)"
+        uses: ./.github/actions/install-vectraudit
+        with:
+          repository: ${{ vars.VECTRAUDIT_DISTRIBUTION_REPOSITORY }}
+          version: ${{ env.VECTRAUDIT_VERSION }}
+          sha256: ${{ env.VECTRAUDIT_SHA256 }}
+          token: ${{ secrets.VECTRAUDIT_DOWNLOAD_TOKEN }}
 
 __INSTALL_PIPELINE__      - name: Find the approved configuration (target branch)
         id: approved

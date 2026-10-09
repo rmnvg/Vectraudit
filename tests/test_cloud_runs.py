@@ -21,6 +21,7 @@ from vectraudit.integrations.cloud import (
     CloudClientError,
     CloudTarget,
 )
+from vectraudit.integrations.sharing import project_run
 
 RUNS = "/api/v1/workspaces/acme/projects/search/runs"
 
@@ -69,7 +70,7 @@ def test_upload_is_idempotent(world) -> None:
         client.upload_run(altered)
     assert e.value.status == 409
     assert e.value.code == "run_conflict"
-    assert client.get_run_file("run-1") == run
+    assert client.get_run_file("run-1") == project_run(run)
 
 
 def test_status_codes(world) -> None:

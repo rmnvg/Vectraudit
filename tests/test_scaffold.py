@@ -30,6 +30,8 @@ def test_scaffold_files_are_valid(backend, tmp_path) -> None:
         "retrieval/queries.csv",
         "retrieval/README.md",
         ".github/workflows/retrieval-check.yml",
+        ".github/actions/install-vectraudit/action.yml",
+        ".github/actions/install-vectraudit/install.py",
     }
     assert parse_connection(json.loads(files["retrieval/connection.json"])).backend == backend
     parse_policy(json.loads(files["retrieval/policy.json"]))
@@ -51,7 +53,7 @@ def test_workflow_secrets_per_backend() -> None:
     assert "QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}" in render_workflow("qdrant")
     assert "RETRIEVAL_PG_DSN: ${{ secrets.RETRIEVAL_PG_DSN }}" in render_workflow("pgvector")
     faiss = render_workflow("faiss")
-    assert "[faiss-cpu]" in faiss
+    assert 'extras: "faiss-cpu"' in faiss
     assert "secrets.QDRANT" not in faiss
     assert "secrets.RETRIEVAL_PG_DSN" not in faiss
 
@@ -63,15 +65,15 @@ def test_example_workflow_matches_template() -> None:
 
 def test_init_does_not_overwrite(tmp_path) -> None:
     written, skipped = init_project(tmp_path, "qdrant")
-    assert len(written) == 5
+    assert len(written) == 7
     assert skipped == []
     (tmp_path / "retrieval" / "policy.json").write_text("{}")
     written, skipped = init_project(tmp_path, "qdrant")
     assert written == []
-    assert len(skipped) == 5
+    assert len(skipped) == 7
     assert (tmp_path / "retrieval" / "policy.json").read_text() == "{}"
     written, _ = init_project(tmp_path, "qdrant", force=True)
-    assert len(written) == 5
+    assert len(written) == 7
     assert (tmp_path / "retrieval" / "policy.json").read_text() != "{}"
 
 

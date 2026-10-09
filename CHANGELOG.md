@@ -8,6 +8,20 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Request contract: list-valued `context` (such as user groups), list and numeric-range
+  `filter` values, and conversation `history` in datasets, imports, permission scenarios,
+  connection tests and document lookup. Existing dataset versions are unchanged.
+- Optional source/chunk identity on hits and declared evidence coverage on results; an
+  incompletely observed ranking fails the query instead of passing.
+- Hosted uploads send an allowlisted projection of each run (`vectraudit cloud preview`
+  shows it without credentials or network access); query text and history need
+  `--share-query-text`. The service re-projects every upload, and `check cloud:<name>`
+  compares projections on both sides.
+- Private distribution foundations: wheel-only release staging with SHA-256 manifests,
+  optional publishing to a separate private repository, and one shared installer in
+  `init` and workbench exports. CI pins version and checksum, rejects the source repository
+  as a download target, and verifies package identity before pip runs. Channel provisioning
+  and customer credential/revocation acceptance remain required before outside installs.
 - Exported release checks carry `concurrency` and `max_rps`; in CI the approved values run
   both sides so latency stays comparable. Serial exports are unchanged byte for byte.
 - Guided benchmarks hold up to 1,000 questions. Pipeline run files are written as compact

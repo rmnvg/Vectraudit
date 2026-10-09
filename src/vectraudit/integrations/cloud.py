@@ -18,6 +18,7 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 from vectraudit import __version__
+from vectraudit.integrations.sharing import project_run
 
 TIMEOUT_S = 30
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "testserver"})
@@ -131,9 +132,17 @@ class CloudClient:
             )
         return data
 
-    def upload_run(self, record: Mapping[str, Any]) -> dict[str, Any]:
-        """Upload a run file; safe to retry (the same run is stored once)."""
-        body = json.dumps(record, allow_nan=False, ensure_ascii=False).encode()
+    def upload_run(
+        self, record: Mapping[str, Any], *, share_query_text: bool = False
+    ) -> dict[str, Any]:
+        """Upload the allowlisted projection; raw local artifacts stay unchanged."""
+        try:
+            projected = project_run(record, share_query_text=share_query_text)
+        except ValueError as exc:
+            raise CloudClientError("Run cannot be projected for sharing.", hint=str(exc)) from exc
+        body = json.dumps(
+            projected, sort_keys=True, separators=(",", ":"), allow_nan=False, ensure_ascii=False
+        ).encode()
         digest = "sha256=" + hashlib.sha256(body).hexdigest()
         result: dict[str, Any] = self._call(
             "POST", f"{self.project_path}/runs", body, {"X-Vectraudit-Digest": digest}

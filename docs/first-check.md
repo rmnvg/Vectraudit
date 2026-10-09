@@ -80,10 +80,15 @@ got worse with the documents they lost.
 
 ## 5. Put it in CI (2 minutes)
 
-Commit `retrieval/` and the workflow. Add repository secrets: `VECTRAUDIT_DOWNLOAD_TOKEN`
-(read access to the Vectraudit release) and your backend credential. Every pull request
+Commit `retrieval/`, `.github/actions/install-vectraudit/` and the workflow. Set repository
+variable `VECTRAUDIT_DISTRIBUTION_REPOSITORY` to the private distribution repository supplied
+during onboarding. Commit the reviewed wheel version and SHA-256 in the workflow. Add
+repository secrets: `VECTRAUDIT_DOWNLOAD_TOKEN` (customer-specific read-only distribution
+access, never source access) and your backend credential. See [installation](RELEASING.md).
+Every pull request
 that touches retrieval now gets a check run and a summary comment. Fork pull requests get no
-secrets by design; they are reported in the job summary only.
+secrets by design and cannot download the private wheel; they need a trusted CI path
+before the release check can run.
 
 ## Tune the policy
 
