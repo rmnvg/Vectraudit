@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Audited exceptions: an approver can accept one named failing rule of a hosted check with a
+  reason, owner and expiry, as the policy's new `exceptions` block allows. Checks whose
+  failures are all covered read "fail, accepted" (exit code 0, neutral GitHub check), never
+  pass. Safety failures need the owner or cannot be accepted. `vectraudit cloud accept`,
+  `cloud exceptions` and `cloud revoke-exception`; the dashboard shows and grants them.
 - Hosted decision ledger: each release check records a compact decision that is kept after
   retention deletes its runs and check. The project page shows a release timeline of
   decisions and baseline pins, also available from `GET .../decisions`; the purge records

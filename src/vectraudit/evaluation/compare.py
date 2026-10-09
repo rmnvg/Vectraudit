@@ -42,6 +42,8 @@ class Verdict(str, Enum):
     FAIL = "fail"
     ERROR = "error"
     NOT_COMPARABLE = "not_comparable"
+    ACCEPTED = "accepted"
+    """Only after audited exceptions accept every failing rule (see exceptions.py)."""
 
 
 _PRECEDENCE = [Verdict.ERROR, Verdict.NOT_COMPARABLE, Verdict.FAIL]
@@ -96,8 +98,13 @@ class _Check:
             "config_diff": config_diff(base, cand),
         }
 
-    def flag(self, verdict: Verdict, message: str) -> None:
-        self.reasons.append({"verdict": verdict.value, "message": message})
+    def flag(self, verdict: Verdict, message: str, rule: str | None = None) -> None:
+        """Record a reason. A failing reason carries ``rule``: a stable key naming exactly
+        which policy rule failed, which an audited exception can name (see exceptions.py)."""
+        reason = {"verdict": verdict.value, "message": message}
+        if rule is not None:
+            reason["rule"] = rule
+        self.reasons.append(reason)
 
     def result(self) -> dict[str, Any]:
         pairs: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
@@ -128,10 +135,16 @@ class _Check:
                 self.flag(Verdict.NOT_COMPARABLE, "No-answer measurement coverage changed.")
             if candidate.get("forbidden_ids"):
                 self.flag(
-                    Verdict.FAIL, f"Forbidden documents delivered for {candidate['query_id']}."
+                    Verdict.FAIL,
+                    f"Forbidden documents delivered for {candidate['query_id']}.",
+                    f"safety.forbidden:{candidate['query_id']}",
                 )
             if candidate.get("no_answer_correct") is False:
-                self.flag(Verdict.FAIL, f"No-answer assertion failed for {candidate['query_id']}.")
+                self.flag(
+                    Verdict.FAIL,
+                    f"No-answer assertion failed for {candidate['query_id']}.",
+                    f"safety.no_answer:{candidate['query_id']}",
+                )
 
     def _critical_queries(self) -> None:
         """Judge every recorded candidate execution, independently of aggregate quality.
@@ -185,6 +198,7 @@ class _Check:
                     verdict,
                     f"Critical query {rule.query_id}: document {rule.doc_id} "
                     f"must appear in the top {rule.max_rank} on every execution; {detail}.",
+                    f"critical:{rule.query_id}:{rule.doc_id}" if verdict == Verdict.FAIL else None,
                 )
         self.out["critical_queries"] = assertions
 
@@ -354,7 +368,7 @@ class _Check:
                 )
                 continue
             judged += 1
-            self._apply_rule(name, rule, available[name], "")
+            self._apply_rule(name, rule, available[name], "", "metric")
         if self.policy.is_default and judged == 0:
             self.flag(Verdict.NOT_COMPARABLE, "The default policy found no metric to judge.")
         self._regressed_queries(pairs, available)
@@ -396,7 +410,7 @@ class _Check:
         return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
     def _apply_rule(
-        self, name: str, rule: MetricRule, stats: Mapping[str, Any], where: str
+        self, name: str, rule: MetricRule, stats: Mapping[str, Any], where: str, scope: str
     ) -> None:
         label = f"{where}{name}"
         if rule.max_drop is not None:
@@ -413,11 +427,13 @@ class _Check:
                     f"{label} dropped by {drop:.4f} ({stats['baseline']:.4f} → "
                     f"{stats['candidate']:.4f}, 95% CI of change [{stats['ci_low']:+.4f}, "
                     f"{stats['ci_high']:+.4f}]); the policy allows {rule.max_drop:.4f}.",
+                    f"{scope}:{name}.max_drop",
                 )
         if rule.min is not None and stats["candidate"] < rule.min - EPS:
             self.flag(
                 Verdict.FAIL,
                 f"{label} is {stats['candidate']:.4f}, below the policy minimum {rule.min:.4f}.",
+                f"{scope}:{name}.min",
             )
 
     def _regressed_queries(
@@ -479,6 +495,7 @@ class _Check:
             self.flag(
                 Verdict.FAIL,
                 f"{len(regressed)} queries regressed on {primary}; the policy allows {limit}.",
+                "regressed_queries",
             )
 
     def _cohorts(self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]) -> None:
@@ -509,7 +526,9 @@ class _Check:
                         )
                     else:
                         judged_metrics.append(name)
-                        self._apply_rule(name, metric_rule, metrics[name], f"cohort {tag!r}: ")
+                        self._apply_rule(
+                            name, metric_rule, metrics[name], f"cohort {tag!r}: ", f"cohort:{tag}"
+                        )
             self.out["cohorts"][tag] = {
                 "n": len(members),
                 "n_families": n_families,
@@ -557,6 +576,7 @@ class _Check:
                 Verdict.FAIL,
                 f"Candidate p95 latency is {cl['p95']:.2f} ms, above the policy limit "
                 f"{rule.p95_max_ms:.2f} ms.",
+                "latency.p95_max_ms",
             )
         if not compared:
             return
@@ -573,6 +593,7 @@ class _Check:
                     Verdict.FAIL,
                     f"{p} latency rose {pct:.1f}% ({bl[p]:.2f} → {cl[p]:.2f} ms); "
                     f"the policy allows {limit:.1f}%.",
+                    f"latency.{p}_increase",
                 )
 
 

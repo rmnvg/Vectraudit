@@ -239,6 +239,34 @@ class Decision(Base):
     summary: Mapped[dict[str, Any]] = mapped_column(JSONType)
 
 
+class PolicyException(Base):
+    """An audited, expiring acceptance of one failing policy rule in one project.
+
+    Created from a specific failing check; applies to later checks of the project while it
+    is unrevoked, unexpired and under ``max_checks`` uses. A check it covers reads
+    "fail, accepted", never "pass".
+    """
+
+    __tablename__ = "policy_exceptions"
+    __table_args__ = (Index("ix_policy_exceptions_project_rule", "project_id", "rule"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    rule: Mapped[str] = mapped_column(String(1200))
+    reason: Mapped[str] = mapped_column(Text)
+    owner: Mapped[str] = mapped_column(String(200))
+    """Who follows up on the accepted regression (free text, e.g. an email)."""
+    origin_check_id: Mapped[str] = mapped_column(String(32))
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    max_checks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    revoked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     __table_args__ = (Index("ix_audit_workspace_created", "workspace_id", "created_at"),)

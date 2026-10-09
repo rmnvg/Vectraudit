@@ -10,6 +10,7 @@ policy:
 | error | 1 | A run is incomplete (failed, partial or cancelled), or an input file is invalid. Never a pass. |
 | fail | 3 | A policy rule is broken: quality dropped, latency rose, too many queries regressed. |
 | not comparable | 4 | Different dataset version, `k`, metric contract or query set; too few queries; or a metric the policy needs wasn't measured in both runs. |
+| fail, accepted | 0 | Only against a hosted baseline (`check cloud:<name>`): every failing rule is covered by an active, audited exception. Reports say "fail, accepted", never pass; the GitHub check is neutral. See [Audited exceptions](#audited-exceptions). |
 
 Everything runs on your machine or CI runner. Credentials stay in your environment, and
 run files hold ids, metrics and timings, not documents or vectors.
@@ -187,6 +188,39 @@ between-family uncertainty, even if it has many scenario rows.
   comparison it exports a release configuration that `vectraudit release validate | run |
   check | update` runs in CI under the target branch's approved policy. See
   [Release policies and exported release checks](retrieval-workbench.md#release-policies-and-exported-release-checks).
+
+## Audited exceptions
+
+Sometimes a team deliberately ships a known regression. Instead of loosening the policy or
+bypassing the required check, an approver accepts the specific failing rule, with a reason,
+an owner who follows up, and an expiry. The check then reads **fail, accepted**, never pass.
+
+Every failing reason carries a stable rule key: `metric:ndcg.max_drop`, `metric:recall.min`,
+`cohort:billing:ndcg.max_drop`, `regressed_queries`, `latency.p95_max_ms`,
+`latency.p95_increase`, `critical:<query>:<document>`, `safety.forbidden:<query>` and
+`safety.no_answer:<query>`. An exception names one key and covers exactly that failure; any
+other failure in the same check still blocks. Errors and incomparable runs are never
+accepted.
+
+The policy decides what can be accepted. Without an `exceptions` block, nothing can:
+
+```json
+"exceptions": {"allow": ["metric", "cohort", "latency"], "approver": "engineer",
+               "safety": "never", "max_days": 30}
+```
+
+- `allow`: rule kinds open to exceptions (`metric`, `cohort`, `regressed_queries`,
+  `latency`, `critical`).
+- `approver`: least role that may accept them (`engineer` or `owner`; default `owner`).
+- `safety`: `never` (default) or `owner`, for forbidden-document and no-answer failures.
+  An engineer can never accept a safety failure.
+- `max_days`: longest allowed expiry (default 30, at most 365).
+
+Adding the block does not change the hash of policies without one. Exceptions are granted
+and stored in the hosted service, where they are audited; see
+[cloud operations](cloud-operations.md#audited-exceptions). `check cloud:<name>` applies
+the project's active exceptions, so its exit code matches the hosted check. Local file
+checks and the workbench do not apply exceptions.
 
 ## Evidence and diagnosis
 

@@ -45,6 +45,7 @@ ACTION_ROLE = {
     "write_runs": "engineer",
     "write_checks": "engineer",
     "pin_baseline": "engineer",
+    "grant_exception": "engineer",
     "manage_project": "engineer",
     "manage_runner_tokens": "engineer",
     "manage_members": "owner",

@@ -38,7 +38,10 @@ _TOP_KEYS = {
     "cohorts",
     "require_significance",
     "critical_queries",
+    "exceptions",
 }
+EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical")
+"""Rule kinds a policy may open to audited exceptions. Safety rules are governed separately."""
 _LATENCY_KEYS = {
     "p50_max_increase_pct",
     "p95_max_increase_pct",
@@ -93,6 +96,23 @@ class CriticalQueryRule:
 
 
 @dataclass(frozen=True)
+class ExceptionRule:
+    """Which failing rules a team may accept through an audited, expiring exception.
+
+    Absent from a policy, nothing can be excepted. ``safety`` (forbidden documents and
+    no-answer assertions) is ``never`` unless the policy names the owner role for it.
+    """
+
+    allow: tuple[str, ...] = ()
+    approver: str = "owner"
+    """Least role that may grant an exception for an allowed kind: engineer or owner."""
+    safety: str = "never"
+    """``never`` or ``owner``: who may accept a forbidden-document or no-answer failure."""
+    max_days: int = 30
+    """Longest allowed time until an exception expires."""
+
+
+@dataclass(frozen=True)
 class Policy:
     metrics: dict[str, MetricRule]
     latency: LatencyRule = LatencyRule()
@@ -106,9 +126,15 @@ class Policy:
     """Fail a max_drop rule only when the whole 95% interval of the drop exceeds the limit."""
     is_default: bool = False
     critical_queries: tuple[CriticalQueryRule, ...] = ()
+    exceptions: ExceptionRule | None = None
 
     def as_dict(self) -> dict[str, Any]:
         result = asdict(self)
+        # Absent exception rules keep the hashes of every existing policy.
+        if self.exceptions is None:
+            result.pop("exceptions")
+        else:
+            result["exceptions"]["allow"] = list(self.exceptions.allow)
         # Preserve hashes of existing saved policies and exported release contracts.
         if not self.critical_queries:
             result.pop("critical_queries")
@@ -192,6 +218,7 @@ def parse_policy(raw: Any) -> Policy:
         cohorts=cohorts,
         require_significance=_bool(raw, "require_significance", False),
         critical_queries=_critical_rules(raw.get("critical_queries", [])),
+        exceptions=_exception_rules(raw["exceptions"]) if "exceptions" in raw else None,
     )
     has_quality_rule = (
         bool(metrics)
@@ -201,6 +228,25 @@ def parse_policy(raw: Any) -> Policy:
     )
     _expect(has_quality_rule, "a policy needs at least one metric or regressed-query rule")
     return policy
+
+
+def _exception_rules(raw: Any) -> ExceptionRule:
+    _expect(isinstance(raw, dict), "exceptions must be an object")
+    _no_unknown(raw, {"allow", "approver", "safety", "max_days"}, "exceptions")
+    allow = raw.get("allow", [])
+    _expect(
+        isinstance(allow, list) and all(kind in EXCEPTION_KINDS for kind in allow),
+        f"exceptions.allow lists rule kinds from {list(EXCEPTION_KINDS)}",
+    )
+    approver = raw.get("approver", "owner")
+    _expect(approver in ("engineer", "owner"), "exceptions.approver must be engineer or owner")
+    safety = raw.get("safety", "never")
+    _expect(safety in ("never", "owner"), "exceptions.safety must be never or owner")
+    max_days = _count(raw, "max_days", 30, minimum=1)
+    _expect(max_days <= 365, "exceptions.max_days must be at most 365")
+    return ExceptionRule(
+        allow=tuple(dict.fromkeys(allow)), approver=approver, safety=safety, max_days=max_days
+    )
 
 
 def _critical_rules(raw: Any) -> tuple[CriticalQueryRule, ...]:

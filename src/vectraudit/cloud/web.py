@@ -12,7 +12,7 @@ import json
 import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from urllib.parse import parse_qs, quote, urlencode
 
@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from vectraudit import __version__
-from vectraudit.cloud import ledger, quotas, repo, service
+from vectraudit.cloud import exceptions, ledger, quotas, repo, service
 from vectraudit.cloud.auth import Principal, authenticate
 from vectraudit.cloud.deps import SessionDep, SettingsDep, client_key, record_failure
 from vectraudit.cloud.errors import CloudError
@@ -53,7 +53,13 @@ PAGE_CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self'; form-action 'self'; "
     "frame-ancestors 'none'; base-uri 'none'"
 )
-VERDICT = {"pass": "Pass", "fail": "Fail", "error": "Error", "not_comparable": "Not comparable"}
+VERDICT = {
+    "pass": "Pass",
+    "fail": "Fail",
+    "error": "Error",
+    "not_comparable": "Not comparable",
+    "accepted": "Fail, accepted",
+}
 Http = Callable[[str, str, Mapping[str, str], bytes | None], tuple[int, bytes]]
 
 CSS = """
@@ -73,6 +79,7 @@ h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:28px 0 8px}
 .badge{display:inline-block;padding:1px 9px;border-radius:999px;color:#fff;font-size:12px;
 font-weight:600}.pass{background:var(--pass)}.fail{background:var(--fail)}
 .error{background:var(--error)}.not_comparable{background:var(--nc)}
+.accepted{background:var(--error)}
 .scroll{overflow-x:auto}table{border-collapse:collapse;width:100%}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--muted);font-weight:600}.mono{font-family:ui-monospace,monospace;font-size:12px}
@@ -176,6 +183,22 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
     rows = []
     for entry in entries:
         when = e(entry["at"].strftime("%Y-%m-%d %H:%M"))
+        if entry["kind"] == "exception":
+            rows.append(
+                [
+                    when,
+                    f'<span class="muted">Exception {e(entry["action"])}</span>',
+                    f'<span class="mono">{e(entry["rule"] or "")}</span>',
+                    "",
+                    e(
+                        f"until {entry['expires_at'][:10]}, owner {entry['owner']}"
+                        if entry["action"] == "granted" and entry["expires_at"]
+                        else ""
+                    ),
+                    e(_actor(session, entry["actor"])),
+                ]
+            )
+            continue
         if entry["kind"] == "baseline_pin":
             rows.append(
                 [
@@ -210,6 +233,83 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
             ]
         )
     return rows
+
+
+def _accept_section(web: Web, access: repo.Access, check: Any, base: str) -> str:
+    """Failing rules of a check, accepted ones and, for allowed approvers, an accept form."""
+    from vectraudit.evaluation.exceptions import required_role, rule_kind
+
+    reasons = [r for r in check.result.get("reasons", []) if r.get("verdict") == "fail"]
+    if not reasons:
+        return ""
+    policy = service.project_policy(access.project) if access.project else None
+    rows = []
+    for reason in reasons:
+        rule = reason.get("rule")
+        accepted = reason.get("accepted")
+        if accepted:
+            action = (
+                f"Accepted by {e(accepted['accepted_by'])} until "
+                f"{e(str(accepted['expires_at'])[:10])}: {e(accepted['reason'])}"
+            )
+        elif rule is None or policy is None:
+            action = '<span class="muted">Cannot be accepted</span>'
+        else:
+            need = required_role(policy, rule)
+            if need is None:
+                action = (
+                    f'<span class="muted">The policy does not allow exceptions for '
+                    f"{e(rule_kind(rule))} rules</span>"
+                )
+            elif repo.ROLE_RANK.get(access.role, 0) < repo.ROLE_RANK[need]:
+                action = f'<span class="muted">Needs the {e(need)} role to accept</span>'
+            else:
+                action = (
+                    f'<form method="post" action="{base}/checks/{quote(check.id)}/accept">'
+                    f"{_csrf_field(web)}"
+                    f'<input type="hidden" name="rule" value="{e(rule)}">'
+                    '<input name="reason" placeholder="Why this is acceptable" required '
+                    'maxlength="2000"> <input name="owner" placeholder="Who follows up" '
+                    'required maxlength="200"> <input name="expires" type="date" required> '
+                    '<input name="max_checks" placeholder="Max checks (optional)" size="8"> '
+                    "<button>Accept until expiry</button></form>"
+                )
+        rows.append([e(reason["message"]), f'<span class="mono">{e(rule or "")}</span>', action])
+    return (
+        "<h2>Failing rules</h2>"
+        '<p class="muted">An accepted rule makes the check read "fail, accepted", never pass. '
+        "Every acceptance is audited and expires.</p>"
+        + _table(["Reason", "Rule", "Acceptance"], rows, "")
+    )
+
+
+def _exception_rows(
+    session: Session, web: Web, rows: list[Any], base: str, can_write: bool
+) -> list[list[str]]:
+    out = []
+    for row in rows:
+        data = exceptions.payload(session, row)
+        uses = f"{data['uses']}/{data['max_checks']}" if data["max_checks"] else str(data["uses"])
+        revoke = ""
+        if can_write and data["status"] == "active":
+            revoke = (
+                f'<form class="inline" method="post" '
+                f'action="{base}/exceptions/{quote(data["id"])}/revoke">{_csrf_field(web)}'
+                "<button>Revoke</button></form>"
+            )
+        out.append(
+            [
+                f'<span class="mono">{e(data["rule"])}</span>',
+                e(data["status"]),
+                e(data["accepted_by"]),
+                e(data["owner"]),
+                e(data["expires_at"][:10]),
+                e(uses),
+                e(data["reason"]),
+                revoke,
+            ]
+        )
+    return out
 
 
 def _csrf_field(web: Web) -> str:
@@ -915,6 +1015,16 @@ def project_page(
             _timeline_rows(session, ledger.timeline(session, access.project, limit=30), base),
             "No release decisions yet.",
         )
+        + "<h2>Accepted regressions</h2>"
+        + '<p class="muted">Audited exceptions. A check they cover reads "fail, accepted"; '
+        "they stop applying when revoked, expired or used up.</p>"
+        + _table(
+            ["Rule", "Status", "Accepted by", "Owner", "Expires", "Uses", "Reason", ""],
+            _exception_rows(
+                session, web, exceptions.listing(session, access.project)[:30], base, can_write
+            ),
+            "No exceptions.",
+        )
         + "<h2>Recent checks</h2>"
         + _table(
             ["Verdict", "Candidate", "Commit", "Why", "When"],
@@ -940,6 +1050,7 @@ def check_page(
     request: Request,
     session: SessionDep,
     settings: SettingsDep,
+    msg: str = "",
 ) -> HTMLResponse:
     try:
         web, access = _project_access(request, session, settings, workspace, project)
@@ -955,16 +1066,19 @@ def check_page(
         + "</div>"
         for f in check.result.get("findings") or []
     )
+    accept = _accept_section(web, access, check, base)
     body = (
         f'<div class="crumbs"><a href="/app">Workspaces</a> / '
         f'<a href="/app/{quote(workspace)}">{e(workspace)}</a> / '
         f'<a href="{base}">{e(project)}</a> / check</div>'
         f"<h1>{_badge(check.verdict)} {e(cand.label or cand.run_id)} vs "
         f"{e(base_run.label or base_run.run_id)}</h1>"
-        f'<p class="muted">Commit {e((cand.commit_sha or "unknown")[:12])} · '
+        + (f'<div class="notice">{e(msg)}</div>' if msg else "")
+        + f'<p class="muted">Commit {e((cand.commit_sha or "unknown")[:12])} · '
         f"{e(check.created_at.strftime('%Y-%m-%d %H:%M'))} UTC · by "
         f"{e(_actor(session, check.created_by))}</p>"
         + (f"<h2>Diagnosis</h2>{findings}" if findings else "")
+        + accept
         + "<h2>Full report</h2>"
         f'<iframe sandbox="" title="Investigation report" '
         f'src="{base}/checks/{quote(check.id)}/report"></iframe>'
@@ -1018,6 +1132,70 @@ async def pin_action(
     except CloudError as err:
         return _error_page(err, None)
     msg = f"Baseline {b.name} now points to run {r.run_id[:12]}."
+    return RedirectResponse(
+        f"/app/{quote(workspace)}/{quote(project)}?msg={quote(msg)}", status_code=303
+    )
+
+
+@router.post("/app/{workspace}/{project}/checks/{check_id}/accept")
+async def accept_action(
+    workspace: str,
+    project: str,
+    check_id: str,
+    request: Request,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> Response:
+    """Grant an audited exception for one failing rule of this check."""
+    form = await _form(request)
+    try:
+        web, access = _project_access(
+            request, session, settings, workspace, project, "grant_exception"
+        )
+        _require_csrf(web, form, settings)
+        try:
+            day = datetime.strptime(form.get("expires", ""), "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise CloudError(422, "invalid_expiry", "Give an expiry date (YYYY-MM-DD).") from exc
+        uses = form.get("max_checks", "").strip()
+        granted = exceptions.grant(
+            session,
+            access,
+            check_id,
+            rule=form.get("rule", ""),
+            reason=form.get("reason", ""),
+            owner=form.get("owner", ""),
+            expires_at=datetime.combine(day, time(23, 59, 59), tzinfo=timezone.utc),
+            max_checks=int(uses) if uses.isdigit() else None,
+        )
+    except CloudError as err:
+        return _error_page(err, None)
+    msg = f"Accepted {granted.rule} until {granted.expires_at:%Y-%m-%d}."
+    return RedirectResponse(
+        f"/app/{quote(workspace)}/{quote(project)}/checks/{quote(check_id)}?msg={quote(msg)}",
+        status_code=303,
+    )
+
+
+@router.post("/app/{workspace}/{project}/exceptions/{exception_id}/revoke")
+async def revoke_exception_action(
+    workspace: str,
+    project: str,
+    exception_id: str,
+    request: Request,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> Response:
+    form = await _form(request)
+    try:
+        web, access = _project_access(
+            request, session, settings, workspace, project, "grant_exception"
+        )
+        _require_csrf(web, form, settings)
+        revoked = exceptions.revoke(session, access, exception_id)
+    except CloudError as err:
+        return _error_page(err, None)
+    msg = f"Revoked the exception for {revoked.rule}."
     return RedirectResponse(
         f"/app/{quote(workspace)}/{quote(project)}?msg={quote(msg)}", status_code=303
     )

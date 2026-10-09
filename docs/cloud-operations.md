@@ -109,6 +109,35 @@ existing deployment, record decisions for checks made before the ledger existed 
 docker compose run --rm api backfill-decisions
 ```
 
+## Audited exceptions
+
+An approver can accept one failing rule of a hosted check when the project policy opens that
+kind of rule (see [release checks](release-checks.md#audited-exceptions)). On the check page
+the **Failing rules** table offers an accept form to members with the required role; from
+the command line:
+
+```bash
+vectraudit cloud accept CHECK_ID metric:ndcg.max_drop \
+  --reason "Accepted for the reranker launch; fix tracked in SEARCH-142" \
+  --owner lead@example.com --expires 2026-11-15 [--max-checks 5]
+vectraudit cloud exceptions [--all]
+vectraudit cloud revoke-exception EXCEPTION_ID
+```
+
+- Only a rule that actually failed in that check can be accepted, with a reason, an owner
+  and an expiry within the policy's `max_days`. One active exception per rule per project.
+- The check it came from is re-evaluated at once, and later checks of the project are
+  covered while the exception is active (not revoked, not expired, under `--max-checks`).
+  A check whose failures are all covered reads "fail, accepted"; any other failure still
+  fails it.
+- Expired, used-up or revoked exceptions stop applying, so the failure blocks again.
+  Checks they covered keep their record.
+- Runner tokens and viewers cannot accept. Changing the policy's `exceptions` block needs
+  the owner role, while other policy edits stay engineer-level.
+- Every grant and revocation is an audit event and appears in the release timeline; each
+  decision records which exceptions covered it and its verdict before exceptions. The
+  project page lists exceptions under **Accepted regressions** with a revoke button.
+
 ## Scheduled jobs
 
 | When | Command | Why |

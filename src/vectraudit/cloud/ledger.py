@@ -17,11 +17,20 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vectraudit.cloud.models import AuditEvent, Baseline, Check, Decision, Project, Run
+from vectraudit.cloud.models import (
+    AuditEvent,
+    Baseline,
+    Check,
+    Decision,
+    PolicyException,
+    Project,
+    Run,
+)
 
 MAX_REASONS = 10
 MAX_CHANGES = 50
-SUMMARY_VERSION = 1
+SUMMARY_VERSION = 2
+"""2 adds verdict_before_exceptions and accepted (exceptions that covered failing rules)."""
 
 
 def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
@@ -57,6 +66,11 @@ def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
         "n_reasons": len(result.get("reasons", [])),
         "n_warnings": len(result.get("warnings", [])),
         "changed_settings": [d.get("path") for d in result.get("config_diff", [])][:MAX_CHANGES],
+        "verdict_before_exceptions": result.get("verdict_before_exceptions"),
+        "accepted": [
+            {"rule": a.get("rule"), "exception_id": a.get("exception_id")}
+            for a in result.get("exceptions_applied", [])
+        ],
     }
 
 
@@ -169,6 +183,31 @@ def timeline(
             "actor": p.actor,
         }
         for p in pins
+    ]
+    grants_stmt = (
+        select(AuditEvent)
+        .join(PolicyException, PolicyException.id == AuditEvent.target_id)
+        .where(
+            AuditEvent.workspace_id == project.workspace_id,
+            AuditEvent.action.in_(("exception.grant", "exception.revoke")),
+            PolicyException.project_id == project.id,
+        )
+    )
+    if before is not None:
+        grants_stmt = grants_stmt.where(AuditEvent.created_at < before)
+    grants = session.scalars(grants_stmt.order_by(AuditEvent.created_at.desc()).limit(limit))
+    entries += [
+        {
+            "kind": "exception",
+            "at": g.created_at,
+            "action": "granted" if g.action == "exception.grant" else "revoked",
+            "rule": g.details.get("rule"),
+            "check_id": g.details.get("check_id"),
+            "expires_at": g.details.get("expires_at"),
+            "owner": g.details.get("owner"),
+            "actor": g.actor,
+        }
+        for g in grants
     ]
     entries.sort(key=lambda e: e["at"], reverse=True)
     return entries[:limit]
