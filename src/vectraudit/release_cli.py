@@ -1006,3 +1006,70 @@ def cloud_revoke_exception(
     except CloudClientError as e:
         raise _fail(e.message, e.hint) from e
     console.print(f"Revoked exception {escape(revoked['id'])} ({escape(revoked['rule'])}).")
+
+
+def calibrate(
+    runs: Annotated[
+        list[Path],
+        typer.Argument(help="Run files of the same, unchanged setup (record it 5+ times)."),
+    ],
+    policy: Annotated[Path, typer.Option(help="The policy to calibrate.")],
+    margin: Annotated[
+        float, typer.Option(min=1.0, max=5.0, help="Safety factor over the worst noise.")
+    ] = 1.5,
+    draft: Annotated[
+        Path | None, typer.Option(help="Write the proposed policy to this new file.")
+    ] = None,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Write the full report to this new file.")
+    ] = None,
+) -> None:
+    """A/A calibration: how often the policy fails an unchanged system, and a reviewed draft.
+
+    Every run is compared with every other under the policy; since nothing changed, each
+    failure is a false alarm. The draft only raises noise-driven thresholds and is never
+    applied for you. Exits 1 on invalid input.
+    """
+    from vectraudit.evaluation.calibration import calibrate as run_calibration
+
+    for target in (draft, json_out):
+        if target is not None and target.exists():
+            raise _fail(f"{target} exists; calibration never overwrites files.")
+    try:
+        raw = json.loads(policy.read_text(encoding="utf-8"))
+        records = [load_run(path) for path in runs]
+        report = run_calibration(records, raw, margin=margin)
+    except (OSError, json.JSONDecodeError, RunFileError, PolicyError, ValueError) as e:
+        raise _fail(str(e)) from e
+    current, proposed = report["current"], report["draft"]
+    console.print(
+        f"{len(records)} runs, {current['comparisons']} A/A comparisons. "
+        f"False alarms under the current policy: [bold]{current['false_alarms']}[/]"
+        + (f"; under the draft: [bold]{proposed['false_alarms']}[/]." if report["changes"] else ".")
+    )
+    if current["by_rule"]:
+        table = Table("Rule", "Comparisons failing now", "With draft")
+        for rule, count in current["by_rule"].items():
+            table.add_row(escape(rule), str(count), str(proposed["by_rule"].get(rule, 0)))
+        console.print(table)
+    if report["changes"]:
+        table = Table("Policy setting", "Now", "Proposed", "Worst observed")
+        for change in report["changes"]:
+            table.add_row(
+                escape(change["path"]),
+                str(change["from"]),
+                str(change["to"]),
+                f"{change['observed']:.4g}",
+            )
+        console.print(table)
+    else:
+        console.print("No threshold needs to change for the observed noise.")
+    for rule in report["not_noise"]:
+        console.print(f"[bold red]Not noise:[/] {escape(rule)} fails on an unchanged system.")
+    for note in report["notes"]:
+        console.print(f"[yellow]Note:[/] {escape(note)}")
+    if draft is not None and report["draft_policy"] is not None:
+        draft.write_text(json.dumps(report["draft_policy"], indent=2) + "\n", encoding="utf-8")
+        console.print(f"Draft policy written to {escape(str(draft))}. Review it before use.")
+    if json_out is not None:
+        json_out.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
