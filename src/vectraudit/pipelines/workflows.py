@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
@@ -319,6 +320,29 @@ def _revision(record: dict[str, Any], expected: str) -> None:
         raise HTTPException(409, "Record changed. Reload before saving.")
 
 
+class ShareIn(Contract):
+    kind: Literal["case", "benchmark", "policy"]
+    id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    share_query_text: bool = False
+    confirm: bool = False
+    """Upload only: the person confirmed the previewed transfer to the named destination."""
+
+
+def share_destination() -> dict[str, Any]:
+    """Where an upload would go, from this server's environment; never the token."""
+    from vectraudit.integrations.cloud import CloudClientError, CloudTarget
+
+    try:
+        target = CloudTarget.from_env()
+    except CloudClientError as exc:
+        return {"configured": False, "message": exc.message, "hint": exc.hint}
+    return {
+        "configured": True,
+        "url": target.url,
+        "project": f"{target.workspace}/{target.project}",
+    }
+
+
 def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
     """Mounted under the guided router's existing token/origin protection."""
     router = APIRouter()
@@ -406,6 +430,54 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
     @router.get("/runs/{identifier}")
     def get_run(identifier: str) -> dict[str, Any]:
         return load_run(workspace.run_path(identifier))
+
+    def _projection(body: ShareIn) -> dict[str, Any]:
+        from vectraudit.pipelines.share import GENERIC_ERROR, projection
+
+        try:
+            return projection(workspace, body.kind, body.id, share_query_text=body.share_query_text)
+        except HTTPException:
+            raise
+        except (KeyError, TypeError, ValueError) as exc:
+            # Validation errors can contain the rejected private text: never echo them.
+            raise HTTPException(422, GENERIC_ERROR) from exc
+
+    @router.post("/share/preview")
+    def share_preview(body: ShareIn) -> dict[str, Any]:
+        """Exactly what sharing would send, and to which hosted project. Sends nothing."""
+        from vectraudit.pipelines.share import preview
+
+        return {**preview(_projection(body)), "destination": share_destination()}
+
+    @router.post("/share")
+    def share(body: ShareIn) -> dict[str, Any]:
+        """Upload the previewed projection to the hosted project (explicitly confirmed)."""
+        from vectraudit.integrations.cloud import CloudClient, CloudClientError, CloudTarget
+        from vectraudit.pipelines.share import preview
+
+        if not body.confirm:
+            raise HTTPException(422, "Review the preview and confirm sharing explicitly")
+        projected = _projection(body)
+        try:
+            target = CloudTarget.from_env()
+            uploaded = CloudClient(target).upload_record(projected)
+        except CloudClientError as exc:
+            # No status: not configured or unreachable before any response; otherwise relay
+            # the hosted service's refusal (wrong role, missing project, conflict, too large).
+            status = (
+                422
+                if exc.status is None
+                else exc.status
+                if exc.status in (401, 403, 404, 409, 413)
+                else 502
+            )
+            detail = exc.message + (f" {exc.hint}" if exc.hint else "")
+            raise HTTPException(status, detail) from None
+        link = (
+            f"{target.url}/app/{quote(target.workspace)}/{quote(target.project)}"
+            f"/records/{quote(uploaded['id'])}"
+        )
+        return {**preview(projected), "uploaded": uploaded, "url": link}
 
     @router.get("/cases")
     def list_cases() -> list[dict[str, Any]]:

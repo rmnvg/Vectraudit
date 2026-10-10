@@ -286,6 +286,9 @@ A second engineer or lead can read the workbench records that matter for a relea
 access to the first engineer's machine. Share one saved regression case, benchmark snapshot
 or policy revision with a project:
 
+The workbench offers the same from a **Share with hosted project…** panel on cases, frozen
+benchmarks and saved policies (see the [workbench guide](retrieval-workbench.md#persistent-regression-cases)).
+
 ```bash
 vectraudit workbench share WORKSPACE_DIR case CASE_ID --preview     # no credentials, no upload
 vectraudit workbench share WORKSPACE_DIR case CASE_ID --project acme/search

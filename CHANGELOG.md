@@ -8,6 +8,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Share from the workbench: a **Share with hosted project…** panel on regression cases,
+  frozen benchmarks and saved policies previews the destination, what is sent, what stays
+  local and the size. Question text is shared only when opted in, and the panel shows it
+  first. The upload happens only after an explicit confirmation, uses the same projection as
+  `workbench share` and links to the hosted record. The hosted credentials stay in the
+  server's environment.
 - Recurring problems on the hosted project: questions that failed in several checks on the
   current benchmark (regressed, critical or safety), with "failed in N of M", whether and
   for how long they still fail, and links to their shared regression cases. Question text

@@ -521,22 +521,21 @@ def share_command(
     from fastapi import HTTPException
 
     from vectraudit.integrations.cloud import CloudClient, CloudClientError, CloudTarget
-    from vectraudit.integrations.shared_records import Kind, preview_record, project_record
+    from vectraudit.integrations.shared_records import preview_record
     from vectraudit.pipelines.guided import GuidedWorkspace
-    from vectraudit.pipelines.local_display import CaseQuestionDisplay
-    from vectraudit.pipelines.workflows import LocalRecords
+    from vectraudit.pipelines.share import CATEGORIES, GENERIC_ERROR, projection
 
     try:
-        categories = {"case": "cases", "benchmark": "benchmarks", "policy": "policies"}
-        if kind not in categories:
+        if kind not in CATEGORIES:
             raise ValueError("Kind must be case, benchmark or policy")
         if not workspace.is_dir():
             raise ValueError("Workspace directory does not exist")
-        local = GuidedWorkspace(workspace)
-        record = LocalRecords(local, categories[kind]).read(identifier)
-        if kind == "case" and share_query_text:
-            record = CaseQuestionDisplay(local).decorate(record)
-        projected = project_record(cast(Kind, kind), record, share_query_text=share_query_text)
+        projected = projection(
+            GuidedWorkspace(workspace),
+            cast(Any, kind),
+            identifier,
+            share_query_text=share_query_text,
+        )
         transfer = preview_record(projected)
         if preview:
             typer.echo(json.dumps({"preview": transfer}, indent=2))
@@ -545,10 +544,6 @@ def share_command(
         typer.echo(json.dumps({"uploaded": result, "transfer": transfer}, indent=2))
     except (ValueError, OSError, KeyError, TypeError, HTTPException, CloudClientError) as exc:
         # Pydantic and dataset validation can contain rejected source text.
-        message = (
-            exc.message
-            if isinstance(exc, CloudClientError)
-            else "Cannot share this record. Check its kind, ID, schema and workspace path."
-        )
+        message = exc.message if isinstance(exc, CloudClientError) else GENERIC_ERROR
         typer.echo(message, err=True)
         raise typer.Exit(2) from None

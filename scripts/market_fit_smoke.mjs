@@ -8,7 +8,9 @@ import { chromium } from '../frontend/node_modules/@playwright/test/index.mjs'
 const root = resolve(import.meta.dirname, '..')
 const workspace = await mkdtemp(join(tmpdir(), 'vectraudit-market-fit-'))
 const base = 'http://127.0.0.1:8818'
-const server = spawn(join(root, '.venv/bin/vectraudit'), ['workbench', 'serve', workspace, '--port', '8818'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] })
+// No hosted project: the share panel must preview without connecting anywhere.
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VECTRAUDIT_CLOUD_')))
+const server = spawn(join(root, '.venv/bin/vectraudit'), ['workbench', 'serve', workspace, '--port', '8818'], { cwd: root, env, stdio: ['ignore', 'ignore', 'pipe'] })
 let browser
 let stderr = ''
 server.stderr.on('data', b => { stderr += b })
@@ -58,6 +60,15 @@ try {
   await page.getByLabel('Case status').selectOption('fix_proposed')
   await page.getByRole('button', { name: 'Save case update' }).click()
   await page.getByText('invoice · fix_proposed · Pilot engineer', { exact: true }).waitFor()
+  // Sharing previews what would leave the machine and refuses without a hosted project.
+  await page.getByRole('button', { name: 'Share with hosted project…' }).first().click()
+  const share = page.getByRole('region', { name: 'Share case invoice' })
+  await share.getByText(/^Not connected to a hosted project/).waitFor()
+  await share.getByText('investigation notes', { exact: true }).waitFor()
+  assert.equal(await share.getByRole('button', { name: 'Share now' }).isDisabled(), true)
+  await share.getByLabel(/Also share question text/).check()
+  await share.getByText(/question text\(s\) will be sent|No verified question text/).waitFor()
+  await share.getByRole('button', { name: 'Close' }).click()
   await page.reload()
   await steps.getByRole('button', { name: /Compare a fix/ }).click()
   await page.getByText('invoice · fix_proposed · Pilot engineer', { exact: true }).waitFor()
