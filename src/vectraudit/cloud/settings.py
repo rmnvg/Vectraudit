@@ -29,6 +29,8 @@ class Settings:
     github_client_id: str | None = None
     github_client_secret: str | None = None
     """GitHub OAuth app for dashboard sign-in; without it, members sign in with a token."""
+    webhook_allow_private: bool = False
+    """Development only: allow http webhooks and private/loopback addresses."""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -73,6 +75,8 @@ class Settings:
             environment=get("ENVIRONMENT") or cls.environment,
             github_client_id=get("GITHUB_CLIENT_ID") or None,
             github_client_secret=get("GITHUB_CLIENT_SECRET") or None,
+            webhook_allow_private=(get("WEBHOOK_ALLOW_PRIVATE") or "false").lower()
+            in ("1", "true", "yes"),
         )
 
 

@@ -145,7 +145,7 @@ def create_token(
 @app.command()
 def purge() -> None:
     """Delete runs past retention (pinned baselines are kept) and old sessions."""
-    from vectraudit.cloud import quotas, repo, service
+    from vectraudit.cloud import quotas, repo, service, webhooks
     from vectraudit.cloud.db import transaction
 
     with transaction(_sessions()) as session:
@@ -154,12 +154,42 @@ def purge() -> None:
             ws_id = session.scalars(select(Workspace.id).where(Workspace.slug == slug)).first()
             repo.audit(session, ws_id, "cli", "retention.purge", "workspace", ws_id or slug, runs=n)
         sessions = service.purge_sessions(session)
+        deliveries = webhooks.prune(session)
     total = sum(deleted.values())
     console.print(f"Purged {sessions:,} old sessions.")
+    console.print(f"Purged {deliveries:,} finished webhook deliveries older than 30 days.")
     console.print(
         f"Purged {total:,} expired runs"
         + (": " + ", ".join(f"{k} {v}" for k, v in deleted.items()) if deleted else ".")
     )
+
+
+@app.command("deliver-webhooks")
+def deliver_webhooks(
+    watch: Annotated[
+        int,
+        typer.Option(min=0, help="Keep running, checking every N seconds (0: run once)."),
+    ] = 0,
+) -> None:
+    """Send due webhook deliveries and schedule retries. Run every minute, or with --watch."""
+    import time
+
+    from vectraudit.cloud import webhooks
+
+    settings = _settings()
+    sessions = _sessions()
+    while True:
+        counts = webhooks.deliver_due(
+            sessions, public_url=settings.public_url, allow_private=settings.webhook_allow_private
+        )
+        if any(counts.values()) or not watch:
+            console.print(
+                f"Delivered {counts['delivered']}, retrying {counts['retrying']}, "
+                f"failed {counts['failed']}."
+            )
+        if not watch:
+            return
+        time.sleep(watch)
 
 
 @app.command("backfill-decisions")

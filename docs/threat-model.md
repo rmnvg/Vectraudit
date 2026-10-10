@@ -48,6 +48,8 @@ new kind of data, actor or integration is added.
 | API keys for hosted vector databases leak in transit | Pinecone and Weaviate connectors refuse to send keys over plain HTTP except to a local emulator; URLs with embedded credentials are rejected | `test_connector_pinecone`, `test_connector_weaviate` |
 | SQL injection via pgvector connector | Identifier validation and quoting; bound parameters; read-only transactions | `test_connector_pgvector` |
 | Vulnerable dependency | `pip-audit` and `npm audit` in CI (Phase 17) | CI |
+| Webhooks used to reach internal services (SSRF) or exfiltrate data | Owner-only management, audited; https only; every resolved address must be public, checked at registration and before each send; redirects never followed; response bodies discarded; payload limited to headline, verdict, IDs and a link | `test_cloud_webhooks` |
+| Forged or replayed webhook events at the receiver | HMAC-SHA256 over timestamp and body with a per-webhook secret shown once and rotatable; receivers reject stale timestamps and dedupe on the event key | `test_cloud_webhooks` |
 | Data retained after a customer leaves | Workspace export and deletion; retention purge; backup expiry documented (Phase 17) | `test_cloud_deletion` |
 
 ## Residual risks and assumptions
@@ -66,3 +68,8 @@ new kind of data, actor or integration is added.
 - **Run files can contain identifiers** a customer considers sensitive (document ids,
   backend names, commit SHAs). Documented; customers control what ids they use.
 - **GitHub OAuth** trusts GitHub's verified-email claim.
+- **Webhook DNS rebinding.** A host can resolve to a public address when checked and a
+  private one when connected. The window is one request, and the response is discarded,
+  but a deployment with sensitive internal HTTP services should also restrict the
+  delivery worker's egress at the network level. Webhook secrets are stored in the
+  database to sign requests.

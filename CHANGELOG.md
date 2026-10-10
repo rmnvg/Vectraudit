@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Project webhooks: owners send each release decision, and each scheduled-monitor alert
+  and its resolution, once to a signed JSON endpoint or a Slack incoming webhook. The
+  payload has a headline, verdict and dashboard link only. Retries back off over about 8
+  hours. Webhooks accept https public endpoints only, never follow redirects, and can be
+  tested, rotated and removed; each change is audited. `vectraudit-cloud deliver-webhooks`
+  (a new compose service) sends them. Migration 0010 adds `webhooks` and
+  `webhook_deliveries`.
 - Scheduled monitor runs in hosted history: `vectraudit workbench monitor MANIFEST cloud:main
   --upload` compares with the pinned hosted baseline under the project policy and records a
   check marked `monitor`, with corpus, configuration and result drift. Monitor runs appear

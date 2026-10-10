@@ -240,6 +240,12 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
     return rows
 
 
+def _notifications(session: Session, web: Web, access: repo.Access, base: str) -> str:
+    from vectraudit.cloud.web_webhooks import section
+
+    return section(session, web, access, base)
+
+
 def _monitor_card(session: Session, access: repo.Access, base: str) -> str:
     """Scheduled-monitor state: alerting since when, or healthy and what resolved it."""
     from vectraudit.cloud import lead
@@ -1124,6 +1130,7 @@ def project_page(
             "No runs yet: `vectraudit record --upload`.",
         )
         + tokens
+        + _notifications(session, web, access, base)
     )
     return page(access.project.name, body, web)
 

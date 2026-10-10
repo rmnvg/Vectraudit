@@ -338,3 +338,51 @@ class SharedRecord(Base):
     uploaded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     uploaded_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     data: Mapped[dict[str, Any]] = mapped_column(JSONType)
+
+
+class Webhook(Base):
+    """A project endpoint that receives signed release and monitor events (owner-managed)."""
+
+    __tablename__ = "webhooks"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(String(2048))
+    style: Mapped[str] = mapped_column(String(16))
+    """``signed`` (Vectraudit JSON, HMAC-signed) or ``slack`` (an incoming-webhook ``text``)."""
+    events: Mapped[list[str]] = mapped_column(JSONType)
+    """Subset of ``decision`` (release decisions) and ``monitor`` (alert opened/resolved)."""
+    secret: Mapped[str] = mapped_column(String(64))
+    """HMAC-SHA256 signing key; shown to the owner once, when created or rotated."""
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class WebhookDelivery(Base):
+    """One event for one webhook: an outbox row, retried until delivered or given up.
+
+    ``event_key`` is unique per webhook, so an event is enqueued once however often the
+    check or monitor run that caused it is repeated.
+    """
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        UniqueConstraint("webhook_id", "event_key"),
+        Index("ix_webhook_deliveries_due", "status", "next_attempt_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    webhook_id: Mapped[str] = mapped_column(ForeignKey("webhooks.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    event: Mapped[str] = mapped_column(String(32))
+    event_key: Mapped[str] = mapped_column(String(100))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    """``pending``, ``delivered`` or ``failed`` (gave up; see ``last_error``)."""
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

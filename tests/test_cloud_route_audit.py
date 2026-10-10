@@ -105,6 +105,20 @@ def victim(world, cloud_app):
     from vectraudit.integrations.shared_records import project_record
 
     record_id = client.upload_record(project_record("case", case()))["id"]
+    from vectraudit.cloud.models import Webhook
+
+    with transaction(cloud_app.state.sessions) as s:
+        hook = Webhook(
+            workspace_id=project.workspace_id,
+            project_id=project.id,
+            url="https://hooks.example.com/victim",
+            style="signed",
+            events=["decision"],
+            secret="whsec_victim",
+        )
+        s.add(hook)
+        s.flush()
+        webhook_id = hook.id
     members = world.client.get(
         "/api/v1/workspaces/acme/members", headers=world.as_("acme_owner")
     ).json()
@@ -119,6 +133,7 @@ def victim(world, cloud_app):
         "check_id": check["id"],
         "exception_id": exception_id,
         "record_id": record_id,
+        "webhook_id": webhook_id,
         "token_id": tokens[0]["id"],
         "user_id": next(m["user"]["id"] for m in members if m["role"] == "engineer"),
     }
@@ -152,6 +167,7 @@ def test_workspace_routes_reject_other_tenants(world, cloud_app, victim, intrude
         "reason": "intruder",
         "owner": "intruder",
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+        "url": "https://hooks.example.com/intruder",
     }
     checked = 0
     for method, path in _routes(cloud_app):

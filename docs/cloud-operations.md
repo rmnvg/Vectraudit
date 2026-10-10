@@ -58,6 +58,7 @@ the service sends HSTS and marks session cookies `Secure`.
 | `VECTRAUDIT_CLOUD_SHARE_LINKS` | no | `true` enables signed, expiring public report links (off by default). |
 | `VECTRAUDIT_CLOUD_MAX_UPLOAD_BYTES` | no | Request body limit (default 20 MB). |
 | `VECTRAUDIT_CLOUD_MAX_QUERIES_PER_RUN` | no | Hard cap across all plans (default 10,000). |
+| `VECTRAUDIT_CLOUD_WEBHOOK_ALLOW_PRIVATE` | no | Development only: lets webhooks use http and private, loopback or link-local addresses. Leave unset in production. |
 
 ## First workspace
 
@@ -173,6 +174,60 @@ the ledger, so it outlives run retention.
 A notifier can therefore deliver each alert once and announce its resolution. Vectraudit
 does not send notifications itself yet.
 
+## Notifications (webhooks)
+
+A project owner can add up to 10 webhooks under **Notifications** on the project page, or
+with `POST .../projects/PROJECT/webhooks` (`url`, `style`, `events`).
+
+- **Events:**
+  - `decision`: each release decision.
+  - `monitor`: a scheduled monitor alert when it opens, and again when a passing run
+    resolves it (see [monitor history](#scheduled-monitor-history)).
+- **Delivered once each:** an event is queued once per webhook, keyed by
+  `decision:<check>` or `monitor.alert_opened|alert_resolved:<alert>`. A repeated check
+  queues nothing, and a monitor that keeps failing does not notify again.
+- **Formats:**
+  - `signed`: Vectraudit JSON (`format: vectraudit.event`) with event, verdict, trigger,
+    candidate, headline, action, check ID, alert details and a dashboard link.
+  - `slack`: the same headline, action and link as a `text` message for a Slack incoming
+    webhook.
+- **What is sent:** no reasons, question IDs, metric details or text. Receivers with
+  dashboard access follow the link.
+- **Security:**
+  - Only https URLs whose host resolves to public addresses are accepted, checked when the
+    webhook is added and again before every delivery.
+  - Redirects are not followed.
+  - Responses are not stored beyond their status code.
+  - The URL's path is never shown back, because Slack-style URLs carry a token.
+  - Webhooks appear in exports without their secret or full URL.
+- **Retries:** after 1 min, 5 min, 30 min, 2 h and 6 h, then the delivery is marked failed.
+  Redirects and 4xx responses other than 408 and 429 fail at once. **Last delivery** on the
+  project page and `GET .../webhooks/ID/deliveries` show each attempt's outcome.
+- **Roles:** owners add, test (`POST .../webhooks/ID/test` sends a `ping`), rotate the secret
+  (`POST .../webhooks/ID/rotate-secret`) and remove webhooks; each change is audited.
+  Engineers can see webhooks and deliveries; viewers and runner tokens cannot.
+
+Delivery is at-least-once, like any webhook system: dedupe on `X-Vectraudit-Event-Key`. The
+secret is shown once. Every request carries `X-Vectraudit-Timestamp` and
+`X-Vectraudit-Signature: v1=<hex HMAC-SHA256 of "<timestamp>.<body>">`. Verify it:
+
+```python
+import hashlib, hmac, time
+
+
+def verify(secret: str, headers: dict, body: bytes) -> bool:
+    stamp = headers["X-Vectraudit-Timestamp"]
+    expected = (
+        "v1=" + hmac.new(secret.encode(), stamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    )
+    fresh = abs(time.time() - int(stamp)) <= 300
+    return fresh and hmac.compare_digest(expected, headers["X-Vectraudit-Signature"])
+```
+
+Deliveries are sent by `vectraudit-cloud deliver-webhooks`, which the compose file runs as the
+`webhooks` service (see [scheduled jobs](#scheduled-jobs)). An exception granted after a check
+does not send a second event for that check.
+
 ## Audited exceptions
 
 An approver can accept one failing rule of a hosted check when the project policy opens that
@@ -239,7 +294,8 @@ decision ledger are.
 
 | When | Command | Why |
 |---|---|---|
-| Daily | `docker compose run --rm api purge` | Deletes runs past retention; pinned baselines and ledger decisions are kept. |
+| Daily | `docker compose run --rm api purge` | Deletes runs past retention; pinned baselines and ledger decisions are kept. Also prunes finished webhook deliveries older than 30 days. |
+| Continuously | the compose `webhooks` service (`deliver-webhooks --watch 30`), or `deliver-webhooks` from cron every minute | Sends queued webhook events and retries failures. |
 | Nightly | `./backup.sh` and copy `backups/` off the host | Restore point (beta targets: RPO 24 h, RTO 8 h). |
 
 ## Backups and restore

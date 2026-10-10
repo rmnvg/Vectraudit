@@ -47,5 +47,17 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # Sends project webhook events (release decisions, monitor alerts) and retries failures.
+  webhooks:
+    image: vectraudit-cloud:local
+    command: ["deliver-webhooks", "--watch", "30"]
+    env_file: .env
+    environment:
+      VECTRAUDIT_CLOUD_DATABASE_URL: postgresql://vectraudit:${POSTGRES_PASSWORD}@db:5432/vectraudit
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   pgdata:
