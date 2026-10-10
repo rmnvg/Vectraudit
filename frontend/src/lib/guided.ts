@@ -42,8 +42,27 @@ export interface Comparison {
   baseline: Run; candidate: Run; triage: Triage; files: { baseline: string; candidate: string; check: string }; policy: PolicyRef
   check: { verdict: string; n_queries?: number; n_families?: number; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: CriticalResult[] }
   question_display?: { baseline: QuestionDisplay; candidate: QuestionDisplay }
+  document_display?: DocumentDisplay
 }
 export interface QuestionDisplay { texts: Record<string, string>; reason: string | null }
+/** Titles from the corpus attached to the run's saved benchmark; `verified` when versions match. */
+export interface DocumentDisplay { titles: Record<string, string>; reason: string | null; code?: string | null; verified: boolean }
+
+/** `kb-4821 · Refund policy (2026)`, shortened for chips; the full title belongs in a tooltip. */
+export function documentLabel(display: DocumentDisplay | undefined, docId: string, max = 48): string {
+  const title = display && Object.hasOwn(display.titles, docId) ? display.titles[docId] : null
+  if (!title) return docId
+  return `${docId} · ${title.length > max ? `${title.slice(0, max - 1)}…` : title}`
+}
+
+/** A short note when titles are missing or could not be checked against the run's corpus. */
+export function documentNote(display: DocumentDisplay | undefined): string | null {
+  if (!display) return null
+  // Nothing to show is not worth a note on every finding; withheld titles are.
+  if (display.code === 'no_corpus' || display.code === 'no_titles') return null
+  if (display.reason) return display.reason
+  return display.verified ? null : 'Document titles come from the attached corpus; this run did not record a corpus version to check them against.'
+}
 
 export function questionText(display: QuestionDisplay | undefined, queryId: string): string | null {
   return display && Object.hasOwn(display.texts, queryId) ? display.texts[queryId] : null
@@ -101,10 +120,10 @@ export function serializeQueries(rows: QueryRow[], header?: Record<string, unkno
 }
 
 export const demoCorpus = [
-  { doc_id: 'current-guide', text: 'Invoice export instructions. Download invoices from billing settings.', metadata: { tenant: 'acme', current: true } },
-  { doc_id: 'old-guide', text: 'Invoice export invoice export. Old invoice export instructions.', metadata: { tenant: 'acme', current: false } },
-  { doc_id: 'private-guide', text: 'Invoice export instructions for a different tenant.', metadata: { tenant: 'other', current: true } },
-  { doc_id: 'account-guide', text: 'Reset password using account recovery.', metadata: { tenant: 'acme', current: true } },
+  { doc_id: 'current-guide', title: 'Invoice export guide (current)', text: 'Invoice export instructions. Download invoices from billing settings.', metadata: { tenant: 'acme', current: true } },
+  { doc_id: 'old-guide', title: 'Invoice export guide (retired 2025)', text: 'Invoice export invoice export. Old invoice export instructions.', metadata: { tenant: 'acme', current: false } },
+  { doc_id: 'private-guide', title: 'Invoice export for another tenant', text: 'Invoice export instructions for a different tenant.', metadata: { tenant: 'other', current: true } },
+  { doc_id: 'account-guide', title: 'Account recovery', text: 'Reset password using account recovery.', metadata: { tenant: 'acme', current: true } },
 ].map(d => JSON.stringify(d)).join('\n')
 export const demoQueries: QueryRow[] = [
   { query_id: 'invoice', text: 'invoice export', relevant: { 'current-guide': 2 }, context: { tenant: 'acme' }, filter: { current: true }, forbidden: ['private-guide'], tags: ['permission', 'outdated'] },

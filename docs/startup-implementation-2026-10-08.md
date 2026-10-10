@@ -874,6 +874,46 @@ Results:
   TypeScript, Oxlint, 89 frontend tests, the production build, and the market-fit, release
   and guided Chromium journeys passed.
 
+## Step 24: readable document titles (1.6)
+
+Findings show `kb-4821 · Refund policy (2026)` instead of a bare ID, and case cards list
+their cited documents with titles.
+- **Where titles come from:** a corpus document's optional `title` (or a string
+  `metadata.title`) in the corpus attached to the run's own saved benchmark, after the same
+  draft and revision checks as question text.
+- **Trust:** a run that recorded a different corpus version gets no titles, with the reason
+  shown. A run without a recorded version gets titles marked unverified. A corpus without
+  titles shows IDs quietly.
+- **Never persisted:** titles are not written to runs, checks or cases, and existing corpus
+  versions are unchanged.
+
+Hosted: a shared case carries its cited documents' titles only under the explicit text
+opt-in. The hosted case page shows them, or says that they were not shared. The canonical
+form omits empty titles, so uploads from older clients still verify. The starter example
+now has titles.
+
+Not included: titles from the registered document lookup (it returns titles per fetch, not
+for a whole run), titles on the hosted recurring-problems page, and titles in exported
+release reports.
+
+Validation:
+- 6 new Python tests cover:
+  - verified titles with the `metadata.title` fallback, never written to disk;
+  - case titles taken from the baseline's own corpus;
+  - withheld titles for a different corpus, unverified titles for external runs, and a
+    changed benchmark;
+  - untitled corpora with unchanged versions;
+  - projection only under opt-in, limited to cited documents, with forged titles refused;
+  - the hosted page with and without titles.
+- 2 new frontend tests cover labels and notes.
+
+Results:
+- Full Python suite: 1,521 passed, 22 skipped (live services not configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, the API type generation check (no drift),
+  TypeScript, Oxlint, 91 frontend tests, the production build, and the market-fit, guided
+  and passage-review Chromium journeys passed.
+- A finding chip was checked in Chromium.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -888,7 +928,7 @@ as missing merely because their customer validation is pending.
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. | Measured execution protocol and context-derived cohorts. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. | Optimization concurrency, two simultaneous workspace runs, actual-versus-planned spend, and declared customer 1,000-question CI-window acceptance. |
-| **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. | Readable document titles and lead/second-engineer acceptance. |
+| **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. | Provision and verify channel/credentials, full reusable CI wrapper, owner-approved support and trust materials. |
@@ -901,10 +941,12 @@ as missing merely because their customer validation is pending.
 1. **Finish distribution acceptance (1.9).** Provision the selected channel and verify
    independent customer credentials using the concrete checklist in `RELEASING.md`. Review
    support/trust commitments; do not substitute local unit tests for customer install evidence.
-2. **Readable document titles (rest of 1.6).** Show document titles beside IDs in local
-   findings and cases from the document lookup, and on hosted pages only where a shared
-   record opted in, saying why otherwise. This needs no customer input; the remaining Tier
-   1 items mostly need design-partner inputs (traces, failure classes, channels).
+2. **Design-partner inputs for the rest of Tier 1.** The code-only items of 1.0, 1.4, 1.5,
+   1.6, 1.7 and 1.10 are in place. Trace import (1.1), context/answer evidence (1.2), the
+   repair loop's failure classes (1.3), benchmark upkeep integration (1.8) and the delivery
+   channel need a design partner's real traces, incidents and channel. 1.9 needs the
+   distribution channel provisioned. Smaller code-only candidates while those are arranged:
+   a workbench screen for A/A calibration (1.10) and context-derived cohorts (1.4).
 3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
    design partner's real traces before building.
 

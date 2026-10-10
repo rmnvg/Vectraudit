@@ -1,7 +1,8 @@
 import RepeatSelector from '../components/RepeatSelector'
 import { executionView } from '../lib/repeats'
 import { useMemo, useState } from 'react'
-import { questionLabel, questionText } from '../lib/guided'
+import { documentLabel, documentNote, questionLabel, questionText } from '../lib/guided'
+import type { DocumentDisplay } from '../lib/guided'
 import type { Comparison, Finding, QuestionDisplay, Severity, StageLoss, TriageItem } from '../lib/guided'
 import type { Run } from '../lib/workbench'
 
@@ -48,7 +49,7 @@ export default function Findings({ comparison, onInspect, onReview, reviewableQu
         {i.delta != null && <p className="mt-1 font-mono text-xs">{i.metric} {format(i.baseline)} → {format(i.candidate)} ({signed(i.delta)})</p>}
       </button></li>)}</ul>
       <div className="min-w-0 space-y-4">
-        {item ? <section aria-label={`Finding ${item.query_id}`} className="space-y-3">{item.findings.map((f, i) => <FindingCard key={i} finding={f} doc={doc} onDocument={setDoc} file={files.candidate} />)}
+        {item ? <section aria-label={`Finding ${item.query_id}`} className="space-y-3">{item.findings.map((f, i) => <FindingCard key={i} finding={f} doc={doc} onDocument={setDoc} file={files.candidate} titles={comparison.document_display} />)}
           {!item.stages_recorded && <p className="text-xs text-muted">This pipeline recorded no stage traces, so losses cannot be located inside it.</p>}
           <div className="flex flex-wrap gap-2"><button className={button} onClick={() => onInspect(baseline, { query: item.query_id, doc })}>Open in baseline run</button><button className={button} onClick={() => onInspect(candidate, { query: item.query_id, doc })}>Open in candidate run</button></div>
           {onReview && reviewableQueries.includes(item.query_id) && <button className={button} onClick={() => onReview(item.query_id)}>Review passages for this question</button>}
@@ -61,10 +62,12 @@ export default function Findings({ comparison, onInspect, onReview, reviewableQu
   </div>
 }
 
-function FindingCard({ finding, doc, onDocument, file }: { finding: Finding; doc: string; onDocument: (id: string) => void; file: string }) {
+function FindingCard({ finding, doc, onDocument, file, titles }: { finding: Finding; doc: string; onDocument: (id: string) => void; file: string; titles?: DocumentDisplay }) {
+  const note = finding.doc_ids.length ? documentNote(titles) : null
   return <div className={`rounded-xl border p-4 ${finding.severity === 'blocking' ? 'border-red-500/40 bg-red-500/5' : 'border-line'}`}>
     <div className="flex flex-wrap items-center gap-2"><span className={`rounded px-1.5 py-0.5 text-xs ${tone(finding.severity)}`}>{finding.kind.replaceAll('_', ' ')}</span><p className="text-sm">{finding.message}</p></div>
-    {finding.doc_ids.length > 0 && <div className="mt-3 flex flex-wrap gap-1">{finding.doc_ids.slice(0, 50).map(id => <button key={id} onClick={() => onDocument(id)} aria-pressed={doc === id} className={`rounded px-2 py-1 font-mono text-xs ${doc === id ? 'bg-teal-600 text-white' : finding.severity === 'blocking' ? 'bg-red-500/10 text-red-600' : 'bg-surface-2'}`}>{id}</button>)}</div>}
+    {finding.doc_ids.length > 0 && <div className="mt-3 flex flex-wrap gap-1">{finding.doc_ids.slice(0, 50).map(id => <button key={id} onClick={() => onDocument(id)} aria-pressed={doc === id} title={titles?.titles[id] ?? id} className={`rounded px-2 py-1 font-mono text-xs ${doc === id ? 'bg-teal-600 text-white' : finding.severity === 'blocking' ? 'bg-red-500/10 text-red-600' : 'bg-surface-2'}`}>{documentLabel(titles, id)}</button>)}</div>}
+    {note && <p className="mt-1 text-xs text-muted">{note}</p>}
     {finding.documents?.filter(d => d.doc_id === doc).map(d => <div key={d.doc_id} className="mt-3 text-xs text-muted">{located(d.stages)
       ? d.stages.map((s, i) => <p key={i}>Dropped at <b className="text-ink">{s.stage}</b> (input: {s.parents.join(' + ') || 'query'}) · {s.reason} · {s.evidence || 'unknown'} evidence in <code>{file}</code></p>)
       : d.stages.length ? <p>Present in candidate stages: {(d.stages as string[]).join(' → ')} · recorded in <code>{file}</code></p> : !d.diverged_at && <p>{d.reason || 'Not present in recorded stages; internal cause unknown.'}</p>}

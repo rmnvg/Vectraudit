@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Readable document titles: findings and regression cases show document titles beside IDs,
+  from a corpus document's `title` or `metadata.title`. Titles join from the run's own
+  saved benchmark corpus; they are withheld when the run used a different corpus and
+  marked unverified when the run recorded none. They are never written to runs, checks or
+  cases. A shared case carries its cited documents' titles only with explicit text sharing,
+  and the hosted case page shows them, or says why it can't. The starter example now has
+  titles.
 - Share from the workbench: a **Share with hosted project…** panel on regression cases,
   frozen benchmarks and saved policies previews the destination, what is sent, what stays
   local and the size. Question text is shared only when opted in, and the panel shows it

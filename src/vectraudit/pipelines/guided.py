@@ -25,7 +25,7 @@ from vectraudit.labelling.task import atomic_write
 from vectraudit.pipelines.benchmark import audit_benchmark
 from vectraudit.pipelines.checkpoint import checkpoint_state, validate_path
 from vectraudit.pipelines.lexical import hybrid_pipeline
-from vectraudit.pipelines.local_display import run_questions
+from vectraudit.pipelines.local_display import run_doc_ids, run_document_titles, run_questions
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
 from vectraudit.pipelines.models import Contract
 from vectraudit.pipelines.release import corpus_version as documents_version
@@ -51,6 +51,8 @@ class DraftIn(Contract):
 
 class Document(Contract):
     doc_id: str = Field(min_length=1, max_length=512)
+    title: str | None = Field(default=None, min_length=1, max_length=512)
+    """Shown beside the ID in findings and cases; ``metadata.title`` is used when absent."""
     text: str = Field(min_length=1, max_length=100000)
     metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
     vector: list[float] | None = Field(default=None, max_length=4096)
@@ -445,6 +447,22 @@ class GuidedWorkspace:
         return identifier
 
 
+def _document_display(
+    workspace: GuidedWorkspace, baseline: dict[str, Any], candidate: dict[str, Any]
+) -> dict[str, Any]:
+    """One title map for the documents either run returned, from each run's own benchmark."""
+    ids = run_doc_ids(baseline, candidate)
+    sides = [run_document_titles(workspace, run, ids) for run in (baseline, candidate)]
+    titles = {**sides[1]["titles"], **sides[0]["titles"]}
+    failed = None if titles else next((s for s in sides if s["reason"]), None)
+    return {
+        "titles": titles,
+        "reason": failed["reason"] if failed else None,
+        "code": failed["code"] if failed else None,
+        "verified": all(s["verified"] for s in sides),
+    }
+
+
 def guided_router(workspace: GuidedWorkspace) -> APIRouter:
     """Local-only API; mutations require a per-process browser token and same origin."""
     router = APIRouter(prefix="/api/guided")
@@ -544,6 +562,7 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
                 "baseline": run_questions(workspace, baseline),
                 "candidate": run_questions(workspace, candidate),
             },
+            "document_display": _document_display(workspace, baseline, candidate),
         }
 
     from vectraudit.pipelines.diagnostics import diagnostic_router

@@ -800,6 +800,18 @@ missing or unreadable draft produces an explicit unavailable message. Vector-onl
 and runs without a saved draft reference keep their IDs without invented question text.
 Only queries recorded in that run receive display text.
 
+Document IDs in findings and cases show their titles the same way. A corpus document can
+carry `"title"`, or a string `metadata.title`. Titles come from the corpus attached to the
+run's own saved benchmark, after the same draft and revision checks:
+- **Different corpus:** if the run recorded a corpus version and the attached corpus is a
+  different one, titles are withheld and the finding says why, because the same ID may name
+  another document.
+- **No recorded version:** for external pipelines without a recorded corpus version, titles
+  are shown with a note that they could not be checked.
+- **No titles:** a corpus without titles simply shows IDs.
+- **Corpus versions:** adding titles does not change the corpus version of a corpus that has
+  none.
+
 This is a local display join: run/check artifacts, stored cases, cloud uploads and downloaded
 issue summaries do not gain question text, except a case or snapshot shared with
 `workbench share --share-query-text` (see below). The workbench does not reconstruct older draft
@@ -855,8 +867,8 @@ regression case, a selected frozen benchmark or a selected saved policy.
 
 From the command line: `vectraudit workbench share WORKSPACE_DIR case CASE_ID
 --project acme/search`. Add `--preview` to see exactly what would be sent without
-credentials. Owners, notes, passages and context are never sent; question text only with
-`--share-query-text`. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).
+credentials. Owners, notes, passages and context are never sent; question text and the
+titles of a case's cited documents only with `--share-query-text`. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).
 
 Reproduce the full browser journey with `node scripts/market_fit_smoke.mjs` after building
 the UI. It tests grading/reload, snapshots, findings, incident review, permission creation

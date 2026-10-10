@@ -50,6 +50,9 @@ def describe(projected: dict[str, Any]) -> dict[str, Any]:
             f"{len(data['history'])} history event(s) and the policy identity",
         ]
         texts = [data["question_text"]] if data.get("question_text") else []
+        titles = data.get("document_titles") or {}
+        if titles:
+            included.append(f"Titles of {len(titles)} cited document(s)")
     elif kind == "benchmark":
         included = [
             f"Benchmark identity {data['dataset_sha256'][:12]}",
@@ -60,9 +63,12 @@ def describe(projected: dict[str, Any]) -> dict[str, Any]:
     else:
         included = [f"Policy version {data['version']} and its rules ({data['sha256'][:12]})"]
         texts = []
+    withheld = list(WITHHELD[kind])
+    if kind == "case" and not data.get("document_titles"):
+        withheld.append("document titles")
     return {
         "included": included,
-        "withheld": WITHHELD[kind],
+        "withheld": withheld,
         "question_text": texts[:5],
         "question_text_count": len(texts),
     }
