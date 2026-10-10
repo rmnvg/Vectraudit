@@ -400,6 +400,65 @@ def monitor_status(
     return MonitorStatus(**lead.monitor_status(rows))
 
 
+class RecurringCase(BaseModel):
+    record_id: str
+    source_id: str
+    status: str | None
+    """The status recorded in the workbench when the case was shared (local, not hosted)."""
+    dataset_sha256: str | None
+    question_text: str | None
+    """Only when the case was shared with question text; otherwise ``None``."""
+    uploaded_at: datetime
+
+
+class RecurringQuestion(BaseModel):
+    query_id: str
+    failures: int
+    checks: int
+    """Checks on this benchmark version that list questions (the denominator)."""
+    kinds: dict[str, int]
+    """How often it regressed, failed a critical rule, or failed a safety rule."""
+    triggers: dict[str, int]
+    still_failing: bool
+    streak: int
+    """Consecutive newest checks it failed in."""
+    first_failed_at: datetime
+    last_failed_at: datetime
+    last_check_id: str | None
+    cases: list[RecurringCase]
+
+
+class RecurringOut(BaseModel):
+    dataset_sha256: str | None
+    checks: int
+    without_questions: int
+    """Decisions on this benchmark recorded before questions were kept (not counted)."""
+    questions: list[RecurringQuestion]
+
+
+@router.get(f"{PROJECT}/recurring")
+def recurring(
+    workspace: str,
+    project: str,
+    session: SessionDep,
+    principal: PrincipalDep,
+    limit: int = Query(default=200, ge=2, le=1000),
+    min_failures: int = Query(default=2, ge=2, le=1000),
+) -> RecurringOut:
+    """Questions that failed in more than one check on the current benchmark version, with
+    their shared regression cases; read from the decision ledger."""
+    access = repo.authorize(session, principal, workspace, "read", project)
+    assert access.project is not None
+    rows = ledger.history(session, access.project, limit=limit)
+    found = lead.recurring(rows, min_failures=min_failures)
+    cases = ledger.cases_by_question(
+        session, access.project, {q["query_id"] for q in found["questions"]}
+    )
+    for question in found["questions"]:
+        question["cases"] = cases.get(question["query_id"], [])
+    return RecurringOut(**found)
+
+
 def _check(session: SessionDep, workspace_id: str, project_id: str, check_id: str) -> Check:
     check = session.scalars(
         select(Check).where(

@@ -474,3 +474,72 @@ def trends(decisions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         )
     series.sort(key=lambda s: s["last_at"], reverse=True)
     return series
+
+
+KINDS = ("regressed", "critical", "safety")
+
+
+def recurring(decisions: Sequence[Mapping[str, Any]], *, min_failures: int = 2) -> dict[str, Any]:
+    """Questions that failed in more than one check on the current benchmark version.
+
+    ``decisions`` are ledger rows, newest first, with ``dataset_sha256`` and ``summary``.
+    Only the benchmark version of the newest decision is counted, because question IDs on
+    another version may mean other questions. Each question reports how many of the checks
+    that list questions it failed in (the denominator), by kind (regressed on the primary
+    metric, a failing critical rule, a safety failure), whether it still fails in the newest
+    check and for how many checks in a row. Decisions recorded before questions were kept
+    (ledger summary version 6) are counted separately, never as passes.
+    """
+    if not decisions:
+        return {"dataset_sha256": None, "checks": 0, "without_questions": 0, "questions": []}
+    dataset = decisions[0]["dataset_sha256"]
+    rows = [d for d in decisions if d["dataset_sha256"] == dataset]
+    listed = [d for d in rows if (d.get("summary") or {}).get("failed_questions") is not None]
+    stats: dict[str, dict[str, Any]] = {}
+    for position, row in enumerate(listed):  # newest first
+        failed = row["summary"]["failed_questions"]
+        seen = set()
+        for kind in KINDS:
+            for qid in failed.get(kind) or []:
+                entry = stats.setdefault(
+                    qid,
+                    {
+                        "query_id": qid,
+                        "failures": 0,
+                        "kinds": {k: 0 for k in KINDS},
+                        "triggers": {"release": 0, "monitor": 0},
+                        "positions": [],
+                        "last_failed_at": row["at"],
+                        "last_check_id": row.get("check_id"),
+                        "first_failed_at": row["at"],
+                    },
+                )
+                entry["kinds"][kind] += 1
+                if qid in seen:
+                    continue
+                seen.add(qid)
+                entry["failures"] += 1
+                entry["triggers"][row.get("trigger") or "release"] += 1
+                entry["positions"].append(position)
+                entry["first_failed_at"] = row["at"]
+    questions = []
+    for entry in stats.values():
+        if entry["failures"] < min_failures:
+            continue
+        positions = entry.pop("positions")
+        streak = 0
+        while streak < len(positions) and positions[streak] == streak:
+            streak += 1
+        entry["still_failing"] = streak > 0
+        entry["streak"] = streak
+        entry["checks"] = len(listed)
+        questions.append(entry)
+    questions.sort(
+        key=lambda e: (not e["still_failing"], -e["failures"], -e["last_failed_at"].timestamp())
+    )
+    return {
+        "dataset_sha256": dataset,
+        "checks": len(listed),
+        "without_questions": len(rows) - len(listed),
+        "questions": questions,
+    }
