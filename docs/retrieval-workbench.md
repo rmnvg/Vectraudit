@@ -841,7 +841,19 @@ must reload before retrying. Existing token, same-origin and request-size protec
 to all new guided APIs.
 
 To let a second engineer or lead read a case, a benchmark snapshot or a policy revision,
-share it with a hosted project: `vectraudit workbench share WORKSPACE_DIR case CASE_ID
+share it with a hosted project. In the workbench, choose **Share with hosted project…** on a
+regression case, a selected frozen benchmark or a selected saved policy.
+- **Before anything is sent,** the panel shows the destination, what is sent, what stays on
+  this machine and the transfer size.
+- **Question text** is off by default. Ticking "Also share question text" shows the text
+  that would be sent. Only text verified against the saved benchmark is sent.
+- **Share now** uploads the same allowlisted projection as the CLI and links to the hosted
+  record.
+- **The hosted project** comes from `VECTRAUDIT_CLOUD_URL`, `VECTRAUDIT_CLOUD_TOKEN` and
+  `VECTRAUDIT_CLOUD_PROJECT` in the environment that started `workbench serve`; without them
+  the panel previews only. The token never reaches the browser.
+
+From the command line: `vectraudit workbench share WORKSPACE_DIR case CASE_ID
 --project acme/search`. Add `--preview` to see exactly what would be sent without
 credentials. Owners, notes, passages and context are never sent; question text only with
 `--share-query-text`. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).

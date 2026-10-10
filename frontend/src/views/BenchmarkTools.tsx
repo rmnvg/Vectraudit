@@ -3,6 +3,7 @@ import { guidedRequest, parseQueries } from '../lib/guided'
 import type { Draft, QueryRow } from '../lib/guided'
 import { documentGrade, gradeDocument, pendingReview, readDocuments } from '../lib/benchmarkTools'
 import type { Irrelevant, PassageLookup, ReviewPool } from '../lib/benchmarkTools'
+import { ShareRecord } from '../components/ShareRecord'
 
 const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40'
 const input = 'mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-sm'
@@ -134,6 +135,7 @@ export function BenchmarkSnapshots({ token, draft, dirty, corpus, onRestore }: {
   return <section className="mt-4 rounded-xl border border-line p-4 space-y-3"><h3 className="font-semibold">Frozen versions and label freshness</h3><p className="text-xs text-muted">Freeze the saved benchmark and corpus inventory. Later edits do not overwrite it. Changed content needs human review; checking freshness never changes labels. Restoring creates a new draft and keeps your currently attached corpus.</p><button className={button} disabled={!draft || dirty || busy} onClick={() => void action('freeze')}>Freeze saved benchmark</button>
     <label className="block text-sm">Frozen benchmark<select className={input} value={selected} onChange={e => setSelected(e.target.value)}><option value="">Choose a version</option>{snapshots.map(s => <option key={s.id} value={s.id}>{s.name} · {s.created_at} · {s.dataset_sha256.slice(0, 8)}</option>)}</select></label>
     <div className="flex flex-wrap gap-2"><button className={button} disabled={!selected || busy} onClick={() => void action('check')}>Check current corpus</button><button className={button} disabled={!selected || busy} onClick={() => void action('restore')}>Restore as new draft</button></div>
+    {selected && <ShareRecord key={selected} token={token} kind="benchmark" id={selected} label="this frozen benchmark" />}
     {result && <div role="status" className="text-sm"><p>Freshness: {result.status}{result.status === 'unknown' ? ' — attach inventories for both versions to compare.' : ` · ${result.changed.length} changed, ${result.deleted.length} deleted, ${result.added.length} added`}</p><ul className="mt-2 max-h-64 overflow-auto">{result.items.map((r, i) => <li key={i}>{r.query_id} · {r.doc_id || 'No-answer judgment'} · {r.reason}</li>)}</ul>{result.status === 'review' && <p className="mt-2">Review affected passages, save and freeze a new version, then remeasure both baseline and candidate. No labels were changed.</p>}</div>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
   </section>

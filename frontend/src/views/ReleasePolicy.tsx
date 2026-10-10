@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { guidedRequest } from '../lib/guided'
 import { DROP_TESTS, METRICS, METRIC_HELP, STARTER_POLICY, formFromPolicy, policyFromForm, policyLabel, selectedRef } from '../lib/release'
 import type { PolicyChoice, PolicyForm, PolicyListing, PolicyRecord, PolicyRef, RawPolicy } from '../lib/release'
+import { ShareRecord } from '../components/ShareRecord'
 
 const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40'
 const input = 'mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-sm'
@@ -42,6 +43,7 @@ export default function ReleasePolicy({ token, value, onChange }: { token: strin
     {ref
       ? <p className="rounded-lg bg-teal-500/10 p-3 text-sm text-teal-700 dark:text-teal-300">Comparisons, case verifications and exports use <b>{policyLabel(ref)}</b>. The same rules decide <code>vectraudit check --policy</code> and the exported CI check.</p>
       : <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">Exploratory defaults judge whichever metrics both runs have, from a single question upward. Use them to explore; save the thresholds your team agrees on as a release policy before relying on a verdict or exporting a release check.</p>}
+    {record && value !== 'startup' && record.id && <ShareRecord key={record.id} token={token} kind="policy" id={record.id} label={`policy ${record.name} v${record.version}`} />}
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     {editing && <PolicyEditor key={record?.id ?? 'new'} token={token} base={record} onSaved={saved => { setEditing(false); void reload(saved.id ?? undefined) }} />}
   </section>

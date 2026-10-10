@@ -3,6 +3,7 @@ import { guidedRequest, questionLabel } from '../lib/guided'
 import type { Comparison } from '../lib/guided'
 import type { RunListing } from '../lib/workbench'
 import { policyLabel } from '../lib/release'
+import { ShareRecord } from '../components/ShareRecord'
 import type { PolicyRef } from '../lib/release'
 
 const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40'
@@ -32,10 +33,10 @@ export default function RegressionCases({ token, comparison, runs, policy, polic
     {!!unresolved.length && comparison && <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Finding to track<select className={input} value={selectedQuery} onChange={e => setQuery(e.target.value)}>{unresolved.map(q => <option key={q.query_id} value={q.query_id}>{questionLabel(comparison.question_display?.baseline, q.query_id)} · {q.severity}</option>)}</select></label><button className={button} disabled={busy} onClick={() => void perform('cases', { baseline: comparison.baseline.run_id, candidate: comparison.candidate.run_id, query_id: selectedQuery, policy: comparison.policy?.id ?? null })}>Track finding</button></div>}
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {!cases.length && <p className="text-sm text-muted">Compare a baseline and candidate, then track a finding here.</p>}
-    {cases.map(c => <CaseEditor key={`${c.id}-${c.revision}`} record={c} runs={runs} busy={busy} onAction={perform} policy={policy} policyRef={policyRef} />)}
+    {cases.map(c => <CaseEditor key={`${c.id}-${c.revision}`} token={token} record={c} runs={runs} busy={busy} onAction={perform} policy={policy} policyRef={policyRef} />)}
   </section>
 }
-function CaseEditor({ record, runs, busy, onAction, policy, policyRef }: { record: RegressionCase; runs: RunListing[]; busy: boolean; onAction: (path: string, body: unknown) => Promise<void>; policy: string | null; policyRef: PolicyRef | null }) {
+function CaseEditor({ token, record, runs, busy, onAction, policy, policyRef }: { token: string; record: RegressionCase; runs: RunListing[]; busy: boolean; onAction: (path: string, body: unknown) => Promise<void>; policy: string | null; policyRef: PolicyRef | null }) {
   const [owner, setOwner] = useState(record.owner)
   const [note, setNote] = useState('')
   const [status, setStatus] = useState(record.status === 'verified' ? 'investigating' : record.status)
@@ -54,5 +55,6 @@ function CaseEditor({ record, runs, busy, onAction, policy, policyRef }: { recor
     <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm">Verification run<select className={input} value={candidate} onChange={e => setCandidate(e.target.value)}><option value="">Choose a new candidate</option>{choices.map(r => <option key={r.run_id} value={r.run_id}>{r.label} · {r.run_id.slice(0, 8)}</option>)}</select></label><button className={button} disabled={!candidate} onClick={() => void onAction(`cases/${record.id}/verify`, { revision: record.revision, candidate, policy })}>Verify under {policyLabel(policyRef)}</button></div>
     <ul className="max-h-48 space-y-2 overflow-auto text-xs">{record.history.map((h, i) => <li key={i}>{h.at} · {h.kind}{h.status ? ` · ${h.status}` : ''}{h.candidate ? ` · run ${h.candidate.slice(0, 8)}` : ''}{h.verdict ? ` · release ${h.verdict} under ${policyLabel(h.policy)} · ${h.verified ? 'verified' : 'reopened'}` : ''}{h.note ? ` · ${h.note}` : ''}</li>)}</ul>
     <button className={button} onClick={download}>Download issue summary</button>
+    <ShareRecord token={token} kind="case" id={record.id} label={`case ${record.query_id}`} />
   </fieldset></details>
 }
