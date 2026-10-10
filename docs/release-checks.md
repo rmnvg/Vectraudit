@@ -258,6 +258,19 @@ comparisons reuse the same runs, so a low false-alarm count is evidence for that
 a guarantee; re-run after infrastructure changes. Recording costs the same as `record`:
 runs × queries × repeats calls to your backend.
 
+If the recordings differ in configuration (search parameters, backend settings, pipeline
+version), the report lists them in `config_differences` and says it is not an A/A
+comparison. The false alarms may then be real changes rather than noise.
+
+**In the workbench.** Under the release policy picker, open **Calibrate this policy against
+unchanged runs (A/A)** and choose 2–10 complete recordings of the same benchmark.
+- **The result:** false alarms by rule, the failures that are not noise, each proposed
+  change with the noise it was measured from, and the same caveats as the CLI.
+- **Different configurations:** a set mixing configurations is called out.
+- **Saving:** measuring writes nothing. **Save draft as a new version** saves the draft
+  through the normal policy versioning, with a note recording the before-and-after false
+  alarms, and selects it. The previous version stays available.
+
 ## Audited exceptions
 
 Sometimes a team deliberately ships a known regression. Instead of loosening the policy or
