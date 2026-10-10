@@ -34,6 +34,44 @@ def _write(path: Path, data: dict[str, Any]) -> None:
     atomic_write(path, json.dumps(data, indent=2, allow_nan=False, ensure_ascii=False) + "\n")
 
 
+MaxCalls = Annotated[
+    int | None,
+    typer.Option(min=1, help="Refuse to start if the planned pipeline calls exceed this."),
+]
+MaxSpend = Annotated[
+    float | None,
+    typer.Option(
+        min=0,
+        help="Refuse to start if planned spend (USD) exceeds this or any cost is unknown.",
+    ),
+]
+Measured = Annotated[
+    list[Path] | None,
+    typer.Option(help="Earlier run files whose adapter-reported cost_usd prices each call."),
+]
+
+
+def _guard(
+    spec: Any,
+    ds: Any,
+    mode: Any,
+    *,
+    max_calls: int | None,
+    max_spend: float | None,
+    measured: list[Path] | None,
+    baseline: str | None = None,
+) -> None:
+    """Refuse before any adapter opens when the planned calls or spend exceed a limit."""
+    if max_calls is None and max_spend is None:
+        return
+    from vectraudit.pipelines.budget import check_limits, plan
+
+    budget = plan(
+        spec, ds, mode=mode, measured=[load_run(p) for p in measured or []], baseline=baseline
+    )
+    check_limits(budget, max_calls=max_calls, max_spend=max_spend)
+
+
 @workbench_app.command("run")
 def run_command(
     manifest: Path,
@@ -58,8 +96,15 @@ def run_command(
     retry_budget: Annotated[
         int, typer.Option(min=0, help="Maximum automatic retries per candidate run.")
     ] = RetryPolicy().max_retries,
+    max_calls: MaxCalls = None,
+    max_spend: MaxSpend = None,
+    measured: Measured = None,
 ) -> None:
-    """Execute trusted Python, HTTP or built-in hybrid candidates from a local manifest."""
+    """Execute trusted Python, HTTP or built-in hybrid candidates from a local manifest.
+
+    See ``workbench preview`` for the calls and spend a run plans; ``--max-calls`` and
+    ``--max-spend`` refuse to start one that exceeds them (exit 2).
+    """
     try:
         retry = RetryPolicy(max_attempts=max_attempts, max_retries=retry_budget)
         if retry_errors and resume is None:
@@ -70,6 +115,8 @@ def run_command(
         ds = load_dataset(manifest.parent / spec.dataset)
         if len({c.name for c in spec.candidates}) != len(spec.candidates):
             raise ValueError("candidate names must be unique")
+        if resume is None:  # a resumed batch was already approved when it started
+            _guard(spec, ds, "run", max_calls=max_calls, max_spend=max_spend, measured=measured)
         checkpoints = resume or out / ".checkpoints" / uuid.uuid4().hex
         configs = [candidate_config(candidate, manifest.parent) for candidate in spec.candidates]
         batch_identity = {
@@ -147,6 +194,9 @@ def optimize_command(
     baseline: Annotated[
         str | None, typer.Option(help="Candidate name of the current configuration.")
     ] = None,
+    max_calls: MaxCalls = None,
+    max_spend: MaxSpend = None,
+    measured: Measured = None,
 ) -> None:
     """Bounded candidate search; one held-out validation; recommendations require review.
 
@@ -162,6 +212,15 @@ def optimize_command(
         if len(spec.candidates) > spec.max_candidates:
             raise ValueError("candidate count exceeds max_candidates")
         ds = load_dataset(manifest.parent / spec.dataset)
+        _guard(
+            spec,
+            ds,
+            "optimize",
+            max_calls=max_calls,
+            max_spend=max_spend,
+            measured=measured,
+            baseline=baseline,
+        )
         candidates = [
             (c.name, open_adapter(c.adapter, manifest.parent), c.params) for c in spec.candidates
         ]
@@ -194,6 +253,75 @@ def optimize_command(
     except (OSError, ValueError, ImportError, AttributeError, PolicyError) as exc:
         typer.echo(f"Optimization error: {exc}", err=True)
         raise typer.Exit(2) from exc
+
+
+@workbench_app.command("preview")
+def preview_command(
+    manifest: Path,
+    mode: Annotated[str, typer.Option(help="What will run: run, optimize or monitor.")] = "run",
+    baseline: Annotated[
+        str | None, typer.Option(help="Optimize only: the baseline candidate under a policy.")
+    ] = None,
+    measured: Measured = None,
+    retry_budget: Annotated[
+        int, typer.Option(min=0, help="Retry budget the run will use.")
+    ] = RetryPolicy().max_retries,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Write the plan as JSON.")] = None,
+) -> None:
+    """Calls and spend a run, optimization or monitor would make, before running anything.
+
+    Reads the manifest and dataset only: no adapter is opened and no code is imported.
+    """
+    from vectraudit.pipelines.budget import format_usd, plan
+
+    try:
+        if mode not in ("run", "optimize", "monitor"):
+            raise ValueError("--mode must be run, optimize or monitor")
+        spec = load_manifest(manifest)
+        ds = load_dataset(manifest.parent / spec.dataset)
+        budget = plan(
+            spec,
+            ds,
+            mode=mode,  # type: ignore[arg-type]
+            measured=[load_run(p) for p in measured or []],
+            baseline=baseline,
+            retry_budget=retry_budget,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Preview error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    for row in budget["candidates"]:
+        price = format_usd(row["cost_per_call_usd"])
+        if row["cost_per_call_usd"] is not None:
+            price += f" ({row['cost_source']})"
+        typer.echo(
+            f"{row['name']}: {row['questions']} questions x {budget['repeats']} repeats = "
+            f"{row['calls']} calls; per call {price}; spend {format_usd(row['spend_usd'])}"
+        )
+    held = budget["heldout"]
+    if held:
+        typer.echo(
+            f"Held-out validation: {held['questions']} questions x {budget['repeats']} repeats "
+            f"for up to {held['runs_up_to']} candidate(s)"
+        )
+    calls, spend = budget["calls"], budget["spend_usd"]
+    span = str(calls["min"])
+    if calls["max"] != calls["min"]:
+        span += f" to {calls['max']}"
+    typer.echo(f"Total: {span} calls, plus up to {calls['retry_allowance']} retries")
+    known = len(budget["candidates"]) - len(budget["unknown_cost"])
+    money = format_usd(spend["min"])
+    if spend["max"] is not None and spend["max"] != spend["min"]:
+        money += f" to {format_usd(spend['max'])}"
+    if not known:
+        money = "unknown"
+    elif not spend["complete"]:
+        money += f" for the {known} candidate(s) with known costs"
+    typer.echo(f"Spend: {money}")
+    for note in budget["notes"]:
+        typer.echo(f"- {note}")
+    if json_out is not None:
+        _write(json_out, budget)
 
 
 @workbench_app.command("benchmark")
@@ -231,6 +359,9 @@ def monitor_command(
         ),
     ] = False,
     project: Annotated[str | None, typer.Option(help="Hosted workspace/project.")] = None,
+    max_calls: MaxCalls = None,
+    max_spend: MaxSpend = None,
+    measured: Measured = None,
 ) -> None:
     """One scheduled check against a frozen baseline. Exit 3 alerts the scheduler.
 
@@ -259,6 +390,7 @@ def monitor_command(
             rules = load_policy(policy) if policy else DEFAULT_POLICY
         if base["status"] != "complete" or base["dataset"]["sha256"] != ds.sha256:
             raise ValueError("monitor needs a complete baseline from this frozen benchmark")
+        _guard(spec, ds, "monitor", max_calls=max_calls, max_spend=max_spend, measured=measured)
         candidate = spec.candidates[0]
         config = candidate_config(candidate, manifest.parent)
         run = execute_pipeline(

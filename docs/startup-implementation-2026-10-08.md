@@ -653,6 +653,53 @@ Results:
 - `migrate`, `deliver-webhooks` and `purge` were run against a fresh database, and the
   dashboard section was checked in Chromium.
 
+## Step 19: calls and spend preview (1.5)
+
+`vectraudit workbench preview MANIFEST [--mode run|optimize|monitor]` shows, per candidate,
+questions x repeats = calls, cost per call and spend, then the totals, before anything
+runs. It reads the manifest and dataset only and never opens an adapter (a Python adapter
+import would run customer code).
+
+- **Cost per call:**
+  - **measured:** from an earlier run whose adapter reported `cost_usd` (`--measured`).
+  - **declared:** `cost_per_call_usd`, a new optional manifest field kept out of the
+    candidate identity.
+  - **built-in hybrid baseline:** a known $0, because it runs locally.
+  - **unknown:** listed by name and never counted as $0.
+- **Per-production-query cost:** one production query is one call, so it's the same as the
+  cost per call.
+- **Optimize:** a range, because held-out validation runs only for the chosen candidate
+  (and the baseline under a policy).
+- **Retries:** an allowance per run, up to each run's retry budget.
+- **Scope note:** customer-side model, database and hosting costs are included only if the
+  adapter reports them.
+- **Guards:** `workbench run`, `optimize` and `monitor` take `--max-calls` and
+  `--max-spend` (with `--measured`). They refuse before opening any adapter when the
+  planned calls or maximum spend exceed the limit, or when a cost is unknown under
+  `--max-spend` (exit 2). Resumes are not re-checked.
+
+Not included: a browser screen for the preview, release-file (`release run`) and calibration
+budgets, token-level cost models, and an actual-versus-planned spend report after a run.
+
+Validation: 8 new tests cover:
+- call counts and unknown costs excluded from the sum;
+- a measurement winning over a declaration, and a declaration winning over a partial
+  measurement;
+- optimization ranges with and without a baseline, and the monitor rule;
+- every limit;
+- an unchanged candidate identity with a declared price;
+- money formatting;
+- CLI preview, JSON and refusals for `run`, `optimize` and `monitor`. An adapter module that
+  leaves a marker when imported proves that preview and refusals never import it; a later
+  run then prices itself from its own recorded costs.
+
+Results:
+- Full Python suite: 1,490 passed, 22 skipped (live services not configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check (no drift) passed.
+  No frontend or hosted code changed.
+- On the bundled example, `--mode optimize` reports 18 to 24 calls at $0 (built-in baseline)
+  with a 48-call retry allowance.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -666,7 +713,7 @@ as missing merely because their customer validation is pending.
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. | Measured execution protocol, cohort multiplicity and optional versioned non-inferiority semantics. |
-| **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. | Calls/spend preview, optimization concurrency, two simultaneous workspace runs, and declared customer 1,000-question CI-window acceptance. |
+| **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. | Optimization concurrency, two simultaneous workspace runs, actual-versus-planned spend, and declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. | Sharing from the workbench UI, readable document titles, recurring findings and lead/second-engineer acceptance. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
@@ -680,10 +727,9 @@ as missing merely because their customer validation is pending.
 1. **Finish distribution acceptance (1.9).** Provision the selected channel and verify
    independent customer credentials using the concrete checklist in `RELEASING.md`. Review
    support/trust commitments; do not substitute local unit tests for customer install evidence.
-2. **Calls and spend preview (1.5).** Before a run, optimization or calibration, show
-   candidates × questions × repeats as calls, with measured or declared cost per call kept
-   apart from unknown costs, so a customer can approve the budget of a 1,000-question CI
-   run. This needs no customer input.
+2. **Cohort false-alarm control (1.4).** Report how many cohorts each check judged and
+   calibrate cohort rules against unchanged-system repeats, so many small cohorts do not
+   fail releases by chance. This needs no customer input.
 3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
    design partner's real traces before building.
 

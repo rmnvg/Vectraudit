@@ -8,6 +8,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench preview MANIFEST` shows the pipeline calls and spend a run,
+  optimization or monitor would make, without opening any adapter. Cost per call is measured
+  from an earlier run's adapter-reported `cost_usd`, declared with the new manifest field
+  `cost_per_call_usd` (outside the candidate identity), or reported as unknown, never as $0.
+  `workbench run`, `optimize` and `monitor` take `--max-calls` and `--max-spend` and refuse
+  to start over budget.
 - Project webhooks: owners send each release decision, and each scheduled-monitor alert
   and its resolution, once to a signed JSON endpoint or a Slack incoming webhook. The
   payload has a headline, verdict and dashboard link only. Retries back off over about 8
