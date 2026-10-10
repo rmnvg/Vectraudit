@@ -109,6 +109,22 @@ def _md_table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     return "\n".join(lines)
 
 
+def cohort_line(result: Mapping[str, Any]) -> str | None:
+    """``Cohorts: 4 of 6 judged on 8 rules, 1 failed; no multiplicity control.``"""
+    judging = result.get("cohort_judging")
+    if not judging or not judging["judged_rules"]:
+        return None
+    control = (
+        "each rule widened for the number judged (Bonferroni)"
+        if judging["control"] == "bonferroni"
+        else "no multiplicity control"
+    )
+    return (
+        f"Cohorts: {judging['judged_cohorts']} of {judging['cohorts']} judged on "
+        f"{judging['judged_rules']} rules, {judging['failed_rules']} failed; {control}."
+    )
+
+
 def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None) -> str:
     """A compact summary for ``$GITHUB_STEP_SUMMARY`` or a pull-request comment."""
     verdict = result["verdict"]
@@ -153,6 +169,8 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     latency = _latency_rows(result["latency"])
     if latency:
         out += [_md_table(["Latency", "Baseline", "Candidate", "Change"], latency), ""]
+    if cohorts := cohort_line(result):
+        out += [cohorts, ""]
     queries = result.get("queries")
     if queries and queries["regressed"]:
         out += [
@@ -469,6 +487,8 @@ def render_html(result: Mapping[str, Any]) -> str:
                     ]
                 )
         parts.append("<h2>Cohorts</h2>")
+        if cohorts := cohort_line(result):
+            parts.append(f'<p class="muted">{html.escape(cohorts)}</p>')
         parts.append(
             _html_table(
                 ["Tag", "Rows", "Families", "Judged", "Metric", "Baseline", "Candidate", "Change"],

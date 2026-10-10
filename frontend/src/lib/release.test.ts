@@ -29,6 +29,17 @@ describe('release policy form', () => {
     expect(policy?.primary_metric).toBe('recall')
     expect(policy?.require_significance).toBe(true)
   })
+  it('keeps cohort control and audited exception rules through editing', () => {
+    const exceptions = { allow: ['metric'], approver: 'engineer' }
+    const raw = { metrics: { ndcg: { max_drop: 0.02 } }, cohorts: { min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } }, control: 'bonferroni' }, exceptions }
+    const form = formFromPolicy(raw)
+    expect(form.cohortControl).toBe(true)
+    const { policy } = policyFromForm(form)
+    expect(policy?.cohorts).toEqual(raw.cohorts)
+    expect(policy?.exceptions).toEqual(exceptions)
+    form.cohortControl = false
+    expect(policyFromForm(form).policy?.cohorts).toEqual({ min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } } })
+  })
   it('explains what to fix instead of producing an invalid policy', () => {
     const form = formFromPolicy({ metrics: {} })
     expect(policyFromForm(form).errors[0]).toMatch(/at least one quality rule/)

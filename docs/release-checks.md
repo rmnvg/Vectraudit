@@ -180,6 +180,24 @@ between-family uncertainty, even if it has many scenario rows.
   regression. Lower it, or set 0 to judge every rise, on dedicated hardware.
 - `require_significance: true` fails a `max_drop` rule only when the whole 95% interval of
   the change is beyond the limit; useful for small or noisy query sets.
+- **Many cohorts.** Each tag with enough families is a cohort, judged on its own. With many
+  cohorts, some fail by chance even when nothing changed: in a 20-cohort A/A test, every
+  comparison raised at least one chance cohort failure.
+  - **What each check reports:** how many cohorts and cohort rules it judged and how many
+    failed (the "Cohorts:" line of reports, `cohort_judging` in check JSON, and the hosted
+    decision's summary). From 5 cohort rules judged without control it warns.
+  - **`cohorts.control: "bonferroni"`:** a cohort `max_drop` fails only when its interval,
+    widened to 1 − 0.05/m for the m cohort `max_drop` rules judged, lies entirely beyond the
+    allowed drop. The interval is a normal approximation from the family-level standard
+    error, slightly narrow for very small cohorts.
+  - **Effect:** chance failures fell from every A/A comparison to at most about one in 20,
+    while a real 0.4 drop in one cohort still failed.
+  - **Unchanged by the control:** `min` floors, the suite-level metrics and the rule keys
+    that audited exceptions name.
+  - **Choosing:** run `vectraudit calibrate` with and without the control to see the
+    difference on your own runner. Leaving the control out keeps existing policy hashes.
+  - **In the workbench:** the policy editor's "Correct for many cohorts (Bonferroni)"
+    checkbox sets the control.
 - Without `--policy`, a built-in policy allows drops of 0.01 in nDCG, recall and ANN recall
   (0.02 in MRR) and a 50% p95 rise, judged on whatever both runs measured. The workbench
   labels this mode *exploratory*; it is not a substitute for an agreed release policy.

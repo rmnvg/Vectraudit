@@ -33,6 +33,10 @@ export interface PolicyForm {
   primaryMetric: string
   cohortMinQueries: string
   cohortMetrics: Record<Metric, { enabled: boolean; maxDrop: string }>
+  /** Bonferroni control across judged cohort rules (`cohorts.control`). */
+  cohortControl: boolean
+  /** Policy blocks this form does not edit (audited exceptions), kept unchanged. */
+  preserved: RawPolicy
   p95Pct: string; p50Pct: string; p95Ms: string; minIncreaseMs: string
   sameEnvironment: boolean
   requireSignificance: boolean
@@ -71,6 +75,8 @@ export function formFromPolicy(raw: RawPolicy): PolicyForm {
     primaryMetric: typeof raw.primary_metric === 'string' ? raw.primary_metric : '',
     cohortMinQueries: text(cohorts.min_queries ?? 10),
     cohortMetrics: Object.fromEntries(METRICS.map(m => [m, { enabled: m in cohortMetrics, maxDrop: text(object(cohortMetrics[m]).max_drop) }])) as PolicyForm['cohortMetrics'],
+    cohortControl: cohorts.control === 'bonferroni',
+    preserved: 'exceptions' in raw ? { exceptions: raw.exceptions } : {},
     p95Pct: text(latency.p95_max_increase_pct),
     p50Pct: text(latency.p50_max_increase_pct),
     p95Ms: text(latency.p95_max_ms),
@@ -150,9 +156,14 @@ export function policyFromForm(form: PolicyForm): { policy?: RawPolicy; errors: 
     min_queries: count(form.minQueries, 'Minimum measured questions', 1) ?? 1,
     ...(maxRegressed !== undefined && { max_regressed_queries: maxRegressed }),
     ...(form.primaryMetric && { primary_metric: form.primaryMetric }),
-    cohorts: { min_queries: count(form.cohortMinQueries, 'Minimum questions per cohort', 1) ?? 10, metrics: cohortMetrics },
+    cohorts: {
+      min_queries: count(form.cohortMinQueries, 'Minimum questions per cohort', 1) ?? 10,
+      metrics: cohortMetrics,
+      ...(form.cohortControl && { control: 'bonferroni' }),
+    },
     require_significance: form.requireSignificance,
     ...(criticalQueries.length > 0 && { critical_queries: criticalQueries }),
+    ...form.preserved,
   }
   return errors.length ? { errors } : { policy, errors }
 }

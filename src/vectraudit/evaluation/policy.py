@@ -41,6 +41,7 @@ _TOP_KEYS = {
     "exceptions",
 }
 EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical")
+COHORT_CONTROLS = ("none", "bonferroni")
 """Rule kinds a policy may open to audited exceptions. Safety rules are governed separately."""
 _LATENCY_KEYS = {
     "p50_max_increase_pct",
@@ -84,6 +85,10 @@ class CohortRule:
 
     min_queries: int = 10
     metrics: dict[str, MetricRule] = field(default_factory=dict)
+    control: str = "none"
+    """``none``: each cohort rule is judged on its own. ``bonferroni``: a cohort ``max_drop``
+    fails only when its interval, widened for the number of cohort rules judged, lies
+    entirely beyond the allowed drop, so many small cohorts do not fail by chance."""
 
 
 @dataclass(frozen=True)
@@ -136,6 +141,8 @@ class Policy:
         else:
             result["exceptions"]["allow"] = list(self.exceptions.allow)
         # Preserve hashes of existing saved policies and exported release contracts.
+        if self.cohorts.control == "none":
+            result["cohorts"].pop("control")
         if not self.critical_queries:
             result.pop("critical_queries")
         else:
@@ -196,10 +203,16 @@ def parse_policy(raw: Any) -> Policy:
     )
     cohorts_raw = raw.get("cohorts", {})
     _expect(isinstance(cohorts_raw, dict), "cohorts must be an object")
-    _no_unknown(cohorts_raw, {"min_queries", "metrics"}, "cohorts")
+    _no_unknown(cohorts_raw, {"min_queries", "metrics", "control"}, "cohorts")
+    control = cohorts_raw.get("control", "none")
+    _expect(
+        control in COHORT_CONTROLS,
+        f"cohorts.control must be one of {list(COHORT_CONTROLS)}",
+    )
     cohorts = CohortRule(
         min_queries=_count(cohorts_raw, "min_queries", 10, minimum=1),
         metrics=_metric_rules(cohorts_raw.get("metrics", {}), "cohorts.metrics"),
+        control=control,
     )
     primary = raw.get("primary_metric")
     _expect(

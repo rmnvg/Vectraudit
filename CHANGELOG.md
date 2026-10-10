@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Cohort false-alarm control. Each check reports how many cohorts and cohort rules it
+  judged and how many failed (`cohort_judging`, a "Cohorts:" report line, the hosted
+  decision summary), and warns from 5 rules judged without control. A new policy option
+  `cohorts.control: "bonferroni"` fails a cohort `max_drop` only when its
+  multiplicity-adjusted interval lies beyond the limit. Policies without it keep their
+  hashes. Lead summaries flag an uncontrolled cohort failure as possibly chance, while the
+  failure still stands.
 - `vectraudit workbench preview MANIFEST` shows the pipeline calls and spend a run,
   optimization or monitor would make, without opening any adapter. Cost per call is measured
   from an earlier run's adapter-reported `cost_usd`, declared with the new manifest field
@@ -206,6 +213,7 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Fixed
 
+- Editing a policy in the workbench no longer drops its `exceptions` block.
 - `vectraudit workbench run` works when the output folder sits below a symlinked system
   folder, such as macOS `/tmp` or `/var`. Links inside folders Vectraudit manages are still
   refused.

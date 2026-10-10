@@ -16,6 +16,7 @@ unless the policy allows otherwise.
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections.abc import Mapping, Sequence
 from enum import Enum
@@ -31,6 +32,8 @@ from vectraudit.evaluation.policy import DEFAULT_POLICY, MetricRule, Policy
 CHECK_FORMAT = "vectraudit.check"
 CHECK_FORMAT_VERSION = 1
 SMALL_SAMPLE = 30
+MANY_COHORT_RULES = 5
+"""From this many cohort rules judged without control, warn that some fail by chance."""
 EPS = 1e-9
 BOOTSTRAP_MAX_CELLS = 1_000_000
 MAX_CRITICAL_FAILURES = 10
@@ -93,6 +96,7 @@ class _Check:
             "metrics": {},
             "latency": None,
             "cohorts": {},
+            "cohort_judging": None,
             "queries": None,
             "findings": [],
             "config_diff": config_diff(base, cand),
@@ -540,8 +544,16 @@ class _Check:
             )
 
     def _cohorts(self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]) -> None:
+        """Judge each tag as a cohort, then report how many cohort rules were judged.
+
+        With ``cohorts.control = "bonferroni"`` a cohort ``max_drop`` fails only when its 95%
+        interval, widened to 1 - 0.05/m for the m cohort ``max_drop`` rules judged, lies
+        entirely beyond the allowed drop: a normal interval on the family-mean change with the
+        family standard error. ``min`` rules are absolute floors and are not adjusted.
+        """
         tags = sorted({t for b, _ in pairs for t in b.get("tags", [])})
         rule = self.policy.cohorts
+        prepared = []
         for tag in tags:
             members = [(b, c) for b, c in pairs if tag in b.get("tags", [])]
             metrics = {}
@@ -567,9 +579,24 @@ class _Check:
                         )
                     else:
                         judged_metrics.append(name)
-                        self._apply_rule(
-                            name, metric_rule, metrics[name], f"cohort {tag!r}: ", f"cohort:{tag}"
-                        )
+            prepared.append((tag, members, metrics, n_families, enough_queries, judged_metrics))
+        drop_rules = sum(
+            1
+            for *_, judged in prepared
+            for name in judged
+            if rule.metrics[name].max_drop is not None
+        )
+        adjust = rule.control == "bonferroni" and drop_rules > 1
+        failures_before = len(self.reasons)
+        for tag, members, metrics, n_families, enough_queries, judged_metrics in prepared:
+            for name in judged_metrics:
+                metric_rule = rule.metrics[name]
+                if adjust and metric_rule.max_drop is not None:
+                    self._apply_adjusted(tag, name, metric_rule, members, metrics[name], drop_rules)
+                    metric_rule = MetricRule(min=metric_rule.min, required=metric_rule.required)
+                self._apply_rule(
+                    name, metric_rule, metrics[name], f"cohort {tag!r}: ", f"cohort:{tag}"
+                )
             self.out["cohorts"][tag] = {
                 "n": len(members),
                 "n_families": n_families,
@@ -577,6 +604,63 @@ class _Check:
                 "judged_metrics": judged_metrics,
                 "metrics": metrics,
             }
+        judged_rules = sum(len(judged) for *_, judged in prepared)
+        failed = sum(
+            1
+            for r in self.reasons[failures_before:]
+            if r["verdict"] == Verdict.FAIL.value and str(r.get("rule", "")).startswith("cohort:")
+        )
+        self.out["cohort_judging"] = {
+            "cohorts": len(tags),
+            "judged_cohorts": sum(1 for *_, judged in prepared if judged),
+            "judged_rules": judged_rules,
+            "failed_rules": failed,
+            "control": rule.control,
+        }
+        if rule.control == "none" and judged_rules >= MANY_COHORT_RULES:
+            self.warnings.append(
+                f"{judged_rules} cohort rules were judged one by one: even an unchanged system "
+                "fails some by chance. Measure that with `vectraudit calibrate`, or set "
+                'cohorts.control to "bonferroni" in the policy.'
+            )
+
+    def _apply_adjusted(
+        self,
+        tag: str,
+        name: str,
+        rule: MetricRule,
+        members: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+        stats: dict[str, Any],
+        m: int,
+    ) -> None:
+        deltas = self._family_deltas(members, name)
+        confidence = 1 - 0.05 / m
+        z = statistics.NormalDist().inv_cdf(1 - 0.05 / (2 * m))
+        se = statistics.stdev(deltas) / math.sqrt(len(deltas)) if len(deltas) > 1 else 0.0
+        low, high = stats["delta"] - z * se, stats["delta"] + z * se
+        stats["ci_adjusted"] = {"low": low, "high": high, "confidence": confidence, "rules": m}
+        assert rule.max_drop is not None
+        if -high > rule.max_drop + EPS:
+            self.flag(
+                Verdict.FAIL,
+                f"cohort {tag!r}: {name} dropped by {-stats['delta']:.4f} "
+                f"({stats['baseline']:.4f} → {stats['candidate']:.4f}); even the "
+                f"{confidence:.2%} interval adjusted for {m} cohort rules "
+                f"[{low:+.4f}, {high:+.4f}] exceeds the allowed {rule.max_drop:.4f}.",
+                f"cohort:{tag}:{name}.max_drop",
+            )
+
+    def _family_deltas(
+        self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]], name: str
+    ) -> list[float]:
+        base_vals, cand_vals = [], []
+        for b, c in pairs:
+            bv, cv = _value(b, name), _value(c, name)
+            if bv is not None and cv is not None:
+                base_vals.append((family_id(b), bv))
+                cand_vals.append((family_id(b), cv))
+        pairs_of_means = zip(family_means(base_vals), family_means(cand_vals), strict=True)
+        return [c - b for b, c in pairs_of_means]
 
     # --- latency ---------------------------------------------------------------------
 
