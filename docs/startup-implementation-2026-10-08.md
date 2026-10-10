@@ -954,6 +954,34 @@ Results:
   TypeScript, Oxlint, 94 frontend tests, the production build, and the release and guided
   journeys passed.
 
+## Step 26: pilot offer and trust package drafts (Phase 0, 1.9)
+
+The strategy's next concrete work after distribution is a short pilot offer with exact
+scope and prerequisites, and 1.9 asks for a trust package a buyer's security reviewer can
+use without a founder call. Both are drafted from the product as built:
+- **[Pilot offer](pilot-offer.md):** for a prospective design partner's engineering lead.
+  It covers what the pilot delivers, a supported-scope table, what is out of scope,
+  prerequisites, session structure, success criteria agreed up front, and data handling.
+- **[Trust package](trust-package.md):** for a security reviewer. It covers:
+  - deployment modes and what leaves the environment in each;
+  - a data-flow diagram;
+  - what uploads, shared records and notifications contain;
+  - a retention and deletion table taken from the code;
+  - access control, secrets and security engineering;
+  - questionnaire answers;
+  - a draft compatibility and deprecation policy;
+  - what must still be verified in the target deployment.
+
+Owner decisions are marked in brackets rather than invented: price and terms, support
+hours and response times, hosting region and subprocessors, encryption at rest, backup
+retention, notification timelines, deprecation window, advisory channel, and certification.
+Neither document makes a compliance claim. While writing them, two draft statements were
+corrected against the code: run uploads are recorded with their uploader but are not audit
+events, and webhook payloads include the candidate's label.
+
+Not included: legal review, a DPA template (needs counsel), screenshots or a demo video,
+and pricing.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -971,7 +999,7 @@ as missing merely because their customer validation is pending.
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
-| **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. | Provision and verify channel/credentials, full reusable CI wrapper, owner-approved support and trust materials. |
+| **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. Step 26 drafts the trust package and support/compatibility policy. | Provision and verify channel/credentials, full reusable CI wrapper, owner decisions in the drafts, a DPA template with counsel. |
 | **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. Step 25: calibration in the workbench, with configuration differences called out. | Exceptions shown in the workbench; customer-runner calibration evidence. |
 | **Tier 2** | Chunking experiments, permission scenarios and CLI optimization foundations exist. | Customer-selected lineage/freshness or permission lifecycle proof; interactive experiment/migration workflow where demand supports it. |
 | **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Defer optional breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
