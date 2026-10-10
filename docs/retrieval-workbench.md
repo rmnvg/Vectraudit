@@ -336,6 +336,37 @@ request that proposes different values gets a warning and they apply only after 
 `vectraudit release validate` warns when a Python adapter would run concurrently.
 Optimization still runs serially.
 
+### Preview calls and spend
+
+Before a large run, see what it will call and cost. The preview reads the manifest and
+dataset only: no adapter is opened and no code is imported.
+
+```sh
+vectraudit workbench preview manifest.json [--mode run|optimize|monitor] \
+  [--measured earlier.run.json ...] [--baseline NAME] [--json plan.json]
+```
+
+- **Calls:** questions x repeats for each candidate. `optimize` gives a range: exploratory
+  calls for every candidate, plus held-out calls for the chosen candidate and, with a
+  policy, the baseline. Retries are an allowance on top, up to each run's retry budget.
+- **Cost per call** comes from one of three sources:
+  - **measured:** the adapter reported `cost_usd` on every question of an earlier run of
+    that candidate (pass the run with `--measured`; the run's label is the candidate name).
+  - **declared:** `cost_per_call_usd` on the candidate in the manifest. A declared price
+    does not change the candidate's identity.
+  - **unknown:** listed by name, never counted as $0. The built-in hybrid baseline runs
+    locally and costs $0.
+- **Per production query:** one production query is one call, so the cost per call is also
+  the cost of serving one query.
+- **What it covers:** pipeline calls only. Model, database and hosting costs on your side are
+  included only if your adapter reports them in `cost_usd`.
+
+`workbench run`, `optimize` and `monitor` accept `--max-calls N` and `--max-spend USD` (with
+`--measured`). Each refuses to start, before opening any adapter, when the planned calls or
+the maximum spend exceed the limit, or when `--max-spend` is set and a cost is unknown
+(exit 2). Retries are bounded by the retry budget, not by these limits. A resumed run was
+approved when it started and is not checked again.
+
 ### LangChain and LlamaIndex retrievers
 
 Evaluate the retriever your application already builds, without rewriting it. Put a small
