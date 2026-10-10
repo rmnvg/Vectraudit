@@ -32,6 +32,8 @@ def test_scaffold_files_are_valid(backend, tmp_path) -> None:
         ".github/workflows/retrieval-check.yml",
         ".github/actions/install-vectraudit/action.yml",
         ".github/actions/install-vectraudit/install.py",
+        ".github/actions/retrieval-check/action.yml",
+        ".github/actions/retrieval-check/check.py",
     }
     assert parse_connection(json.loads(files["retrieval/connection.json"])).backend == backend
     parse_policy(json.loads(files["retrieval/policy.json"]))
@@ -46,12 +48,19 @@ def test_scaffold_files_are_valid(backend, tmp_path) -> None:
     yaml = pytest.importorskip("yaml")
     parsed = yaml.safe_load(workflow)
     steps = parsed["jobs"]["retrieval-check"]["steps"]
-    assert any("vectraudit check" in s.get("run", "") for s in steps)
+    check = next(s for s in steps if s.get("uses") == "./.github/actions/retrieval-check")
+    assert check["with"]["dataset"] == "retrieval/dataset.jsonl"
+    assert not any("run" in s for s in steps)  # every command lives in the reusable action
 
 
 def test_workflow_secrets_per_backend() -> None:
-    assert "QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}" in render_workflow("qdrant")
-    assert "RETRIEVAL_PG_DSN: ${{ secrets.RETRIEVAL_PG_DSN }}" in render_workflow("pgvector")
+    yaml = pytest.importorskip("yaml")
+    for backend, secret in (("qdrant", "QDRANT_API_KEY"), ("pgvector", "RETRIEVAL_PG_DSN")):
+        steps = yaml.safe_load(render_workflow(backend))["jobs"]["retrieval-check"]["steps"]
+        assert not any("env" in s for s in steps)  # only the record commands see them
+        inputs = steps[-1]["with"]
+        for side in ("baseline", "candidate"):
+            assert inputs[f"{side}-env"] == f"{secret}=${{{{ secrets.{secret} }}}}\n"
     faiss = render_workflow("faiss")
     assert 'extras: "faiss-cpu"' in faiss
     assert "secrets.QDRANT" not in faiss
@@ -65,15 +74,15 @@ def test_example_workflow_matches_template() -> None:
 
 def test_init_does_not_overwrite(tmp_path) -> None:
     written, skipped = init_project(tmp_path, "qdrant")
-    assert len(written) == 7
+    assert len(written) == 9
     assert skipped == []
     (tmp_path / "retrieval" / "policy.json").write_text("{}")
     written, skipped = init_project(tmp_path, "qdrant")
     assert written == []
-    assert len(skipped) == 7
+    assert len(skipped) == 9
     assert (tmp_path / "retrieval" / "policy.json").read_text() == "{}"
     written, _ = init_project(tmp_path, "qdrant", force=True)
-    assert len(written) == 7
+    assert len(written) == 9
     assert (tmp_path / "retrieval" / "policy.json").read_text() != "{}"
 
 
@@ -84,6 +93,16 @@ def test_init_cli(tmp_path) -> None:
     assert (tmp_path / ".github" / "workflows" / "retrieval-check.yml").exists()
     result = runner.invoke(app, ["init", "--dir", str(tmp_path), "--backend", "pgvector"])
     assert "kept" in result.output
+    # --ci-only refreshes the workflow and actions without touching retrieval/.
+    (tmp_path / "retrieval" / "policy.json").write_text("{}")
+    (tmp_path / ".github" / "actions" / "retrieval-check" / "check.py").write_text("old")
+    result = runner.invoke(
+        app, ["init", "--backend", "pgvector", "--dir", str(tmp_path), "--ci-only", "--force"]
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.count("created") == 5
+    assert (tmp_path / "retrieval" / "policy.json").read_text() == "{}"
+    assert (tmp_path / ".github/actions/retrieval-check/check.py").read_text() != "old"
     result = runner.invoke(app, ["init", "--backend", "milvus", "--dir", str(tmp_path)])
     assert result.exit_code == 1
     assert "Unknown backend" in result.output

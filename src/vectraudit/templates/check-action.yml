@@ -1,0 +1,114 @@
+name: Vectraudit retrieval check
+description: >-
+  Install the pinned Vectraudit release, record the target branch and this pull request on
+  the same runner, check them against the policy and keep the report.
+inputs:
+  repository:
+    description: Private distribution repository (owner/name); never the source repository.
+    required: true
+  version:
+    description: Exact package version, without v.
+    required: true
+  sha256:
+    description: Reviewed wheel SHA-256, committed alongside the version.
+    required: true
+  token:
+    description: Customer-specific read-only token scoped to the distribution repository.
+    required: true
+  extras:
+    description: Optional backend extras, separated by commas.
+    default: ""
+  mode:
+    description: >-
+      connection (a vectraudit init project: connection, dataset and policy) or release
+      (a release configuration exported by the workbench).
+    default: connection
+  dataset:
+    description: Labelled queries, for connection mode.
+    default: retrieval/dataset.jsonl
+  connection:
+    description: Backend connection file, for connection mode. The baseline reads the target branch's copy.
+    default: retrieval/connection.json
+  policy:
+    description: Release policy, for connection mode.
+    default: retrieval/policy.json
+  release:
+    description: Release configuration (release.json), for release mode.
+    default: ""
+  repeats:
+    description: Times each query runs per side (connection mode; release mode uses the configuration).
+    default: "3"
+  baseline-env:
+    description: >-
+      Secrets for recording the baseline only, one NAME=value per line. Never visible to the
+      install or check commands.
+    default: ""
+  candidate-env:
+    description: Secrets for recording the candidate only, one NAME=value per line.
+    default: ""
+  base-ref:
+    description: Branch to compare with; defaults to the pull request's target branch.
+    default: ""
+  candidate-label:
+    description: Label for the candidate run; defaults to pr-NUMBER.
+    default: ""
+  publish:
+    description: Publish the verdict as a check and one pull request comment (best effort).
+    default: "true"
+  github-token:
+    description: Token used only by the check command to publish the verdict.
+    default: ${{ github.token }}
+  out:
+    description: Directory for the runs, report.html and result.json.
+    default: runs
+  artifact-name:
+    description: Name of the uploaded report artifact; empty skips the upload.
+    default: retrieval-check
+outputs:
+  verdict:
+    description: pass, fail, error or not_comparable (empty when nothing was compared).
+    value: ${{ steps.check.outputs.verdict }}
+  exit-code:
+    description: 0 pass, 1 error, 3 fail, 4 not comparable.
+    value: ${{ steps.check.outputs.exit-code }}
+runs:
+  using: composite
+  steps:
+    - name: Install vectraudit
+      uses: ./.github/actions/install-vectraudit
+      with:
+        repository: ${{ inputs.repository }}
+        version: ${{ inputs.version }}
+        sha256: ${{ inputs.sha256 }}
+        token: ${{ inputs.token }}
+        extras: ${{ inputs.extras }}
+
+    - name: Record and check
+      id: check
+      shell: bash
+      # Inputs travel as environment variables and are never interpolated into this script.
+      env:
+        VA_MODE: ${{ inputs.mode }}
+        VA_DATASET: ${{ inputs.dataset }}
+        VA_CONNECTION: ${{ inputs.connection }}
+        VA_POLICY: ${{ inputs.policy }}
+        VA_RELEASE: ${{ inputs.release }}
+        VA_REPEATS: ${{ inputs.repeats }}
+        VA_BASELINE_ENV: ${{ inputs.baseline-env }}
+        VA_CANDIDATE_ENV: ${{ inputs.candidate-env }}
+        VA_BASE_REF: ${{ inputs.base-ref || github.base_ref }}
+        VA_CANDIDATE_LABEL: ${{ inputs.candidate-label }}
+        VA_PR_NUMBER: ${{ github.event.pull_request.number }}
+        VA_PUBLISH: ${{ inputs.publish }}
+        VA_GITHUB_TOKEN: ${{ inputs.github-token }}
+        VA_OUT: ${{ inputs.out }}
+        VA_ACTION_PATH: ${{ github.action_path }}
+      run: python "$VA_ACTION_PATH/check.py"
+
+    - name: Keep the report
+      if: always() && inputs.artifact-name != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.out }}/
+        if-no-files-found: ignore

@@ -25,7 +25,9 @@ vectraudit check baseline.json candidate.json --policy retrieval/policy.json --h
 ```
 
 For GitHub Actions, start from
-[examples/github/retrieval-check.yml](../examples/github/retrieval-check.yml). `check`
+[examples/github/retrieval-check.yml](../examples/github/retrieval-check.yml): one
+`retrieval-check` step (written by `vectraudit init`) runs the commands above on the same
+runner, with the target branch's connection as the baseline. `check`
 appends a Markdown summary to the job summary automatically, and with the job's
 `GITHUB_TOKEN`:
 

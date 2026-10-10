@@ -11,8 +11,8 @@ vectraudit init --backend qdrant
 ```
 
 This creates `retrieval/connection.json`, `retrieval/policy.json`, `retrieval/queries.csv`,
-`retrieval/README.md` and `.github/workflows/retrieval-check.yml`. Existing files are
-kept unless you pass `--force`.
+`retrieval/README.md`, `.github/workflows/retrieval-check.yml` and the two actions it uses
+under `.github/actions/`. Existing files are kept unless you pass `--force`.
 
 ## 2. Connect (3 minutes)
 
@@ -80,7 +80,9 @@ got worse with the documents they lost.
 
 ## 5. Put it in CI (2 minutes)
 
-Commit `retrieval/`, `.github/actions/install-vectraudit/` and the workflow. Set repository
+Commit `retrieval/`, `.github/actions/` and the workflow. The workflow is a single
+`retrieval-check` step that installs the pinned release, records the target branch and the
+pull request on the same runner, checks them and keeps the report. Set repository
 variable `VECTRAUDIT_DISTRIBUTION_REPOSITORY` to the private distribution repository supplied
 during onboarding. Commit the reviewed wheel version and SHA-256 in the workflow. Add
 repository secrets: `VECTRAUDIT_DOWNLOAD_TOKEN` (customer-specific read-only distribution
@@ -89,6 +91,10 @@ Every pull request
 that touches retrieval now gets a check run and a summary comment. Fork pull requests get no
 secrets by design and cannot download the private wheel; they need a trusted CI path
 before the release check can run.
+
+To upgrade, install the newer release locally and run
+`vectraudit init --backend qdrant --ci-only --force`: it rewrites only the files under
+`.github/`. Then update the version and SHA-256 pins together.
 
 ## Tune the policy
 

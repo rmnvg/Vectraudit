@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
+from tests.test_ci_action import git_repo, run_action
 from tests.test_guided_workbench import save
 from vectraudit.cli import app
 from vectraudit.evaluation.policy import parse_policy, policy_sha256
@@ -207,6 +208,8 @@ def test_exported_release_check_runs_from_a_clean_checkout(client, tmp_path, rul
         ".github/workflows/retrieval-release-check.yml",
         ".github/actions/install-vectraudit/action.yml",
         ".github/actions/install-vectraudit/install.py",
+        ".github/actions/retrieval-check/action.yml",
+        ".github/actions/retrieval-check/check.py",
     }
     release = json.loads(files["retrieval/release/release.json"])
     assert release["policy"]["sha256"] == policy["sha256"]
@@ -215,9 +218,9 @@ def test_exported_release_check_runs_from_a_clean_checkout(client, tmp_path, rul
     assert release["evidence"]["candidate_run"] == candidate["run_id"]
     assert (tmp_path / "workspace" / release["evidence"]["check_file"]).exists()
     workflow = files[".github/workflows/retrieval-release-check.yml"]
-    assert "release check" in workflow
-    assert "--approved" in workflow
-    assert "secrets." in workflow
+    assert "uses: ./.github/actions/retrieval-check" in workflow
+    assert "mode: release" in workflow
+    assert "--proposed" in files[".github/actions/retrieval-check/check.py"]
 
     # The zip download and the CLI export carry the same files.
     archive = client.get(f"/api/guided/releases/{created['id']}/export.zip")
@@ -282,6 +285,15 @@ def test_exported_release_check_runs_from_a_clean_checkout(client, tmp_path, rul
     # CI judged the same rules the workbench exported, and the same verdict on the same runs.
     same_runs = check_release(path, baseline, candidate)
     assert same_runs["verdict"] == "pass"
+
+    # The exported workflow's single step, run on a git checkout of the exported files.
+    git_repo(repo)
+    code, outputs, summary = run_action(
+        repo, tmp_path, mode="release", release="retrieval/release/release.json"
+    )
+    assert (code, outputs["verdict"]) == (0, "pass"), summary
+    assert (repo / "runs" / "candidate.run.json").is_file()
+    assert json.loads((repo / "runs" / "result.json").read_text())["verdict"] == "pass"
 
     # A reviewed, stricter policy becomes a new configuration version that CI then applies.
     (repo / "retrieval/release/policy.json").write_text(json.dumps(STRICT))
@@ -447,10 +459,14 @@ def test_missing_and_mismatched_artifacts_fail_clearly(tmp_path):
         open_release_pipeline(http, tmp_path, env={})
     with pytest.raises(ReleaseError, match="API_TOKEN"):
         open_release_pipeline(http, tmp_path, env={"RETRIEVAL_PIPELINE_URL": "https://x.test"})
-    workflow = render_release_workflow(http)
-    assert "RETRIEVAL_PIPELINE_URL: ${{ secrets.RETRIEVAL_BASELINE_URL }}" in workflow
-    assert "RETRIEVAL_PIPELINE_URL: ${{ secrets.RETRIEVAL_CANDIDATE_URL }}" in workflow
-    assert "API_TOKEN: ${{ secrets.API_TOKEN }}" in workflow
+    yaml = pytest.importorskip("yaml")
+    job = yaml.safe_load(render_release_workflow(http))["jobs"]["release-check"]
+    inputs = job["steps"][-1]["with"]
+    for side, url in (("baseline", "BASELINE"), ("candidate", "CANDIDATE")):
+        assert inputs[f"{side}-env"] == (
+            f"RETRIEVAL_PIPELINE_URL=${{{{ secrets.RETRIEVAL_{url}_URL }}}}\n"
+            "API_TOKEN=${{ secrets.API_TOKEN }}\n"
+        )
     with pytest.raises(ValueError, match="module:function"):
         ReleasePipeline(name="X", kind="python", target="no_function")
 

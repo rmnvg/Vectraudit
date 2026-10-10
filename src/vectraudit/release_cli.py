@@ -182,13 +182,23 @@ def init(
         Path, typer.Option("--dir", help="Repository root to scaffold into.")
     ] = Path(),
     force: Annotated[bool, typer.Option(help="Overwrite files that already exist.")] = False,
+    ci_only: Annotated[
+        bool,
+        typer.Option(
+            "--ci-only",
+            help=(
+                "Write only the GitHub workflow and actions (with --force, upgrades them); "
+                "retrieval/ is left alone."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Scaffold retrieval/ (connection, policy, queries) and a GitHub workflow."""
     from vectraudit.scaffold import BACKENDS, init_project
 
     if backend not in BACKENDS:
         raise _fail(f"Unknown backend {backend!r}.", f"Use one of: {', '.join(BACKENDS)}.")
-    written, skipped = init_project(directory, backend, force=force)
+    written, skipped = init_project(directory, backend, force=force, ci_only=ci_only)
     for path in written:
         console.print(f"  [green]created[/] {escape(str(path))}")
     for path in skipped:

@@ -40,54 +40,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install vectraudit
-        uses: ./.github/actions/install-vectraudit
+      - name: Retrieval check
+        # Installs the pinned release, validates the dataset, records the target branch's
+        # connection (baseline) and this pull request's (candidate), checks them and keeps the
+        # report. Exit codes: 0 pass, 1 error, 3 fail, 4 not comparable. Publishing is best
+        # effort: fork pull requests get a read-only token and only the job summary.
+        uses: ./.github/actions/retrieval-check
         with:
           repository: ${{ vars.VECTRAUDIT_DISTRIBUTION_REPOSITORY }}
           version: ${{ env.VECTRAUDIT_VERSION }}
           sha256: ${{ env.VECTRAUDIT_SHA256 }}
           token: ${{ secrets.VECTRAUDIT_DOWNLOAD_TOKEN }}
           extras: "qdrant"
-
-      - name: Validate the dataset
-        run: vectraudit dataset validate retrieval/dataset.jsonl
-
-      - name: Record the baseline (target branch configuration)
-        env:
-          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-        # A failed run still writes its file; `check` reports it as an error.
-        run: |
-          git worktree add "$RUNNER_TEMP/base" "origin/$GITHUB_BASE_REF"
-          vectraudit record \
-            --connection "$RUNNER_TEMP/base/retrieval/connection.json" \
-            --dataset retrieval/dataset.jsonl \
-            --out runs/baseline.json --label "$GITHUB_BASE_REF" --repeats 3 || true
-
-      - name: Record the candidate (this pull request)
-        env:
-          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-        run: |
-          vectraudit record \
-            --connection retrieval/connection.json \
-            --dataset retrieval/dataset.jsonl \
-            --out runs/candidate.json \
-            --label "pr-${{ github.event.pull_request.number }}" --repeats 3 || true
-
-      - name: Check
-        # Exit codes: 0 pass, 1 error, 3 fail, 4 not comparable. Writes the job summary.
-        # Publishing is best effort: fork pull requests get a read-only token and only
-        # the job summary, never a broken check.
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          vectraudit check runs/baseline.json runs/candidate.json \
-            --policy retrieval/policy.json \
-            --html runs/report.html --json runs/result.json \
-            --github-check --github-comment
-
-      - name: Keep the report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: retrieval-check
-          path: runs/
+          dataset: retrieval/dataset.jsonl
+          connection: retrieval/connection.json
+          policy: retrieval/policy.json
+          repeats: 3
+          # Each side's secrets reach only its record command.
+          baseline-env: |
+            QDRANT_API_KEY=${{ secrets.QDRANT_API_KEY }}
+          candidate-env: |
+            QDRANT_API_KEY=${{ secrets.QDRANT_API_KEY }}

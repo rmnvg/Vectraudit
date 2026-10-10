@@ -84,6 +84,9 @@ expire.
   events.
 - **Secrets:** the client refuses to send tokens over plain HTTP to non-local hosts, and
   connection files accept environment-variable references only, never literal secrets.
+  In the generated GitHub step, each side's backend credentials reach only that side's
+  record command and the GitHub token only the check command. The installer sees neither,
+  and the download token reaches only the installer, which keeps it out of pip's environment.
 
 ## Security engineering
 

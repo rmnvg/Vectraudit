@@ -27,7 +27,6 @@ jobs:
       VECTRAUDIT_VERSION: "__VERSION__"
       # Copy the wheel hash from the reviewed release handoff, then commit this pin.
       VECTRAUDIT_SHA256: "REPLACE_WITH_64_HEX_SHA256"
-      RELEASE: __RELEASE__
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,59 +36,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install vectraudit
-        uses: ./.github/actions/install-vectraudit
+__INSTALL_PIPELINE__      - name: Retrieval release check
+        # Installs the pinned release, runs the target branch's pipeline (baseline) and this
+        # pull request's (candidate), checks them and keeps the report. Exit codes: 0 pass,
+        # 1 error, 3 fail, 4 not comparable. Publishing is best effort: fork pull requests get
+        # a read-only token and only the job summary.
+        uses: ./.github/actions/retrieval-check
         with:
           repository: ${{ vars.VECTRAUDIT_DISTRIBUTION_REPOSITORY }}
           version: ${{ env.VECTRAUDIT_VERSION }}
           sha256: ${{ env.VECTRAUDIT_SHA256 }}
           token: ${{ secrets.VECTRAUDIT_DOWNLOAD_TOKEN }}
-
-__INSTALL_PIPELINE__      - name: Find the approved configuration (target branch)
-        id: approved
-        run: |
-          git worktree add "$RUNNER_TEMP/base" "origin/$GITHUB_BASE_REF"
-          if [ -f "$RUNNER_TEMP/base/$RELEASE" ]; then
-            echo "release=$RUNNER_TEMP/base/$RELEASE" >> "$GITHUB_OUTPUT"
-          else
-            echo "release=" >> "$GITHUB_OUTPUT"
-            echo "::notice::$GITHUB_BASE_REF has no approved release configuration yet. This pull request introduces it; the comparison starts after merge." | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Validate this pull request's configuration
-        run: vectraudit release validate "$RELEASE"
-
-      - name: Record the baseline (target branch pipeline)
-        if: steps.approved.outputs.release != ''
-__BASELINE_ENV__        # A failed run still writes its file; `release check` reports it as an error.
-        run: |
-          vectraudit release run "${{ steps.approved.outputs.release }}" \
-            --out runs/baseline.run.json --label "$GITHUB_BASE_REF" || true
-
-      - name: Record the candidate (this pull request)
-__CANDIDATE_ENV__        # With an approved configuration, `release check` reports a failed run as an error;
-        # without one, a failed run fails this step.
-        run: |
-          APPROVED="${{ steps.approved.outputs.release }}"
-          vectraudit release run "$RELEASE" ${APPROVED:+--approved "$APPROVED"} \
-            --out runs/candidate.run.json \
-            --label "pr-${{ github.event.pull_request.number }}" || [ -n "$APPROVED" ]
-
-      - name: Check
-        if: steps.approved.outputs.release != ''
-        # Exit codes: 0 pass, 1 error, 3 fail, 4 not comparable. Writes the job summary.
-        # Publishing is best effort: fork pull requests get a read-only token.
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          vectraudit release check "${{ steps.approved.outputs.release }}" \
-            runs/baseline.run.json runs/candidate.run.json --proposed "$RELEASE" \
-            --html runs/report.html --json runs/result.json \
-            --github-check --github-comment
-
-      - name: Keep the report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: retrieval-release-check
-          path: runs/
+          mode: release
+          release: __RELEASE__
+          artifact-name: retrieval-release-check
+__SIDE_ENV__
