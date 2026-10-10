@@ -4,8 +4,10 @@ Events go through an outbox (``webhook_deliveries``). A check enqueues at most o
 per webhook and event key: ``decision:<check>`` for a release decision, and
 ``monitor.alert_opened:<alert>`` / ``monitor.alert_resolved:<alert>`` for a scheduled
 monitor alert (the alert ID is stable for the whole failing streak, see
-:func:`vectraudit.cloud.lead.monitor_status`). So a repeated check or a long outage notifies
-once, and once more when it is resolved.
+:func:`vectraudit.cloud.lead.monitor_status`), and ``monitor.stale_opened:<alert>`` /
+``monitor.stale_resolved:<alert>`` when an expected monitor run does not arrive (see
+:mod:`vectraudit.cloud.monitoring`). So a repeated check, a long outage or a repeated
+sweep notifies once, and once more when it is resolved.
 
 :func:`deliver_due` sends due events, outside any database transaction, and retries with
 backoff. Transport is at-least-once, like every webhook system: a receiver dedupes on the
@@ -215,17 +217,68 @@ def enqueue(
     return True
 
 
+def notify(
+    session: Session, project: Project, category: str, key: str, payload: Mapping[str, Any]
+) -> int:
+    """Enqueue one event for every webhook of ``project`` subscribed to ``category``."""
+    hooks = session.scalars(select(Webhook).where(Webhook.project_id == project.id))
+    return sum(
+        enqueue(session, hook, payload["event"], key, payload)
+        for hook in hooks
+        if category in hook.events
+    )
+
+
 def on_check(session: Session, ws: Workspace, project: Project, check: Check) -> int:
     """Enqueue what a newly created check means for this project's webhooks."""
-    hooks = list(session.scalars(select(Webhook).where(Webhook.project_id == project.id)))
-    if not hooks:
+    if session.scalars(select(Webhook.id).where(Webhook.project_id == project.id)).first() is None:
         return 0
-    added = 0
-    for category, key, payload in check_events(session, ws, project, check):
-        for hook in hooks:
-            if category in hook.events:
-                added += enqueue(session, hook, payload["event"], key, payload)
-    return added
+    return sum(
+        notify(session, project, category, key, payload)
+        for category, key, payload in check_events(session, ws, project, check)
+    )
+
+
+def stale_event(
+    kind: str, ws: Workspace, project: Project, alert: Mapping[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    """``(event_key, payload)`` for ``monitor.stale_opened`` or ``monitor.stale_resolved``.
+
+    Keyed by the staleness alert's ID (the last run before the silence), so repeated sweeps
+    announce it once. Carries times and IDs only, like every other event.
+    """
+    key = f"{kind}:{alert['alert_id']}"
+    payload = _event(kind, key, ws, project, None)
+    every = lead.interval_label(alert["every_minutes"])
+    if kind == "monitor.stale_opened":
+        since = alert.get("last_run_at")
+        payload["headline"] = (
+            f"No scheduled monitor run for {ws.slug}/{project.slug} since "
+            + (f"{since[:16].replace('T', ' ')} UTC" if since else "the schedule was declared")
+            + f"; one is expected every {every}."
+        )
+        payload["action"] = (
+            "Check that the scheduled monitor job is still running and can reach the "
+            "service. Until it reports, nothing is watching this project."
+        )
+    elif alert.get("resolution") == "schedule_removed":
+        payload["headline"] = (
+            f"Monitor schedule for {ws.slug}/{project.slug} removed; the staleness alert is closed."
+        )
+    elif alert.get("resolution") == "schedule_changed":
+        payload["headline"] = (
+            f"Monitor schedule for {ws.slug}/{project.slug} changed to every {every}; the "
+            "monitor is no longer overdue."
+        )
+    else:
+        payload["headline"] = f"Scheduled monitor for {ws.slug}/{project.slug} reported again."
+        if alert.get("resolved_by"):
+            payload["check_id"] = alert["resolved_by"]
+    payload["path"] = f"/app/{quote(ws.slug)}/{quote(project.slug)}"
+    payload["alert"] = {k: v for k, v in alert.items() if k != "resolution"}
+    if alert.get("resolution"):
+        payload["resolution"] = alert["resolution"]
+    return key, payload
 
 
 def ping(session: Session, ws: Workspace, project: Project, hook: Webhook) -> None:
@@ -255,6 +308,8 @@ def render(
         prefix = {
             "monitor.alert_opened": "Monitor alert: ",
             "monitor.alert_resolved": "Monitor alert resolved: ",
+            "monitor.stale_opened": "Monitor overdue: ",
+            "monitor.stale_resolved": "Monitor overdue resolved: ",
         }.get(payload["event"], "")
         lines = [f"*{_slack_escape(prefix + payload.get('headline', ''))}*"]
         if payload.get("action"):

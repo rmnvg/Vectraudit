@@ -995,6 +995,73 @@ def cloud_summary(
         typer.echo()
 
 
+def _minutes(text: str, option: str) -> int:
+    """``90``, ``90m``, ``6h`` or ``1d`` as whole minutes."""
+    import re
+
+    match = re.fullmatch(r"\s*(\d+)\s*([mhd]?)\s*", text.lower())
+    if not match:
+        raise _fail(f"{option} must look like 30m, 6h or 1d.", None)
+    return int(match[1]) * {"": 1, "m": 1, "h": 60, "d": 1440}[match[2]]
+
+
+@cloud_app.command("monitor")
+def cloud_monitor(
+    every: Annotated[
+        str | None,
+        typer.Option(help="Expect a scheduled monitor run this often (30m, 6h, 1d)."),
+    ] = None,
+    grace: Annotated[
+        str, typer.Option(help="Extra time before a late run counts as missing.")
+    ] = "1h",
+    clear: Annotated[
+        bool, typer.Option("--clear", help="Stop expecting runs; closes an open alert.")
+    ] = False,
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """Scheduled-monitor status; with --every, declare how often a run is expected.
+
+    When no run arrives in time, subscribed webhooks get one "monitor overdue" event and
+    the next run resolves it. Needs the engineer or owner role to change.
+    """
+    from vectraudit.integrations.cloud import CloudClientError
+
+    client = _cloud_client(project)
+    try:
+        if clear:
+            client.clear_monitor_schedule()
+            console.print("Monitor schedule removed.")
+            return
+        if every is not None:
+            status = client.set_monitor_schedule(
+                _minutes(every, "--every"), _minutes(grace, "--grace")
+            )
+        else:
+            status = client.monitor_status()
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    last = status.get("last")
+    console.print(
+        f"Monitor: {status['state']}"
+        + (
+            f" · last run {last['at'][:16].replace('T', ' ')} UTC ({last['verdict']})"
+            if last
+            else ""
+        )
+    )
+    schedule = status.get("schedule")
+    if schedule is None:
+        console.print("No schedule declared; a monitor that stops running is not noticed.")
+        return
+    due = schedule["due_at"][:16].replace("T", " ")
+    console.print(
+        f"Expected every {schedule['every_minutes']} min (+{schedule['grace_minutes']} min "
+        f"grace) · next due by {due} UTC"
+    )
+    if schedule["overdue"]:
+        console.print(f"[red]Overdue[/]: no monitor run since it was due at {due} UTC.")
+
+
 @cloud_app.command("exceptions")
 def cloud_exceptions(
     all_: Annotated[bool, typer.Option("--all", help="Include revoked and expired ones.")] = False,

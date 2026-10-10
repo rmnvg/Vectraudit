@@ -14,7 +14,7 @@ misleading line across it.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import pairwise
 from typing import Any
 
@@ -260,6 +260,35 @@ def monitor_status(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "resolved_by": resolver.get("check_id"),
         }
     return {"state": "healthy", "last": last, "alert": alert}
+
+
+def monitor_overdue(
+    *,
+    every_minutes: int,
+    grace_minutes: int,
+    expected_since: datetime,
+    last_at: datetime | None,
+    now: datetime,
+) -> dict[str, Any]:
+    """Whether a scheduled monitor is overdue: no run within its interval plus grace.
+
+    The clock starts at the latest monitor run, or at ``expected_since`` if that is later
+    (a newly declared schedule is not overdue for silence that came before it). Returns the
+    ``reference`` time, ``due_at`` and ``overdue``.
+    """
+    reference = expected_since if last_at is None or last_at < expected_since else last_at
+    due_at = reference + timedelta(minutes=every_minutes + grace_minutes)
+    return {"reference": reference, "due_at": due_at, "overdue": now > due_at}
+
+
+def interval_label(minutes: int) -> str:
+    """``every 24 h``-style wording: days, hours or minutes, whichever is whole."""
+    if minutes % 1440 == 0:
+        days = minutes // 1440
+        return f"{days} day{'s' * (days != 1)}"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} h"
+    return f"{minutes} min"
 
 
 def explain(entry: Mapping[str, Any]) -> dict[str, Any]:

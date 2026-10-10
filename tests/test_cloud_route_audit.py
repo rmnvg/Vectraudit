@@ -168,6 +168,7 @@ def test_workspace_routes_reject_other_tenants(world, cloud_app, victim, intrude
         "owner": "intruder",
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
         "url": "https://hooks.example.com/intruder",
+        "every_minutes": 60,
     }
     checked = 0
     for method, path in _routes(cloud_app):

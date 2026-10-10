@@ -268,13 +268,34 @@ def _notifications(session: Session, web: Web, access: repo.Access, base: str) -
 
 def _monitor_card(session: Session, access: repo.Access, base: str) -> str:
     """Scheduled-monitor state: alerting since when, or healthy and what resolved it."""
-    from vectraudit.cloud import lead
+    from vectraudit.cloud import lead, monitoring
 
     assert access.project is not None
     rows = ledger.history(session, access.project, limit=500, trigger="monitor")
     status = lead.monitor_status(rows)
+    schedule = monitoring.state(session, access.project)
+    overdue = ""
+    if schedule is not None and schedule["overdue"]:
+        overdue = (
+            '<p><span class="badge error">Overdue</span> '
+            "<strong>No scheduled run</strong> since one was due "
+            f"at {e(schedule['due_at'].strftime('%Y-%m-%d %H:%M'))} UTC (expected every "
+            f"{e(lead.interval_label(schedule['every_minutes']))}). The result below may be "
+            "stale; check that the monitor job is still running.</p>"
+        )
     if status["state"] == "none":
-        return ""
+        if schedule is None:
+            return ""
+        return (
+            '<div class="card"><div class="muted">Scheduled monitor · no run yet</div>'
+            + (
+                overdue
+                or f"<p>Expected every {e(lead.interval_label(schedule['every_minutes']))}; "
+                f"the first run is due by {e(schedule['due_at'].strftime('%Y-%m-%d %H:%M'))} "
+                "UTC.</p>"
+            )
+            + "</div>"
+        )
     last = status["last"]
     alert = status["alert"]
 
@@ -302,7 +323,11 @@ def _monitor_card(session: Session, access: repo.Access, base: str) -> str:
             + link(last["check_id"], "Latest run")
         )
     else:
-        body = f"{_badge('pass')} <strong>Healthy</strong>: the latest scheduled run passed."
+        body = (
+            f"{_badge('pass')} The latest scheduled run passed."
+            if overdue
+            else f"{_badge('pass')} <strong>Healthy</strong>: the latest scheduled run passed."
+        )
         if alert:
             body += (
                 f" The last alert (opened {when(alert['opened_at'])} UTC, "
@@ -313,7 +338,7 @@ def _monitor_card(session: Session, access: repo.Access, base: str) -> str:
             )
     return (
         '<div class="card"><div class="muted">Scheduled monitor · last run '
-        f"{when(last['at'])} UTC</div><p>{body}</p></div>"
+        f"{when(last['at'])} UTC</div>{overdue}<p>{body}</p></div>"
     )
 
 

@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vectraudit.cloud import exceptions, ledger, repo, webhooks
+from vectraudit.cloud import exceptions, ledger, monitoring, repo, webhooks
 from vectraudit.cloud.errors import CloudError, not_found
 from vectraudit.cloud.models import (
     ApiToken,
@@ -22,6 +22,7 @@ from vectraudit.cloud.models import (
     Decision,
     Invite,
     Membership,
+    MonitorSchedule,
     Project,
     Run,
     SharedRecord,
@@ -135,6 +136,19 @@ def pin_baseline(
     return baseline, run
 
 
+def _schedule_export(found: MonitorSchedule | None) -> dict[str, Any] | None:
+    if found is None:
+        return None
+    return {
+        "every_minutes": found.every_minutes,
+        "grace_minutes": found.grace_minutes,
+        "expected_since": found.expected_since.isoformat(),
+        "updated_at": found.updated_at.isoformat(),
+        "updated_by": found.updated_by,
+        "stale_alert": found.stale_alert,
+    }
+
+
 def run_check(
     session: Session,
     access: repo.Access,
@@ -191,6 +205,8 @@ def run_check(
     ledger.record_decision(session, check, base, cand, baseline_name)
     exceptions.apply_to_check(session, access.project, check)
     webhooks.on_check(session, access.workspace, access.project, check)
+    if trigger == "monitor":  # a run arrived: an open staleness alert resolves
+        monitoring.evaluate(session, access.workspace, access.project, resolved_by=check.id)
     return check, base, cand, True
 
 
@@ -266,6 +282,7 @@ def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
                 "created_at": p.created_at.isoformat(),
                 "policy": p.policy,
                 "access_roles": p.access_roles,
+                "monitor_schedule": _schedule_export(session.get(MonitorSchedule, p.id)),
                 "baselines": [
                     {
                         "name": b.name,

@@ -1,4 +1,7 @@
-"""Dashboard: project notifications (webhooks). Engineers see status; owners manage them."""
+"""Dashboard: project notifications (webhooks) and the monitor schedule.
+
+Engineers see webhook status and set the monitor schedule; owners manage webhooks.
+"""
 
 from __future__ import annotations
 
@@ -10,15 +13,19 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from vectraudit.cloud import repo, web, webhooks
+from vectraudit.cloud import lead, monitoring, repo, web, webhooks
 from vectraudit.cloud.deps import SessionDep, SettingsDep
 from vectraudit.cloud.errors import CloudError
 from vectraudit.cloud.models import Webhook, WebhookDelivery
+from vectraudit.cloud.routes import history as api_history
 from vectraudit.cloud.routes import webhooks as api
 
 router = APIRouter(include_in_schema=False)
 e = web.e
-EVENT_NAMES = {"decision": "Release decisions", "monitor": "Monitor alerts and resolutions"}
+EVENT_NAMES = {
+    "decision": "Release decisions",
+    "monitor": "Monitor alerts, overdue monitors and resolutions",
+}
 
 
 def _last_delivery(session: Session, hook: Webhook) -> str:
@@ -87,7 +94,100 @@ def section(session: Session, form: web.Web, access: repo.Access, base: str) -> 
             '<option value="slack">Slack incoming webhook</option></select> '
             f"{checks}<button>Add webhook</button></form>"
         )
+    return body + _schedule(session, form, access, base)
+
+
+def _hours(minutes: int) -> str:
+    return f"{minutes / 60:g}"
+
+
+def _schedule(session: Session, form: web.Web, access: repo.Access, base: str) -> str:
+    """Monitor schedule: how often a run is expected, so a silent monitor raises an alert."""
+    assert access.project is not None
+    state = monitoring.state(session, access.project)
+    body = (
+        "<h3>Monitor schedule</h3>"
+        '<p class="muted">A scheduled monitor that stops running creates no run, so its last '
+        "result keeps looking current. Declare how often a run is expected: when none arrives "
+        "in time, webhooks subscribed to monitor events get one overdue alert, and the next "
+        "run resolves it.</p>"
+    )
+    every, grace = "24", str(monitoring.DEFAULT_GRACE)
+    if state is None:
+        body += '<p class="muted">No schedule: a stopped monitor is not noticed.</p>'
+    else:
+        every, grace = _hours(state["every_minutes"]), str(state["grace_minutes"])
+        due = state["due_at"].strftime("%Y-%m-%d %H:%M")
+        status = (
+            f'<span class="badge error">Overdue</span> since {e(due)} UTC'
+            if state["overdue"]
+            else f"next run due by {e(due)} UTC"
+        )
+        body += (
+            f"<p>Expected every {e(lead.interval_label(state['every_minutes']))} "
+            f"(+{state['grace_minutes']} min grace) · {status}</p>"
+        )
+    body += (
+        f'<form method="post" action="{base}/monitor/schedule">{web._csrf_field(form)}'
+        "<label>Expect a run every "
+        f'<input name="every_hours" type="number" min="0.1" max="744" step="any" '
+        f'value="{e(every)}" required> hours</label>, '
+        f'<label>with <input name="grace_minutes" type="number" min="0" '
+        f'max="{monitoring.MAX_GRACE}" step="1" value="{e(grace)}" required> minutes of '
+        "grace</label> "
+        "<button>Save schedule</button></form>"
+    )
+    if state is not None:
+        body += (
+            f'<form method="post" action="{base}/monitor/schedule/clear">'
+            f"{web._csrf_field(form)}<button>Remove schedule</button></form>"
+        )
     return body
+
+
+@router.post("/app/{workspace}/{project}/monitor/schedule")
+async def schedule_action(
+    workspace: str, project: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await web._form(request)
+    try:
+        w, access = web._project_access(
+            request, session, settings, workspace, project, "manage_project"
+        )
+        web._require_csrf(w, form, settings)
+        try:
+            body = api_history.MonitorScheduleIn.model_validate(
+                {
+                    "every_minutes": round(float(form.get("every_hours", "")) * 60),
+                    "grace_minutes": int(form.get("grace_minutes", "")),
+                }
+            )
+        except (ValueError, ValidationError):
+            raise CloudError(
+                422,
+                "invalid_schedule",
+                "Give an interval between 5 minutes and 31 days, and a grace of at most 7 days.",
+            ) from None
+        monitoring.set_schedule(session, access, body.every_minutes, body.grace_minutes)
+    except CloudError as err:
+        return web._error_page(err, None)
+    return _back(workspace, project, "Monitor schedule saved.")
+
+
+@router.post("/app/{workspace}/{project}/monitor/schedule/clear")
+async def clear_schedule_action(
+    workspace: str, project: str, request: Request, session: SessionDep, settings: SettingsDep
+) -> Response:
+    form = await web._form(request)
+    try:
+        w, access = web._project_access(
+            request, session, settings, workspace, project, "manage_project"
+        )
+        web._require_csrf(w, form, settings)
+        monitoring.clear(session, access)
+    except CloudError as err:
+        return web._error_page(err, None)
+    return _back(workspace, project, "Monitor schedule removed.")
 
 
 def _back(workspace: str, project: str, msg: str) -> Response:

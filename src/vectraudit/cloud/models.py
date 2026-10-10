@@ -359,6 +359,30 @@ class Webhook(Base):
     created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class MonitorSchedule(Base):
+    """How often a project expects a scheduled monitor run, so silence can raise an alert.
+
+    A monitor that stops running creates no check, so nothing else would notice. When no
+    monitor run arrives within ``every_minutes`` plus ``grace_minutes`` of the last one (or
+    of ``expected_since``, before the first), the project is overdue; ``stale_alert`` holds
+    the open staleness alert so it is announced once and resolved by the next run.
+    """
+
+    __tablename__ = "monitor_schedules"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    every_minutes: Mapped[int] = mapped_column(Integer)
+    grace_minutes: Mapped[int] = mapped_column(Integer)
+    expected_since: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    """When the expectation was first declared: silence before it is not overdue."""
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stale_alert: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+
+
 class WebhookDelivery(Base):
     """One event for one webhook: an outbox row, retried until delivered or given up.
 

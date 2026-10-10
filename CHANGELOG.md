@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Monitor staleness alerts: declare how often a scheduled monitor run is expected
+  (dashboard **Monitor schedule**, `vectraudit cloud monitor --every 24h --grace 1h`, or
+  `PUT .../monitor/schedule`). When no run arrives in time, the project page shows the
+  monitor as overdue and webhooks subscribed to monitor events receive one
+  `monitor.stale_opened` event; the next run sends `monitor.stale_resolved`. The
+  `deliver-webhooks` service checks schedules on every pass; `vectraudit-cloud
+  check-monitors` does it once, for cron. Migration 0011.
 - Failing rules in the workbench: under a failing comparison, each rule says who may
   accept it under the comparison's policy (engineer or owner, and for how long) or why
   nobody can. **Check accepted regressions in the hosted project** lists the connected

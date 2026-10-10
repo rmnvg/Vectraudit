@@ -531,7 +531,9 @@ vectraudit workbench monitor monitor.json cloud:main --history monitor-history -
   The last output line is the JSON verdict.
 
 See [monitor history](cloud-operations.md#scheduled-monitor-history) for what the project
-then shows.
+then shows. Declare the job's cadence so a monitor that stops running is noticed:
+`vectraudit cloud monitor --every 24h --grace 1h` (an engineer or owner token). When no run
+arrives in time, the project shows it as overdue and subscribed webhooks get one alert.
 
 Import several monitor artifacts to review history. Reports separately identify corpus
 version changes, configuration changes, and added/removed result IDs. Without a supplied
