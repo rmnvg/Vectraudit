@@ -6,6 +6,11 @@ Cost per call comes from what an adapter reported in an earlier run of the same 
 ``unknown``; unknown costs are listed, never counted as zero. One production query is one
 call, so the cost per call is also the per-production-query cost. Automatic retries can add
 calls up to the run's retry budget; they are reported separately as an allowance.
+
+After a run, :func:`usage` totals what it actually consumed (every call, including retries
+and failures, and the adapter-reported cost of successful calls) and :func:`reconcile`
+sets that beside the plan. Calls with no reported cost, including failed calls, stay
+unknown rather than free.
 """
 
 from __future__ import annotations
@@ -43,6 +48,171 @@ def _measured_by_candidate(runs: Sequence[Mapping[str, Any]]) -> dict[str, dict[
         if name and cost is not None:
             found[str(name)] = cost  # later files win: pass the newest last
     return found
+
+
+def usage(queries: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """What a run actually consumed, from each query's recorded ``usage``.
+
+    A resumed query keeps every earlier attempt in ``attempts``; their calls count too. An
+    interrupted attempt recorded no usage, and neither did runs made before usage was
+    recorded: both are counted, so the totals say when they are incomplete.
+    """
+    calls = failed = unpriced = retries = interrupted = unrecorded = 0
+    spend: list[float] = []
+    for query in queries:
+        attempts = query.get("attempts")
+        results = [a.get("result") for a in attempts] if attempts else [query]
+        for result in results:
+            if result is None:
+                interrupted += 1
+                continue
+            used = result.get("usage")
+            if not isinstance(used, Mapping):
+                unrecorded += 1
+                continue
+            calls += int(used.get("calls", 0))
+            failed += int(used.get("failed_calls", 0))
+            unpriced += int(used.get("unpriced_calls", 0))
+            spend.append(float(used.get("spend_usd", 0.0)))
+            retries += len(result.get("retries") or [])
+    return {
+        "format_version": 1,
+        "calls": calls,
+        "failed_calls": failed,
+        "retries": retries,
+        "spend_usd": round(math.fsum(spend), 6),
+        "unpriced_calls": unpriced,
+        "interrupted_attempts": interrupted,
+        "unrecorded_queries": unrecorded,
+        "complete": not (unpriced or interrupted or unrecorded),
+    }
+
+
+def combine(usages: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Totals of several runs' :func:`usage` (an optimization's tuning and held-out runs)."""
+    total: dict[str, Any] = {"format_version": 1}
+    for key in (
+        "calls",
+        "failed_calls",
+        "retries",
+        "unpriced_calls",
+        "interrupted_attempts",
+        "unrecorded_queries",
+    ):
+        total[key] = sum(int(u.get(key, 0)) for u in usages)
+    total["spend_usd"] = round(math.fsum(float(u.get("spend_usd", 0.0)) for u in usages), 6)
+    total["complete"] = all(u.get("complete", False) for u in usages)
+    return total
+
+
+def reconcile(planned: Mapping[str, Any], actual: Mapping[str, Any]) -> dict[str, Any]:
+    """The plan beside what was used, for one run or a whole batch.
+
+    ``planned`` has ``calls`` (a number, or ``{"min", "max"}``), ``retry_allowance`` and
+    ``spend_usd`` (a number, ``{"min", "max"}`` or ``None`` when a cost was unknown).
+    """
+
+    def bounds(value: Any) -> tuple[float | None, float | None]:
+        if isinstance(value, Mapping):
+            return value.get("min"), value.get("max")
+        return value, value
+
+    calls_min, calls_max = bounds(planned.get("calls"))
+    _, spend_max = bounds(planned.get("spend_usd"))
+    calls = actual["calls"]
+    over_calls = calls_max is not None and calls > calls_max
+    within_allowance = over_calls and calls <= (calls_max or 0) + int(
+        planned.get("retry_allowance") or 0
+    )
+    spend = actual["spend_usd"]
+    notes = []
+    if actual["retries"]:
+        notes.append(f"{actual['retries']} automatic retries")
+    if actual["failed_calls"]:
+        notes.append(f"{actual['failed_calls']} failed calls (cost unknown)")
+    priced_unknown = actual["unpriced_calls"] - actual["failed_calls"]
+    if priced_unknown > 0:
+        notes.append(f"{priced_unknown} successful calls reported no cost")
+    if actual["interrupted_attempts"] or actual["unrecorded_queries"]:
+        notes.append(
+            "calls from interrupted attempts or earlier versions were not recorded; the "
+            "totals are a lower bound"
+        )
+    if calls_min is not None and calls < calls_min:
+        notes.append("fewer calls than planned (cancelled, or failed before every repeat)")
+    return {
+        "planned": {
+            "calls": planned.get("calls"),
+            "retry_allowance": planned.get("retry_allowance"),
+            "spend_usd": planned.get("spend_usd"),
+        },
+        "actual": dict(actual),
+        "calls_over_plan": max(0, calls - int(calls_max)) if calls_max is not None else None,
+        "calls_within_retry_allowance": (not over_calls) or within_allowance,
+        "spend_over_plan_usd": (
+            round(spend - spend_max, 6)
+            if spend_max is not None and spend > spend_max
+            else (0.0 if spend_max is not None else None)
+        ),
+        "spend_complete": actual["complete"],
+        "notes": notes,
+    }
+
+
+def planned_for(
+    budget: Mapping[str, Any], name: str, *, retry_budget: int = 100, max_attempts: int = 3
+) -> dict[str, Any]:
+    """One candidate's planned calls, retry allowance and spend, from :func:`plan`."""
+    row = next(r for r in budget["candidates"] if r["name"] == name)
+    return {
+        "calls": row["calls"],
+        "retry_allowance": min(retry_budget, row["calls"] * (max_attempts - 1)),
+        "spend_usd": row["spend_usd"],
+        "cost_source": row["cost_source"],
+    }
+
+
+def planned_total(budget: Mapping[str, Any]) -> dict[str, Any]:
+    """The whole plan's calls and spend; spend has no upper bound when a cost is unknown."""
+    spend = budget["spend_usd"]
+    return {
+        "calls": {"min": budget["calls"]["min"], "max": budget["calls"]["max"]},
+        "retry_allowance": budget["calls"]["retry_allowance"],
+        "spend_usd": {"min": spend["min"], "max": spend["max"] if spend["complete"] else None},
+    }
+
+
+def reconcile_line(rec: Mapping[str, Any]) -> str:
+    """``120 calls (planned 120) · $0.0240 reported (planned $0.0240)`` and any caveats."""
+    planned = rec["planned"]
+    actual = rec["actual"]
+
+    def amount(value: Any) -> str:
+        if value is None:
+            return "unknown"
+        if isinstance(value, Mapping):
+            low, high = value.get("min"), value.get("max")
+            if high is None:
+                return f"{format_usd(low)} or more" if low is not None else "unknown"
+            return format_usd(low) if low == high else f"{format_usd(low)}-{format_usd(high)}"
+        return format_usd(value)
+
+    calls = planned["calls"]
+    planned_calls = (
+        (str(calls["min"]) if calls["min"] == calls["max"] else f"{calls['min']}-{calls['max']}")
+        if isinstance(calls, Mapping)
+        else str(calls)
+    )
+    spend = format_usd(actual["spend_usd"]) + (
+        " reported" if actual["complete"] else " reported, incomplete"
+    )
+    line = (
+        f"{actual['calls']} calls (planned {planned_calls}) · {spend} "
+        f"(planned {amount(planned['spend_usd'])})"
+    )
+    if rec["notes"]:
+        line += "; " + "; ".join(rec["notes"])
+    return line
 
 
 def _money(calls: int, usd: float | None) -> float | None:

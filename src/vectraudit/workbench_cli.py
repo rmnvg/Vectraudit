@@ -18,6 +18,7 @@ from vectraudit.evaluation.runfile import load_run
 from vectraudit.labelling.storage import task_lock
 from vectraudit.labelling.task import atomic_write
 from vectraudit.pipelines.benchmark import audit_benchmark
+from vectraudit.pipelines.budget import planned_for, planned_total, reconcile, reconcile_line
 from vectraudit.pipelines.checkpoint import validate_path
 from vectraudit.pipelines.guided import write_run
 from vectraudit.pipelines.manifest import candidate_config, load_manifest, open_adapter
@@ -60,16 +61,32 @@ def _guard(
     max_spend: float | None,
     measured: list[Path] | None,
     baseline: str | None = None,
-) -> None:
-    """Refuse before any adapter opens when the planned calls or spend exceed a limit."""
-    if max_calls is None and max_spend is None:
-        return
+    retry: RetryPolicy | None = None,
+) -> dict[str, Any]:
+    """The plan; refuses before any adapter opens when calls or spend exceed a limit."""
     from vectraudit.pipelines.budget import check_limits, plan
 
+    retry = retry or RetryPolicy()
     budget = plan(
-        spec, ds, mode=mode, measured=[load_run(p) for p in measured or []], baseline=baseline
+        spec,
+        ds,
+        mode=mode,
+        measured=[load_run(p) for p in measured or []],
+        baseline=baseline,
+        retry_budget=retry.max_retries,
+        max_attempts=retry.max_attempts,
     )
-    check_limits(budget, max_calls=max_calls, max_spend=max_spend)
+    if max_calls is not None or max_spend is not None:
+        check_limits(budget, max_calls=max_calls, max_spend=max_spend)
+    return budget
+
+
+def _used(run: dict[str, Any], planned: dict[str, Any]) -> str:
+    """Record the plan beside the run's actual usage; returns the one-line comparison."""
+    from vectraudit.pipelines.budget import reconcile, reconcile_line
+
+    run["usage"]["planned"] = planned
+    return reconcile_line(reconcile(planned, run["usage"]))
 
 
 @workbench_app.command("run")
@@ -115,8 +132,16 @@ def run_command(
         ds = load_dataset(manifest.parent / spec.dataset)
         if len({c.name for c in spec.candidates}) != len(spec.candidates):
             raise ValueError("candidate names must be unique")
-        if resume is None:  # a resumed batch was already approved when it started
-            _guard(spec, ds, "run", max_calls=max_calls, max_spend=max_spend, measured=measured)
+        # A resumed batch was already approved when it started: plan it, but don't refuse.
+        budget = _guard(
+            spec,
+            ds,
+            "run",
+            max_calls=None if resume else max_calls,
+            max_spend=None if resume else max_spend,
+            measured=measured,
+            retry=retry,
+        )
         checkpoints = resume or out / ".checkpoints" / uuid.uuid4().hex
         configs = [candidate_config(candidate, manifest.parent) for candidate in spec.candidates]
         batch_identity = {
@@ -172,8 +197,18 @@ def run_command(
                     resume=resuming,
                     retry_errors=retry_errors and resuming,
                 )
+                used = _used(
+                    run,
+                    planned_for(
+                        budget,
+                        candidate.name,
+                        retry_budget=retry.max_retries,
+                        max_attempts=retry.max_attempts,
+                    ),
+                )
                 write_run(out / f"{run['run_id']}.run.json", run)
                 typer.echo(f"{candidate.name}: {run['status']} ({run['run_id']})")
+                typer.echo(f"  {used}")
                 incomplete |= run["status"] != "complete"
                 if run["status"] == "cancelled":
                     break
@@ -212,7 +247,7 @@ def optimize_command(
         if len(spec.candidates) > spec.max_candidates:
             raise ValueError("candidate count exceeds max_candidates")
         ds = load_dataset(manifest.parent / spec.dataset)
-        _guard(
+        budget = _guard(
             spec,
             ds,
             "optimize",
@@ -237,8 +272,10 @@ def optimize_command(
             policy=rules,
             baseline=baseline,
         )
+        result["usage"] = reconcile(planned_total(budget), result["usage"])
         _write(out, result)
         typer.echo(f"{result['status_label']}: {result['selected'] or 'none'}")
+        typer.echo(f"Usage: {reconcile_line(result['usage'])}")
         check = (result["heldout"] or {}).get("check")
         if check is not None:
             typer.echo(f"Held-out release check: {check['verdict']}")
@@ -390,7 +427,9 @@ def monitor_command(
             rules = load_policy(policy) if policy else DEFAULT_POLICY
         if base["status"] != "complete" or base["dataset"]["sha256"] != ds.sha256:
             raise ValueError("monitor needs a complete baseline from this frozen benchmark")
-        _guard(spec, ds, "monitor", max_calls=max_calls, max_spend=max_spend, measured=measured)
+        budget = _guard(
+            spec, ds, "monitor", max_calls=max_calls, max_spend=max_spend, measured=measured
+        )
         candidate = spec.candidates[0]
         config = candidate_config(candidate, manifest.parent)
         run = execute_pipeline(
@@ -400,6 +439,7 @@ def monitor_command(
             config=config,
             corpus_version=spec.corpus_version or config.get("corpus_sha256"),
         )
+        used = _used(run, planned_for(budget, candidate.name))
         compared = run
         if cloud:
             # The hosted baseline is a sharing projection: compare like with like, as the
@@ -417,8 +457,10 @@ def monitor_command(
                 for r in result["check"]["reasons"]
                 if r["verdict"] != "pass" and "accepted" not in r
             ]
+        result["usage"] = run["usage"]
         write_run(history / f"{run['run_id']}.run.json", run)
         _write(history / f"{run['run_id']}.monitor.json", result)
+        typer.echo(f"Usage: {used}")  # before the JSON verdict, which stays the last line
     except (OSError, ValueError, ImportError, AttributeError, PolicyError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc

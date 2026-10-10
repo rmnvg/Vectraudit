@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import statistics
 import threading
 import time
@@ -18,6 +19,7 @@ from vectraudit.evaluation.dataset import Dataset, DatasetQuery
 from vectraudit.evaluation.metrics import repeat_quality
 from vectraudit.evaluation.runner import RunOptions, _skeleton, summarize
 from vectraudit.labelling.storage import task_lock
+from vectraudit.pipelines.budget import usage
 from vectraudit.pipelines.checkpoint import Checkpoint, identity, validate_path
 from vectraudit.pipelines.errors import RETRYABLE, PipelineCallError, run_failure
 from vectraudit.pipelines.models import PipelineRequest, PipelineResult
@@ -124,6 +126,20 @@ class _Calls:
     shared: _Shared
     alive: Callable[[], None]
     retries: list[dict[str, Any]] = field(default_factory=list)
+    made: int = 0
+    """Every invocation, including warm-ups, retries and calls that failed."""
+    failed: int = 0
+    priced: list[float] = field(default_factory=list)
+    """Adapter-reported ``cost_usd`` of successful calls that reported one."""
+
+    def usage(self) -> dict[str, Any]:
+        """What this query actually consumed. Failed and unpriced calls have no known cost."""
+        return {
+            "calls": self.made,
+            "failed_calls": self.failed,
+            "spend_usd": round(math.fsum(self.priced), 9),
+            "unpriced_calls": self.made - len(self.priced),
+        }
 
     def __call__(self, label: str) -> tuple[Any, float]:
         """Return the call's result and its start time; re-raise once retries are spent."""
@@ -132,9 +148,13 @@ class _Calls:
         while True:
             self.shared.throttle(self.alive)
             t0 = time.perf_counter()
+            self.made += 1
             try:
-                return self.pipeline(self.request.model_copy(deep=True)), t0
-            except PipelineCallError as exc:
+                raw = self.pipeline(self.request.model_copy(deep=True))
+            except BaseException as exc:
+                self.failed += 1
+                if not isinstance(exc, PipelineCallError):
+                    raise
                 tries += 1
                 delay = (
                     policy.delay(tries - 1, exc.retry_after)
@@ -145,6 +165,11 @@ class _Calls:
                     raise
                 self.retries.append({"call": label, "code": exc.code, "delay_s": delay})
                 wait(delay, self.alive)
+                continue
+            cost = getattr(raw, "cost_usd", None)
+            if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
+                self.priced.append(float(cost))
+            return raw, t0
 
 
 def failure_analysis(result: PipelineResult, relevant: dict[str, float]) -> list[dict[str, Any]]:
@@ -303,6 +328,8 @@ def _execute(
     if journal:
         for entry in record["queries"]:
             entry["attempts"] = journal.history(entry["query_id"])
+    record["usage"] = usage(record["queries"])
+    if journal:
         journal.put("record", record)
     return record
 
@@ -534,5 +561,6 @@ def _measure(
         entry["repeat_ids"] = rankings or None
     if calls.retries:
         entry["retries"] = calls.retries
+    entry["usage"] = calls.usage()
     entry["elapsed_ms"] = (time.perf_counter() - query_start) * 1000
     return entry
