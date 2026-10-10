@@ -240,6 +240,26 @@ def _timeline_rows(session: Session, entries: list[dict[str, Any]], base: str) -
     return rows
 
 
+def _recurring_section(session: Session, access: repo.Access, base: str) -> str:
+    """The five most pressing recurring questions, linking to the full page."""
+    from vectraudit.cloud.web_lead import RECURRING_HEADERS, recurring_rows
+
+    assert access.project is not None
+    found, rows = recurring_rows(session, access.project, base, 200, top=5)
+    if not rows:
+        return ""
+    more = len(found["questions"]) - len(rows)
+    link = f'<a href="{base}/recurring">All recurring problems'
+    link += f" ({more} more)</a>" if more > 0 else "</a>"
+    return (
+        "<h2>Recurring problems</h2>"
+        f'<p class="muted">Questions failing in more than one of the newest {found["checks"]} '
+        "checks on the current benchmark.</p>"
+        + _table(RECURRING_HEADERS, rows, "")
+        + f"<p>{link}</p>"
+    )
+
+
 def _notifications(session: Session, web: Web, access: repo.Access, base: str) -> str:
     from vectraudit.cloud.web_webhooks import section
 
@@ -1107,6 +1127,7 @@ def project_page(
             _timeline_rows(session, ledger.timeline(session, access.project, limit=30), base),
             "No release decisions yet.",
         )
+        + _recurring_section(session, access, base)
         + "<h2>Accepted regressions</h2>"
         + '<p class="muted">Audited exceptions. A check they cover reads "fail, accepted"; '
         "they stop applying when revoked, expired or used up.</p>"

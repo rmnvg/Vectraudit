@@ -302,3 +302,82 @@ def trends_page(
                 "",
             )
     return web.page("Trends", body, identity)
+
+
+KIND_WORDS = {"regressed": "scored lower", "critical": "critical rule", "safety": "safety rule"}
+
+
+def recurring_rows(
+    session: Any, project: Any, base: str, limit: int, top: int | None = None
+) -> tuple[dict[str, Any], list[list[str]]]:
+    """The recurring-question table rows (shared by the project page and the full page)."""
+    found = lead.recurring(ledger.history(session, project, limit=limit))
+    questions = found["questions"][:top] if top else found["questions"]
+    cases = ledger.cases_by_question(session, project, {q["query_id"] for q in questions})
+    rows = []
+    for q in questions:
+        linked = cases.get(q["query_id"], [])
+        text = next((c["question_text"] for c in linked if c["question_text"]), None)
+        question = f'<span class="mono">{e(q["query_id"])}</span>'
+        if text:
+            question += f"<br>{e(text)}"
+        kinds = ", ".join(f"{KIND_WORDS[k]} ({n})" for k, n in q["kinds"].items() if n)
+        state = (
+            f"{web._badge('fail')} {q['streak']} in a row"
+            if q["still_failing"]
+            else '<span class="muted">Not in the latest check</span>'
+        )
+        last = e(q["last_failed_at"].strftime("%Y-%m-%d"))
+        if q["last_check_id"]:
+            last = f'<a href="{base}/decisions/{quote(q["last_check_id"])}">{last}</a>'
+        case_links = (
+            " ".join(
+                f'<a href="{base}/records/{quote(c["record_id"])}">{e(c["source_id"][:8])}</a> '
+                f'<span class="muted">({e(c["status"] or "unknown")} when shared)</span>'
+                for c in linked
+            )
+            or '<span class="muted">None shared</span>'
+        )
+        rows.append(
+            [question, f"{q['failures']} of {q['checks']}", e(kinds), state, last, case_links]
+        )
+    return found, rows
+
+
+RECURRING_HEADERS = ["Question", "Failed in", "How", "Now", "Last failed", "Regression case"]
+
+
+@router.get("/app/{workspace}/{project}/recurring")
+def recurring_page(
+    workspace: str,
+    project: str,
+    request: Request,
+    session: SessionDep,
+    settings: SettingsDep,
+    limit: int = Query(default=200, ge=2, le=1000),
+) -> HTMLResponse:
+    try:
+        identity, access = web._project_access(request, session, settings, workspace, project)
+        assert access.project is not None
+    except CloudError as err:
+        return web._error_page(err, None)
+    base = f"/app/{quote(workspace)}/{quote(project)}"
+    found, rows = recurring_rows(session, access.project, base, limit)
+    note = (
+        f"Questions that failed in at least two of the newest {found['checks']} checks on the "
+        "current benchmark version, still-failing first. A question counts once per check: "
+        "it scored lower than the baseline on the primary metric, broke a critical rule, or "
+        "broke a safety rule. Question text appears only when a regression case was shared "
+        "with it; otherwise IDs are shown."
+    )
+    if found["without_questions"]:
+        note += (
+            f" {found['without_questions']} older decisions on this benchmark were recorded "
+            "before questions were kept and are not counted."
+        )
+    body = (
+        f'<div class="crumbs"><a href="{base}">{e(project)}</a> / recurring problems</div>'
+        f'<h1>Recurring problems</h1><p class="muted">{e(note)}</p>'
+        + web._table(RECURRING_HEADERS, rows, "No question has failed more than once.")
+    )
+    return web.page("Recurring problems", body, identity)

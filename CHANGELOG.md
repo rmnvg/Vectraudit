@@ -8,6 +8,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Recurring problems on the hosted project: questions that failed in several checks on the
+  current benchmark (regressed, critical or safety), with "failed in N of M", whether and
+  for how long they still fail, and links to their shared regression cases. Question text
+  appears only from cases shared with text. Shown on the project page, at
+  `/app/WORKSPACE/PROJECT/recurring` and from `GET .../recurring`. It reads the decision
+  ledger, whose summaries (version 6) now keep the failing question IDs.
 - Opt-in non-inferiority policy: with `"non_inferiority": true`, a suite-level `max_drop`
   rule passes only when the whole 95% interval of the change stays above the allowed drop.
   An interval reaching past it fails as inconclusive with its own wording, and a clear drop

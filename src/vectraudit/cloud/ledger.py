@@ -25,16 +25,40 @@ from vectraudit.cloud.models import (
     PolicyException,
     Project,
     Run,
+    SharedRecord,
 )
+from vectraudit.evaluation.exceptions import failing_rules
 
 MAX_REASONS = 10
 METRIC_KEYS = ("baseline", "candidate", "delta", "ci_low", "ci_high", "n", "n_families")
 MAX_CHANGES = 50
-SUMMARY_VERSION = 5
+SUMMARY_VERSION = 6
+MAX_QUESTIONS = 50
+"""Question IDs kept per kind; the check itself keeps up to 100 regressed questions."""
 """2 adds verdict_before_exceptions and accepted (exceptions that covered failing rules);
 3 adds drift (monitor checks only: corpus, configuration and changed-result counts);
 4 adds cohorts (how many cohort rules were judged and failed, and the multiplicity control);
-5 adds non_inferiority and each metric's tolerance decision under it."""
+5 adds non_inferiority and each metric's tolerance decision under it;
+6 adds failed_questions (IDs that regressed or failed a critical or safety rule)."""
+
+
+def failed_questions(result: dict[str, Any]) -> dict[str, list[str]]:
+    """Question IDs a check found failing: regressed on the primary metric (worst first),
+    and named by a failing critical or safety rule. IDs only, as the upload already shares."""
+    regressed = [q["query_id"] for q in ((result.get("queries") or {}).get("regressed") or [])]
+    critical = [
+        a["query_id"] for a in result.get("critical_queries") or [] if a.get("verdict") == "fail"
+    ]
+    safety = [
+        rule.split(":", 1)[1]  # fixed prefix; the question ID is everything after it
+        for rule in failing_rules(result)
+        if rule.startswith(("safety.forbidden:", "safety.no_answer:"))
+    ]
+
+    def unique(ids: list[str]) -> list[str]:
+        return list(dict.fromkeys(ids))[:MAX_QUESTIONS]
+
+    return {"regressed": unique(regressed), "critical": unique(critical), "safety": unique(safety)}
 
 
 def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
@@ -78,6 +102,7 @@ def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
         ],
         "cohorts": result.get("cohort_judging"),
         "non_inferiority": bool((result.get("policy") or {}).get("non_inferiority")),
+        "failed_questions": failed_questions(result),
         "drift": {
             "corpus": drift.get("corpus"),
             "configuration": drift.get("configuration"),
@@ -253,3 +278,43 @@ def timeline(
     ]
     entries.sort(key=lambda e: e["at"], reverse=True)
     return entries[:limit]
+
+
+MAX_CASES_READ = 2000
+
+
+def cases_by_question(
+    session: Session, project: Project, query_ids: set[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """Shared regression cases for ``query_ids``: the newest upload of each local case.
+
+    ``question_text`` is present only when the case was shared with text (the sharing
+    setting from ``workbench share --share-query-text``); otherwise it is ``None``.
+    """
+    if not query_ids:
+        return {}
+    rows = session.scalars(
+        select(SharedRecord)
+        .where(SharedRecord.project_id == project.id, SharedRecord.kind == "case")
+        .order_by(SharedRecord.uploaded_at.desc(), SharedRecord.id.desc())
+        .limit(MAX_CASES_READ)
+    )
+    found: dict[str, list[dict[str, Any]]] = {}
+    seen_sources: set[str] = set()
+    for row in rows:
+        data = row.data.get("data") or {}
+        qid = data.get("query_id")
+        if qid not in query_ids or row.source_id in seen_sources:
+            continue
+        seen_sources.add(row.source_id)
+        found.setdefault(qid, []).append(
+            {
+                "record_id": row.id,
+                "source_id": row.source_id,
+                "status": data.get("status"),
+                "dataset_sha256": data.get("dataset_sha256"),
+                "question_text": data.get("question_text") if row.query_text else None,
+                "uploaded_at": row.uploaded_at,
+            }
+        )
+    return found

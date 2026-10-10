@@ -797,6 +797,46 @@ Results:
 - TypeScript, Oxlint, 87 frontend tests, the production build and the release Chromium
   journey passed.
 
+## Step 22: recurring problems (1.6)
+
+The hosted project now shows which questions keep failing across checks, not only one check
+at a time. Each decision's ledger summary (version 6) keeps the IDs of the questions that
+regressed on the primary metric, failed a critical rule or failed a safety rule (at most 50
+each).
+
+`GET .../recurring`, a project-page section (top five) and `/app/WORKSPACE/PROJECT/recurring`
+list questions that failed in at least two of the newest checks on the current benchmark
+version:
+- **Failed in N of M:** the count always has its denominator.
+- **How:** regressed, critical or safety.
+- **Still failing:** whether it fails in the newest check, and for how many in a row.
+- **Last failing decision:** linked.
+- **Shared regression case:** linked, with its status when shared.
+
+Release checks and monitor runs both count. Question text appears only from cases shared
+with text, so the sharing setting still decides what hosted pages show. Older decisions are
+reported as not counted, never as passes. It survives retention. Webhooks still carry no
+question IDs.
+
+Not included: document titles (still IDs), recurrence across benchmark versions, a
+recurrence alert or webhook event, and grouping questions by finding type. Validation with a
+real lead remains open.
+
+Validation: 5 new tests cover:
+- counting, denominators, streaks, kinds, other benchmark versions and pre-version-6
+  decisions;
+- failed questions extracted from regressions, critical rules and safety rules;
+- the hosted API with linked cases and shared text, survival through retention, and tenant
+  isolation;
+- the dashboard section and page with IDs only;
+- shared text shown escaped.
+
+Results:
+- Full Python suite: 1,511 passed, 22 skipped (live services not configured), 1 deselected.
+- The cloud tests pass on PostgreSQL 17 (295 with the new module).
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check (no drift) passed.
+- The page was checked in Chromium.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -811,7 +851,7 @@ as missing merely because their customer validation is pending.
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. | Measured execution protocol and context-derived cohorts. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. | Optimization concurrency, two simultaneous workspace runs, actual-versus-planned spend, and declared customer 1,000-question CI-window acceptance. |
-| **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. | Sharing from the workbench UI, readable document titles, recurring findings and lead/second-engineer acceptance. |
+| **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. | Sharing from the workbench UI, readable document titles and lead/second-engineer acceptance. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. | Provision and verify channel/credentials, full reusable CI wrapper, owner-approved support and trust materials. |
@@ -824,9 +864,9 @@ as missing merely because their customer validation is pending.
 1. **Finish distribution acceptance (1.9).** Provision the selected channel and verify
    independent customer credentials using the concrete checklist in `RELEASING.md`. Review
    support/trust commitments; do not substitute local unit tests for customer install evidence.
-2. **Recurring findings (rest of 1.6).** Show on the hosted project which questions fail
-   again across checks, linked to their shared regression cases, so a lead sees repeat
-   problems rather than one check at a time. This needs no customer input.
+2. **Sharing from the workbench UI (1.0/1.6).** Let an engineer preview and share a case,
+   snapshot or policy from the browser (today `workbench share` is CLI only), with the same
+   allowlisted projection and explicit text opt-in. This needs no customer input.
 3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
    design partner's real traces before building.
 

@@ -148,6 +148,29 @@ on the left.
 - Points are spaced by check, not by time, and a rejected candidate is plotted as checked;
   the line shows what was proposed, not only what shipped.
 
+## Recurring problems
+
+The project page lists the five most pressing **recurring problems**. The full list is at
+`/app/WORKSPACE/PROJECT/recurring` and `GET .../recurring`. These are questions that failed
+in at least two of the newest checks on the current benchmark version:
+- **What counts as a failure:** in each check, a question counts once if it scored lower
+  than the baseline on the primary metric, broke a critical rule, or broke a safety rule.
+- **What each row shows:**
+  - how many of those checks it failed in (for example "3 of 4"), so a rare blip and a
+    constant failure look different;
+  - how it failed;
+  - whether it still fails in the newest check, and for how many checks in a row;
+  - the decision where it last failed.
+- **Release checks and monitor runs** both count.
+- **Linked cases:** each question links to its shared regression case. The case's status is
+  the one recorded in the workbench when it was shared. Question text appears only when the
+  case was shared with `--share-query-text`; otherwise only IDs are shown.
+- **Retention:** the list is read from the decision ledger, which keeps up to 50 question
+  IDs per kind for each decision, so it survives run retention.
+- **Older decisions:** decisions recorded before this version kept no question IDs. They
+  are reported as not counted, never as passes.
+- **Webhooks:** question IDs never appear in webhook payloads.
+
 ## Scheduled monitor history
 
 `vectraudit workbench monitor MANIFEST cloud:main --upload` records each scheduled run as a
