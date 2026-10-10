@@ -14,13 +14,13 @@ import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import aliased
 
-from vectraudit.cloud import lead, ledger, repo
+from vectraudit.cloud import lead, ledger, monitoring, repo
 from vectraudit.cloud.deps import PrincipalDep, SessionDep, SettingsDep
 from vectraudit.cloud.errors import CloudError, not_found
 from vectraudit.cloud.models import Check, Run, utcnow
@@ -376,6 +376,38 @@ class MonitorAlert(BaseModel):
     resolved_by: str | None
 
 
+class StaleAlert(BaseModel):
+    alert_id: str
+    """``silent:<last check ID or never>-<schedule start, epoch seconds>``."""
+    opened_at: datetime
+    last_check_id: str | None
+    last_run_at: datetime | None
+    due_at: datetime
+    every_minutes: int
+
+
+class MonitorScheduleOut(BaseModel):
+    """How often a monitor run is expected, and whether one is overdue now."""
+
+    every_minutes: int
+    grace_minutes: int
+    expected_since: datetime
+    updated_at: datetime
+    updated_by: str | None
+    due_at: datetime
+    """When the next run is due, including grace."""
+    overdue: bool
+    stale_alert: StaleAlert | None
+    """The open staleness alert (announced once by ``deliver-webhooks``), if any."""
+
+
+class MonitorScheduleIn(BaseModel):
+    every_minutes: int = Field(ge=monitoring.MIN_EVERY, le=monitoring.MAX_EVERY)
+    """Expected time between scheduled monitor runs (5 minutes to 31 days)."""
+    grace_minutes: int = Field(default=monitoring.DEFAULT_GRACE, ge=0, le=monitoring.MAX_GRACE)
+    """Extra time before a late run counts as missing (up to 7 days)."""
+
+
 class MonitorStatus(BaseModel):
     """Scheduled-monitor state, derived from monitor decisions in the ledger."""
 
@@ -383,9 +415,21 @@ class MonitorStatus(BaseModel):
     last: MonitorRun | None
     alert: MonitorAlert | None
     """The open alert while alerting; the most recently resolved one while healthy."""
+    schedule: MonitorScheduleOut | None = None
+    """The declared cadence; ``overdue`` means the latest result above may be stale."""
 
 
 MONITOR_WINDOW = 500
+
+
+def _status(session: SessionDep, access: repo.Access) -> MonitorStatus:
+    assert access.project is not None
+    rows = ledger.history(session, access.project, limit=MONITOR_WINDOW, trigger="monitor")
+    schedule = monitoring.state(session, access.project)
+    return MonitorStatus(
+        **lead.monitor_status(rows),
+        schedule=MonitorScheduleOut(**schedule) if schedule else None,
+    )
 
 
 @router.get(f"{PROJECT}/monitor")
@@ -393,11 +437,38 @@ def monitor_status(
     workspace: str, project: str, session: SessionDep, principal: PrincipalDep
 ) -> MonitorStatus:
     """Whether scheduled monitor runs currently alert, since when, and what resolved the last
-    alert. Read from the decision ledger, so it outlives run retention."""
-    access = repo.authorize(session, principal, workspace, "read", project)
-    assert access.project is not None
-    rows = ledger.history(session, access.project, limit=MONITOR_WINDOW, trigger="monitor")
-    return MonitorStatus(**lead.monitor_status(rows))
+    alert. Read from the decision ledger, so it outlives run retention. With a declared
+    schedule, also whether the next run is overdue."""
+    return _status(session, repo.authorize(session, principal, workspace, "read", project))
+
+
+@router.put(f"{PROJECT}/monitor/schedule")
+def set_monitor_schedule(
+    workspace: str,
+    project: str,
+    body: MonitorScheduleIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> MonitorStatus:
+    """Declare how often a scheduled monitor run is expected (engineers and owners; audited).
+
+    When no run arrives within ``every_minutes + grace_minutes``, the project is overdue and
+    subscribed webhooks receive ``monitor.stale_opened`` once; the next run resolves it.
+    """
+    access = repo.authorize(session, principal, workspace, "manage_project", project)
+    monitoring.set_schedule(session, access, body.every_minutes, body.grace_minutes)
+    return _status(session, access)
+
+
+@router.delete(f"{PROJECT}/monitor/schedule", status_code=204)
+def clear_monitor_schedule(
+    workspace: str, project: str, session: SessionDep, principal: PrincipalDep
+) -> Response:
+    """Stop expecting monitor runs; an open staleness alert is closed (audited)."""
+    access = repo.authorize(session, principal, workspace, "manage_project", project)
+    if not monitoring.clear(session, access):
+        raise not_found("Monitor schedule")
+    return Response(status_code=204)
 
 
 class RecurringCase(BaseModel):

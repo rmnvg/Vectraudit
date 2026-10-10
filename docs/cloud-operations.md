@@ -194,8 +194,28 @@ the ledger, so it outlives run retention.
 - **Accepted failures:** a failure accepted by an audited exception neither opens nor
   extends an alert.
 
-A notifier can therefore deliver each alert once and announce its resolution. Vectraudit
-does not send notifications itself yet.
+A notifier can therefore deliver each alert once and announce its resolution (see
+[notifications](#notifications-webhooks)).
+
+**Monitor schedule.** A monitor that stops running (the cron job was removed, its token
+expired, the runner cannot reach the service) creates no run, so its last result keeps
+looking current. Declare how often a run is expected, and silence becomes an alert:
+
+- **Declare it:** under **Notifications → Monitor schedule** on the project page,
+  `vectraudit cloud monitor --every 24h --grace 1h`, or `PUT .../monitor/schedule`
+  (`every_minutes` 5 to 44,640, `grace_minutes` up to 10,080, default 60). Engineers and
+  owners can set or remove it (`DELETE .../monitor/schedule`); each change is audited.
+- **Overdue:** no monitor run within the interval plus grace of the latest one, or of the
+  moment the schedule was declared (earlier silence does not count). `GET .../monitor`
+  returns the schedule with `due_at` and `overdue`; the project page shows an **Overdue**
+  card that viewers see too, saying the latest result may be stale.
+- **Alerted once:** each pass of `deliver-webhooks` (or `vectraudit-cloud check-monitors`)
+  opens one staleness alert for an overdue project and sends `monitor.stale_opened` to
+  webhooks subscribed to `monitor` events. Its ID is the last run before the silence plus
+  the schedule's start, so repeated passes notify once.
+- **Resolved:** by the next monitor run (`monitor.stale_resolved`, naming that run), by a
+  schedule change that makes the project no longer overdue, or by removing the schedule.
+  The event's `resolution` says which.
 
 ## Notifications (webhooks)
 
@@ -205,10 +225,12 @@ with `POST .../projects/PROJECT/webhooks` (`url`, `style`, `events`).
 - **Events:**
   - `decision`: each release decision.
   - `monitor`: a scheduled monitor alert when it opens, and again when a passing run
-    resolves it (see [monitor history](#scheduled-monitor-history)).
+    resolves it; also an overdue monitor (no run when one was expected) and its
+    resolution (see [monitor history](#scheduled-monitor-history)).
 - **Delivered once each:** an event is queued once per webhook, keyed by
-  `decision:<check>` or `monitor.alert_opened|alert_resolved:<alert>`. A repeated check
-  queues nothing, and a monitor that keeps failing does not notify again.
+  `decision:<check>`, `monitor.alert_opened|alert_resolved:<alert>` or
+  `monitor.stale_opened|stale_resolved:<alert>`. A repeated check queues nothing, and a
+  monitor that keeps failing or stays silent does not notify again.
 - **Formats:**
   - `signed`: Vectraudit JSON (`format: vectraudit.event`) with event, verdict, trigger,
     candidate, headline, action, check ID, alert details and a dashboard link.
@@ -321,7 +343,7 @@ decision ledger are.
 | When | Command | Why |
 |---|---|---|
 | Daily | `docker compose run --rm api purge` | Deletes runs past retention; pinned baselines and ledger decisions are kept. Also prunes finished webhook deliveries older than 30 days. |
-| Continuously | the compose `webhooks` service (`deliver-webhooks --watch 30`), or `deliver-webhooks` from cron every minute | Sends queued webhook events and retries failures. |
+| Continuously | the compose `webhooks` service (`deliver-webhooks --watch 30`), or `deliver-webhooks` from cron every minute | Opens or resolves overdue-monitor alerts, then sends queued webhook events and retries failures. Without it, overdue monitors are shown on the project page but nobody is notified. |
 | Nightly | `./backup.sh` and copy `backups/` off the host | Restore point (beta targets: RPO 24 h, RTO 8 h). |
 
 ## Backups and restore

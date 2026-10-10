@@ -171,14 +171,23 @@ def deliver_webhooks(
         typer.Option(min=0, help="Keep running, checking every N seconds (0: run once)."),
     ] = 0,
 ) -> None:
-    """Send due webhook deliveries and schedule retries. Run every minute, or with --watch."""
+    """Check monitor schedules, then send due webhook deliveries and schedule retries.
+
+    Run every minute, or with --watch. Each pass first opens or resolves staleness alerts
+    for projects whose expected monitor run is overdue (see ``check-monitors``).
+    """
     import time
 
-    from vectraudit.cloud import webhooks
+    from vectraudit.cloud import monitoring, webhooks
 
     settings = _settings()
     sessions = _sessions()
     while True:
+        stale = monitoring.sweep(sessions)
+        if any(stale.values()):
+            console.print(
+                f"Monitor schedules: {stale['opened']} overdue, {stale['resolved']} resolved."
+            )
         counts = webhooks.deliver_due(
             sessions, public_url=settings.public_url, allow_private=settings.webhook_allow_private
         )
@@ -190,6 +199,21 @@ def deliver_webhooks(
         if not watch:
             return
         time.sleep(watch)
+
+
+@app.command("check-monitors")
+def check_monitors() -> None:
+    """Open or resolve staleness alerts for overdue monitor schedules, once.
+
+    ``deliver-webhooks`` already does this on every pass; use this when deliveries run
+    elsewhere or to check from cron.
+    """
+    from vectraudit.cloud import monitoring
+
+    counts = monitoring.sweep(_sessions())
+    console.print(
+        f"Monitor schedules: {counts['opened']} newly overdue, {counts['resolved']} resolved."
+    )
 
 
 @app.command("backfill-decisions")

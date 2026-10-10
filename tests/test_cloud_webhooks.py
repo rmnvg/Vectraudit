@@ -318,7 +318,7 @@ def test_dashboard_lets_owners_add_test_and_remove(world, cloud_app) -> None:
     assert "whsec_" in created.text
     page = owner.get("/app/acme/search").text
     assert "Slack" in page
-    assert "Monitor alerts and resolutions" in page
+    assert "Monitor alerts, overdue monitors and resolutions" in page
     assert "token" not in page.split("Notifications", 1)[1].split("</table>", 1)[0]
     with transaction(cloud_app.state.sessions) as s:
         hook_id = s.query(Webhook.id).scalar()

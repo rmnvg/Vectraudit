@@ -206,6 +206,22 @@ class CloudClient:
         )
         return result
 
+    def monitor_status(self) -> dict[str, Any]:
+        """Scheduled-monitor state, with the declared schedule and whether a run is overdue."""
+        result: dict[str, Any] = self._call("GET", f"{self.project_path}/monitor")
+        return result
+
+    def set_monitor_schedule(self, every_minutes: int, grace_minutes: int) -> dict[str, Any]:
+        """Expect a monitor run every ``every_minutes`` (plus grace); returns the status."""
+        body = json.dumps({"every_minutes": every_minutes, "grace_minutes": grace_minutes})
+        result: dict[str, Any] = self._call(
+            "PUT", f"{self.project_path}/monitor/schedule", body.encode()
+        )
+        return result
+
+    def clear_monitor_schedule(self) -> None:
+        self._call("DELETE", f"{self.project_path}/monitor/schedule")
+
     def list_exceptions(self, *, active: bool = False) -> list[dict[str, Any]]:
         """Audited exceptions, newest first; ``active`` ones apply to new checks."""
         suffix = "?active=true" if active else ""

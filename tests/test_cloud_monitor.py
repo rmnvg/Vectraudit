@@ -41,7 +41,7 @@ def test_monitor_checks_are_marked_with_drift_and_open_one_alert(world, cloud_ap
     base["backend"]["corpus_version"] = "v1"
     client.upload_run(base)
     pin(world, "acme_engineer", "base")
-    assert _status(world) == {"state": "none", "last": None, "alert": None}
+    assert _status(world) == {"state": "none", "last": None, "alert": None, "schedule": None}
 
     ok = a_run("night-1", label="nightly")
     ok["backend"]["corpus_version"] = "v1"

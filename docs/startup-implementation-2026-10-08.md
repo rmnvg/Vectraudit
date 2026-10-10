@@ -1047,6 +1047,39 @@ Not included: granting or revoking from the workbench. A local comparison is not
 check, and exceptions are granted from a failing hosted check by an approver signed in
 there. Reopening cases on expiry also stays out, as in Step 11.
 
+## Step 29: monitor staleness alerts (1.7)
+
+A scheduled monitor that stops running (its cron job removed, its token expired, its runner
+unable to reach the service) created no run, so the hosted status kept showing its last
+result as if it were current. Nothing alerted. Now:
+- **A declared schedule:** per project, how often a monitor run is expected plus a grace
+  period (`monitor_schedules`, migration 0011). It can be set from the dashboard
+  (Notifications → Monitor schedule), `vectraudit cloud monitor --every 24h --grace 1h`
+  or `PUT/DELETE .../monitor/schedule`. Engineers and owners can change it, and each change
+  is audited. Workspace exports include it.
+- **Overdue on read:** `GET .../monitor` returns the schedule with `due_at` and
+  `overdue`. The project page shows everyone, viewers included, an **Overdue** card
+  warning that the latest result may be stale. Silence before a schedule was declared
+  does not count.
+- **One alert per silence:** each `deliver-webhooks` pass (or `vectraudit-cloud
+  check-monitors` from cron) opens a staleness alert for overdue projects and sends
+  `monitor.stale_opened` to webhooks subscribed to monitor events.
+  - It is keyed by the last run before the silence plus the schedule's start, so repeated
+    passes notify once.
+  - The next monitor run resolves it (`monitor.stale_resolved`, naming that run), and so
+    does a schedule change that makes the project no longer overdue, or removing the
+    schedule.
+  - The schedule row is locked during evaluation, so a sweep and an upload cannot both
+    open or both resolve.
+  - Payloads carry times and IDs only.
+
+The 1.7 acceptance ("a scheduled monitor regression reaches the owning team's channel
+once, and resolves when the next run passes") now also covers a monitor that stops
+reporting. Proving it on the first customer's real channel is still open.
+
+Not included: per-benchmark or per-monitor schedules (one expectation per project), cron
+expressions, and quiet hours. Choose from how the first customer schedules monitors.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -1062,7 +1095,7 @@ as missing merely because their customer validation is pending.
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. | Measured execution protocol and context-derived cohorts. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. | Optimization concurrency, two simultaneous workspace runs, actual-versus-planned spend, and declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
-| **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
+| **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. Step 29: declared monitor schedules; a monitor that stops reporting raises one overdue alert, resolved by the next run. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. Step 26 drafts the trust package and support/compatibility policy. Step 27: one reusable CI step (install, record, check, report) called by both generated workflows. | Provision and verify channel/credentials, a first run of the CI step on GitHub-hosted runners, owner decisions in the drafts, a DPA template with counsel. |
 | **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. Step 25: calibration in the workbench, with configuration differences called out. Step 28: the workbench shows who may accept each failure and the connected project's exceptions against it. | Customer-runner calibration evidence. |
