@@ -160,6 +160,16 @@ def _uncertain(entry: Mapping[str, Any], summary: Mapping[str, Any]) -> list[str
         )
     if summary.get("metrics") == {} and entry.get("verdict") not in ("error", "not_comparable"):
         notes.append("No quality metric was judged; the benchmark may be unlabelled.")
+    cohorts = summary.get("cohorts") or {}
+    if cohorts.get("failed_rules") and cohorts.get("control") == "none":
+        rules = cohorts["judged_rules"]
+        note = (
+            f"{cohorts['failed_rules']} of {rules} cohort rules failed, each judged on its own: "
+            "with many cohorts some fail by chance even without a real change."
+        )
+        if entry.get("verdict") in ("fail", "accepted"):
+            note += " The failure still stands; A/A calibration shows how often this happens."
+        notes.append(note)
     warnings = summary.get("n_warnings") or 0
     if warnings:
         notes.append(f"The full report lists {warnings} warning{'s' * (warnings != 1)}.")

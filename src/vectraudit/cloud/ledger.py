@@ -29,9 +29,10 @@ from vectraudit.cloud.models import (
 
 MAX_REASONS = 10
 MAX_CHANGES = 50
-SUMMARY_VERSION = 3
+SUMMARY_VERSION = 4
 """2 adds verdict_before_exceptions and accepted (exceptions that covered failing rules);
-3 adds drift (monitor checks only: corpus, configuration and changed-result counts)."""
+3 adds drift (monitor checks only: corpus, configuration and changed-result counts);
+4 adds cohorts (how many cohort rules were judged and failed, and the multiplicity control)."""
 
 
 def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
@@ -73,6 +74,7 @@ def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
             {"rule": a.get("rule"), "exception_id": a.get("exception_id")}
             for a in result.get("exceptions_applied", [])
         ],
+        "cohorts": result.get("cohort_judging"),
         "drift": {
             "corpus": drift.get("corpus"),
             "configuration": drift.get("configuration"),

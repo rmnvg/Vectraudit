@@ -264,3 +264,15 @@ def test_monitor_summaries_say_nothing_was_released_and_name_the_drift():
     assert "Retrieval configuration unchanged." in summary["changes"]
     assert "Returned documents changed for 20 questions." in summary["changes"]
     assert explain(entry(result))["trigger"] == "release"
+
+
+def test_a_cohort_failure_without_control_is_flagged_as_possibly_chance():
+    cohorts = {"judged_rules": 12, "failed_rules": 1, "control": "none", "cohorts": 12}
+    summary = {"metrics": {}, "reasons": ["cohort 'x': ndcg dropped"], "n_reasons": 1}
+    failing = explain({"verdict": "fail", "summary": {**summary, "cohorts": cohorts}})
+    (note,) = [u for u in failing["uncertain"] if "cohort rules" in u]
+    assert note.startswith("1 of 12 cohort rules failed, each judged on its own")
+    assert note.endswith("A/A calibration shows how often this happens.")
+    controlled = {**cohorts, "control": "bonferroni"}
+    calm = explain({"verdict": "fail", "summary": {**summary, "cohorts": controlled}})
+    assert not any("cohort rules" in u for u in calm["uncertain"])

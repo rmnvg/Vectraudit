@@ -700,6 +700,56 @@ Results:
 - On the bundled example, `--mode optimize` reports 18 to 24 calls at $0 (built-in baseline)
   with a 48-call retry allowance.
 
+## Step 20: cohort false-alarm control (1.4)
+
+With many cohorts, some fail by chance even when nothing changed. Every check now reports
+`cohort_judging`: how many cohorts and cohort rules it judged, how many failed, and the
+control. It appears as a "Cohorts:" line in Markdown and HTML reports and in the hosted
+decision summary (ledger version 4). Checks warn from 5 rules judged without control.
+
+- **Policy option `cohorts.control: "bonferroni"`:** a cohort `max_drop` fails only when
+  its interval, widened to 1 − 0.05/m for the m cohort `max_drop` rules judged, lies
+  entirely beyond the allowed drop. The interval is the family-mean change ± z × family
+  standard error; tail percentiles of 2,000 bootstrap resamples would be unstable, and an
+  extra resampling pass would shift existing seeded intervals.
+- **Unchanged:** `min` floors, suite-level metrics and exception rule keys. Policies without
+  the option keep their hashes.
+- **Lead summary:** an uncontrolled cohort failure is flagged as possibly chance, and the
+  failure still stands.
+- **Workbench:** the policy editor has a "Correct for many cohorts (Bonferroni)" checkbox.
+  It no longer drops a policy's `exceptions` block when saving, a bug found while adding the
+  checkbox.
+
+Measured A/A effect (20 cohorts of 10 families with noise, an unchanged system):
+- Without control, 12 of 12 pairwise comparisons raised chance cohort failures (52 in all).
+- With Bonferroni, 1 of 12 did, and 1 of 30 with six recordings.
+- A real 0.4 drop in one cohort still failed under the control.
+
+Not included:
+- cohorts derived from declared context fields (tenant, language), because runs do not
+  record context values and that would cross the sharing boundary;
+- Holm or FDR procedures;
+- t-based small-sample intervals;
+- versioned non-inferiority semantics, the remaining 1.4 item.
+
+Validation: 7 new Python tests cover:
+- counting and the warning;
+- chance failures controlled while a real drop fails;
+- no adjustment with one rule;
+- policy validation and unchanged hashes;
+- the report line;
+- calibration with and without control;
+- the lead note.
+
+One frontend test covers the control and exceptions round trip.
+
+Results:
+- Full Python suite: 1,496 passed, 22 skipped (live services not configured), 1 deselected.
+- The 287 cloud tests pass on PostgreSQL 17.
+- Ruff, mypy on Python 3.12 and 3.10 and the API type generation check (no drift) passed.
+- TypeScript, Oxlint, 86 frontend tests, the production build and the release Chromium
+  journey passed.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -712,7 +762,7 @@ as missing merely because their customer validation is pending.
 | **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Representative trace importer, observed/missing capability report, independent engineer setup evidence. Choose the trace format from actual inputs. |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
-| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. | Measured execution protocol, cohort multiplicity and optional versioned non-inferiority semantics. |
+| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. | Measured execution protocol, context-derived cohorts and optional versioned non-inferiority semantics. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. | Optimization concurrency, two simultaneous workspace runs, actual-versus-planned spend, and declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. | Sharing from the workbench UI, readable document titles, recurring findings and lead/second-engineer acceptance. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
@@ -727,9 +777,10 @@ as missing merely because their customer validation is pending.
 1. **Finish distribution acceptance (1.9).** Provision the selected channel and verify
    independent customer credentials using the concrete checklist in `RELEASING.md`. Review
    support/trust commitments; do not substitute local unit tests for customer install evidence.
-2. **Cohort false-alarm control (1.4).** Report how many cohorts each check judged and
-   calibrate cohort rules against unchanged-system repeats, so many small cohorts do not
-   fail releases by chance. This needs no customer input.
+2. **Non-inferiority policy (rest of 1.4).** An explicit, versioned rule under which "within
+   tolerance" needs the interval's lower bound above the allowed drop, so an inconclusive
+   check is reported as inconclusive rather than passing. Opt-in, like the cohort
+   control. This needs no customer input.
 3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
    design partner's real traces before building.
 
