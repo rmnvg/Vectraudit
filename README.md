@@ -200,6 +200,8 @@ saved baselines, measurement methodology, caching and limitations.
   profiles, SSO, roles and recovery
 - [Threat model](docs/threat-model.md) and [incident response](docs/incident-response.md)
 - [Launch readiness](docs/launch-readiness.md): validation and pilot acceptance evidence
+- [Pilot offer](docs/pilot-offer.md) and [trust package](docs/trust-package.md): drafts for
+  prospective design partners and their security reviewers (owner decisions marked)
 - [Pilot release rehearsal](docs/pilot-release-validation.md): reproduce an improving-average
   regression, inspect a critical repeat failure, and verify the fix through exported checks
 - [Reference support search](examples/reference_search/README.md): measure a real BM25/filter

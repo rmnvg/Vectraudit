@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Draft pilot offer (`docs/pilot-offer.md`) and trust package (`docs/trust-package.md`)
+  for prospective design partners and their security reviewers. They are drawn from what
+  the product does today, with commercial and deployment decisions left marked for the
+  owner and no compliance claims.
 - A/A calibration in the workbench: under the release policy picker, choose 2-10
   recordings of the unchanged setup to see false alarms by rule, failures that are not
   noise, and each proposed threshold with the noise behind it. Then save the draft as a new
