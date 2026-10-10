@@ -24,13 +24,17 @@ branch's retrieval setup and this branch's on the same labelled queries, then
    vectraudit check baseline.json candidate.json --policy retrieval/policy.json --html report.html
    ```
 
-4. **CI.** Commit `retrieval/`, `.github/actions/install-vectraudit/` and
-   `.github/workflows/retrieval-check.yml`. Set repository variable
-   `VECTRAUDIT_DISTRIBUTION_REPOSITORY` to the private distribution repository provided
-   during onboarding (never the source repository). Set `VECTRAUDIT_VERSION` and
+4. **CI.** Commit `retrieval/`, `.github/actions/` and
+   `.github/workflows/retrieval-check.yml`. The workflow is one step: the
+   `retrieval-check` action installs the pinned release, records the target branch and the
+   pull request on the same runner, checks them and keeps the report. Set repository
+   variable `VECTRAUDIT_DISTRIBUTION_REPOSITORY` to the private distribution repository
+   provided during onboarding (never the source repository). Set `VECTRAUDIT_VERSION` and
    `VECTRAUDIT_SHA256` in the workflow to the reviewed release version and wheel checksum.
    Add repository secret `VECTRAUDIT_DOWNLOAD_TOKEN` (a customer-specific read-only
    credential scoped only to that distribution repository){ci_secret}.
    The installer refuses missing pins or a changed wheel before installing it.
+5. **Upgrade.** After installing a newer release locally, refresh only the CI files with
+   `vectraudit init --backend {backend} --ci-only --force`, then update the two pins.
 
 See the release-check guide for the dataset, connection and policy formats.

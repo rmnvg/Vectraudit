@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- One reusable CI step: `vectraudit init` and workbench release exports now write
+  `.github/actions/retrieval-check/`, which installs the pinned release, records the
+  target branch and the pull request on the same runner, checks them and uploads the
+  report. Both generated workflows call it as a single step. Each side's secrets
+  (`baseline-env`, `candidate-env`) reach only that side's record command, and the GitHub
+  token only `check`. `vectraudit init --ci-only --force` refreshes only the `.github/`
+  files when upgrading.
 - Draft pilot offer (`docs/pilot-offer.md`) and trust package (`docs/trust-package.md`)
   for prospective design partners and their security reviewers. They are drawn from what
   the product does today, with commercial and deployment decisions left marked for the

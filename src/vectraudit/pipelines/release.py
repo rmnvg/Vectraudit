@@ -33,7 +33,7 @@ from vectraudit.pipelines.lexical import hybrid_pipeline
 from vectraudit.pipelines.models import Contract
 from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
 from vectraudit.pipelines.runtime import HTTPPipeline, Pipeline
-from vectraudit.scaffold import installer_files
+from vectraudit.scaffold import ci_files, side_env
 
 RELEASE_FORMAT = "vectraudit.release"
 RELEASE_DIR = "retrieval/release"
@@ -523,7 +523,7 @@ def render_release_files(
 ) -> dict[str, str]:
     """Relative path -> content for the exported release check. Nothing is written here."""
     files = {
-        **installer_files(),
+        **ci_files(),
         f"{RELEASE_DIR}/release.json": release_json(release),
         f"{RELEASE_DIR}/{release.benchmark.path}": benchmark,
         f"{RELEASE_DIR}/{release.policy.path}": json.dumps(policy, indent=2) + "\n",
@@ -535,14 +535,15 @@ def render_release_files(
     return files
 
 
-def _secret_env(pipeline: ReleasePipeline, side: str) -> str:
-    lines = []
+def _secret_env(pipeline: ReleasePipeline, side: str) -> dict[str, str]:
+    """Environment variable -> repository secret for one side's pipeline run."""
+    values = {}
     if pipeline.target_env:
         source = "RETRIEVAL_BASELINE_URL" if side == "baseline" else "RETRIEVAL_CANDIDATE_URL"
-        lines.append(f"          {pipeline.target_env}: ${{{{ secrets.{source} }}}}")
+        values[pipeline.target_env] = source
     if pipeline.token_env:
-        lines.append(f"          {pipeline.token_env}: ${{{{ secrets.{pipeline.token_env} }}}}")
-    return "        env:\n" + "\n".join(lines) + "\n" if lines else ""
+        values[pipeline.token_env] = pipeline.token_env
+    return values
 
 
 def render_release_workflow(pipeline: ReleasePipeline) -> str:
@@ -565,8 +566,10 @@ def render_release_workflow(pipeline: ReleasePipeline) -> str:
         .replace("__VERSION__", __version__.split("+")[0])
         .replace("__RELEASE__", f"{RELEASE_DIR}/release.json")
         .replace("__INSTALL_PIPELINE__", install)
-        .replace("__BASELINE_ENV__", _secret_env(pipeline, "baseline"))
-        .replace("__CANDIDATE_ENV__", _secret_env(pipeline, "candidate"))
+        .replace(
+            "__SIDE_ENV__\n",
+            side_env(_secret_env(pipeline, "baseline"), _secret_env(pipeline, "candidate")),
+        )
     )
 
 
@@ -632,7 +635,9 @@ def _readme(
         "",
         "## Installation pins",
         "",
-        "Commit `.github/actions/install-vectraudit/` alongside the workflow. Set repository",
+        "Commit `.github/actions/` alongside the workflow: `retrieval-check` is the one step",
+        "the workflow calls (install, record both sides, check, keep the report) and",
+        "`install-vectraudit` the pinned installer it uses. Set repository",
         "variable `VECTRAUDIT_DISTRIBUTION_REPOSITORY` to the distribution repository provided",
         "during onboarding. In the workflow, set `VECTRAUDIT_VERSION` and replace",
         "`VECTRAUDIT_SHA256` with the reviewed release wheel checksum. Missing or mismatched",

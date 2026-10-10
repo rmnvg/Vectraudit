@@ -66,8 +66,11 @@ for pilot acceptance and operating evidence; successful CI alone does not establ
 
 ## Install and upgrade
 
-`vectraudit init` and workbench release exports both include the same local composite
-action at `.github/actions/install-vectraudit/`. Commit it with the workflow. Set customer
+`vectraudit init` and workbench release exports both include the same two local composite
+actions. `.github/actions/retrieval-check/` is the single step both workflows call: it
+installs the pinned release, records the target branch and the pull request on the same
+runner, checks them and uploads the report. It uses `.github/actions/install-vectraudit/`
+for the install. Commit both with the workflow. Set customer
 repository variable `VECTRAUDIT_DISTRIBUTION_REPOSITORY`, secret
 `VECTRAUDIT_DOWNLOAD_TOKEN`, and the workflow's exact `VECTRAUDIT_VERSION` (without `v`)
 and `VECTRAUDIT_SHA256`. The generated checksum placeholder deliberately fails until
@@ -75,6 +78,12 @@ replaced. The action downloads exactly the named wheel, verifies bytes and packa
 metadata, and only then invokes pip. Its download credential is removed from pip's
 environment. Backend dependencies still use the customer's configured pip index; the wheel
 pin does not lock all transitive dependencies. Mirror/pin those separately for offline CI.
+
+The check action passes each side's secrets (`baseline-env`, `candidate-env`, one
+`NAME=value` per line) only to that side's record command and the GitHub token only to
+`check`; the installer sees neither. To upgrade an `init` project, install the new release
+locally, run `vectraudit init --backend BACKEND --ci-only --force` (only `.github/` is
+rewritten), then update both pins. Release exports regenerate the actions on each export.
 
 For a first local install, obtain the wheel through the private channel and the reviewed
 installer script through onboarding. The installer is standard-library-only and requires

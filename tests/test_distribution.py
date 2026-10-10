@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from vectraudit.pipelines.release import ReleasePipeline, render_release_workflow
-from vectraudit.scaffold import BACKENDS, installer_files, render_workflow
+from vectraudit.scaffold import BACKENDS, ci_files, render_workflow
 from vectraudit.templates import install_wheel as installer
 
 ROOT = Path(__file__).parents[1]
@@ -162,7 +162,7 @@ def test_missing_credential_never_runs_gh(monkeypatch):
 
 
 def test_generated_installer_runs_without_vectraudit_installed(tmp_path):
-    files = installer_files()
+    files = ci_files()
     script = tmp_path / "install.py"
     script.write_text(files[".github/actions/install-vectraudit/install.py"])
     result = subprocess.run(
@@ -188,13 +188,17 @@ def test_all_ci_surfaces_share_the_pinned_install_action():
         assert "rmnvg/Vectraudit" not in workflow
         assert "gh release download" not in workflow
         job = next(iter(yaml.safe_load(workflow)["jobs"].values()))
-        install = next(step for step in job["steps"] if step.get("name") == "Install vectraudit")
-        assert install["uses"] == "./.github/actions/install-vectraudit"
-        assert install["with"]["sha256"] == "${{ env.VECTRAUDIT_SHA256 }}"
+        check = next(s for s in job["steps"] if "retrieval-check" in s.get("uses", ""))
+        assert check["uses"] == "./.github/actions/retrieval-check"
+        assert check["with"]["sha256"] == "${{ env.VECTRAUDIT_SHA256 }}"
         assert "REPLACE" in job["env"]["VECTRAUDIT_SHA256"]
-    action = yaml.safe_load(installer_files()[".github/actions/install-vectraudit/action.yml"])
+    action = yaml.safe_load(ci_files()[".github/actions/install-vectraudit/action.yml"])
     assert action["runs"]["using"] == "composite"
     assert "${{ inputs." not in action["runs"]["steps"][0]["run"]
+    check = yaml.safe_load(ci_files()[".github/actions/retrieval-check/action.yml"])
+    install = check["runs"]["steps"][0]
+    assert install["uses"] == "./.github/actions/install-vectraudit"
+    assert set(install["with"]) == {"repository", "version", "sha256", "token", "extras"}
 
 
 def test_distribution_staging_excludes_source_archives_and_refuses_stale_assets(tmp_path):

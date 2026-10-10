@@ -25,7 +25,11 @@ assert ".github/actions/install-vectraudit/action.yml" in scaffold
 installer = scaffold[".github/actions/install-vectraudit/install.py"]
 compile(installer, "install.py", "exec")
 assert "--sha256" in installer
-assert "./.github/actions/install-vectraudit" in scaffold[".github/workflows/retrieval-check.yml"]
+assert "./.github/actions/retrieval-check" in scaffold[".github/workflows/retrieval-check.yml"]
+assert (
+    "./.github/actions/install-vectraudit" in scaffold[".github/actions/retrieval-check/action.yml"]
+)
+compile(scaffold[".github/actions/retrieval-check/check.py"], "check.py", "exec")
 x = np.array([[0, 0], [1, 0], [2, 0]], dtype=np.float32)
 index = faiss.IndexFlatL2(2)
 index.add(x)
