@@ -18,6 +18,7 @@ from vectraudit.evaluation.dataset import Dataset, parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.exceptions import failing_rules
 from vectraudit.evaluation.policy import Policy, policy_sha256
+from vectraudit.pipelines.budget import combine
 from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
 from vectraudit.pipelines.runtime import Pipeline
 
@@ -132,10 +133,17 @@ def optimize(
             )
     eligible = bool(validation_report and validation_report["feasible"])
     status = _status(policy, baseline, chosen, eligible, validation_report)
+    runs = [r["run"] for r in reports]
+    if validation_report is not None:
+        runs.append(validation_report["run"])
+        if "baseline_run" in validation_report:
+            runs.append(validation_report["baseline_run"])
     return {
         "format": "vectraudit.optimization",
         "format_version": 2,
         "status": status,
+        # Every tuning and held-out run's calls and reported spend, retries included.
+        "usage": combine([run["usage"] for run in runs]),
         "status_label": STATUS_LABELS[status],
         "approved": status == "approved_under_policy",
         "policy": None

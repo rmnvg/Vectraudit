@@ -1080,6 +1080,31 @@ reporting. Proving it on the first customer's real channel is still open.
 Not included: per-benchmark or per-monitor schedules (one expectation per project), cron
 expressions, and quiet hours. Choose from how the first customer schedules monitors.
 
+## Step 30: actual versus planned spend (1.5)
+
+Step 19 previewed calls and spend before a run; nothing reported what a run actually used.
+Runs recorded `cost_usd` averaged over repeats, but not how many calls were made, so warm-up
+calls, retries and failed attempts were invisible. Now:
+- **Counted where calls happen:** the runner counts every pipeline invocation per question
+  (warm-ups, repeats, retries, failures) and sums the adapter-reported cost of successful
+  calls. Each question gets a `usage` block, and each run a total.
+  - A resumed run sums every recorded attempt.
+  - Interrupted attempts, and runs recorded before usage existed, are reported, so the
+    totals are marked as lower bounds rather than silently low.
+- **Unknown stays unknown:** failed calls and calls that reported no cost are counted as
+  unpriced, and the spend is marked incomplete. They are never counted as $0.
+- **Beside the plan:**
+  - `workbench run` prints, per candidate, calls and reported spend against the Step 19
+    plan, with retries, failed calls and unpriced calls named. It stores the plan in the run
+    file under `usage.planned`.
+  - `optimize` totals every tuning and held-out run against the planned range.
+  - `monitor` prints the comparison before its JSON verdict, which stays the last line.
+- **Sharing boundary:** usage is not added to hosted uploads; the allowlisted projection is
+  unchanged.
+
+Not included: a browser view of usage (guided runs record it in their run files), and
+billing-grade token accounting. Spend is whatever adapters report.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -1093,7 +1118,7 @@ as missing merely because their customer validation is pending.
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. | Measured execution protocol and context-derived cohorts. |
-| **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. | Optimization concurrency, two simultaneous workspace runs, actual-versus-planned spend, and declared customer 1,000-question CI-window acceptance. |
+| **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. | Optimization concurrency, two simultaneous workspace runs, and declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. Step 29: declared monitor schedules; a monitor that stops reporting raises one overdue alert, resolved by the next run. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |

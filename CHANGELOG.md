@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Actual versus planned spend: `workbench run`, `optimize` and `monitor` now report the
+  calls actually made (warm-ups, retries and failed calls included) and the cost adapters
+  reported, beside the preview's plan. Run files carry a `usage` block per question and in
+  total. Failed and unpriced calls are counted as unknown, never free. Usage stays local.
 - Monitor staleness alerts: declare how often a scheduled monitor run is expected
   (dashboard **Monitor schedule**, `vectraudit cloud monitor --every 24h --grace 1h`, or
   `PUT .../monitor/schedule`). When no run arrives in time, the project page shows the

@@ -367,6 +367,21 @@ the maximum spend exceed the limit, or when `--max-spend` is set and a cost is u
 (exit 2). Retries are bounded by the retry budget, not by these limits. A resumed run was
 approved when it started and is not checked again.
 
+**After it runs**, each command prints what was actually used beside the plan, for example
+`20 calls (planned 20) · $0.18 reported, incomplete (planned unknown); 1 automatic retries;
+2 failed calls (cost unknown)`.
+
+- **Calls:** every pipeline invocation, including warm-ups, automatic retries and calls that
+  failed. A resumed run also counts the calls of earlier attempts.
+- **Spend:** the sum of `cost_usd` your adapter reported on successful calls. Failed calls
+  and calls that reported no cost are counted as unknown, never as free, and the total
+  says "incomplete".
+- **Where it is kept:** each run file has a `usage` block (per question, and in total) with
+  the plan for that candidate under `usage.planned`. The optimization result and the monitor
+  report carry theirs under `usage`. Usage is not part of hosted uploads.
+- **Lower bounds:** calls from interrupted attempts, and from runs recorded before usage
+  existed, cannot be counted; the line says so.
+
 ### LangChain and LlamaIndex retrievers
 
 Evaluate the retriever your application already builds, without rewriting it. Put a small
