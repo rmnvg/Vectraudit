@@ -1,4 +1,4 @@
-"""Read-only question text joins for the authenticated local workbench."""
+"""Read-only question text and document title joins for the authenticated local workbench."""
 
 from __future__ import annotations
 
@@ -53,6 +53,67 @@ def run_questions(workspace: GuidedWorkspace, run: dict[str, Any]) -> dict[str, 
         return unavailable("Question text unavailable: the saved benchmark could not be loaded.")
 
 
+def no_titles(reason: str, code: str) -> dict[str, Any]:
+    """``code`` lets a view stay quiet when there was nothing to show (``no_corpus``,
+    ``no_titles``) and explain when titles exist but were withheld."""
+    return {"titles": {}, "reason": reason, "code": code, "verified": False}
+
+
+def title_of(doc: dict[str, Any]) -> str | None:
+    title = doc.get("title") or (doc.get("metadata") or {}).get("title")
+    return title if isinstance(title, str) and title.strip() else None
+
+
+def run_document_titles(
+    workspace: GuidedWorkspace, run: dict[str, Any], doc_ids: set[str]
+) -> dict[str, Any]:
+    """Titles for ``doc_ids`` from the corpus attached to the run's exact saved benchmark.
+
+    ``verified`` is True when the run recorded a corpus version equal to that corpus; a
+    recorded version that differs withholds titles, because the same ID may name another
+    document. Without a recorded version (external pipelines) titles are shown unverified.
+    """
+    from vectraudit.pipelines.release import corpus_version
+    from vectraudit.pipelines.workflows import documents
+
+    source = run.get("benchmark_source")
+    if not isinstance(source, dict):
+        return no_titles(
+            "Document titles unavailable: this run has no saved benchmark reference.", "no_corpus"
+        )
+    try:
+        draft = workspace.load_draft(source["draft_id"])
+        if draft["revision"] != source["revision"]:
+            return no_titles(
+                "Document titles unavailable: the saved benchmark has changed.", "changed"
+            )
+        docs = documents(draft.get("corpus") or "")
+    except (HTTPException, OSError, ValueError, KeyError, TypeError):
+        return no_titles(
+            "Document titles unavailable: the saved benchmark could not be loaded.", "unreadable"
+        )
+    if not docs:
+        return no_titles(
+            "Document titles unavailable: no corpus is attached to the benchmark.", "no_corpus"
+        )
+    recorded = (run.get("backend") or {}).get("corpus_version")
+    if recorded is not None and recorded != corpus_version(docs):
+        return no_titles(
+            "Document titles unavailable: the attached corpus is not the one this run used.",
+            "mismatch",
+        )
+    titles = {d["doc_id"]: title for d in docs if d["doc_id"] in doc_ids and (title := title_of(d))}
+    if not any(title_of(d) for d in docs):
+        return no_titles(
+            "Document titles unavailable: the attached corpus has no titles.", "no_titles"
+        )
+    return {"titles": titles, "reason": None, "code": None, "verified": recorded is not None}
+
+
+def run_doc_ids(*runs: dict[str, Any]) -> set[str]:
+    return {i for run in runs for q in run.get("queries") or [] for i in q.get("ids") or []}
+
+
 class CaseQuestionDisplay:
     """Resolve each original baseline once per API request; never write display text."""
 
@@ -72,14 +133,30 @@ class CaseQuestionDisplay:
                         "Question text unavailable: the case benchmark does not match."
                     )
                 )
+                titles = run_document_titles(self.workspace, run, run_doc_ids(run))
             except (HTTPException, OSError, ValueError):
                 display = unavailable("Question text unavailable: the original run is unavailable.")
-            self.cache[key] = display
+                titles = no_titles(
+                    "Document titles unavailable: the original run is unavailable.", "unreadable"
+                )
+            self.cache[key] = {**display, "document_titles": titles}
         display = self.cache[key]
+        wanted = {
+            d
+            for f in (record.get("finding") or {}).get("findings") or []
+            for d in f.get("doc_ids") or []
+        }
+        titles = display["document_titles"]
         return {
             **record,
             "question_display": {
                 "text": display["texts"].get(record["query_id"]),
                 "reason": display["reason"],
+            },
+            "document_display": {
+                "titles": {d: t for d, t in titles["titles"].items() if d in wanted},
+                "reason": titles["reason"],
+                "code": titles["code"],
+                "verified": titles["verified"],
             },
         }

@@ -59,6 +59,18 @@ class Case(Metadata):
     policy: PolicyRef
     history: list[Event] = Field(min_length=1, max_length=2000)
     question_text: Annotated[str, Field(max_length=65536)] | None = None
+    document_titles: dict[ID, Annotated[str, Field(max_length=512)]] | None = Field(
+        default=None, max_length=500
+    )
+    """Titles of the findings' documents; only with explicit text sharing. Omitted from the
+    canonical form when absent, so records from clients without titles keep their digest."""
+
+
+def _dump_case(case: Case) -> dict[str, Any]:
+    data = case.model_dump()
+    if not data.get("document_titles"):
+        data.pop("document_titles", None)
+    return data
 
 
 class Span(Metadata):
@@ -145,7 +157,8 @@ def validate_record(value: Any) -> dict[str, Any]:
         "policy": SavedPolicy,
     }
     model = models[envelope.kind]
-    data = model.model_validate(envelope.data).model_dump()
+    validated = model.model_validate(envelope.data)
+    data = _dump_case(validated) if isinstance(validated, Case) else validated.model_dump()
     if envelope.kind == "policy":
         rules = parse_policy(data["rules"])
         if policy_sha256(rules) != data["sha256"]:
@@ -156,8 +169,8 @@ def validate_record(value: Any) -> dict[str, Any]:
             if envelope.kind == "case"
             else [q.get("text") for q in data.get("judgments", [])]
         )
-        if any(text is not None for text in texts):
-            raise ValueError("Question text requires explicit sharing")
+        if any(text is not None for text in texts) or data.get("document_titles"):
+            raise ValueError("Question text and document titles require explicit sharing")
     canonical = {**envelope.model_dump(exclude={"sharing"}), "data": data}
     if digest(canonical) != envelope.sharing.payload_sha256:
         raise ValueError("Shared record payload digest mismatch")
@@ -190,7 +203,11 @@ def project_record(
         data["question_text"] = (
             (record.get("question_display") or {}).get("text") if share_query_text else None
         )
-        data = Case.model_validate(data).model_dump()
+        if share_query_text:
+            cited = {d for f in data["findings"] for d in f["doc_ids"]}
+            titles = (record.get("document_display") or {}).get("titles") or {}
+            data["document_titles"] = {d: t for d, t in titles.items() if d in cited} or None
+        data = _dump_case(Case.model_validate(data))
     elif kind == "benchmark":
         ds = parse_dataset(record["dataset"])
         if ds.sha256 != record["dataset_sha256"]:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { criticalSummary, executionLabel, questionLabel, questionText } from './guided'
+import { criticalSummary, documentLabel, documentNote, executionLabel, questionLabel, questionText } from './guided'
 
 describe('local question labels', () => {
   it('keeps the ID beside text and falls back when matching text is unavailable', () => {
@@ -26,5 +26,21 @@ describe('critical results across repeats', () => {
   it('names the attempt only for retried queries', () => {
     expect(executionLabel({ attempt: null, repeat: 2, rank: null, ids: [] })).toBe('Repeat 2')
     expect(executionLabel({ attempt: 1, repeat: 2, rank: 5, ids: ['a'] })).toBe('Attempt 1, repeat 2')
+  })
+})
+
+describe('document titles', () => {
+  const display = { titles: { 'kb-1': 'Refund policy for enterprise customers (2026 edition)' }, reason: null, verified: true }
+  it('labels IDs with shortened titles and keeps unknown IDs as they are', () => {
+    expect(documentLabel(display, 'kb-1')).toBe('kb-1 · Refund policy for enterprise customers (2026 ed…')
+    expect(documentLabel(display, 'kb-1', 200)).toBe('kb-1 · Refund policy for enterprise customers (2026 edition)')
+    expect(documentLabel(display, 'kb-2')).toBe('kb-2')
+    expect(documentLabel(undefined, 'kb-1')).toBe('kb-1')
+  })
+  it('explains missing or unverified titles', () => {
+    expect(documentNote(display)).toBeNull()
+    expect(documentNote({ ...display, verified: false })).toMatch(/did not record a corpus version/)
+    expect(documentNote({ titles: {}, reason: 'Document titles unavailable: the attached corpus is not the one this run used.', code: 'mismatch', verified: false })).toMatch(/not the one this run used/)
+    expect(documentNote({ titles: {}, reason: 'Document titles unavailable: the attached corpus has no titles.', code: 'no_titles', verified: false })).toBeNull()
   })
 })

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { guidedRequest, questionLabel } from '../lib/guided'
-import type { Comparison } from '../lib/guided'
+import { documentLabel, documentNote, guidedRequest, questionLabel } from '../lib/guided'
+import type { Comparison, DocumentDisplay } from '../lib/guided'
 import type { RunListing } from '../lib/workbench'
 import { policyLabel } from '../lib/release'
 import { ShareRecord } from '../components/ShareRecord'
@@ -11,8 +11,9 @@ const input = 'mt-1 w-full rounded-lg border border-line bg-page px-3 py-2 text-
 export interface RegressionCase {
   id: string; revision: string; query_id: string; dataset_sha256: string
   baseline: string; candidate: string; status: string; owner: string
-  finding: { findings: { message: string }[] }; policy?: PolicyRef
+  finding: { findings: { message: string; doc_ids?: string[] }[] }; policy?: PolicyRef
   question_display?: { text: string | null; reason: string | null }
+  document_display?: DocumentDisplay
   history: { at: string; kind: string; status?: string; owner?: string; note?: string; candidate?: string; verdict?: string; verified?: boolean; policy?: PolicyRef }[]
 }
 export default function RegressionCases({ token, comparison, runs, policy, policyRef }: { token: string; comparison: Comparison | null; runs: RunListing[]; policy: string | null; policyRef: PolicyRef | null }) {
@@ -36,6 +37,18 @@ export default function RegressionCases({ token, comparison, runs, policy, polic
     {cases.map(c => <CaseEditor key={`${c.id}-${c.revision}`} token={token} record={c} runs={runs} busy={busy} onAction={perform} policy={policy} policyRef={policyRef} />)}
   </section>
 }
+/** The documents a case's finding cites, with titles from the attached corpus when known. */
+function CaseDocuments({ record }: { record: RegressionCase }) {
+  const docs = [...new Set(record.finding.findings.flatMap(f => f.doc_ids ?? []))]
+  if (!docs.length) return null
+  const note = documentNote(record.document_display)
+  return <div className="text-xs">
+    <p className="text-muted">Documents in this finding</p>
+    <ul className="mt-1 space-y-0.5">{docs.slice(0, 20).map(d => <li key={d} className="break-words font-mono">{documentLabel(record.document_display, d, 120)}</li>)}</ul>
+    {note && <p className="mt-1 text-muted">{note}</p>}
+  </div>
+}
+
 function CaseEditor({ token, record, runs, busy, onAction, policy, policyRef }: { token: string; record: RegressionCase; runs: RunListing[]; busy: boolean; onAction: (path: string, body: unknown) => Promise<void>; policy: string | null; policyRef: PolicyRef | null }) {
   const [owner, setOwner] = useState(record.owner)
   const [note, setNote] = useState('')
@@ -48,6 +61,7 @@ function CaseEditor({ token, record, runs, busy, onAction, policy, policyRef }: 
   }
   return <details className="rounded-lg bg-surface-2 p-3" open><summary className="cursor-pointer text-sm font-semibold">{record.query_id} · {record.status} · {record.owner || 'Unassigned'}</summary><fieldset disabled={busy} className="mt-3 space-y-3">
     <p className="whitespace-pre-wrap break-words text-sm">{record.question_display?.text ?? record.question_display?.reason ?? 'Question text unavailable for this query.'}</p>
+    <CaseDocuments record={record} />
     <p className="text-xs text-muted break-all">Evidence: {record.baseline}.run.json → {record.candidate}.run.json</p>
     <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Case owner<input className={input} value={owner} maxLength={128} onChange={e => setOwner(e.target.value)} /></label><label className="text-sm">Case status<select className={input} value={status} onChange={e => setStatus(e.target.value)}><option value="open">Open</option><option value="investigating">Investigating</option><option value="fix_proposed">Fix proposed</option></select></label></div>
     <label className="block text-sm">Investigation note<textarea className={input} maxLength={4000} value={note} onChange={e => setNote(e.target.value)} /></label>

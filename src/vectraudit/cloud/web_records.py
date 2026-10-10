@@ -155,10 +155,28 @@ def record_page(
             f"<p>Original baseline: {e(data['baseline'])} · "
             f"original candidate: {e(data['candidate'])}.</p>"
             f"<p>Original policy SHA-256: {e(data['policy']['sha256'])}.</p>"
+            + (
+                ""
+                if data.get("document_titles")
+                else '<p class="muted">Document titles were not shared with this record '
+                "(they are sent only with explicit text sharing), so documents show IDs.</p>"
+            )
             + web._table(
-                ["Finding", "Severity", "Document IDs"],
+                ["Finding", "Severity", "Documents"],
                 [
-                    [e(f["kind"]), e(f["severity"]), e(", ".join(f["doc_ids"]))]
+                    [
+                        e(f["kind"]),
+                        e(f["severity"]),
+                        "<br>".join(
+                            f'<span class="mono">{e(d)}</span>'
+                            + (
+                                f" {e(data['document_titles'][d])}"
+                                if (data.get("document_titles") or {}).get(d)
+                                else ""
+                            )
+                            for d in f["doc_ids"]
+                        ),
+                    ]
                     for f in data["findings"]
                 ],
                 "No findings.",
