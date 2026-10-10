@@ -169,3 +169,31 @@ def test_existing_policy_hashes_match_the_previous_release():
     }
     for prefix, raw in shapes.items():
         assert policy_sha256(parse_policy(raw)).startswith(prefix)
+
+
+def test_acceptance_says_who_may_accept_each_failure():
+    from vectraudit.evaluation.exceptions import acceptance
+
+    base, cand = failing_pair()
+    closed = compare_runs(base, cand, policy())
+    assert {o["why"] for o in acceptance(closed, policy())} == {"no_exceptions"}
+    opened = policy(exceptions={"allow": ["metric", "latency"], "approver": "engineer"})
+    result = compare_runs(base, cand, opened)
+    options = {o["rule"]: o for o in acceptance(result, opened)}
+    assert list(options) == failing_rules(result)  # report order, failures only
+    assert (
+        options["metric:ndcg.max_drop"]["role"],
+        options["metric:ndcg.max_drop"]["max_days"],
+    ) == (
+        "engineer",
+        30,
+    )
+    assert options["latency.p95_max_ms"]["role"] == "engineer"
+    assert options["cohort:billing:ndcg.max_drop"]["why"] == "not_allowed"
+    assert options["safety.forbidden:q1"]["why"] == "never"
+    assert options["safety.forbidden:q1"]["max_days"] is None
+    assert options["metric:ndcg.max_drop"]["message"]
+    owner = policy(exceptions={"allow": ["metric"], "safety": "owner"})
+    owner_options = {o["rule"]: o for o in acceptance(compare_runs(base, cand, owner), owner)}
+    assert owner_options["safety.no_answer:q2"]["role"] == "owner"
+    assert owner_options["metric:ndcg.max_drop"]["role"] == "owner"  # default approver

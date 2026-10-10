@@ -11,7 +11,9 @@ const cli = join(root, '.venv/bin/vectraudit')
 const workspace = await mkdtemp(join(tmpdir(), 'vectraudit-release-'))
 const repo = await mkdtemp(join(tmpdir(), 'vectraudit-release-repo-'))
 const base = 'http://127.0.0.1:8819'
-const server = spawn(cli, ['workbench', 'serve', workspace, '--port', '8819'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] })
+// Not connected to a hosted project, whatever the shell has configured.
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VECTRAUDIT_CLOUD_')))
+const server = spawn(cli, ['workbench', 'serve', workspace, '--port', '8819'], { cwd: root, env, stdio: ['ignore', 'ignore', 'pipe'] })
 let browser
 let stderr = ''
 server.stderr.on('data', b => { stderr += b })
@@ -119,6 +121,13 @@ try {
   await page.getByText('Release comparison: fail').waitFor()
   await page.getByText(/Critical query password: document missing-required-document/).waitFor()
   await page.getByText(/Export is available once the candidate passes Pilot release policy v2/).waitFor()
+  // Each failing rule says who may accept it; this policy opens no exceptions.
+  const rules = page.getByRole('region', { name: 'Failing rules' })
+  await rules.getByText('critical:password:missing-required-document').waitFor()
+  await rules.getByText('Cannot be accepted: this policy has no exceptions block.').waitFor()
+  await rules.getByRole('button', { name: 'Check accepted regressions in the hosted project' }).click()
+  await rules.getByRole('alert').getByText(/Not connected to a hosted project/).waitFor()
+  await rules.screenshot({ path: join(workspace, 'failing-rules.png') })
 
   await page.getByRole('button', { name: 'Evaluate another configuration' }).click()
   await evaluate('Recheck', 2, 'phrase')

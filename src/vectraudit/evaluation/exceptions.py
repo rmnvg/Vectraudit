@@ -51,6 +51,43 @@ def failing_rules(result: Mapping[str, Any]) -> list[str]:
     ]
 
 
+def acceptance(result: Mapping[str, Any], policy: Policy) -> list[dict[str, Any]]:
+    """Who may accept each failing rule of ``result`` under ``policy``, in report order.
+
+    Each entry has ``rule``, ``kind``, ``message``, ``role`` (``engineer``, ``owner`` or
+    ``None``), ``max_days`` and a ``why`` code when ``role`` is ``None``: ``no_exceptions``
+    (the policy opens nothing), ``never`` (a safety failure the policy never waives) or
+    ``not_allowed`` (the policy does not open this kind of rule). Nothing is accepted here;
+    exceptions are granted and audited in the hosted project.
+    """
+    rules = policy.exceptions
+    out = []
+    for reason in result.get("reasons", []):
+        if reason.get("verdict") != "fail" or "rule" not in reason:
+            continue
+        rule = reason["rule"]
+        try:
+            kind, role = rule_kind(rule), required_role(policy, rule)
+        except ValueError:
+            continue
+        why = None
+        if role is None:
+            why = (
+                "no_exceptions" if rules is None else "never" if kind == "safety" else "not_allowed"
+            )
+        out.append(
+            {
+                "rule": rule,
+                "kind": kind,
+                "message": reason.get("message", ""),
+                "role": role,
+                "max_days": rules.max_days if rules is not None and role else None,
+                "why": why,
+            }
+        )
+    return out
+
+
 def apply_exceptions(
     result: Mapping[str, Any], exceptions: Sequence[Mapping[str, Any]], policy: Policy
 ) -> dict[str, Any]:
