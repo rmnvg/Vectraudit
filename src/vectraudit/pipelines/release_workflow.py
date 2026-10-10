@@ -144,6 +144,13 @@ class PolicyStore:
         }
 
 
+class CalibrateIn(Contract):
+    runs: list[str] = Field(min_length=2, max_length=10)
+    """Recordings of the same, unchanged setup (2-10; 5 or more recommended)."""
+    policy: str | None
+    margin: float = Field(default=1.5, ge=1.0, le=5.0)
+
+
 class ReleaseIn(Contract):
     baseline: str
     candidate: str
@@ -272,6 +279,26 @@ def release_router(workspace: GuidedWorkspace) -> APIRouter:
     @router.post("/policies")
     def save_policy(body: PolicyIn) -> dict[str, Any]:
         return policies.save(body)
+
+    @router.post("/calibrate")
+    def calibrate_policy(body: CalibrateIn) -> dict[str, Any]:
+        """A/A calibration of a saved policy against recordings of one unchanged setup.
+
+        Reads local runs only and writes nothing: the draft is returned for review and is
+        saved, if at all, as a new policy version through ``POST /policies``.
+        """
+        from vectraudit.evaluation.calibration import calibrate
+
+        if body.policy is None:
+            raise HTTPException(
+                422, "Choose a saved release policy; exploratory defaults are not calibrated"
+            )
+        if len(set(body.runs)) != len(body.runs):
+            raise HTTPException(422, "Choose each recording once")
+        record = policies.record(body.policy)
+        runs = [load_run(workspace.run_path(run_id)) for run_id in body.runs]
+        report = calibrate(runs, record["policy"], margin=body.margin)
+        return {"policy": policy_ref(record), "report": report}
 
     @router.get("/policies/{identifier}")
     def read_policy(identifier: str) -> dict[str, Any]:

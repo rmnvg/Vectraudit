@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- A/A calibration in the workbench: under the release policy picker, choose 2-10
+  recordings of the unchanged setup to see false alarms by rule, failures that are not
+  noise, and each proposed threshold with the noise behind it. Then save the draft as a new
+  policy version; nothing is applied silently. Calibration (CLI and workbench) now reports
+  configuration differences between the recordings, and says when they are not A/A.
 - Readable document titles: findings and regression cases show document titles beside IDs,
   from a corpus document's `title` or `metadata.title`. Titles join from the run's own
   saved benchmark corpus; they are withheld when the run used a different corpus and

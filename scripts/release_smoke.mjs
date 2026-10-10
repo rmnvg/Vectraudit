@@ -72,6 +72,15 @@ try {
   await page.getByRole('region', { name: 'Release policy settings' }).screenshot({ path: join(workspace, 'release-policy.png') })
   await page.getByRole('button', { name: 'Save policy version' }).click()
   await page.getByText(/Comparisons, case verifications and exports use/).waitFor()
+  // A/A calibration from the policy settings: measure on recordings, nothing is saved.
+  await page.getByText('Calibrate this policy against unchanged runs (A/A)').click()
+  const recordings = page.getByRole('group', { name: /Recordings of the unchanged setup/ })
+  for (const box of await recordings.getByRole('checkbox').all()) await box.check()
+  await page.getByRole('button', { name: /^Measure false alarms \(2 runs\)/ }).click()
+  await page.getByRole('region', { name: 'Calibration result' }).getByText(/A\/A comparisons/).first().waitFor()
+  // Baseline and candidate are different configurations: the panel must say it is not A/A.
+  await page.getByRole('region', { name: 'Calibration result' }).getByText(/not one unchanged setup/).waitFor()
+  await page.getByRole('region', { name: 'Release policy settings' }).screenshot({ path: join(workspace, 'calibration.png') })
   await page.getByRole('button', { name: 'Compare runs' }).click()
   await page.getByText(/under Pilot release policy v1/).waitFor()
   await page.getByText('Release comparison: pass').waitFor()

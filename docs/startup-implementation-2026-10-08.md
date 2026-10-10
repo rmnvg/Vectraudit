@@ -914,6 +914,46 @@ Results:
   and passage-review Chromium journeys passed.
 - A finding chip was checked in Chromium.
 
+## Step 25: A/A calibration in the workbench (1.10)
+
+Under the release policy picker, **Calibrate this policy against unchanged runs (A/A)** lets
+an engineer choose 2–10 complete recordings of the same benchmark and see:
+- false alarms by rule, with their denominator;
+- failures that are not noise;
+- each proposed threshold with the measured noise behind it;
+- the CLI's caveats.
+
+Measuring writes nothing. **Save draft as a new version** goes through the normal policy
+versioning with a note recording the before-and-after false alarms. Only saved or startup
+policies can be calibrated.
+
+Found while checking the panel in Chromium: a baseline and a candidate (two different
+configurations) could be measured as "A/A" without any warning. Calibration, in the CLI and
+the workbench, now reports `config_differences` between recordings and says when they are
+not one unchanged setup.
+
+Not included: recording the A/A runs from the panel (record them as usual first), a cost
+preview inside the panel, and showing exceptions in the workbench (1.10's remaining hosted
+link).
+
+Validation:
+- 8 new Python tests cover:
+  - measuring without writing, and saving the draft as version 2 that then has no false
+    alarms;
+  - refusals for exploratory defaults, one run, duplicate runs, an unknown policy and an
+    unknown run;
+  - mixed benchmarks;
+  - configuration differences.
+- 3 new frontend tests cover the summary, run choice and change wording.
+- The release Chromium journey now measures from the panel and checks the "not one
+  unchanged setup" warning.
+
+Results:
+- Full Python suite: 1,529 passed, 22 skipped (live services not configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, the API type generation check (no drift),
+  TypeScript, Oxlint, 94 frontend tests, the production build, and the release and guided
+  journeys passed.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -932,7 +972,7 @@ as missing merely because their customer validation is pending.
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. | Provision and verify channel/credentials, full reusable CI wrapper, owner-approved support and trust materials. |
-| **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. | A workbench screen for calibration; exceptions in the workbench once cases are shared; customer-runner calibration evidence. |
+| **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. Step 25: calibration in the workbench, with configuration differences called out. | Exceptions shown in the workbench; customer-runner calibration evidence. |
 | **Tier 2** | Chunking experiments, permission scenarios and CLI optimization foundations exist. | Customer-selected lineage/freshness or permission lifecycle proof; interactive experiment/migration workflow where demand supports it. |
 | **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Defer optional breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
 
@@ -945,8 +985,9 @@ as missing merely because their customer validation is pending.
    1.6, 1.7 and 1.10 are in place. Trace import (1.1), context/answer evidence (1.2), the
    repair loop's failure classes (1.3), benchmark upkeep integration (1.8) and the delivery
    channel need a design partner's real traces, incidents and channel. 1.9 needs the
-   distribution channel provisioned. Smaller code-only candidates while those are arranged:
-   a workbench screen for A/A calibration (1.10) and context-derived cohorts (1.4).
+   distribution channel provisioned. A smaller code-only candidate while those are arranged:
+   context-derived cohorts (1.4), which first needs a decision on recording context values
+   in runs under the sharing boundary.
 3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
    design partner's real traces before building.
 

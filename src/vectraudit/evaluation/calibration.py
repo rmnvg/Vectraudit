@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from vectraudit.evaluation.compare import compare_runs
+from vectraudit.evaluation.compare import compare_runs, config_diff
 from vectraudit.evaluation.exceptions import failing_rules, rule_kind
 from vectraudit.evaluation.policy import parse_policy, policy_sha256
 
@@ -221,6 +221,14 @@ def calibrate(
         or rule == "latency.p95_max_ms"
     )
     notes = []
+    differences = sorted({d["path"] for run in runs[1:] for d in config_diff(runs[0], run)})
+    if differences:
+        shown = ", ".join(differences[:5]) + (" and more" if len(differences) > 5 else "")
+        notes.append(
+            f"The recordings differ in configuration ({shown}): this is not an A/A comparison "
+            "of one unchanged setup, so the false alarms and the draft may reflect real "
+            "changes rather than noise. Calibrate with recordings of a single configuration."
+        )
     if len(runs) < RECOMMENDED_RUNS:
         notes.append(
             f"Only {len(runs)} runs: rare noise is likely underestimated. Record at least "
@@ -256,5 +264,6 @@ def calibrate(
         "draft_policy": draft if changes else None,
         "draft": _alarms(_comparisons(runs, draft)) if changes else current_alarms,
         "not_noise": real,
+        "config_differences": differences,
         "notes": notes,
     }

@@ -161,3 +161,12 @@ def test_cli_writes_new_files_only(tmp_path):
     bad = runner.invoke(app, ["calibrate", str(paths[0]), "--policy", str(policy)])
     assert bad.exit_code == 1
     assert "at least 2" in bad.output
+
+
+def test_recordings_of_different_configurations_are_called_out():
+    runs = noisy_runs(3)
+    runs[2]["search"]["params"] = {"nprobe": 64}
+    report = calibrate(runs, STRICT)
+    assert report["config_differences"] == ["search.params.nprobe"]
+    assert any("not an A/A comparison" in note for note in report["notes"])
+    assert calibrate(noisy_runs(3), STRICT)["config_differences"] == []
