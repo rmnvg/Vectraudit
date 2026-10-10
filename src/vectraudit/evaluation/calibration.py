@@ -89,7 +89,10 @@ def _noise(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     regressed: list[int] = []
     for result in results:
         for name, stats in (result.get("metrics") or {}).items():
-            metrics.setdefault(name, []).append(-stats["delta"])
+            # Under non-inferiority a rule fails when the interval's lower bound passes the
+            # allowed drop, so that bound, not the measured change, is the noise to absorb.
+            low = stats["ci_low"] if stats.get("tolerance") else stats["delta"]
+            metrics.setdefault(name, []).append(-low)
         for tag, cohort in (result.get("cohorts") or {}).items():
             for name, stats in (cohort.get("metrics") or {}).items():
                 cohorts.setdefault(tag, {}).setdefault(name, []).append(-stats["delta"])

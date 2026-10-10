@@ -79,7 +79,7 @@ class _Check:
         self.base, self.cand, self.policy = base, cand, policy
         self.rng = np.random.default_rng(seed)
         self.n_bootstrap = n_bootstrap
-        self.reasons: list[dict[str, str]] = []
+        self.reasons: list[dict[str, Any]] = []
         self.warnings: list[str] = []
         self.out: dict[str, Any] = {
             "format": CHECK_FORMAT,
@@ -105,7 +105,7 @@ class _Check:
     def flag(self, verdict: Verdict, message: str, rule: str | None = None) -> None:
         """Record a reason. A failing reason carries ``rule``: a stable key naming exactly
         which policy rule failed, which an audited exception can name (see exceptions.py)."""
-        reason = {"verdict": verdict.value, "message": message}
+        reason: dict[str, Any] = {"verdict": verdict.value, "message": message}
         if rule is not None:
             reason["rule"] = rule
         self.reasons.append(reason)
@@ -445,10 +445,12 @@ class _Check:
         return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
     def _apply_rule(
-        self, name: str, rule: MetricRule, stats: Mapping[str, Any], where: str, scope: str
+        self, name: str, rule: MetricRule, stats: dict[str, Any], where: str, scope: str
     ) -> None:
         label = f"{where}{name}"
-        if rule.max_drop is not None:
+        if rule.max_drop is not None and self.policy.non_inferiority and scope == "metric":
+            self._non_inferiority(name, rule.max_drop, stats, label)
+        elif rule.max_drop is not None:
             drop = -stats["delta"]
             worst_case = -stats["ci_high"]
             exceeded = (
@@ -470,6 +472,33 @@ class _Check:
                 f"{label} is {stats['candidate']:.4f}, below the policy minimum {rule.min:.4f}.",
                 f"{scope}:{name}.min",
             )
+
+    def _non_inferiority(self, name: str, margin: float, stats: dict[str, Any], label: str) -> None:
+        """Within tolerance only if the whole 95% interval of the change is above -margin."""
+        low, high = stats["ci_low"], stats["ci_high"]
+        if low > -margin + EPS:
+            decision = "within_tolerance"
+        elif high < -margin - EPS:
+            decision = "regression"
+        else:
+            decision = "inconclusive"
+        stats["tolerance"] = {"decision": decision, "margin": margin}
+        interval = f"95% CI of change [{low:+.4f}, {high:+.4f}]"
+        if decision == "regression":
+            self.flag(
+                Verdict.FAIL,
+                f"{label} dropped beyond tolerance: {stats['baseline']:.4f} → "
+                f"{stats['candidate']:.4f}, {interval} lies entirely below -{margin:.4f}.",
+                f"metric:{name}.max_drop",
+            )
+        elif decision == "inconclusive":
+            self.flag(
+                Verdict.FAIL,
+                f"{label} is not shown to be within tolerance (inconclusive): {interval} "
+                f"reaches below -{margin:.4f}. More query families would narrow it.",
+                f"metric:{name}.max_drop",
+            )
+            self.reasons[-1]["inconclusive"] = True
 
     def _regressed_queries(
         self,

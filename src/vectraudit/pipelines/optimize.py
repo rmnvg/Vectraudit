@@ -211,10 +211,14 @@ def _restrict(policy: Policy, query_ids: set[str]) -> Policy:
 
 
 def _brief(result: dict[str, Any]) -> dict[str, Any]:
+    failing = [r for r in result["reasons"] if r["verdict"] == "fail"]
     return {
         "verdict": result["verdict"],
         "failing_rules": failing_rules(result),
         "reasons": [r["message"] for r in result["reasons"]][:10],
+        # Under a non-inferiority policy, "not shown within tolerance" is a lack of evidence,
+        # not a measured regression.
+        "inconclusive": bool(failing) and all(r.get("inconclusive") for r in failing),
     }
 
 
@@ -231,7 +235,7 @@ def _screen(reports: list[dict[str, Any]], baseline: str | None, policy: Policy)
             continue
         screen = _brief(compare_runs(base["run"], report["run"], policy))
         report["policy_screen"] = screen
-        if screen["verdict"] == "fail":
+        if screen["verdict"] == "fail" and not screen["inconclusive"]:
             report["feasible"] = False
             report["reasons"].append(
                 "fails the release policy on exploratory questions: "

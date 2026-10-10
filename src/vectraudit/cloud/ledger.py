@@ -28,19 +28,21 @@ from vectraudit.cloud.models import (
 )
 
 MAX_REASONS = 10
+METRIC_KEYS = ("baseline", "candidate", "delta", "ci_low", "ci_high", "n", "n_families")
 MAX_CHANGES = 50
-SUMMARY_VERSION = 4
+SUMMARY_VERSION = 5
 """2 adds verdict_before_exceptions and accepted (exceptions that covered failing rules);
 3 adds drift (monitor checks only: corpus, configuration and changed-result counts);
-4 adds cohorts (how many cohort rules were judged and failed, and the multiplicity control)."""
+4 adds cohorts (how many cohort rules were judged and failed, and the multiplicity control);
+5 adds non_inferiority and each metric's tolerance decision under it."""
 
 
 def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
     """The decision-relevant part of a check result, bounded and free of evidence."""
     metrics = {
         name: {
-            key: stats.get(key)
-            for key in ("baseline", "candidate", "delta", "ci_low", "ci_high", "n", "n_families")
+            **{key: stats.get(key) for key in METRIC_KEYS},
+            **({"tolerance": stats["tolerance"]} if "tolerance" in stats else {}),
         }
         for name, stats in (result.get("metrics") or {}).items()
     }
@@ -75,6 +77,7 @@ def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
             for a in result.get("exceptions_applied", [])
         ],
         "cohorts": result.get("cohort_judging"),
+        "non_inferiority": bool((result.get("policy") or {}).get("non_inferiority")),
         "drift": {
             "corpus": drift.get("corpus"),
             "configuration": drift.get("configuration"),

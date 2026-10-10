@@ -81,6 +81,7 @@ def test_each_check_records_one_compact_decision(world, cloud_app, decided) -> N
             "verdict_before_exceptions",
             "accepted",
             "cohorts",
+            "non_inferiority",
             "drift",
         }
         assert summary["drift"] is None  # only monitor checks record drift

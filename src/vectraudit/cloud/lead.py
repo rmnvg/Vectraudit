@@ -138,8 +138,16 @@ def _uncertain(entry: Mapping[str, Any], summary: Mapping[str, Any]) -> list[str
     noisy = []
     for name, stats in _ordered(summary):
         low, high = stats.get("ci_low"), stats.get("ci_high")
-        if low is None or high is None or (stats.get("n_families") or 0) < 2:
-            continue
+        tolerance = stats.get("tolerance") or {}
+        if tolerance.get("decision") == "inconclusive":
+            notes.append(
+                f"Inconclusive for {metric_label(name)}: the 95% interval of the change "
+                f"({low:+.3f} to {high:+.3f}) reaches past the allowed drop of "
+                f"{tolerance['margin']:.3f}. Under the non-inferiority policy this fails the "
+                "check; more query families would narrow the interval."
+            )
+        if tolerance or low is None or high is None or (stats.get("n_families") or 0) < 2:
+            continue  # non-inferiority states its own conclusion for this metric
         if low < 0 < high:
             noisy.append(f"{metric_label(name).split(' (')[0]} ({low:+.3f} to {high:+.3f})")
     if noisy:
@@ -298,6 +306,16 @@ def explain(entry: Mapping[str, Any]) -> dict[str, Any]:
     if accepted:
         matters.append(
             f"Accepted by exception: {', '.join(sorted(str(r) for r in accepted if r))}."
+        )
+    within = [
+        f"{metric_label(name)} (allowed drop {stats['tolerance']['margin']:.3f})"
+        for name, stats in _ordered(summary)
+        if (stats.get("tolerance") or {}).get("decision") == "within_tolerance"
+    ]
+    if within:
+        matters.append(
+            "Shown within tolerance under the non-inferiority policy (the whole 95% interval "
+            "stays above the allowed drop): " + ", ".join(within) + "."
         )
     critical = summary.get("critical") or {}
     if critical.get("total"):

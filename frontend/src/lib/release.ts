@@ -25,6 +25,12 @@ export const METRIC_HELP: Record<Metric, string> = {
 }
 
 /** Strings so inputs can be empty while editing; empty means "no limit". */
+export type DropTest = 'measured' | 'significance' | 'non_inferiority'
+export const DROP_TESTS: { value: DropTest; label: string; help: string }[] = [
+  { value: 'measured', label: 'The measured change', help: 'Fail when the measured drop exceeds the allowed drop.' },
+  { value: 'significance', label: 'Only clear harm', help: 'Fail only when the whole 95% interval of the drop exceeds it. Fewer false alarms on small benchmarks; real regressions can pass when the benchmark is too small to show them.' },
+  { value: 'non_inferiority', label: 'Shown within tolerance', help: 'Pass only when the whole 95% interval stays above the allowed drop; otherwise fail as inconclusive. Strictest: small benchmarks often cannot show it.' },
+]
 export interface MetricForm { enabled: boolean; maxDrop: string; min: string }
 export interface PolicyForm {
   metrics: Record<Metric, MetricForm>
@@ -39,7 +45,8 @@ export interface PolicyForm {
   preserved: RawPolicy
   p95Pct: string; p50Pct: string; p95Ms: string; minIncreaseMs: string
   sameEnvironment: boolean
-  requireSignificance: boolean
+  /** How allowed drops are judged: the measured change, clear harm, or shown within tolerance. */
+  dropTest: DropTest
   criticalQueries: { queryId: string; docId: string; maxRank: string }[]
 }
 
@@ -82,7 +89,7 @@ export function formFromPolicy(raw: RawPolicy): PolicyForm {
     p95Ms: text(latency.p95_max_ms),
     minIncreaseMs: text(latency.min_increase_ms ?? 2),
     sameEnvironment: latency.require_same_environment !== false,
-    requireSignificance: raw.require_significance === true,
+    dropTest: raw.non_inferiority === true ? 'non_inferiority' : raw.require_significance === true ? 'significance' : 'measured',
     criticalQueries: Array.isArray(raw.critical_queries) ? raw.critical_queries.map(item => {
       const rule = object(item)
       return { queryId: typeof rule.query_id === 'string' ? rule.query_id : '', docId: typeof rule.doc_id === 'string' ? rule.doc_id : '', maxRank: text(rule.max_rank) }
@@ -161,7 +168,8 @@ export function policyFromForm(form: PolicyForm): { policy?: RawPolicy; errors: 
       metrics: cohortMetrics,
       ...(form.cohortControl && { control: 'bonferroni' }),
     },
-    require_significance: form.requireSignificance,
+    require_significance: form.dropTest === 'significance',
+    ...(form.dropTest === 'non_inferiority' && { non_inferiority: true }),
     ...(criticalQueries.length > 0 && { critical_queries: criticalQueries }),
     ...form.preserved,
   }

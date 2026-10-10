@@ -37,12 +37,13 @@ _TOP_KEYS = {
     "primary_metric",
     "cohorts",
     "require_significance",
+    "non_inferiority",
     "critical_queries",
     "exceptions",
 }
 EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical")
-COHORT_CONTROLS = ("none", "bonferroni")
 """Rule kinds a policy may open to audited exceptions. Safety rules are governed separately."""
+COHORT_CONTROLS = ("none", "bonferroni")
 _LATENCY_KEYS = {
     "p50_max_increase_pct",
     "p95_max_increase_pct",
@@ -129,6 +130,10 @@ class Policy:
     cohorts: CohortRule = CohortRule()
     require_significance: bool = False
     """Fail a max_drop rule only when the whole 95% interval of the drop exceeds the limit."""
+    non_inferiority: bool = False
+    """Pass a suite-level max_drop rule only when the whole 95% interval of the change stays
+    above -max_drop (shown within tolerance); an interval reaching past it fails as
+    inconclusive. Cohort rules are unchanged."""
     is_default: bool = False
     critical_queries: tuple[CriticalQueryRule, ...] = ()
     exceptions: ExceptionRule | None = None
@@ -143,6 +148,8 @@ class Policy:
         # Preserve hashes of existing saved policies and exported release contracts.
         if self.cohorts.control == "none":
             result["cohorts"].pop("control")
+        if not self.non_inferiority:
+            result.pop("non_inferiority")
         if not self.critical_queries:
             result.pop("critical_queries")
         else:
@@ -230,6 +237,7 @@ def parse_policy(raw: Any) -> Policy:
         primary_metric=primary,
         cohorts=cohorts,
         require_significance=_bool(raw, "require_significance", False),
+        non_inferiority=_bool(raw, "non_inferiority", False),
         critical_queries=_critical_rules(raw.get("critical_queries", [])),
         exceptions=_exception_rules(raw["exceptions"]) if "exceptions" in raw else None,
     )
@@ -240,6 +248,11 @@ def parse_policy(raw: Any) -> Policy:
         or bool(policy.critical_queries)
     )
     _expect(has_quality_rule, "a policy needs at least one metric or regressed-query rule")
+    _expect(
+        not (policy.require_significance and policy.non_inferiority),
+        "require_significance (fail only on clear harm) and non_inferiority (pass only when "
+        "shown within tolerance) are opposite rules; choose one",
+    )
     return policy
 
 
