@@ -40,6 +40,16 @@ describe('release policy form', () => {
     form.cohortControl = false
     expect(policyFromForm(form).policy?.cohorts).toEqual({ min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } } })
   })
+  it('chooses one way to judge allowed drops', () => {
+    expect(formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } } }).dropTest).toBe('measured')
+    const form = formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } }, non_inferiority: true })
+    expect(form.dropTest).toBe('non_inferiority')
+    expect(policyFromForm(form).policy).toMatchObject({ non_inferiority: true, require_significance: false })
+    form.dropTest = 'significance'
+    const { policy } = policyFromForm(form)
+    expect(policy?.require_significance).toBe(true)
+    expect(policy).not.toHaveProperty('non_inferiority')
+  })
   it('explains what to fix instead of producing an invalid policy', () => {
     const form = formFromPolicy({ metrics: {} })
     expect(policyFromForm(form).errors[0]).toMatch(/at least one quality rule/)

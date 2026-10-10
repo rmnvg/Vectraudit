@@ -750,6 +750,53 @@ Results:
 - TypeScript, Oxlint, 86 frontend tests, the production build and the release Chromium
   journey passed.
 
+## Step 21: opt-in non-inferiority policy (rest of 1.4)
+
+Not detecting harm is not evidence of safety. With `"non_inferiority": true`, a suite-level
+`max_drop` rule passes only when the whole 95% interval of the change stays above
+`-max_drop`.
+- **Inconclusive:** an interval reaching past it fails with its own wording ("not shown to
+  be within tolerance (inconclusive)") and `inconclusive: true` on the reason.
+- **Beyond tolerance:** a clear drop is reported as such.
+- **Exceptions:** both use the same rule key, so an audited exception can accept an
+  inconclusive release deliberately.
+
+The option is mutually exclusive with `require_significance`. Policies without it keep
+their hashes and meaning, and cohort rules keep their own semantics.
+
+Where it shows:
+- **Check JSON:** each metric gains `tolerance.decision`.
+- **Reports:** a "Non-inferiority" line.
+- **Ledger summaries (version 5):** record it.
+- **Lead summaries:** "shown within tolerance" replaces "not proof of safety", and
+  inconclusive gets its own note.
+- **Optimizer:** a screen that is only inconclusive does not exclude a candidate.
+- **Calibration:** sizes the margin from the A/A interval's lower bound.
+- **Workbench editor:** the significance checkbox becomes one choice of three ways to judge
+  allowed drops.
+
+Not included: a sixth `inconclusive` verdict (inconclusive fails closed, see DECISIONS),
+non-inferiority for cohort rules, and per-metric choice of semantics. The execution protocol
+and context-derived cohorts remain open in 1.4.
+
+Validation: 10 new Python tests cover:
+- within tolerance, inconclusive versus the measured rule, and beyond tolerance;
+- policy exclusivity and unchanged hashes;
+- unchanged cohort rules;
+- accepting an inconclusive result by exception;
+- report lines;
+- lead and ledger wording;
+- an optimizer screen that does not exclude;
+- a calibration draft that removes A/A false alarms.
+
+One frontend test covers the three-way choice round trip.
+
+Results:
+- Full Python suite: 1,506 passed, 22 skipped (live services not configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check (no drift) passed.
+- TypeScript, Oxlint, 87 frontend tests, the production build and the release Chromium
+  journey passed.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -762,7 +809,7 @@ as missing merely because their customer validation is pending.
 | **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Representative trace importer, observed/missing capability report, independent engineer setup evidence. Choose the trace format from actual inputs. |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
-| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. | Measured execution protocol, context-derived cohorts and optional versioned non-inferiority semantics. |
+| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. | Measured execution protocol and context-derived cohorts. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. | Optimization concurrency, two simultaneous workspace runs, actual-versus-planned spend, and declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. | Sharing from the workbench UI, readable document titles, recurring findings and lead/second-engineer acceptance. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
@@ -777,10 +824,9 @@ as missing merely because their customer validation is pending.
 1. **Finish distribution acceptance (1.9).** Provision the selected channel and verify
    independent customer credentials using the concrete checklist in `RELEASING.md`. Review
    support/trust commitments; do not substitute local unit tests for customer install evidence.
-2. **Non-inferiority policy (rest of 1.4).** An explicit, versioned rule under which "within
-   tolerance" needs the interval's lower bound above the allowed drop, so an inconclusive
-   check is reported as inconclusive rather than passing. Opt-in, like the cohort
-   control. This needs no customer input.
+2. **Recurring findings (rest of 1.6).** Show on the hosted project which questions fail
+   again across checks, linked to their shared regression cases, so a lead sees repeat
+   problems rather than one check at a time. This needs no customer input.
 3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
    design partner's real traces before building.
 

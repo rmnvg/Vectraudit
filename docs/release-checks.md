@@ -179,7 +179,28 @@ between-family uncertainty, even if it has many scenario rows.
   runners (about 0.1 ms on local indexes, 1.5 ms against networked backends) is not a
   regression. Lower it, or set 0 to judge every rise, on dedicated hardware.
 - `require_significance: true` fails a `max_drop` rule only when the whole 95% interval of
-  the change is beyond the limit; useful for small or noisy query sets.
+  the change is beyond the limit; useful for small or noisy query sets. Not detecting harm
+  this way is not evidence that the change is within tolerance.
+- `non_inferiority: true` is the opposite stance: a suite-level `max_drop` rule passes only
+  when the whole 95% interval of the change stays above `-max_drop` (shown within
+  tolerance). There are three outcomes:
+  - **within tolerance:** passes.
+  - **inconclusive:** the interval reaches past the allowed drop; the check **fails**, and
+    the reason says so ("not shown to be within tolerance (inconclusive)"). More query
+    families narrow the interval.
+  - **beyond tolerance:** the whole interval lies past the allowed drop.
+
+  Both failures use the same rule key (`metric:<m>.max_drop`), so an audited exception can
+  accept an inconclusive result deliberately. Reports add a "Non-inferiority" line, each
+  metric gains `tolerance.decision`, and the lead summary says "shown within tolerance"
+  instead of "not proof of safety". Cohort rules keep their own semantics (see below). The
+  optimizer does not exclude a candidate whose exploratory screen is only inconclusive;
+  the held-out check decides. `vectraudit calibrate` sizes the margin from the A/A
+  interval's lower bound under this option.
+
+  `require_significance` and `non_inferiority` cannot both be set. Policies without
+  `non_inferiority` keep their hashes and meaning. In the workbench, choose "Judge allowed
+  drops by: shown within tolerance".
 - **Many cohorts.** Each tag with enough families is a cohort, judged on its own. With many
   cohorts, some fail by chance even when nothing changed: in a 20-cohort A/A test, every
   comparison raised at least one chance cohort failure.

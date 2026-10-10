@@ -109,6 +109,28 @@ def _md_table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     return "\n".join(lines)
 
 
+_TOLERANCE = {
+    "within_tolerance": "shown within tolerance",
+    "inconclusive": "inconclusive (interval reaches past the allowed drop)",
+    "regression": "beyond tolerance",
+}
+
+
+def tolerance_line(result: Mapping[str, Any]) -> str | None:
+    """``Non-inferiority: nDCG shown within tolerance; recall inconclusive (...).``"""
+    parts = [
+        f"{_METRIC_NAMES.get(name, name)} {_TOLERANCE[m['tolerance']['decision']]}"
+        for name, m in (result.get("metrics") or {}).items()
+        if m.get("tolerance")
+    ]
+    if not parts:
+        return None
+    return (
+        "Non-inferiority (pass only when the whole 95% interval stays above the allowed "
+        "drop): " + "; ".join(parts) + "."
+    )
+
+
 def cohort_line(result: Mapping[str, Any]) -> str | None:
     """``Cohorts: 4 of 6 judged on 8 rules, 1 failed; no multiplicity control.``"""
     judging = result.get("cohort_judging")
@@ -169,6 +191,8 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     latency = _latency_rows(result["latency"])
     if latency:
         out += [_md_table(["Latency", "Baseline", "Candidate", "Change"], latency), ""]
+    if tolerance := tolerance_line(result):
+        out += [tolerance, ""]
     if cohorts := cohort_line(result):
         out += [cohorts, ""]
     queries = result.get("queries")
@@ -413,6 +437,8 @@ def render_html(result: Mapping[str, Any]) -> str:
         parts.append("".join(cards))
     if result["metrics"]:
         parts.append("<h2>Quality</h2>")
+        if tolerance := tolerance_line(result):
+            parts.append(f'<p class="muted">{html.escape(tolerance)}</p>')
         parts.append(
             _html_table(
                 [

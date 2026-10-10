@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Opt-in non-inferiority policy: with `"non_inferiority": true`, a suite-level `max_drop`
+  rule passes only when the whole 95% interval of the change stays above the allowed drop.
+  An interval reaching past it fails as inconclusive with its own wording, and a clear drop
+  as beyond tolerance. Reports, ledger summaries (version 5) and lead summaries state the
+  decision. Calibration sizes the margin from the A/A lower bound, the optimizer does not
+  exclude on an inconclusive screen, and the workbench editor offers it as one of three
+  ways to judge allowed drops. Existing policies keep their hashes.
 - Cohort false-alarm control. Each check reports how many cohorts and cohort rules it
   judged and how many failed (`cohort_judging`, a "Cohorts:" report line, the hosted
   decision summary), and warns from 5 rules judged without control. A new policy option

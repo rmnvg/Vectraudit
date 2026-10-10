@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { guidedRequest } from '../lib/guided'
-import { METRICS, METRIC_HELP, STARTER_POLICY, formFromPolicy, policyFromForm, policyLabel, selectedRef } from '../lib/release'
+import { DROP_TESTS, METRICS, METRIC_HELP, STARTER_POLICY, formFromPolicy, policyFromForm, policyLabel, selectedRef } from '../lib/release'
 import type { PolicyChoice, PolicyForm, PolicyListing, PolicyRecord, PolicyRef, RawPolicy } from '../lib/release'
 
 const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40'
@@ -111,7 +111,9 @@ function PolicyEditor({ token, base, onSaved }: { token: string; base: PolicyRec
         <label className="flex items-center gap-2 self-end pb-1.5 text-xs"><input type="checkbox" checked={form.sameEnvironment} onChange={e => update({ sameEnvironment: e.target.checked })} />Compare latency only between runs from the same machine type</label>
       </div></div>
 
-    <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={form.requireSignificance} onChange={e => update({ requireSignificance: e.target.checked })} /><span>Fail an allowed-drop rule only when the whole 95% interval of the drop exceeds it<span className="block text-xs text-muted">Fewer false alarms on small benchmarks; real regressions can pass when the benchmark is too small to show them.</span></span></label>
+    <fieldset className="text-sm"><legend className="font-medium">Judge allowed drops by</legend>
+      {DROP_TESTS.map(test => <label key={test.value} className="mt-1 flex items-start gap-2"><input type="radio" name="drop-test" checked={form.dropTest === test.value} onChange={() => update({ dropTest: test.value })} /><span>{test.label}<span className="block text-xs text-muted">{test.help}</span></span></label>)}
+    </fieldset>
     <label className="block text-sm">Review note<textarea aria-label="Policy review note" className={input} rows={2} maxLength={2000} value={note} placeholder="Who agreed to these thresholds, and why" onChange={e => setNote(e.target.value)} /></label>
     <details className="text-sm"><summary className="cursor-pointer">Import or export policy JSON</summary><textarea aria-label="Policy JSON" className={`${input} font-mono text-xs`} rows={5} value={json} placeholder='{"metrics": {"ndcg": {"max_drop": 0.02}}, "min_queries": 30}' onChange={e => setJson(e.target.value)} /><div className="mt-2 flex gap-2"><button className={button} onClick={importJson}>Load into form</button><button className={button} onClick={download}>Download policy.json</button></div></details>
     {errors.length > 0 && <ul role="alert" className="list-disc pl-5 text-sm text-red-600">{errors.map(e => <li key={e}>{e}</li>)}</ul>}

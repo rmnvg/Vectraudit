@@ -115,6 +115,7 @@ def test_existing_policy_identity_is_unchanged_and_new_rules_are_hashed():
     legacy.pop("critical_queries")
     legacy.pop("exceptions")  # newer optional field, also omitted when absent
     legacy["cohorts"].pop("control")  # likewise omitted while it is "none"
+    legacy.pop("non_inferiority")  # and while it is false
     digest = hashlib.sha256(json.dumps(legacy, sort_keys=True, separators=(",", ":")).encode())
     assert policy_sha256(old) == digest.hexdigest()
     assert policy_sha256(policy()) != policy_sha256(policy(max_rank=2))
