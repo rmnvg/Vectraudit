@@ -48,6 +48,8 @@ ACTION_ROLE = {
     "grant_exception": "engineer",
     "manage_project": "engineer",
     "manage_runner_tokens": "engineer",
+    "read_webhooks": "engineer",
+    "manage_webhooks": "owner",
     "manage_members": "owner",
     "export": "owner",
     "delete": "owner",

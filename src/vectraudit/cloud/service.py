@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vectraudit.cloud import exceptions, ledger, repo
+from vectraudit.cloud import exceptions, ledger, repo, webhooks
 from vectraudit.cloud.errors import CloudError, not_found
 from vectraudit.cloud.models import (
     ApiToken,
@@ -26,6 +26,8 @@ from vectraudit.cloud.models import (
     Run,
     SharedRecord,
     User,
+    Webhook,
+    WebhookDelivery,
     WebSession,
     Workspace,
     utcnow,
@@ -188,6 +190,7 @@ def run_check(
         return found, base, cand, False
     ledger.record_decision(session, check, base, cand, baseline_name)
     exceptions.apply_to_check(session, access.project, check)
+    webhooks.on_check(session, access.workspace, access.project, check)
     return check, base, cand, True
 
 
@@ -320,6 +323,17 @@ def export_workspace(session: Session, ws: Workspace) -> dict[str, Any]:
                     }
                     for d in decisions
                 ],
+                "webhooks": [
+                    {
+                        # The secret and full URL (which can carry a token) stay out.
+                        "url": webhooks.preview_url(w.url),
+                        "style": w.style,
+                        "events": w.events,
+                        "created_at": w.created_at.isoformat(),
+                        "created_by": w.created_by,
+                    }
+                    for w in session.scalars(select(Webhook).where(Webhook.project_id == p.id))
+                ],
                 "shared_records": [
                     {
                         "id": r.id,
@@ -371,6 +385,8 @@ def _delete_project_rows(session: Session, project_ids: list[str]) -> dict[str, 
     """Delete in dependency order (baselines block deleting their runs)."""
     counts = {}
     for name, model, column in (
+        ("webhook_deliveries", WebhookDelivery, WebhookDelivery.project_id),
+        ("webhooks", Webhook, Webhook.project_id),
         ("shared_records", SharedRecord, SharedRecord.project_id),
         ("decisions", Decision, Decision.project_id),
         ("checks", Check, Check.project_id),

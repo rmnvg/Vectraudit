@@ -596,6 +596,63 @@ Results:
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check (no drift) passed.
 - The project and trends pages were checked in Chromium.
 
+## Step 18: signed webhook delivery (1.7)
+
+Project owners can add up to 10 webhooks (dashboard **Notifications** or
+`POST .../webhooks`). Each receives:
+- **`decision`:** each release decision.
+- **`monitor`:** a scheduled-monitor alert when it opens, and once more when a passing run
+  resolves it. Events are keyed by the Step 17 alert ID.
+
+Events go into an outbox in the same transaction as the check, unique per webhook and event
+key, so a repeated check or a continuing outage queues nothing new. `vectraudit-cloud
+deliver-webhooks` (a new compose service, `--watch 30`) sends them outside any transaction,
+claims with `SKIP LOCKED` and a lease, and retries after 1 min, 5 min, 30 min, 2 h and 6 h.
+Redirects and 4xx other than 408/429 fail immediately. Transport is at-least-once;
+receivers dedupe on `X-Vectraudit-Event-Key`.
+
+- **Formats:** `signed` JSON (`vectraudit.event` v1), or `slack` (a `text` message for an
+  incoming webhook, so Slack works without a receiver). Both carry Stripe-style HMAC-SHA256
+  signatures over `timestamp.body` with a per-webhook secret shown once and rotatable.
+- **Sharing boundary:** headline, action, verdict, trigger, candidate, IDs and a dashboard
+  link; no reasons, question IDs, metrics or text.
+- **SSRF:**
+  - Only https URLs whose resolved addresses are all public, checked at registration and
+    before each send.
+  - Redirects are never followed and response bodies are discarded.
+  - A development-only setting allows private and http endpoints.
+  - The DNS-rebinding window is documented in the threat model.
+- **Governance:** management is owner-only and audited; engineers see status and
+  deliveries. The URL path is never displayed or exported (Slack URLs carry tokens). Webhooks
+  go with their project, and finished deliveries are pruned after 30 days by `purge`.
+  Migration 0010.
+
+Not included: email or Slack-app delivery, digest or quiet-hours settings, a second event
+when an exception later turns a check into "accepted", and staleness alerts when a monitor
+stops running. The first customer's channel should decide the next delivery route.
+
+Validation: 14 new tests cover:
+- URL rules (http, credentials, private, metadata, loopback, mapped IPv6);
+- owner-only management, a secret shown once, rotation, audit and export without secrets or
+  paths;
+- one signed decision event without evidence and nothing for an identical repeat;
+- a pass, fail, fail, fail, pass, pass monitor sequence notifying exactly once when opened
+  and once when resolved, in Slack format, with decision-only hooks receiving nothing;
+- retry backoff, permanent failure, giving up and pruning;
+- an endpoint that turns private and is not called;
+- a real local HTTP receiver verifying the signature, with a 302 recorded and not followed;
+- the dashboard (add, secret page, test ping, remove, engineer and viewer visibility).
+
+The tenant route audit covers the new routes with a real victim webhook.
+
+Results:
+- Full Python suite: 1,482 passed, 22 skipped (live services not configured), 1 deselected.
+- The 287 cloud tests pass on PostgreSQL 17, including the migration/model consistency test
+  and `SKIP LOCKED` claiming.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check (no drift) passed.
+- `migrate`, `deliver-webhooks` and `purge` were run against a fresh database, and the
+  dashboard section was checked in Chromium.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -611,7 +668,7 @@ as missing merely because their customer validation is pending.
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. | Measured execution protocol, cohort multiplicity and optional versioned non-inferiority semantics. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. | Calls/spend preview, optimization concurrency, two simultaneous workspace runs, and declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. | Sharing from the workbench UI, readable document titles, recurring findings and lead/second-engineer acceptance. |
-| **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. | Customer-selected delivery route (signed webhook first) that sends each alert once and its resolution; additional CI only on demand. |
+| **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. | Provision and verify channel/credentials, full reusable CI wrapper, owner-approved support and trust materials. |
 | **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. | A workbench screen for calibration; exceptions in the workbench once cases are shared; customer-runner calibration evidence. |
@@ -623,10 +680,10 @@ as missing merely because their customer validation is pending.
 1. **Finish distribution acceptance (1.9).** Provision the selected channel and verify
    independent customer credentials using the concrete checklist in `RELEASING.md`. Review
    support/trust commitments; do not substitute local unit tests for customer install evidence.
-2. **Signed webhook delivery (1.7).** Deliver each monitor alert and release decision once,
-   keyed by the Step 17 alert ID, with retries and a resolution message, through a signed
-   webhook a customer can route to Slack or email. Apply the 1.0 sharing boundary to the
-   payload. Choose Slack/email directly only if the first customer asks.
+2. **Calls and spend preview (1.5).** Before a run, optimization or calibration, show
+   candidates × questions × repeats as calls, with measured or declared cost per call kept
+   apart from unknown costs, so a customer can approve the budget of a 1,000-question CI
+   run. This needs no customer input.
 3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
    design partner's real traces before building.
 
