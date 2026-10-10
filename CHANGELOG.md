@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Failing rules in the workbench: under a failing comparison, each rule says who may
+  accept it under the comparison's policy (engineer or owner, and for how long) or why
+  nobody can. **Check accepted regressions in the hosted project** lists the connected
+  project's audited exceptions against those rules: covered, expired, used up or revoked
+  (blocking again), and what recording the comparison there would show ("fail, accepted
+  by exception", never pass) when both judge under the same policy. Read-only: the local
+  verdict never changes, and exceptions are still granted only in the hosted project.
 - One reusable CI step: `vectraudit init` and workbench release exports now write
   `.github/actions/retrieval-check/`, which installs the pinned release, records the
   target branch and the pull request on the same runner, checks them and uploads the

@@ -18,6 +18,7 @@ from vectraudit.core.jobs import JobCapacityError, JobRunner, ProgressFn
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
+from vectraudit.evaluation.exceptions import acceptance
 from vectraudit.evaluation.runfile import load_run
 from vectraudit.evaluation.triage import triage
 from vectraudit.labelling.storage import TaskBusy, task_lock
@@ -563,6 +564,9 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
                 "candidate": run_questions(workspace, candidate),
             },
             "document_display": _document_display(workspace, baseline, candidate),
+            # Who may accept each failure under this policy; exceptions themselves are
+            # granted and audited only in the hosted project.
+            "acceptance": acceptance(check, rules),
         }
 
     from vectraudit.pipelines.diagnostics import diagnostic_router

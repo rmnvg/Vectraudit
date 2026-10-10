@@ -727,6 +727,31 @@ hash (`policy_sha256`, the same digest the hosted service uses). On the same run
 browser, `vectraudit check --policy`, case verification and the exported CI check give the
 same verdict, because all of them call one comparison with the same parsed rules.
 
+### Failing rules and audited exceptions
+
+Under a failing comparison, **Failing rules** lists each failing rule by its stable key
+(`metric:ndcg.max_drop`, `critical:q7:doc-42`, …) and says who may accept it under the
+comparison's policy: an engineer or an owner, for up to the policy's `max_days`. Otherwise
+it says why nobody can: the policy has no `exceptions` block, does not open that kind of
+rule, or never waives permission and no-answer failures.
+
+Exceptions are granted and audited only in the hosted project, never in the workbench, and
+the comparison stays a fail on this machine. When the workbench was started with
+`VECTRAUDIT_CLOUD_URL`, `VECTRAUDIT_CLOUD_TOKEN` and `VECTRAUDIT_CLOUD_PROJECT`, **Check
+accepted regressions in the hosted project** reads that project's exceptions and policy
+(read-only; a viewer token is enough) and shows, per failing rule:
+
+- covered: who accepted it, until when, the follow-up owner and the reason;
+- expired, used up or revoked: the failure blocks again;
+- an active exception the hosted policy no longer opens, or one that cannot apply because
+  the result is an error or not comparable;
+- no exception.
+
+When the hosted project judges under the same policy (equal rule hashes), it also says
+what recording this comparison there would show: "fail, accepted by exception" (never
+pass) or still fail, with how many rules have no active exception. Under a different
+policy it says so instead of guessing.
+
 ### Export release check
 
 After a **passing** comparison under a saved policy, **Export release check** creates a

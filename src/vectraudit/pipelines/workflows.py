@@ -27,6 +27,7 @@ from vectraudit.pipelines.local_display import CaseQuestionDisplay
 from vectraudit.pipelines.models import Contract
 
 if TYPE_CHECKING:
+    from vectraudit.integrations.cloud import CloudClientError
     from vectraudit.pipelines.guided import GuidedWorkspace
 
 LIMIT = 4 * 1024 * 1024
@@ -328,6 +329,24 @@ class ShareIn(Contract):
     """Upload only: the person confirmed the previewed transfer to the named destination."""
 
 
+class HostedExceptionsIn(Contract):
+    check: str = Field(pattern=r"^[a-f0-9]{32}$")
+    """The comparison's check file ID (``files.check`` without ``.check.json``)."""
+
+
+def _hosted_error(exc: CloudClientError) -> HTTPException:
+    # No status: not configured or unreachable before any response; otherwise relay the
+    # hosted service's refusal (wrong role, missing project, conflict, too large).
+    status = (
+        422
+        if exc.status is None
+        else exc.status
+        if exc.status in (401, 403, 404, 409, 413)
+        else 502
+    )
+    return HTTPException(status, exc.message + (f" {exc.hint}" if exc.hint else ""))
+
+
 def share_destination() -> dict[str, Any]:
     """Where an upload would go, from this server's environment; never the token."""
     from vectraudit.integrations.cloud import CloudClientError, CloudTarget
@@ -462,22 +481,50 @@ def workflow_router(workspace: GuidedWorkspace) -> APIRouter:
             target = CloudTarget.from_env()
             uploaded = CloudClient(target).upload_record(projected)
         except CloudClientError as exc:
-            # No status: not configured or unreachable before any response; otherwise relay
-            # the hosted service's refusal (wrong role, missing project, conflict, too large).
-            status = (
-                422
-                if exc.status is None
-                else exc.status
-                if exc.status in (401, 403, 404, 409, 413)
-                else 502
-            )
-            detail = exc.message + (f" {exc.hint}" if exc.hint else "")
-            raise HTTPException(status, detail) from None
+            raise _hosted_error(exc) from None
         link = (
             f"{target.url}/app/{quote(target.workspace)}/{quote(target.project)}"
             f"/records/{quote(uploaded['id'])}"
         )
         return {**preview(projected), "uploaded": uploaded, "url": link}
+
+    @router.post("/exceptions/hosted")
+    def hosted_exceptions(body: HostedExceptionsIn) -> dict[str, Any]:
+        """The hosted project's audited exceptions against one local comparison. Read only."""
+        from vectraudit.evaluation.policy import PolicyError
+        from vectraudit.integrations.cloud import CloudClient, CloudClientError, CloudTarget
+        from vectraudit.pipelines.hosted_exceptions import hosted_policy, hosted_view
+
+        path = workspace.root / f"{body.check}.check.json"
+        try:
+            check = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise HTTPException(404, "Comparison not found; compare again") from None
+        try:
+            target = CloudTarget.from_env()
+        except CloudClientError as exc:
+            raise HTTPException(
+                422,
+                f"Not connected to a hosted project: {exc.message} Set VECTRAUDIT_CLOUD_URL, "
+                "VECTRAUDIT_CLOUD_TOKEN and VECTRAUDIT_CLOUD_PROJECT before starting the "
+                "workbench.",
+            ) from None
+        try:
+            client = CloudClient(target)
+            policy = client.get_policy()
+            listed = client.list_exceptions()
+        except CloudClientError as exc:
+            raise _hosted_error(exc) from None
+        try:
+            view = hosted_view(
+                check,
+                listed,
+                hosted_policy(policy["policy"]),
+                hosted_default=bool(policy.get("is_default")),
+            )
+        except (KeyError, TypeError, ValueError, PolicyError) as exc:
+            raise HTTPException(502, "The hosted project returned an unexpected response") from exc
+        return {**view, "destination": share_destination()}
 
     @router.get("/cases")
     def list_cases() -> list[dict[str, Any]]:

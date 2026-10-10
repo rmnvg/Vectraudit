@@ -1019,6 +1019,34 @@ GitHub Actions itself. Run it once in a design partner's or a staging repository
 calling the wrapper accepted. GitLab stays deferred until 1.7 needs it, as the strategy
 says.
 
+## Step 28: exceptions in the workbench (1.10)
+
+1.10's acceptance asks that the CLI, CI, workbench and hosted views all show an exception.
+Step 11 covered the CLI, CI (`check cloud:`) and hosted views; the workbench showed none.
+Exceptions need an audited approver, so they stay hosted-only, and the workbench shows
+rather than applies them:
+- **Who may accept each failure:** every comparison now returns, per failing rule, the
+  role that may accept it under that comparison's policy and the longest expiry, or why
+  nobody can (no `exceptions` block, kind not opened, safety never waived). Local, no
+  network. Core: `evaluation.exceptions.acceptance()`.
+- **What the hosted project holds:** a read-only local route,
+  `POST /api/guided/exceptions/hosted`, reads the connected project's exceptions and
+  policy and reports each failing rule's state:
+  - covered;
+  - expired, used up or revoked, so a lapsed acceptance resurfaces as blocking;
+  - active but not opened by the hosted policy;
+  - not applicable to errors and incomparable results;
+  - none.
+  It predicts the hosted verdict only when the hosted policy hash equals the comparison's.
+  The local verdict and check file never change.
+- **UI:** a **Failing rules** section under the comparison verdict, with a button to check
+  the hosted project. The browser smoke covers the unconnected path; an ad hoc browser run
+  with a stubbed hosted response checked the covered state at desktop and phone widths.
+
+Not included: granting or revoking from the workbench. A local comparison is not a hosted
+check, and exceptions are granted from a failing hosted check by an approver signed in
+there. Reopening cases on expiry also stays out, as in Step 11.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -1037,7 +1065,7 @@ as missing merely because their customer validation is pending.
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; monitor staleness alerts; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. Step 26 drafts the trust package and support/compatibility policy. Step 27: one reusable CI step (install, record, check, report) called by both generated workflows. | Provision and verify channel/credentials, a first run of the CI step on GitHub-hosted runners, owner decisions in the drafts, a DPA template with counsel. |
-| **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. Step 25: calibration in the workbench, with configuration differences called out. | Exceptions shown in the workbench; customer-runner calibration evidence. |
+| **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. Step 25: calibration in the workbench, with configuration differences called out. Step 28: the workbench shows who may accept each failure and the connected project's exceptions against it. | Customer-runner calibration evidence. |
 | **Tier 2** | Chunking experiments, permission scenarios and CLI optimization foundations exist. | Customer-selected lineage/freshness or permission lifecycle proof; interactive experiment/migration workflow where demand supports it. |
 | **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Defer optional breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
 

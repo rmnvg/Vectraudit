@@ -304,7 +304,10 @@ Adding the block does not change the hash of policies without one. Exceptions ar
 and stored in the hosted service, where they are audited; see
 [cloud operations](cloud-operations.md#audited-exceptions). `check cloud:<name>` applies
 the project's active exceptions, so its exit code matches the hosted check. Local file
-checks and the workbench do not apply exceptions.
+checks and the workbench do not apply exceptions. The workbench shows them: each failing
+rule of a comparison says who may accept it under that policy, and on request the
+connected hosted project's exceptions are listed against those rules (see
+[the workbench guide](retrieval-workbench.md#failing-rules-and-audited-exceptions)).
 
 ## Evidence and diagnosis
 

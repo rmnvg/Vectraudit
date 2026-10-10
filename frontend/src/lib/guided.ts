@@ -1,4 +1,5 @@
 /** Local guided workflow contracts; all requests stay on the workbench origin. */
+import type { Acceptance } from './exceptions'
 import type { PolicyRef } from './release'
 import type { Run } from './workbench'
 
@@ -43,6 +44,8 @@ export interface Comparison {
   check: { verdict: string; n_queries?: number; n_families?: number; reasons: { message: string }[]; warnings: string[]; metrics: Record<string, { baseline: number; candidate: number; delta: number }>; critical_queries?: CriticalResult[] }
   question_display?: { baseline: QuestionDisplay; candidate: QuestionDisplay }
   document_display?: DocumentDisplay
+  /** Who may accept each failing rule under this comparison's policy. */
+  acceptance?: Acceptance[]
 }
 export interface QuestionDisplay { texts: Record<string, string>; reason: string | null }
 /** Titles from the corpus attached to the run's saved benchmark; `verified` when versions match. */
