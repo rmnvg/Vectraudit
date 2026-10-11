@@ -1158,6 +1158,36 @@ completion. An ad hoc browser run drove two slow registered adapters side by sid
 Not included: queueing a third evaluation instead of refusing it, and a cross-run rate
 limiter that would let one pipeline run twice within its declared limits.
 
+## Step 33: cohorts from declared context fields (1.4)
+
+1.4 asks for cohorts derived from declared context fields (tenant, language, plan) as well
+as tags, "so a change that helps large tenants and hurts small ones is visible". This waited
+on a decision about recording context values in runs under the sharing boundary. The
+decision taken (owner may revisit):
+- **Opt in per field, in the benchmark:** a dataset header declares `cohort_fields`.
+  Nothing changes for benchmarks that don't, and declaring is a new benchmark version.
+- **Derived cohorts behave exactly like tags:** each question gets `field=value` cohorts
+  (`tenant=acme`, `enterprise=true`), recorded in runs as part of its tags. A team could
+  already write `tenant:acme` as a tag by hand, so no new kind of data leaves the machine.
+  No other context value is recorded. The trust package and dataset docs say that declared
+  fields' values become cohort names in uploads.
+- **One decision everywhere:** because cohorts travel as tags, local checks, CI, the hosted
+  check, calibration, exceptions (`cohort:tenant=small:ndcg.max_drop`) and `dataset stats`
+  judge and count the same cohorts. Policy formats and hashes are unchanged.
+- **Not written back:** derived cohorts are not authored tags, so exports and round-trips
+  keep the benchmark as written. Its version comes from the header and context that
+  produce them. List-valued fields (such as `groups`) are refused with a hint to tag groups
+  explicitly.
+
+Validation: a candidate that drops one tenant's results passes the suite-wide rule but fails
+`tenant=small` (and `enterprise=false`), with the same failing rules on the hosted
+projection. Without the declaration, the same change passes because the loss hides in the
+average. Bad declarations are refused, and stats count the derived cohorts.
+
+Not included: hashing cohort values for uploads. Pseudonymous names would differ between
+local and hosted rule keys and still be guessable for short names, so the opt-in is the
+control. Also not included: cohorts from list-valued fields.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -1170,7 +1200,7 @@ as missing merely because their customer validation is pending.
 | **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Representative trace importer, observed/missing capability report, independent engineer setup evidence. Choose the trace format from actual inputs. |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
-| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. | Measured execution protocol and context-derived cohorts. |
+| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. | Measured execution protocol. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. Step 31: optimization runs each candidate at its own concurrency, rate limit and retry policy. Step 32: two evaluations at once in the workbench, one per registered pipeline, with overlap recorded. | Declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. Step 29: declared monitor schedules; a monitor that stops reporting raises one overdue alert, resolved by the next run. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; additional CI only on demand. |

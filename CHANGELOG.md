@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Cohorts from context: a benchmark header can declare `"cohort_fields": ["tenant"]`, and
+  each question then also belongs to cohort `tenant=<value>`, judged by the policy's cohort
+  rules like a tag. A change that hurts one tenant now fails that tenant's cohort. Derived
+  cohorts are recorded and uploaded like tags, so fields are opted in one by one.
 - Two evaluations at once in the workbench, each with its own progress and cancel. A
   registered pipeline runs one evaluation at a time so its declared concurrency and rate
   limit hold; the built-in baseline may overlap. Runs record `timing.overlapped_runs`, and

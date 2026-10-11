@@ -181,7 +181,7 @@ def run_candidate(
             {
                 "query_id": q.query_id,
                 **({"family_id": q.family_id} if q.family_id is not None else {}),
-                "tags": list(q.tags),
+                "tags": list(q.cohort_tags),
                 "filtered": False,
                 "ids": docs,
                 "repeat_ids": [docs],
