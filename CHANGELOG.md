@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Paired release checks: `vectraudit release run-paired` records the approved and proposed
+  pipelines interleaved per question, each in its own worker process from its own
+  checkout; set `paired: true` on the CI step to use it. Each side's variables reach only
+  its own worker.
 - `examples/sample_evidence_report.py`: one self-contained, clearly synthetic page from the
   pilot demo (fail, explain, fix, protect) to send to prospects before a call.
 - Discovery ledger template (`docs/discovery-ledger.md`, blank CSV in `docs/templates/`) for

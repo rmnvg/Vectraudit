@@ -22,8 +22,10 @@ from vectraudit.pipelines.release import (
     open_release_pipeline,
     render_release_workflow,
     run_release,
+    run_release_paired,
     update_release,
     validate_release,
+    worker_env,
 )
 from vectraudit.pipelines.web import create_workbench
 
@@ -443,6 +445,56 @@ def test_python_pipelines_execute_each_checkout_and_ci_uses_the_approved_policy(
     assert result["policy"] == parse_policy(LENIENT).as_dict()
     assert result["release"]["proposed_changes"]
     assert any("proposes policy" in w for w in result["warnings"])
+
+    # Paired: both checkouts define acme_search, so each side runs in its own worker process.
+    paired_base, paired_cand = run_release_paired(
+        approved, proposed, baseline_label="main", candidate_label="pr-1"
+    )
+    assert paired_base["queries"][0]["ids"] == ["a"]
+    assert paired_cand["queries"][0]["ids"] == ["b"]
+    assert paired_base["timing"]["paired_with"] == paired_cand["run_id"]
+    assert paired_base["backend"]["config"]["code"] == baseline["backend"]["config"]["code"]
+    assert paired_cand["release"]["approved_version"] == paired_base["release"]["version"]
+    paired = check_release(approved, paired_base, paired_cand, proposed_path=proposed)
+    assert paired["latency"]["paired"] is True
+    assert paired["verdict"] == result["verdict"]
+    out = tmp_path / "paired"
+    cli = runner.invoke(
+        app,
+        [
+            "release",
+            "run-paired",
+            str(approved),
+            str(proposed),
+            "--baseline-out",
+            str(out / "b.json"),
+            "--candidate-out",
+            str(out / "c.json"),
+        ],
+    )
+    assert cli.exit_code == 0, cli.output
+    assert cli.output.count("(paired)") == 2
+    concurrent = json.loads(approved.read_text()) | {"concurrency": 2}
+    busy = tmp_path / "base" / "retrieval/release/concurrent.json"
+    busy.write_text(json.dumps(concurrent))
+    with pytest.raises(ReleaseError, match="one question at a time"):
+        run_release_paired(busy, proposed)
+
+
+def test_paired_workers_get_only_their_own_side_variables():
+    env = {
+        "PATH": "/bin",
+        "VECTRAUDIT_BASELINE__SEARCH_URL": "https://prod",
+        "VECTRAUDIT_CANDIDATE__SEARCH_URL": "https://preview",
+        "VECTRAUDIT_CANDIDATE__TOKEN": "t",
+        "VECTRAUDIT_BASELINE__": "ignored",
+    }
+    assert worker_env(env, "baseline") == {"PATH": "/bin", "SEARCH_URL": "https://prod"}
+    assert worker_env(env, "candidate") == {
+        "PATH": "/bin",
+        "SEARCH_URL": "https://preview",
+        "TOKEN": "t",
+    }
 
 
 def test_missing_and_mismatched_artifacts_fail_clearly(tmp_path):

@@ -857,6 +857,15 @@ Reproduce the browser journey with `node scripts/release_smoke.mjs` after buildi
 It creates a policy, compares, exports, runs `vectraudit release` on the exported files,
 and shows that a stricter policy version changes both the comparison and case verification.
 
+
+**Paired CI runs.** `vectraudit release run-paired APPROVED PROPOSED --baseline-out B
+--candidate-out C` records the approved and proposed pipelines interleaved per question,
+alternating which side goes first. Each side runs in its own worker process from its own
+checkout, so two checkouts may define the same Python module. Side-specific variables are
+passed as `VECTRAUDIT_BASELINE__NAME` and `VECTRAUDIT_CANDIDATE__NAME`; each worker sees
+only its own, as `NAME`. In the generated workflow, set `paired: true` on the
+`retrieval-check` step. The approved release must use concurrency 1.
+
 ## Persistent regression cases
 
 Findings and regression cases show question text beside IDs when the exact saved local

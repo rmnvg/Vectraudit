@@ -29,9 +29,15 @@ from vectraudit import __version__
 from vectraudit.evaluation.compare import Verdict, compare_runs
 from vectraudit.evaluation.dataset import Dataset, DatasetError, load_dataset
 from vectraudit.evaluation.policy import Policy, PolicyError, load_policy, policy_sha256
+from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.lexical import hybrid_pipeline
-from vectraudit.pipelines.models import Contract
-from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
+from vectraudit.pipelines.models import Contract, PipelineRequest, PipelineResult
+from vectraudit.pipelines.runner import (
+    PairedSide,
+    PipelineOptions,
+    execute_paired,
+    execute_pipeline,
+)
 from vectraudit.pipelines.runtime import HTTPPipeline, Pipeline
 from vectraudit.scaffold import ci_files, side_env
 
@@ -302,7 +308,22 @@ def run_release(
     ds = release_benchmark(approved, approved_root)
     pipeline, config = open_release_pipeline(release.pipeline, release_path.parent, env)
     config["release"] = {"configuration": release.configuration, "version": release.version}
-    options = PipelineOptions(
+    run = execute_pipeline(
+        ds,
+        pipeline,
+        _release_options(release, approved, label),
+        config=config,
+        corpus_version=config.get("corpus_sha256"),
+    )
+    run["release"] = _release_meta(release, approved)
+    return run
+
+
+def _release_options(
+    release: ReleaseFile, approved: ReleaseFile, label: str | None
+) -> PipelineOptions:
+    """Both sides run with the approved k, repeats and execution settings."""
+    return PipelineOptions(
         k=approved.k,
         repeats=approved.repeats,
         warmup=0,
@@ -311,10 +332,10 @@ def run_release(
         concurrency=approved.concurrency,
         max_rps=approved.max_rps,
     )
-    run = execute_pipeline(
-        ds, pipeline, options, config=config, corpus_version=config.get("corpus_sha256")
-    )
-    run["release"] = {
+
+
+def _release_meta(release: ReleaseFile, approved: ReleaseFile) -> dict[str, Any]:
+    return {
         "configuration": release.configuration,
         "version": release.version,
         "approved_configuration": approved.configuration,
@@ -323,7 +344,133 @@ def run_release(
         "split": approved.benchmark.split,
         "policy_sha256": approved.policy.sha256,
     }
-    return run
+
+
+SIDE_ENV_PREFIXES = {"baseline": "VECTRAUDIT_BASELINE__", "candidate": "VECTRAUDIT_CANDIDATE__"}
+"""``VECTRAUDIT_BASELINE__SEARCH_URL=...`` sets ``SEARCH_URL`` for the baseline worker only."""
+
+
+def worker_env(env: Mapping[str, str], side: str) -> dict[str, str]:
+    """A worker's environment: the shared one without either side's variables, plus its own."""
+    prefixes = tuple(SIDE_ENV_PREFIXES.values())
+    own = SIDE_ENV_PREFIXES[side]
+    shared = {k: v for k, v in env.items() if not k.startswith(prefixes)}
+    mine = {k[len(own) :]: v for k, v in env.items() if k.startswith(own) and len(k) > len(own)}
+    return {**shared, **mine}
+
+
+class _WorkerPipeline:
+    """A pipeline served by ``release_worker`` in its own process, for one paired side."""
+
+    thread_safe = False
+
+    def __init__(self, release_path: Path, env: Mapping[str, str]) -> None:
+        import subprocess
+        import sys
+
+        self.process = subprocess.Popen(
+            [sys.executable, "-m", "vectraudit.pipelines.release_worker", str(release_path)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            env=dict(env),
+            text=True,
+            encoding="utf-8",
+        )
+        ready = self._read()
+        if not ready.get("ready"):
+            self.close()
+            raise ReleaseError(str(ready.get("error") or "The pipeline worker did not start."))
+        self.config: dict[str, Any] = ready.get("config") or {}
+
+    def _read(self) -> dict[str, Any]:
+        assert self.process.stdout is not None
+        line = self.process.stdout.readline()
+        if not line:
+            return {}
+        message: dict[str, Any] = json.loads(line)
+        return message
+
+    def __call__(self, request: PipelineRequest) -> PipelineResult:
+        assert self.process.stdin is not None
+        try:
+            self.process.stdin.write(request.model_dump_json() + "\n")
+            self.process.stdin.flush()
+        except OSError as exc:
+            raise PipelineCallError("pipeline_error", "The pipeline worker stopped.") from exc
+        reply = self._read()
+        if "result" in reply:
+            return PipelineResult.model_validate(reply["result"])
+        error = reply.get("error") or {}
+        raise PipelineCallError(
+            str(error.get("code") or "pipeline_error"),
+            "The pipeline call failed in its worker.",
+            retry_after=error.get("retry_after"),
+        )
+
+    def close(self) -> None:
+        import subprocess
+
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        try:
+            self.process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait()
+
+
+def run_release_paired(
+    approved_path: Path,
+    proposed_path: Path,
+    *,
+    baseline_label: str | None = None,
+    candidate_label: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run the approved (baseline) and proposed (candidate) pipelines interleaved.
+
+    Each side runs in its own worker process from its own checkout, with its own environment
+    (see :func:`worker_env`), and the questions alternate which side goes first, so drift during
+    the run affects both alike. Paired runs are serial: the approved configuration must use
+    concurrency 1. Returns ``(baseline, candidate)`` run records.
+    """
+    env = os.environ if env is None else env
+    approved = load_release(approved_path)
+    proposed = load_release(proposed_path)
+    if approved.concurrency != 1:
+        raise ReleaseError(
+            "Paired runs measure one question at a time; this release runs "
+            f"{approved.concurrency} queries in flight. Use separate runs instead."
+        )
+    ds = release_benchmark(approved, approved_path.parent)
+    workers: list[_WorkerPipeline] = []
+    try:
+        sides = []
+        for release, path, side, label in (
+            (approved, approved_path, "baseline", baseline_label),
+            (proposed, proposed_path, "candidate", candidate_label),
+        ):
+            worker = _WorkerPipeline(path, worker_env(env, side))
+            workers.append(worker)
+            config = {
+                **worker.config,
+                "release": {"configuration": release.configuration, "version": release.version},
+            }
+            sides.append(
+                PairedSide(
+                    worker,
+                    _release_options(release, approved, label),
+                    config,
+                    config.get("corpus_sha256"),
+                )
+            )
+        baseline, candidate = execute_paired(ds, sides[0], sides[1])
+    finally:
+        for worker in workers:
+            worker.close()
+    baseline["release"] = _release_meta(approved, approved)
+    candidate["release"] = _release_meta(proposed, approved)
+    return baseline, candidate
 
 
 def _flag(result: dict[str, Any], verdict: Verdict, message: str) -> None:

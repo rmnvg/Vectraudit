@@ -1247,6 +1247,33 @@ Checked: no scripts, external requests or local paths in the page; no horizontal
 desktop or phone width in a browser. Two tests build it from generated reports and cover the
 missing-demo error.
 
+## Step 37: paired execution in CI release checks (1.4)
+
+Step 34 paired runs in the workbench, but a CI release check still recorded the approved
+and proposed sides as two separate commands, minutes apart. Pairing there needs two
+processes, because each side imports its pipeline from its own checkout and both may define
+the same module.
+- **A worker per side:** `release_worker` opens one side's release pipeline from its own
+  checkout and environment, then answers one JSON request per line on stdin/stdout. Failed
+  calls carry only their stable error code, as run files do, and adapter output goes to
+  stderr so it cannot corrupt the protocol.
+- **`run_release_paired()` and `vectraudit release run-paired`:** these drive both workers
+  through `execute_paired`, with the same options and release metadata as ordinary release
+  runs (refactored into shared helpers). Side variables arrive as `VECTRAUDIT_BASELINE__NAME`
+  and `VECTRAUDIT_CANDIDATE__NAME`, and each worker sees only its own as `NAME`. Approved
+  releases with concurrency above 1 are refused.
+- **CI action:** `paired: true` (default false) records both sides in one paired command
+  and passes each side's secrets under its own prefix.
+
+Validation: the existing two-checkout test now also runs paired. Both checkouts define
+`acme_search` with different behaviour; each side returned its own checkout's result, the
+runs name each other, and the check marks latency as paired with the same verdict as the
+separate runs. The CLI and the concurrency refusal are covered, as are the environment split
+and the action's paired branch, including that no secret appears unprefixed.
+
+Not included: making paired the default in generated workflows. It forces serial runs, so
+it stays a per-team choice.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -1259,7 +1286,7 @@ as missing merely because their customer validation is pending.
 | **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Representative trace importer, observed/missing capability report, independent engineer setup evidence. Choose the trace format from actual inputs. |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
-| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. | Paired execution in CI release checks; protocol evidence on a customer's endpoint. |
+| **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. Step 31: optimization runs each candidate at its own concurrency, rate limit and retry policy. Step 32: two evaluations at once in the workbench, one per registered pipeline, with overlap recorded. | Declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. Step 29: declared monitor schedules; a monitor that stops reporting raises one overdue alert, resolved by the next run. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; additional CI only on demand. |

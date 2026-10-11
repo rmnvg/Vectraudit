@@ -85,6 +85,12 @@ The check action passes each side's secrets (`baseline-env`, `candidate-env`, on
 locally, run `vectraudit init --backend BACKEND --ci-only --force` (only `.github/` is
 rewritten), then update both pins. Release exports regenerate the actions on each export.
 
+For release checks, `paired: true` on the action records both sides in one
+`vectraudit release run-paired` command: each side runs in its own worker process from its
+own checkout, and questions alternate which side goes first, so drift during the run (a
+deployment warming up, a busy endpoint) affects both alike. Each side's secrets reach only
+its own worker. Paired runs are serial, so the approved release must use concurrency 1.
+
 For a first local install, obtain the wheel through the private channel and the reviewed
 installer script through onboarding. The installer is standard-library-only and requires
 Python 3.10+; online download additionally requires `gh` and `GH_TOKEN`:

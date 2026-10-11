@@ -23,15 +23,21 @@ BASE = {"VA_BASE_REF": "main", "VA_PR_NUMBER": "42"}
 class FakeRunner(action.Runner):
     """Records each command and its environment; exit codes come from ``codes``."""
 
-    def __init__(self, environ, codes=None):
+    def __init__(self, environ, codes=None, approved=None):
         super().__init__(environ)
         self.calls = []
         self.codes = codes or {}
+        self.approved = approved
+        """A release file to place in the target-branch checkout, as if it existed there."""
 
     def run(self, title, command, env):
         self.calls.append((title, list(command), dict(env)))
         if command[0] == "git":
             Path(command[4]).mkdir(parents=True)
+            if self.approved:
+                release = Path(command[4]) / self.approved
+                release.parent.mkdir(parents=True)
+                release.write_text("{}")
         return self.codes.get(title.split(" (")[0], 0)
 
     def find(self, title):
@@ -317,3 +323,35 @@ def test_init_project_check_passes_and_catches_a_regression(synthetic, tmp_path)
     baseline = json.loads((repo / "runs" / "baseline.json").read_text())
     candidate = json.loads((repo / "runs" / "candidate.json").read_text())
     assert (baseline["label"], candidate["label"]) == ("main", "pr-7")
+
+
+def test_paired_release_mode_runs_both_sides_in_one_command(tmp_path):
+    release = "retrieval/release/release.json"
+    environ = {
+        **BASE,
+        "RUNNER_TEMP": str(tmp_path),
+        "VA_MODE": "release",
+        "VA_RELEASE": release,
+        "VA_PAIRED": "true",
+        "VA_BASELINE_ENV": "SEARCH_URL=https://prod",
+        "VA_CANDIDATE_ENV": "SEARCH_URL=https://preview",
+    }
+    runner = FakeRunner(environ, approved=release)
+    assert action.main(environ, runner) == 0
+    titles = [c[0].split(" (")[0] for c in runner.calls]
+    assert titles == [
+        "Check out the target branch",
+        "Validate this pull request's configuration",
+        "Record both sides, interleaved",
+        "Check",
+    ]
+    _, command, env = runner.find("Record both sides, interleaved")
+    assert command[3:5] == ["release", "run-paired"]
+    assert command[command.index("--candidate-label") + 1] == "pr-42"
+    # Each side's secret travels under its own prefix; neither appears unprefixed.
+    assert env["VECTRAUDIT_BASELINE__SEARCH_URL"] == "https://prod"
+    assert env["VECTRAUDIT_CANDIDATE__SEARCH_URL"] == "https://preview"
+    assert "SEARCH_URL" not in env
+    assert "VECTRAUDIT_BASELINE__SEARCH_URL" not in runner.find("Check")[2]
+    with pytest.raises(action.InputError, match="paired"):
+        action.read_inputs({**environ, "VA_PAIRED": "maybe"})

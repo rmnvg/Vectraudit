@@ -72,6 +72,47 @@ def run_command(
         raise typer.Exit(code=2)
 
 
+@release_app.command("run-paired")
+def run_paired_command(
+    approved: Annotated[Path, typer.Argument(help="Approved release.json (the baseline side).")],
+    proposed: Annotated[Path, typer.Argument(help="This change's release.json (the candidate).")],
+    baseline_out: Annotated[Path, typer.Option(help="Baseline run file to write.")],
+    candidate_out: Annotated[Path, typer.Option(help="Candidate run file to write.")],
+    baseline_label: Annotated[str | None, typer.Option(help="Baseline run label.")] = None,
+    candidate_label: Annotated[str | None, typer.Option(help="Candidate run label.")] = None,
+) -> None:
+    """Run both sides interleaved per question, each from its own checkout and process.
+
+    Questions alternate which side goes first, so drift during the run affects both alike.
+    Side-specific variables come from ``VECTRAUDIT_BASELINE__NAME`` and
+    ``VECTRAUDIT_CANDIDATE__NAME`` (each worker sees ``NAME``). Exit 2 if a run is not
+    complete.
+    """
+    from vectraudit.evaluation.runfile import save_run
+    from vectraudit.pipelines.release import ReleaseError, run_release_paired
+
+    try:
+        runs = run_release_paired(
+            approved,
+            proposed,
+            baseline_label=baseline_label,
+            candidate_label=candidate_label,
+        )
+    except ReleaseError as e:
+        raise _fail(str(e)) from e
+    incomplete = False
+    for run, out in zip(runs, (baseline_out, candidate_out), strict=True):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        save_run(run, out)
+        console.print(
+            f"{escape(run['label'] or '')}: {run['status']} (paired) → {escape(str(out))}"
+        )
+        incomplete |= run["status"] != "complete"
+    if incomplete:
+        err_console.print("[bold red]A paired run did not complete.[/]")
+        raise typer.Exit(code=2)
+
+
 @release_app.command("check")
 def check_command(
     approved: Annotated[Path, typer.Argument(help="Approved release.json (policy source).")],

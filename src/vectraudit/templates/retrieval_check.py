@@ -41,6 +41,7 @@ class Inputs:
     candidate_label: str
     out: str
     publish: bool
+    paired: bool
     repeats: int
     dataset: str
     connection: str
@@ -103,6 +104,9 @@ def read_inputs(environ: Mapping[str, str]) -> Inputs:
     publish = environ.get("VA_PUBLISH", "true").strip().lower()
     if publish not in {"true", "false"}:
         raise InputError("publish must be true or false.")
+    paired = environ.get("VA_PAIRED", "false").strip().lower() or "false"
+    if paired not in {"true", "false"}:
+        raise InputError("paired must be true or false.")
     release = environ.get("VA_RELEASE", "").strip()
     if mode == "release":
         release = _relative(release, "release")
@@ -112,6 +116,7 @@ def read_inputs(environ: Mapping[str, str]) -> Inputs:
         candidate_label=label,
         out=_relative(environ.get("VA_OUT", "runs").strip() or "runs", "out"),
         publish=publish == "true",
+        paired=paired == "true",
         repeats=int(repeats_text),
         dataset=_relative(environ.get("VA_DATASET", "retrieval/dataset.jsonl").strip(), "dataset"),
         connection=_relative(
@@ -277,7 +282,32 @@ def _check_release(
     ):
         return 1, ""
     baseline, candidate = out / "baseline.run.json", out / "candidate.run.json"
-    if approved.is_file():
+    if approved.is_file() and inputs.paired:
+        # One command runs both sides interleaved, each in its own worker; side secrets go
+        # under prefixes that only that side's worker sees.
+        side_secrets = {
+            **{f"VECTRAUDIT_BASELINE__{k}": v for k, v in inputs.baseline_env.items()},
+            **{f"VECTRAUDIT_CANDIDATE__{k}": v for k, v in inputs.candidate_env.items()},
+        }
+        runner.run(
+            "Record both sides, interleaved (paired)",
+            _cli(
+                "release",
+                "run-paired",
+                str(approved),
+                inputs.release,
+                "--baseline-out",
+                str(baseline),
+                "--candidate-out",
+                str(candidate),
+                "--baseline-label",
+                inputs.base_ref,
+                "--candidate-label",
+                inputs.candidate_label,
+            ),
+            child_env(runner.environ, side_secrets),
+        )
+    elif approved.is_file():
         runner.run(
             "Record the baseline (target branch pipeline)",
             _cli(
@@ -291,20 +321,22 @@ def _check_release(
             ),
             child_env(runner.environ, inputs.baseline_env),
         )
-    candidate_code = runner.run(
-        "Record the candidate (this pull request)",
-        _cli(
-            "release",
-            "run",
-            inputs.release,
-            *(["--approved", str(approved)] if approved.is_file() else []),
-            "--out",
-            str(candidate),
-            "--label",
-            inputs.candidate_label,
-        ),
-        child_env(runner.environ, inputs.candidate_env),
-    )
+    candidate_code = 0
+    if not (approved.is_file() and inputs.paired):
+        candidate_code = runner.run(
+            "Record the candidate (this pull request)",
+            _cli(
+                "release",
+                "run",
+                inputs.release,
+                *(["--approved", str(approved)] if approved.is_file() else []),
+                "--out",
+                str(candidate),
+                "--label",
+                inputs.candidate_label,
+            ),
+            child_env(runner.environ, inputs.candidate_env),
+        )
     if not approved.is_file():
         # Nothing to compare with: the candidate must at least run.
         return (1 if candidate_code else 0), ""
