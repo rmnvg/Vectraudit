@@ -37,7 +37,9 @@ Your application ──(questions, context)──▶ Vectraudit runner (your mac
 
 **Uploads** (`record --upload`, `check --upload`, `cloud push`, `workbench share`) send a
 versioned, allowlisted projection, never the raw file:
-- **Runs:** query, document and family IDs, tags, run labels, metrics, timings, safety
+- **Runs:** query, document and family IDs, tags (including cohorts derived from context
+  fields a benchmark declares in `cohort_fields`, such as `tenant=acme`), run labels,
+  metrics, timings, safety
   assertions, numeric search parameters, text parameters as SHA-256 fingerprints, and pipeline
   identity.
 - **Shared cases, benchmarks and policies:** IDs, status, judgments and policy rules.

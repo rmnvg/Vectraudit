@@ -11,7 +11,11 @@ it is unlabelled and only contributes ANN recall and latency. ``filter`` is a po
 filter: field -> scalar, all conditions AND-ed. ``tags`` name the cohorts a query belongs to.
 
 An optional first line ``{"dataset": {...}}`` holds metadata: ``name``, ``description``,
-``embedding_model`` (set by ``vectraudit dataset embed``) and ``normalized``.
+``embedding_model`` (set by ``vectraudit dataset embed``), ``normalized`` and
+``cohort_fields``: context fields whose values define cohorts. With
+``"cohort_fields": ["tenant"]``, a query whose context has ``"tenant": "acme"`` also belongs
+to cohort ``tenant=acme``, judged like a tag. Derived cohorts are recorded in runs (and so
+in hosted uploads) exactly like tags, which is why fields are opted in one by one.
 
 The dataset version is the SHA-256 of a canonical form that ignores line order and JSON
 formatting, so any change to the content (metadata included) is a new version and nothing
@@ -24,7 +28,7 @@ import hashlib
 import json
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -61,7 +65,9 @@ _KEYS = {
     "split",
     "history",
 }
-_META_KEYS = {"name", "description", "embedding_model", "normalized", "provenance"}
+_META_KEYS = {"name", "description", "embedding_model", "normalized", "provenance", "cohort_fields"}
+MAX_COHORT_FIELDS = 10
+_FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
 
 
 class DatasetError(ValueError):
@@ -98,6 +104,14 @@ class DatasetQuery:
     family_id: str | None = None
     """Shared independent sampling unit; defaults to this query's own ID."""
     history: tuple[ConversationTurn, ...] = ()
+    cohorts: tuple[str, ...] = ()
+    """Cohorts derived from the header's ``cohort_fields`` (``tenant=acme``); not authored,
+    so they are never written back into the dataset."""
+
+    @property
+    def cohort_tags(self) -> tuple[str, ...]:
+        """Every cohort this query belongs to: its tags and its derived context cohorts."""
+        return tuple(sorted(set(self.tags) | set(self.cohorts)))
 
     @property
     def labelled(self) -> bool:
@@ -197,7 +211,29 @@ def parse_dataset(text: str) -> Dataset:
             raise DatasetError(f"More than {MAX_QUERIES:,} queries; split the dataset.")
     if not queries:
         raise DatasetError("The dataset has no queries.")
+    fields = meta.get("cohort_fields") or []
+    if fields:
+        queries = [replace(q, cohorts=_derived_cohorts(q, fields)) for q in queries]
     return Dataset(tuple(queries), _fingerprint(queries, meta), dim, meta)
+
+
+def _derived_cohorts(q: DatasetQuery, fields: list[str]) -> tuple[str, ...]:
+    """``field=value`` for each declared field present in the query's context."""
+    out = []
+    for name in fields:
+        if name not in q.context:
+            continue
+        value = q.context[name]
+        if isinstance(value, bool):
+            out.append(f"{name}={str(value).lower()}")
+        elif isinstance(value, (str, int, float)):
+            out.append(f"{name}={value}")
+        else:
+            raise DatasetError(
+                f"Query {q.query_id!r}: cohort field {name!r} must hold one value, not a list; "
+                "tag list-valued groups explicitly instead."
+            )
+    return tuple(sorted(out))
 
 
 def _meta(obj: dict[str, Any]) -> dict[str, Any]:
@@ -216,6 +252,17 @@ def _meta(obj: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("header normalized must be true or false")
     if "provenance" in meta and not isinstance(meta["provenance"], dict):
         raise ValueError("header provenance must be an object")
+    if "cohort_fields" in meta:
+        fields = meta["cohort_fields"]
+        if (
+            not isinstance(fields, list)
+            or not 1 <= len(fields) <= MAX_COHORT_FIELDS
+            or any(not isinstance(f, str) or not _FIELD.match(f) for f in fields)
+            or len(set(fields)) != len(fields)
+        ):
+            raise ValueError(
+                f"header cohort_fields must list 1-{MAX_COHORT_FIELDS} distinct context field names"
+            )
     return dict(meta)
 
 

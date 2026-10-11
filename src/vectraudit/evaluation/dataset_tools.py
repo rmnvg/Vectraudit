@@ -317,9 +317,10 @@ def dataset_stats(ds: Dataset, *, cohort_minimum: int | None = None) -> dict[str
     labels = [document_labels(q) for q in labelled]
     positives = [sum(g > 0 for g in row.values()) for row in labels]
     grades = Counter(g for row in labels for g in row.values())
-    tags = Counter(t for q in ds.queries for t in q.tags)
+    tags = Counter(t for q in ds.queries for t in q.cohort_tags)
     tag_families = {
-        tag: len({q.family_id or q.query_id for q in ds.queries if tag in q.tags}) for tag in tags
+        tag: len({q.family_id or q.query_id for q in ds.queries if tag in q.cohort_tags})
+        for tag in tags
     }
     n_positive_families = len({q.family_id or q.query_id for q in labelled})
     texts = Counter(q.text.strip().lower() for q in ds.queries if q.text)

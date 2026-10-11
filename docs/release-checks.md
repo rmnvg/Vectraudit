@@ -64,7 +64,17 @@ One query per line:
 | `tags` | no | Cohorts, judged separately when the policy has cohort rules. |
 
 An optional first line `{"dataset": {"name": ..., "description": ..., "embedding_model": ...,
-"normalized": ...}}` holds metadata; it is part of the version.
+"normalized": ..., "cohort_fields": [...]}}` holds metadata; it is part of the version.
+
+**Cohorts from context.** `"cohort_fields": ["tenant", "plan"]` turns those context fields
+into cohorts: a question with `"context": {"tenant": "acme"}` also belongs to cohort
+`tenant=acme` (booleans read `true`/`false`), judged by the policy's cohort rules exactly
+like a tag. A change that helps large tenants and quietly hurts a small one then fails that
+tenant's cohort instead of disappearing into the average. Declare up to 10 fields that hold
+one value per question; a list-valued field such as `groups` is refused (tag those groups
+explicitly). Derived cohorts are not written back into the benchmark. They are recorded in
+run files and hosted uploads like tags, so declare only fields whose values you are willing
+to share as cohort names. `vectraudit dataset stats` counts them with the other cohorts.
 
 Building one:
 
