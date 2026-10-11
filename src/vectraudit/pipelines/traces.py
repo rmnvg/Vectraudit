@@ -839,6 +839,11 @@ def import_traces(
     }
     run = execute_pipeline(dataset, pipeline, options, config=config)
     _use_trace_timing(run, pipeline.latency)
+    for q in run["queries"]:
+        found = match.by_question.get(q["query_id"]) or []
+        if len(found) == 1 or (found and settings.duplicates == "latest"):
+            # Local link for evaluations keyed by trace (Phoenix, Langfuse); never uploaded.
+            q["trace_id"] = kept[q["query_id"]].trace_id
     report = capability_report(
         views, match, dataset, settings, run, shape=shape, k=k, context=pipeline.context
     )

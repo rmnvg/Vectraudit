@@ -1398,9 +1398,47 @@ unrecorded documents and no prompt) and 2 frontend tests. Full suite (1,634 pass
 skipped), ruff, mypy on Python 3.12 and 3.10, TypeScript, Oxlint, 101 frontend tests and the
 workbench browser journey pass; the new panel was checked in Chromium on an imported trace.
 
+## Step 41: required evidence and imported answer judgments (1.2, second part)
+
+This completes 1.2's separation of the four outcomes without building an answer evaluator.
+
+- **Required evidence:** benchmark questions may declare `required_evidence`, alternative
+  groups of relevant documents (any one complete group suffices). It is validated (documents
+  must be relevant; not on no-answer questions), round-trips through exports, changes the
+  dataset version only when present, and is dropped from permission scenarios and incident
+  imports, which relabel questions.
+- **Sufficiency:** runs record per question whether a complete group was delivered and
+  whether one reached the model uncut (`sufficient`, `insufficient`, `unknown`,
+  `unrecorded`). A trimmed exception now reads as insufficient context while document
+  recall passes, which meets the strategy's first 1.2 acceptance case.
+- **Answer judgments:** `vectraudit workbench attach-answers RUN JUDGMENTS --out` reads one
+  judgment per line from human review or tools, keyed by question or trace ID (imported runs
+  now keep each question's trace ID locally). Scores need a declared threshold. Humans
+  decide over models, disagreements become `disputed`, abstentions and handoffs are kept
+  apart, and model evaluators' agreement with human review is reported. Explanations are
+  not read.
+- **Diagnosis:** each judged question gets its first observable loss with supporting facts:
+  answered wrong despite evidence, lost in context, lost downstream, not observed, context
+  unknown, and the correct, abstained, disputed and unjudged cases. Comparisons add
+  `answer_regressed`, `answer_recovered` and `answer_not_correct` findings. The workbench
+  shows an answer panel.
+
+Not included: citations and citation support, answer judgments in release policies or
+uploads, readers for specific tool export formats (the JSONL shape is generic), and
+calibration on real judgments.
+
+Validation: 14 new tests (required-evidence validation and round trip; a missing
+exception detected while recall passes; a planted context omission and a planted wrong
+answer diagnosed separately, alongside downstream, unobserved and unknown-context cases;
+human precedence, disputes, thresholds and agreement; abstention and handoff; trace-keyed
+and unmatched judgments; triage regression; invalid input; CLI). Full suite (1,648 passed,
+22 skipped), ruff, mypy on Python 3.12 and 3.10, TypeScript, Oxlint, 101 frontend tests, the
+production build and the workbench browser journey pass; the answer panel was checked in
+Chromium.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–40). What remains needs owner
+The code-only work the strategy names is done (Steps 1–41). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 

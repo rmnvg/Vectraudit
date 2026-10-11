@@ -3,7 +3,7 @@ import RepeatSelector from '../components/RepeatSelector'
 import { executionView } from '../lib/repeats'
 import GuidedWorkflow from './GuidedWorkflow'
 import { parseArtifact } from '../lib/workbench'
-import type { Artifact, Benchmark, ContextEvidence, Monitor, Optimization, Run } from '../lib/workbench'
+import type { Answer, Artifact, Benchmark, ContextEvidence, Monitor, Optimization, Run } from '../lib/workbench'
 
 const tabs = ['Guided workflow', 'Pipeline runs', 'Experiments', 'Benchmark', 'Monitoring', 'Setup'] as const
 type Tab = typeof tabs[number]
@@ -104,6 +104,7 @@ function RunView({ run, focus = null }: { run: Run; focus?: { query: string; doc
       {evidence?.stages?.length ? <div className="space-y-3">{evidence.stages.map((s, i) => <div key={s.name} className={`rounded-xl border p-4 ${doc && s.hits.some(h => h.id === doc) ? 'border-teal-500 bg-teal-500/5' : 'border-line'}`}><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-3"><span className="font-mono text-xs text-muted">{String(i + 1).padStart(2, '0')}</span><b className="text-sm">{s.name}</b><span className="text-xs text-muted">{s.kind}</span></div><span className="text-xs text-muted">{s.hits.length} documents · {number(s.latency_ms)} ms · {s.source}</span></div><p className="mt-2 text-xs text-muted">Input: {s.parents.join(' + ') || 'query'}</p><div className="mt-3 flex max-h-24 flex-wrap gap-1 overflow-auto">{s.hits.slice(0, 100).map(h => <button onClick={() => setDoc(h.id)} key={h.id} className={`rounded px-2 py-1 font-mono text-[11px] ${doc === h.id ? 'bg-teal-600 text-white' : 'bg-surface-2 text-ink-2'}`}>{h.id}</button>)}</div>{s.hits.length > 100 && <p className="mt-2 text-xs text-muted">Showing the first 100 IDs. Document lookup checks every recorded ID.</p>}</div>)}</div> : <p className="text-sm text-muted">This adapter did not provide stage traces. Internal causes are unknown.</p>}
       {!!evidence?.failures?.length && <div className="mt-5 rounded-xl bg-amber-500/10 p-4"><h3 className="text-sm font-semibold text-amber-600">Where relevant documents disappeared</h3>{evidence!.failures!.map((f, i) => <button key={i} onClick={() => setDoc(f.doc_id)} className="mt-2 block text-left text-sm"><b>{f.doc_id}</b> · {f.stage || 'Not observed'}<span className="block text-xs text-muted">{f.reason}</span></button>)}</div>}
       {evidence?.context && <ModelContextPanel context={evidence.context} onDoc={setDoc} />}
+      {query?.answer && <AnswerPanel answer={query.answer} />}
       {!!query?.forbidden_ids?.length && <p role="alert" className="mt-4 text-sm text-red-600">Forbidden documents delivered: {query.forbidden_ids.join(', ')}</p>}
       {query?.no_answer_correct != null && <p className="mt-4 text-sm">No-answer assertion: {query.no_answer_correct ? 'passed' : 'failed'}</p>}
       </>}</section></div></div>
@@ -117,5 +118,16 @@ function ModelContextPanel({ context, onDoc }: { context: ContextEvidence; onDoc
     <p className="mt-1 text-xs text-muted">{context.reached.length} relevant document(s) reached the model in full{context.coverage === 'observed' ? '' : `; context recorded ${context.coverage}, so absences are not proof of omission`}.{inferred}</p>
     {context.losses.map(l => <button key={l.doc_id} onClick={() => onDoc(l.doc_id)} className="mt-2 block text-left text-sm"><b>{l.doc_id}</b> · {l.kind === 'omitted' ? 'retrieved but left out of the prompt' : 'cut short in the prompt'}</button>)}
     {!!context.unknown.length && <p className="mt-2 text-xs text-muted">Unknown whether these reached the model: {context.unknown.join(', ')}</p>}
+  </div>
+}
+
+/** An imported answer judgment and the first observable loss; never a root cause. */
+function AnswerPanel({ answer }: { answer: Answer }) {
+  const label = (v: string) => v.replaceAll('_', ' ')
+  const verdict = answer.outcome === 'answered' ? answer.verdict ?? 'unjudged' : answer.outcome
+  return <div className={`mt-5 rounded-xl p-4 ${verdict === 'correct' ? 'bg-surface-2' : 'bg-amber-500/10'}`} aria-label="Answer judgment">
+    <h3 className="text-sm font-semibold">Answer: {label(verdict)}</h3>
+    <p className="mt-1 text-xs text-muted">{answer.decided_by ? `Decided by ${answer.decided_by} review` : 'No deciding verdict'} · {answer.judgments.map(j => `${j.evaluator} (${j.kind}): ${j.verdict ?? 'score only'}`).join(' · ')}</p>
+    {answer.diagnosis && <><p className="mt-2 text-sm">First observable loss: <b>{label(answer.diagnosis.class)}</b></p><ul className="mt-1 list-disc pl-5 text-xs text-muted">{answer.diagnosis.facts.map(f => <li key={f}>{f}</li>)}</ul></>}
   </div>
 }

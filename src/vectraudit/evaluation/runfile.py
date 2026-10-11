@@ -225,6 +225,24 @@ def _check_query(q: Any, k: int) -> None:
             ModelContext.model_validate(q["model_context"])
         except ValidationError as exc:
             raise RunFileError("invalid model context record") from exc
+    if "answer" in q:
+        answer = q["answer"]
+        _expect(
+            isinstance(answer, dict)
+            and answer.get("verdict") in (None, "correct", "partial", "incorrect", "disputed")
+            and answer.get("outcome") in ("answered", "abstained", "handoff")
+            and isinstance(answer.get("judgments"), list),
+            "answer must hold a verdict, an outcome and its judgments",
+        )
+    if "sufficiency" in q:
+        sufficiency = q["sufficiency"]
+        _expect(
+            isinstance(sufficiency, dict)
+            and sufficiency.get("delivered") in ("sufficient", "insufficient")
+            and sufficiency.get("context")
+            in ("sufficient", "insufficient", "unknown", "unrecorded"),
+            "sufficiency must state delivered and context evidence",
+        )
     repeat_ids = q.get("repeat_ids")
     _expect(repeat_ids is None or _rankings(repeat_ids, k), "repeat_ids must be rankings")
     attempts = q.get("attempts", [])

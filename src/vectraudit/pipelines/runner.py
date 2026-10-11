@@ -7,7 +7,7 @@ import statistics
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor
 from concurrent.futures import wait as futures_wait
 from dataclasses import asdict, dataclass, field
@@ -254,6 +254,54 @@ def context_analysis(result: PipelineResult, relevant: dict[str, float]) -> dict
         "losses": losses,
         "unknown": unknown,
     }
+
+
+def evidence_sufficiency(
+    groups: Sequence[Sequence[str]], result: PipelineResult
+) -> dict[str, Any] | None:
+    """Whether a complete required group was delivered, and whether it reached the model.
+
+    ``groups`` are the question's alternatives (any one complete group suffices). Delivered
+    is ``sufficient`` or ``insufficient``. Context is ``sufficient`` when every document of
+    some group reached the model uncut, ``insufficient`` when every group lost a document
+    (left out under observed coverage, or cut short), ``unknown`` otherwise, and
+    ``unrecorded`` without a context record. ``None`` when the question declares no groups.
+    """
+    if not groups:
+        return None
+    delivered = {h.id for h in result.hits}
+    closest = min(groups, key=lambda g: (len(set(g) - delivered), list(g)))
+    out: dict[str, Any] = {
+        "groups": len(groups),
+        "delivered": "sufficient" if any(set(g) <= delivered for g in groups) else "insufficient",
+        "missing_from_delivered": sorted(set(closest) - delivered),
+    }
+    context = result.context
+    if context is None:
+        out["context"] = "unrecorded"
+        return out
+    items = {item.id: item for item in context.items}
+
+    def state(group: Sequence[str]) -> str:
+        if any(
+            (doc not in items and context.coverage == "observed")
+            or (doc in items and items[doc].truncated is True)
+            for doc in group
+        ):
+            return "broken"
+        if all(doc in items and items[doc].truncated is False for doc in group):
+            return "complete"
+        return "unknown"
+
+    states = [state(g) for g in groups]
+    out["context"] = (
+        "sufficient"
+        if "complete" in states
+        else "insufficient"
+        if all(st == "broken" for st in states)
+        else "unknown"
+    )
+    return out
 
 
 def execute_pipeline(
@@ -682,6 +730,9 @@ def _measure(
         if result.context is not None:
             # IDs and flags only; never text. Repeat 1, like the primary stage evidence.
             entry["model_context"] = result.context.model_dump(exclude_none=True)
+        sufficiency = evidence_sufficiency(q.required_evidence, result)
+        if sufficiency is not None:
+            entry["sufficiency"] = sufficiency
         if options.evidence and len(results) > 1:
             # Store only changed stage outputs; unchanged repeats reference the first trace.
             # Ignore timing-only changes: end-to-end latency samples remain per execution.

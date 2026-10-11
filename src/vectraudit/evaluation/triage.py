@@ -135,6 +135,48 @@ def _context_findings(b: Mapping[str, Any], c: Mapping[str, Any]) -> list[dict[s
     return findings
 
 
+def _answer_findings(b: Mapping[str, Any], c: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Answer verdicts that changed between the runs, with the candidate's diagnosis."""
+    ba, ca = b.get("answer"), c.get("answer")
+    if not isinstance(ba, Mapping) or not isinstance(ca, Mapping):
+        return []
+    before, after = ba.get("verdict"), ca.get("verdict")
+    diagnosis = (ca.get("diagnosis") or {}).get("class")
+    why = f" First observable loss: {diagnosis.replace('_', ' ')}." if diagnosis else ""
+    if before == "correct" and after in ("partial", "incorrect"):
+        return [
+            {
+                "kind": "answer_regressed",
+                "severity": "regression",
+                "doc_ids": [],
+                "diagnosis": diagnosis,
+                "message": f"The answer was judged correct in the baseline and {after} in the "
+                f"candidate.{why}",
+            }
+        ]
+    if before in ("partial", "incorrect") and after == "correct":
+        return [
+            {
+                "kind": "answer_recovered",
+                "severity": "improvement",
+                "doc_ids": [],
+                "message": f"The answer was judged {before} in the baseline and correct now.",
+            }
+        ]
+    if after in ("partial", "incorrect", "disputed"):
+        return [
+            {
+                "kind": "answer_not_correct",
+                "severity": "info",
+                "doc_ids": [],
+                "diagnosis": diagnosis,
+                "message": f"The candidate's answer is judged {after} (baseline: "
+                f"{before or 'not judged'}).{why}",
+            }
+        ]
+    return []
+
+
 def _stages_with(q: Mapping[str, Any], doc: str) -> list[str]:
     evidence = q.get("evidence")
     stages = evidence.get("stages") if isinstance(evidence, Mapping) else None
@@ -277,6 +319,7 @@ def _query_findings(
                 }
             )
     findings += _context_findings(b, c)
+    findings += _answer_findings(b, c)
     if delta is not None and delta < -EPS:
         dropped = [i for i in b.get("ids") or [] if i not in set(c.get("ids") or [])]
         if not any(f["kind"] == "lost_relevant" for f in findings):

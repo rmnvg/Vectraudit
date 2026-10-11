@@ -106,7 +106,14 @@ def prepare_import(body: ImportIn) -> dict[str, Any]:
                 reference = reference.get(part) if isinstance(reference, dict) else None
         value["_import_id"] = str(reference) if reference is not None else "pending"
         if body.incident:
-            for key in ("relevant", "relevant_spans", "no_answer", "forbidden", "split"):
+            for key in (
+                "relevant",
+                "relevant_spans",
+                "no_answer",
+                "forbidden",
+                "split",
+                "required_evidence",
+            ):
                 value.pop(key, None)
         prepared.append(value)
     mapped = import_rows(
@@ -205,7 +212,15 @@ def permission_rows(body: PermissionIn) -> dict[str, Any]:
             k: v
             for k, v in original.items()
             if k
-            not in ("relevant", "relevant_spans", "forbidden", "no_answer", "context", "filter")
+            not in (
+                "relevant",
+                "relevant_spans",
+                "forbidden",
+                "no_answer",
+                "context",
+                "filter",
+                "required_evidence",
+            )
         }
         row.update(
             family_id=original.get("family_id", body.query_id),
