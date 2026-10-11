@@ -10,6 +10,7 @@ unless that held-out policy check passed.
 from __future__ import annotations
 
 import statistics
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -19,7 +20,7 @@ from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.exceptions import failing_rules
 from vectraudit.evaluation.policy import Policy, policy_sha256
 from vectraudit.pipelines.budget import combine
-from vectraudit.pipelines.runner import PipelineOptions, execute_pipeline
+from vectraudit.pipelines.runner import PipelineOptions, RetryPolicy, execute_pipeline
 from vectraudit.pipelines.runtime import Pipeline
 
 
@@ -36,11 +37,19 @@ def optimize(
     repeats: int = 3,
     policy: Policy | None = None,
     baseline: str | None = None,
+    execution: Mapping[str, Mapping[str, Any]] | None = None,
+    retry: RetryPolicy | None = None,
 ) -> dict[str, Any]:
     """Rank exploratory candidates; validate only the chosen one on unseen held-out rows.
 
     Memory and monetary cost are adapter-reported and remain unknown unless supplied.
     Unknown measurements cannot satisfy a requested constraint. Nothing is deployed.
+
+    ``execution`` maps a candidate name to its ``concurrency`` and ``max_rps`` (serial and
+    unthrottled when absent); every run of that candidate, tuning and held-out, uses them,
+    and ``retry`` applies to all. Latency measured with several queries in flight is latency
+    under load, so when candidates differ in concurrency the result says their p95 values
+    are not directly comparable.
     """
     if (policy is None) != (baseline is None):
         raise ValueError("A release policy needs a baseline candidate, and a baseline a policy")
@@ -76,6 +85,23 @@ def optimize(
 
     if identities(explore) & identities(heldout):
         raise ValueError("duplicate questions cross explore/heldout boundary")
+    settings = {name: dict((execution or {}).get(name) or {}) for name, _, _ in candidates}
+    unknown = set(execution or {}) - set(settings)
+    if unknown:
+        raise ValueError(f"execution settings for unknown candidates: {sorted(unknown)}")
+
+    def options(name: str, params: dict[str, Any]) -> PipelineOptions:
+        chosen = settings[name]
+        return PipelineOptions(
+            k=k,
+            params=params,
+            warmup=0,
+            repeats=repeats,
+            concurrency=int(chosen.get("concurrency") or 1),
+            max_rps=chosen.get("max_rps"),
+            retry=retry or RetryPolicy(),
+        )
+
     tuning = parse_dataset(render_dataset(explore, dataset.meta))
     validation = parse_dataset(render_dataset(heldout, dataset.meta))
     reports = []
@@ -83,12 +109,17 @@ def optimize(
         run = execute_pipeline(
             tuning,
             pipeline,
-            PipelineOptions(k=k, params=params, warmup=0, repeats=repeats),
+            options(name, params),
             config={"candidate": name, "params": params},
             corpus_version=corpus_version,
         )
         reports.append(
-            {"name": name, "run": run, **_measure(run, max_p95_ms, max_cost_usd, max_memory_bytes)}
+            {
+                "name": name,
+                "run": run,
+                "concurrency": run["timing"]["concurrency"],
+                **_measure(run, max_p95_ms, max_cost_usd, max_memory_bytes),
+            }
         )
     if policy is not None:
         _screen(reports, baseline, _restrict(policy, {q.query_id for q in tuning.queries}))
@@ -105,7 +136,7 @@ def optimize(
         run = execute_pipeline(
             validation,
             pipeline,
-            PipelineOptions(k=k, params=params, warmup=0, repeats=repeats),
+            options(chosen, params),
             config={"candidate": chosen, "params": params},
             corpus_version=corpus_version,
         )
@@ -121,7 +152,7 @@ def optimize(
             base_run = execute_pipeline(
                 validation,
                 base_pipeline,
-                PipelineOptions(k=k, params=base_params, warmup=0, repeats=repeats),
+                options(str(baseline), base_params),
                 config={"candidate": baseline, "params": base_params},
                 corpus_version=corpus_version,
             )
@@ -179,7 +210,26 @@ def optimize(
         "warning": "Small benchmarks provide indicative evidence, not production guarantees.",
         "eligible": eligible,
         "measurement_note": "p95 across per-query median latencies; cost/memory adapter-reported",
+        "latency_note": _latency_note(reports),
     }
+
+
+def _latency_note(reports: list[dict[str, Any]]) -> str | None:
+    """Say when p95 values were measured under different load and so do not compare."""
+    levels = sorted({r["concurrency"] for r in reports})
+    if len(levels) < 2:
+        return None
+    by_level = ", ".join(
+        f"{r['name']} {r['concurrency']} in flight"
+        for r in sorted(reports, key=lambda r: r["name"])
+    )
+    return (
+        "Candidates were measured at different concurrency ("
+        + by_level
+        + "): p95 under more queries in flight is latency under load, so p95 values and the "
+        "latency constraint do not compare like for like. Measure at one concurrency to rank "
+        "on latency."
+    )
 
 
 STATUS_LABELS = {

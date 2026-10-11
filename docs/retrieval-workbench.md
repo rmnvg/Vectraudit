@@ -334,7 +334,12 @@ the concurrency and rate limit its candidate run was measured with into `release
 file). In CI the approved release's values run both sides, like `k` and `repeats`: a pull
 request that proposes different values gets a warning and they apply only after merge.
 `vectraudit release validate` warns when a Python adapter would run concurrently.
-Optimization still runs serially.
+`workbench optimize` runs each candidate with its own `concurrency` and `max_rps`, for the
+tuning run and for held-out validation, and takes the same `--max-attempts` and
+`--retry-budget` as `workbench run`. When candidates were measured at different
+concurrency, the result's `latency_note` (also printed) says their p95 values are latency
+under different load and do not compare like for like; measure at one concurrency to rank
+on latency.
 
 ### Preview calls and spend
 
