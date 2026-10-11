@@ -1296,6 +1296,32 @@ as missing merely because their customer validation is pending.
 | **Tier 2** | Chunking experiments, permission scenarios and CLI optimization foundations exist. | Customer-selected lineage/freshness or permission lifecycle proof; interactive experiment/migration workflow where demand supports it. |
 | **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Defer optional breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
 
+## Step 38: adversarial verdict audit (§9 correctness gate)
+
+§9 requires that "no known correctness defect can turn incomplete or incomparable evidence
+into an approved release", and the launch scorecard asked for a review before claiming it.
+The comparison was probed with run files a buggy producer or a hand edit could create. Two
+defects and one gap were found:
+- **A "complete" run could contain failed questions** and still load. The comparison then
+  crashed (TypeError) or, depending on which questions failed, judged only the rest.
+  `check_run` now requires a complete run to measure every dataset question without
+  failures.
+- **A regression could drop out by losing its scores.** If the regressed questions had no
+  metrics on the candidate side only, the comparison averaged the remaining questions and
+  **passed**. A question scored on one side only now makes the result not comparable.
+- **The comparison validated only newer-format runs.** Duplicate question rows or NaN and
+  infinite metrics in an older-format run reached the verdict (NaN passed). Every run is now
+  validated before judging, and an invalid run names its side and the problem.
+
+Several test fixtures described impossible states (a question "correctly returning nothing"
+that delivered documents); they were corrected, and one test that asserted the old lenient
+handling of one-sided scores now asserts the stricter result. Nine regression tests cover
+each case. Real producers were unaffected: the full suite, the three browser journeys and
+the pilot demo pass unchanged.
+
+This is a review by the same author as most of the code, not an independent one. The
+scorecard keeps that gate open until someone else reviews the verdict logic.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–37). What remains needs owner

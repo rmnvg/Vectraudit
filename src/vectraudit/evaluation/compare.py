@@ -242,17 +242,18 @@ class _Check:
                 "The runs use different metric contract versions; re-record both sides "
                 "to compare quality across all repeats.",
             )
-        for run in (b, c):
+        from vectraudit.evaluation.runfile import RunFileError, check_run
+
+        for role, run in (("baseline", b), ("candidate", c)):
             version = run["metric_contract"]["version"]
             if version not in (1, 2):
                 self.flag(Verdict.NOT_COMPARABLE, "Unsupported metric contract version.")
-            if version == 2:
-                from vectraudit.evaluation.runfile import RunFileError, check_run
-
-                try:
-                    check_run(run)
-                except RunFileError as exc:
-                    self.flag(Verdict.NOT_COMPARABLE, f"Invalid repeat-quality evidence: {exc}")
+            # Every run is validated, not only files loaded from disk: a verdict must never
+            # rest on duplicate rows, non-finite metrics or a "complete" run with failures.
+            try:
+                check_run(run)
+            except RunFileError as exc:
+                self.flag(Verdict.NOT_COMPARABLE, f"The {role} run is not a valid run: {exc}")
         if len(self.reasons) > before:
             return False
         if b["metric_contract"]["version"] == c["metric_contract"]["version"] == 2:
@@ -277,6 +278,20 @@ class _Check:
         paired = self._pairs()
         if any(family_id(bq) != family_id(cq) for bq, cq in paired):
             self.flag(Verdict.NOT_COMPARABLE, "Query family assignments differ between runs.")
+            return False
+        # The same dataset labels the same queries on both sides; a query scored on only one
+        # side would let a regression drop out of the comparison unseen.
+        uneven = [
+            bq["query_id"]
+            for bq, cq in paired
+            if (bq.get("metrics") is None) != (cq.get("metrics") is None)
+        ]
+        if uneven:
+            self.flag(
+                Verdict.NOT_COMPARABLE,
+                f"{len(uneven)} queries were scored in only one run (for example "
+                f"{uneven[0]}); quality cannot be compared on different query sets.",
+            )
             return False
         n = family_count(b["queries"])
         self.out["n_queries"] = len(paired)

@@ -95,6 +95,7 @@ def test_invalid_uploads(world) -> None:
         assert r.json()["error_code"] == "invalid_run"
     huge = a_run("run-4")
     huge["dataset"]["n_queries"] = 50_000
+    huge["status"] = "partial"  # a complete run must measure every query it declares
     r = world.client.post(RUNS, content=json.dumps(huge).encode(), headers=h)
     assert r.status_code == 413
     assert r.json()["error_code"] == "too_many_queries"

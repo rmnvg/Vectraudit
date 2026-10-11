@@ -37,17 +37,21 @@ def policy(**extra):
 
 
 def failing_pair():
-    tags = [["billing"]] * 20
-    base = fake_run([1.0] * 20, tags=tags)
-    cand = fake_run([0.0] + [1.0] * 19, tags=tags, latency=9.0)
+    tags = [["billing"]] * 21  # 20 scored questions plus one no-answer question
+    base = fake_run([1.0] * 21, tags=tags)
+    cand = fake_run([0.0] + [1.0] * 20, tags=tags, latency=9.0)
     for run in (base, cand):
         for q in run["queries"]:
             q["repeat_ids"] = [q["ids"]]
         run["timing"] = {"repeats": 1}
     cand["queries"][1].update(forbidden_ids=["secret"], permission_checked=True)
     base["queries"][1].update(forbidden_ids=[], permission_checked=True)
+    # q2 is a no-answer question (unlabelled on both sides): the baseline correctly returns
+    # nothing; the candidate delivers documents.
+    for run in (base, cand):
+        run["queries"][2]["metrics"] = None
+    base["queries"][2].update(no_answer_correct=True, ids=[], repeat_ids=[[]])
     cand["queries"][2]["no_answer_correct"] = False
-    base["queries"][2]["no_answer_correct"] = True
     return base, cand
 
 
