@@ -515,9 +515,17 @@ that cause; the run is then `partial` and cannot pass a release check.
 The capability report, printed and optionally saved as JSON, states for the imported traces:
 stable document IDs, the delivered ranking, observed stages, document flow between stages,
 filters and tenant context (OpenInference has no standard attribute for filters; metadata
-key names and session or user IDs are listed), model context (whether LLM input messages
-were recorded; context and answer evidence is not imported yet), replay and latency. It holds
-counts, span names and attribute names only.
+key names and session or user IDs are listed), model context (below), replay and latency.
+It holds counts, span names and attribute names only.
+
+**Model context from traces.** When LLM spans record their input messages, each delivered
+document's recorded text (`document.content`) is looked for in the prompt, ignoring case and
+spacing. Found whole, it reached the model; found only as a leading or trailing part of at
+least 40 characters, it was cut short; not found, it was left out. A document whose text was
+not recorded cannot be located, so that question's context is only `partial` and its
+absence proves nothing. This is an inference from recorded text, labelled `text_match` in
+the run; an application that knows its packed context can report it directly instead
+(below).
 
 What an import cannot do:
 
@@ -528,6 +536,34 @@ What an import cannot do:
   it, against measured latency or against a `p95_max_ms` limit, and say so.
 - **Carry text.** Document content, prompts and model context stay in the trace file; the
   run keeps IDs, scores and timings, and uploads follow the usual sharing projection.
+
+### Model context: what reached the model
+
+Retrieval can find the right document and the model can still never see it: context
+packing drops it, or trims the clause that mattered. A pipeline can report what it actually
+gave the model, in order, alongside its ranked hits:
+
+```python
+PipelineResult(
+    hits=[Hit(id="policy"), Hit(id="faq")],
+    context=ModelContext(items=[ContextItem(id="faq"), ContextItem(id="policy", truncated=True)]),
+)
+```
+
+HTTP pipelines return the same as `"context": {"items": [{"id": "faq"}, ...]}`. Item IDs use
+the benchmark's document identity, like hits. `coverage` defaults to `observed`, meaning every
+document the model received is listed, so a delivered relevant document that is missing was
+left out; use `partial` when only some are known. `truncated` is optional (`null` means
+unknown). Only IDs and flags are recorded, never text.
+
+For each question the run then records `model_context` and, in its evidence, which relevant
+delivered documents reached the model in full, which were **omitted** or **truncated**, and
+which are **unknown**. These are separate from retrieval metrics: recall can be perfect while
+the model saw nothing useful. Comparisons list a newly lost document as a `context_lost`
+finding (regression) when the baseline's context included it in full; when the baseline did not
+record context the finding is informational, because it cannot say whether the loss is new.
+Context evidence is not part of uploads. It does not yet change release verdicts or judge
+answers; answer and citation judgments are a later step.
 
 ## No-answer and permissions
 

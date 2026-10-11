@@ -1,6 +1,7 @@
 export type Hit = { id: string; score?: number }
 export type Stage = { name: string; kind: string; parents: string[]; hits: Hit[]; latency_ms: number | null; source: string }
-export type Evidence = { stages?: Stage[]; failures?: { doc_id: string; stage: string | null; reason: string }[] }
+export type ContextEvidence = { coverage: string; method: string; reached: string[]; losses: { doc_id: string; kind: 'omitted' | 'truncated'; reason: string }[]; unknown: string[] }
+export type Evidence = { stages?: Stage[]; failures?: { doc_id: string; stage: string | null; reason: string }[]; context?: ContextEvidence }
 export type Query = { query_id: string; ids: string[] | null; latency_ms: number | null; tags: string[]; metrics: Record<string, number> | null; no_answer_correct?: boolean | null; forbidden_ids?: string[]; error?: unknown; evidence?: Evidence | null; repeat_ids?: string[][] | null; repeat_metrics?: (Record<string, number> | null)[]; repeat_ann_recall?: (number | null)[]; repeat_evidence?: Record<string, Evidence> }
 export type Run = { metric_contract?: { version: number; repeat_aggregation?: string }; format: 'vectraudit.run'; run_id: string; created_at: string; status: string; label?: string; queries: Query[]; backend?: { config?: Record<string, unknown> } | null; benchmark_source?: { split: string } | null; summary: { n_queries: number; n_ok: number; metrics: Record<string, number> | null; latency_ms: { p95: number } | null; permissions?: { violations: number }; no_answer?: { n: number; accuracy: number | null } } }
 /** A run as listed by the guided workspace: per-query records load on demand. */
@@ -43,7 +44,9 @@ export function parseArtifact(value: unknown): Artifact {
         return numeric(st.latency_ms) && strings(st.parents) && Array.isArray(st.hits) && st.hits.every(h => object(h) && typeof h.id === 'string')
       }))) return false
       const failures = value.failures
-      return failures == null || (Array.isArray(failures) && failures.every(f => object(f) && typeof f.doc_id === 'string' && typeof f.reason === 'string' && (f.stage == null || typeof f.stage === 'string')))
+      if (failures != null && !(Array.isArray(failures) && failures.every(f => object(f) && typeof f.doc_id === 'string' && typeof f.reason === 'string' && (f.stage == null || typeof f.stage === 'string')))) return false
+      const context = value.context
+      return context == null || (object(context) && typeof context.coverage === 'string' && typeof context.method === 'string' && strings(context.reached) && strings(context.unknown) && Array.isArray(context.losses) && context.losses.every(l => object(l) && typeof l.doc_id === 'string' && (l.kind === 'omitted' || l.kind === 'truncated')))
   }
   const run = (v: unknown): boolean => {
     if (!object(v) || typeof v.run_id !== 'string' || !summary(v.summary) || !Array.isArray(v.queries)) return false

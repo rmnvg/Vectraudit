@@ -1,8 +1,10 @@
 """Text-first, instrumented retrieval pipelines for local evaluation."""
 
 from vectraudit.pipelines.models import (
+    ContextItem,
     EvidenceCoverage,
     Hit,
+    ModelContext,
     PipelineRequest,
     PipelineResult,
     SourceReference,
@@ -17,9 +19,11 @@ from vectraudit.pipelines.runner import (
 from vectraudit.pipelines.runtime import HTTPPipeline, PythonPipeline, Stage
 
 __all__ = [
+    "ContextItem",
     "EvidenceCoverage",
     "HTTPPipeline",
     "Hit",
+    "ModelContext",
     "PairedSide",
     "PipelineOptions",
     "PipelineRequest",

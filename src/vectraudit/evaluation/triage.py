@@ -50,6 +50,91 @@ def _failures(q: Mapping[str, Any]) -> dict[str, list[Mapping[str, Any]]] | None
     return grouped
 
 
+def _context(q: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The query's context analysis (see ``runner.context_analysis``), if it recorded one."""
+    evidence = q.get("evidence")
+    context = evidence.get("context") if isinstance(evidence, Mapping) else None
+    return context if isinstance(context, Mapping) else None
+
+
+def _context_findings(b: Mapping[str, Any], c: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Relevant documents retrieved but left out of, or cut short in, the model context."""
+    bctx, cctx = _context(b), _context(c)
+    if cctx is None:
+        return []
+    base_lost = {loss["doc_id"]: loss for loss in (bctx or {}).get("losses") or []}
+    base_reached = set((bctx or {}).get("reached") or [])
+    findings: list[dict[str, Any]] = []
+    new, still, unknown_before = [], [], []
+    for loss in cctx.get("losses") or []:
+        doc = loss["doc_id"]
+        if doc in base_lost:
+            still.append(loss)
+        elif doc in base_reached:
+            new.append(loss)
+        else:
+            unknown_before.append(loss)
+
+    def describe(losses: list[Mapping[str, Any]]) -> str:
+        return ", ".join(f"{loss['doc_id']} ({loss['kind']})" for loss in losses)
+
+    how = (
+        " (inferred by matching document text in the prompt)"
+        if (cctx.get("method") == "text_match")
+        else ""
+    )
+    if new:
+        findings.append(
+            {
+                "kind": "context_lost",
+                "severity": "regression",
+                "doc_ids": [loss["doc_id"] for loss in new],
+                "context": new,
+                "message": f"{len(new)} relevant document(s) were retrieved and delivered but "
+                f"did not fully reach the model, as they did in the baseline{how}: "
+                + describe(new),
+            }
+        )
+    if unknown_before:
+        findings.append(
+            {
+                "kind": "context_loss",
+                "severity": "info",
+                "doc_ids": [loss["doc_id"] for loss in unknown_before],
+                "context": unknown_before,
+                "message": f"{len(unknown_before)} relevant document(s) were delivered but did "
+                f"not fully reach the model{how}; the baseline's context does not show whether "
+                "this is new: " + describe(unknown_before),
+            }
+        )
+    if still:
+        findings.append(
+            {
+                "kind": "context_still_lost",
+                "severity": "info",
+                "doc_ids": [loss["doc_id"] for loss in still],
+                "context": still,
+                "message": f"{len(still)} relevant document(s) were delivered but did not "
+                f"fully reach the model in both runs{how}: " + describe(still),
+            }
+        )
+    lost_now = {loss["doc_id"] for loss in cctx.get("losses") or []}
+    recovered = [
+        doc for doc in base_lost if doc in set(cctx.get("reached") or []) and doc not in lost_now
+    ]
+    if recovered:
+        findings.append(
+            {
+                "kind": "context_recovered",
+                "severity": "improvement",
+                "doc_ids": recovered,
+                "message": f"{len(recovered)} relevant document(s) now reach the model in full: "
+                + ", ".join(recovered),
+            }
+        )
+    return findings
+
+
 def _stages_with(q: Mapping[str, Any], doc: str) -> list[str]:
     evidence = q.get("evidence")
     stages = evidence.get("stages") if isinstance(evidence, Mapping) else None
@@ -191,6 +276,7 @@ def _query_findings(
                     + ", ".join(still),
                 }
             )
+    findings += _context_findings(b, c)
     if delta is not None and delta < -EPS:
         dropped = [i for i in b.get("ids") or [] if i not in set(c.get("ids") or [])]
         if not any(f["kind"] == "lost_relevant" for f in findings):
@@ -221,7 +307,15 @@ def _query_findings(
         )
     if any(len(q.get("repeat_ids") or []) > 1 for q in (b, c)):
         for finding in findings:
-            if finding["kind"] in {"lost_relevant", "recovered_relevant", "still_missing"}:
+            if finding["kind"] in {
+                "lost_relevant",
+                "recovered_relevant",
+                "still_missing",
+                "context_lost",
+                "context_loss",
+                "context_still_lost",
+                "context_recovered",
+            }:
                 finding["message"] += " This stage evidence describes repeat 1 only."
     return findings, bv, cv
 

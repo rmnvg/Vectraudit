@@ -210,6 +210,52 @@ def failure_analysis(result: PipelineResult, relevant: dict[str, float]) -> list
     return findings
 
 
+def context_analysis(result: PipelineResult, relevant: dict[str, float]) -> dict[str, Any] | None:
+    """What happened to relevant delivered documents between retrieval and the model.
+
+    ``losses`` lists documents left out (only when coverage is ``observed``) or cut short;
+    ``unknown`` lists documents whose fate the recorded context cannot show. ``None`` when
+    the pipeline recorded no model context at all.
+    """
+    context = result.context
+    if context is None:
+        return None
+    items = {item.id: item for item in context.items}
+    losses: list[dict[str, Any]] = []
+    unknown: list[str] = []
+    for hit in result.hits:
+        if relevant.get(hit.id, 0) <= 0:
+            continue
+        item = items.get(hit.id)
+        if item is None and context.coverage == "observed":
+            losses.append(
+                {
+                    "doc_id": hit.id,
+                    "kind": "omitted",
+                    "reason": "delivered by retrieval; absent from the model context",
+                }
+            )
+        elif item is None:
+            unknown.append(hit.id)
+        elif item.truncated:
+            losses.append(
+                {
+                    "doc_id": hit.id,
+                    "kind": "truncated",
+                    "reason": "only part of the document reached the model",
+                }
+            )
+    return {
+        "coverage": context.coverage,
+        "method": context.method,
+        "reached": [
+            item.id for item in context.items if relevant.get(item.id, 0) > 0 and not item.truncated
+        ],
+        "losses": losses,
+        "unknown": unknown,
+    }
+
+
 def execute_pipeline(
     dataset: Dataset,
     pipeline: Pipeline,
@@ -624,10 +670,18 @@ def _measure(
                 "kind": "pipeline",
                 "stages": [s.model_dump() for s in result.stages],
                 "failures": failure_analysis(result, q.relevant),
+                **(
+                    {"context": context_analysis(result, q.relevant)}
+                    if result.context is not None
+                    else {}
+                ),
             }
             if options.evidence
             else None,
         )
+        if result.context is not None:
+            # IDs and flags only; never text. Repeat 1, like the primary stage evidence.
+            entry["model_context"] = result.context.model_dump(exclude_none=True)
         if options.evidence and len(results) > 1:
             # Store only changed stage outputs; unchanged repeats reference the first trace.
             # Ignore timing-only changes: end-to-end latency samples remain per execution.
@@ -640,11 +694,17 @@ def _measure(
                     "kind": "pipeline",
                     "stages": [s.model_dump() for s in r.stages],
                     "failures": failure_analysis(r, q.relevant),
+                    **(
+                        {"context": context_analysis(r, q.relevant)}
+                        if r.context is not None
+                        else {}
+                    ),
                 }
                 for i, r in enumerate(results[1:], 2)
                 if trace_signature(r) != first
                 or r.coverage != results[0].coverage
                 or r.hits != results[0].hits
+                or r.context != results[0].context
             }
             entry["repeat_evidence"] = changed
     except JobCancelledError:

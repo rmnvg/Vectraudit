@@ -55,6 +55,39 @@ class EvidenceObservation(Contract):
     hits: list[Hit] = Field(default_factory=list, max_length=10000)
 
 
+class ContextItem(Contract):
+    """One document as it reached the model. ``id`` is the same identity as ``Hit.id``."""
+
+    id: str = Field(min_length=1, max_length=512)
+    source: SourceReference | None = None
+    truncated: bool | None = None
+    """True when only part of the document reached the model; ``None`` when unknown."""
+
+
+class ModelContext(Contract):
+    """What the application actually gave the model, in order. Version 1.
+
+    ``coverage`` says how completely it was recorded: ``observed`` means every document the
+    model received is listed, so a delivered document that is absent was left out;
+    ``partial`` lists some documents and proves nothing about absences. ``method`` says how
+    the items were obtained: ``reported`` by the application, or ``text_match``, inferred by
+    finding recorded document text in the recorded prompt.
+    """
+
+    format_version: Literal[1] = 1
+    coverage: Observation = "observed"
+    method: Literal["reported", "text_match"] = "reported"
+    items: list[ContextItem] = Field(default_factory=list, max_length=10000)
+
+    @model_validator(mode="after")
+    def coherent(self) -> ModelContext:
+        if self.coverage in {"unrecorded", "unsupported"} and self.items:
+            raise ValueError("unrecorded model context cannot list documents")
+        if len({item.id for item in self.items}) != len(self.items):
+            raise ValueError("model context lists a document twice")
+        return self
+
+
 class PipelineRequest(Contract):
     query_id: str
     text: str | None = None
@@ -88,6 +121,8 @@ class PipelineResult(Contract):
     cost_usd: float | None = Field(default=None, ge=0)
     memory_bytes: int | None = Field(default=None, ge=0)
     coverage: EvidenceCoverage | None = None
+    context: ModelContext | None = None
+    """Optional: the documents the model received. Kept local; never uploaded by default."""
 
     @model_validator(mode="after")
     def coherent(self) -> PipelineResult:

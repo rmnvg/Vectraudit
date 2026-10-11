@@ -208,7 +208,7 @@ def test_otlp_retriever_and_reranker_become_a_scored_run(tmp_path):
     caps = report["capabilities"]
     assert caps["stable_document_ids"]["status"] == "observed"
     assert caps["document_flow"]["status"] == "observed"
-    assert caps["model_context"]["status"] == "recorded_not_imported"
+    assert caps["model_context"]["status"] == "observed"
     assert caps["replay"]["status"] == "not_available"
     assert report["questions"] == {
         "benchmark": 3,
@@ -471,3 +471,102 @@ def test_cli_writes_run_and_report(tmp_path):
         app, ["workbench", "import-traces", str(data), str(traces), "--stage-kind", "x"]
     )
     assert bad.exit_code == 2
+
+
+# --- model context (1.2) -------------------------------------------------------------
+
+POLICY_TEXT = (
+    "Refunds are issued within 14 days of purchase. Exception: annual plans cancelled after "
+    "the first month are refunded pro rata, never in full."
+)
+
+
+def context_trace(prompt: str, contents: dict[str, str | None]) -> list[dict[str, Any]]:
+    spans = trace("t", "Cancel my plan", retrieved=list(contents))
+    retriever = spans[1]["attributes"]
+    for i, text in enumerate(contents.values()):
+        if text is None:
+            del retriever[f"retrieval.documents.{i}.document.content"]
+        else:
+            retriever[f"retrieval.documents.{i}.document.content"] = text
+    spans[-1]["attributes"] = {
+        "openinference.span.kind": "LLM",
+        "llm.input_messages.0.message.role": "system",
+        "llm.input_messages.0.message.content": "Answer from the context.",
+        "llm.input_messages.1.message.role": "user",
+        "llm.input_messages.1.message.content": prompt,
+    }
+    return spans
+
+
+def import_context(tmp_path, prompt, contents, relevant=None):
+    ds = dataset({"q3": ("Cancel my plan", relevant or {"d3": 1})})
+    run, report = import_traces(ds, write_otlp(tmp_path / "t", context_trace(prompt, contents)))
+    return run["queries"][0], report
+
+
+def test_retrieved_document_cut_short_in_the_prompt_is_a_context_loss(tmp_path):
+    # The exception clause was trimmed away: document recall passes, the model never saw it.
+    cut = POLICY_TEXT[:60]
+    q, report = import_context(
+        tmp_path,
+        f"Context:\n[1] Other text about billing addresses.\n[2] {cut}\n\nQuestion: cancel",
+        {"d3": POLICY_TEXT, "d8": "Other text about billing addresses."},
+    )
+    assert q["metrics"]["recall"] == 1.0
+    assert q["model_context"] == {
+        "format_version": 1,
+        "coverage": "observed",
+        "method": "text_match",
+        "items": [{"id": "d8", "truncated": False}, {"id": "d3", "truncated": True}],
+    }
+    assert q["evidence"]["context"]["losses"] == [
+        {
+            "doc_id": "d3",
+            "kind": "truncated",
+            "reason": "only part of the document reached the model",
+        }
+    ]
+    assert report["capabilities"]["model_context"]["status"] == "observed"
+    text = json.dumps(q) + json.dumps(report)
+    assert "Refunds" not in text  # text stays in the trace file
+    assert "billing" not in text
+
+
+def test_retrieved_document_left_out_of_the_prompt_is_omitted(tmp_path):
+    q, _ = import_context(
+        tmp_path,
+        "Context: Other text about billing addresses, with spacing   changed.",
+        {"d8": "Other text about  billing addresses,", "d3": POLICY_TEXT},
+    )
+    assert [i["id"] for i in q["model_context"]["items"]] == ["d8"]
+    [loss] = q["evidence"]["context"]["losses"]
+    assert (loss["doc_id"], loss["kind"]) == ("d3", "omitted")
+
+
+def test_documents_without_recorded_text_leave_absence_unknown(tmp_path):
+    q, report = import_context(tmp_path, f"Context: {POLICY_TEXT[:20]}", {"d3": None})
+    assert q["model_context"]["coverage"] == "partial"
+    assert q["evidence"]["context"] == {
+        "coverage": "partial",
+        "method": "text_match",
+        "reached": [],
+        "losses": [],
+        "unknown": ["d3"],
+    }
+    assert report["capabilities"]["model_context"]["status"] == "partial"
+
+
+def test_no_prompt_means_no_context_claim(tmp_path):
+    run, report = import_traces(
+        dataset({"q3": QUESTIONS["q3"]}),
+        write_otlp(tmp_path / "t", trace("t", "Cancel my plan", retrieved=["d3"])[:-1]),
+    )
+    assert "model_context" not in run["queries"][0]
+    assert "context" not in run["queries"][0]["evidence"]
+    assert report["capabilities"]["model_context"]["status"] == "missing"
+
+
+def test_a_document_trimmed_at_the_start_is_also_cut_short(tmp_path):
+    q, _ = import_context(tmp_path, f"Context: …{POLICY_TEXT[-70:]}", {"d3": POLICY_TEXT})
+    assert q["model_context"]["items"] == [{"id": "d3", "truncated": True}]
