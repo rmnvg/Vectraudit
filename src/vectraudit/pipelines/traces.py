@@ -44,8 +44,10 @@ from vectraudit.evaluation.dataset import Dataset
 from vectraudit.evaluation.runner import summarize
 from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.models import (
+    ContextItem,
     EvidenceCoverage,
     Hit,
+    ModelContext,
     PipelineRequest,
     PipelineResult,
     StageTrace,
@@ -313,6 +315,9 @@ class _Stage:
     documents: list[str | None] | None
     """``None`` when the span recorded no documents at all (a gap, not an empty result)."""
     scores: list[float | None]
+    contents: list[list[str]] = field(default_factory=list)
+    """Recorded text of each document's chunks, kept in memory only to locate it in the
+    prompt; never written to the run or report."""
     inputs: list[str | None] | None = None
     input_scores: list[float | None] = field(default_factory=list)
     parents: list[str] = field(default_factory=list)
@@ -337,11 +342,13 @@ class TraceView:
     session: bool
     user: bool
     duplicates_dropped: int = 0
+    prompt: str = ""
+    """Normalized text of every recorded LLM input message; memory only, never written."""
 
 
 def _documents(
     attributes: Mapping[str, Any], prefix: str, id_field: str | None
-) -> tuple[list[str | None], list[float | None]] | None:
+) -> tuple[list[str | None], list[float | None], list[list[str]]] | None:
     indices = sorted(
         {
             int(rest.split(".", 1)[0])
@@ -354,6 +361,7 @@ def _documents(
         return None
     ids: list[str | None] = []
     scores: list[float | None] = []
+    contents: list[list[str]] = []
     for i in indices:
         base = f"{prefix}.{i}.document"
         if id_field is None:
@@ -366,7 +374,9 @@ def _documents(
         score = attributes.get(f"{base}.score")
         ok = isinstance(score, (int, float)) and not isinstance(score, bool)
         scores.append(float(score) if ok and math.isfinite(score) else None)  # type: ignore[arg-type]
-    return ids, scores
+        content = attributes.get(f"{base}.content")
+        contents.append([content] if isinstance(content, str) and content.strip() else [])
+    return ids, scores, contents
 
 
 def _json_field(text: str, dotted: str) -> Any:
@@ -423,6 +433,7 @@ def view_trace(spans: Sequence[Span], settings: Settings) -> TraceView:
     texts: list[str] = []
     llm_spans = 0
     llm_context = False
+    prompt: list[str] = []
     for span in ordered:
         metadata = _metadata(span)
         metadata_keys.update(metadata)
@@ -437,9 +448,9 @@ def view_trace(spans: Sequence[Span], settings: Settings) -> TraceView:
                 query_id = str(value)
         if span.kind == "LLM":
             llm_spans += 1
-            llm_context = llm_context or any(
-                k.startswith("llm.input_messages.") for k in span.attributes
-            )
+            found_prompt = _prompt_text(span.attributes)
+            prompt += found_prompt
+            llm_context = llm_context or bool(found_prompt)
         if span.kind not in ("RETRIEVER", "RERANKER"):
             continue
         names[span.name] += 1
@@ -465,6 +476,7 @@ def view_trace(spans: Sequence[Span], settings: Settings) -> TraceView:
                 kind=kind,
                 documents=found[0] if found else None,
                 scores=found[1] if found else [],
+                contents=found[2] if found else [],
                 inputs=inputs,
                 input_scores=input_scores,
             )
@@ -483,6 +495,7 @@ def view_trace(spans: Sequence[Span], settings: Settings) -> TraceView:
         stages=stages,
         llm_context=llm_context,
         llm_spans=llm_spans,
+        prompt=_normal("\n".join(prompt)),
         metadata_keys=metadata_keys,
         session=any("session.id" in s.attributes for s in ordered),
         user=any("user.id" in s.attributes for s in ordered),
@@ -532,16 +545,112 @@ def _dedupe(stage: _Stage) -> int:
     """Chunks mapped to one document ID keep their best (first) rank; returns drops."""
     if stage.documents is None or None in stage.documents:
         return 0
-    seen: set[str | None] = set()
-    docs, scores = [], []
-    for doc, score in zip(stage.documents, stage.scores, strict=True):
-        if doc not in seen:
-            seen.add(doc)
-            docs.append(doc)
-            scores.append(score)
+    contents = stage.contents or [[] for _ in stage.documents]
+    first: dict[str | None, int] = {}
+    docs: list[str | None] = []
+    scores: list[float | None] = []
+    merged: list[list[str]] = []
+    for doc, score, text in zip(stage.documents, stage.scores, contents, strict=True):
+        if doc in first:
+            merged[first[doc]] = merged[first[doc]] + text if merged[first[doc]] and text else []
+            continue
+        first[doc] = len(docs)
+        docs.append(doc)
+        scores.append(score)
+        merged.append(list(text))
     dropped = len(stage.documents) - len(docs)
-    stage.documents, stage.scores = docs, scores
+    stage.documents, stage.scores, stage.contents = docs, scores, merged
     return dropped
+
+
+def _normal(text: str) -> str:
+    return " ".join(text.split()).casefold()
+
+
+def _strings(value: Any) -> Iterator[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
+def _prompt_text(attributes: Mapping[str, Any]) -> list[str]:
+    """Every recorded input message text on an LLM span (contents, or JSON ``input.value``)."""
+    out = [
+        value
+        for key, value in attributes.items()
+        if key.startswith("llm.input_messages.")
+        and (key.endswith(".message.content") or key.endswith(".message_content.text"))
+        and isinstance(value, str)
+    ]
+    if not out and isinstance(attributes.get("input.value"), str):
+        raw = attributes["input.value"]
+        try:
+            out = list(_strings(json.loads(raw)))
+        except ValueError:
+            out = [raw]
+    return out
+
+
+MIN_PARTIAL = 40
+"""Normalized characters a cut document must keep before it counts as partly present."""
+
+
+def _presence(text: str, prompt: str) -> tuple[float, int]:
+    """Fraction of ``text`` found in ``prompt`` as a whole, a leading or a trailing part,
+    and where it starts (-1 if absent). Shorter pieces than :data:`MIN_PARTIAL` do not count.
+    """
+    if text in prompt:
+        return 1.0, prompt.find(text)
+    best, where = 0, -1
+
+    def piece(n: int, tail: bool) -> str:
+        return text[len(text) - n :] if tail else text[:n]
+
+    for tail in (False, True):
+        low, high = 0, len(text) - 1
+        while low < high:  # containment is monotonic in the piece's length
+            mid = (low + high + 1) // 2
+            if piece(mid, tail) in prompt:
+                low = mid
+            else:
+                high = mid - 1
+        if low >= MIN_PARTIAL and low > best:
+            best, where = low, prompt.find(piece(low, tail))
+    return best / len(text), where
+
+
+def _model_context(final: _Stage, prompt: str) -> ModelContext | None:
+    """Which delivered documents reached the recorded prompt, in prompt order.
+
+    Inferred by text matching: a document is present when its recorded text appears in the
+    prompt, cut short when only a leading or trailing part does. A document without
+    recorded text cannot be located, so the context is then only ``partial``.
+    """
+    if not prompt:
+        return None
+    found: list[tuple[int, ContextItem]] = []
+    partial = False
+    for doc, chunks in zip(final.documents or [], final.contents, strict=True):
+        if doc is None:
+            continue
+        if not chunks:
+            partial = True
+            continue
+        shares = [_presence(_normal(chunk), prompt) for chunk in chunks]
+        if not any(share for share, _ in shares):
+            continue
+        where = min(pos for share, pos in shares if share)
+        found.append((where, ContextItem(id=doc, truncated=any(share < 1 for share, _ in shares))))
+    return ModelContext(
+        coverage="partial" if partial else "observed",
+        method="text_match",
+        items=[item for _, item in sorted(found, key=lambda pair: pair[0])],
+    )
 
 
 def _final(view: TraceView, settings: Settings) -> _Stage:
@@ -606,7 +715,8 @@ def trace_result(view: TraceView, settings: Settings, k: int) -> tuple[PipelineR
     )
     start = min(s.span.start_ns for s in view.stages)
     latency = (final.span.end_ns - start) / 1e6
-    return PipelineResult(hits=hits, stages=stages, coverage=coverage), latency
+    context = _model_context(final, view.prompt)
+    return PipelineResult(hits=hits, stages=stages, coverage=coverage, context=context), latency
 
 
 # --- the import --------------------------------------------------------------------------
@@ -659,6 +769,8 @@ class TracePipeline:
     ) -> None:
         self.match, self.settings, self.k, self.kept = match, settings, k, kept
         self.latency: dict[str, float] = {}
+        self.context: dict[str, str | None] = {}
+        """Model-context coverage per measured question (``None``: no prompt recorded)."""
 
     def __call__(self, request: PipelineRequest) -> PipelineResult:
         views = self.match.by_question.get(request.query_id) or []
@@ -669,6 +781,7 @@ class TracePipeline:
         view = self.kept[request.query_id]
         result, latency = trace_result(view, self.settings, self.k)
         self.latency[request.query_id] = latency
+        self.context[request.query_id] = result.context.coverage if result.context else None
         return result
 
 
@@ -726,7 +839,9 @@ def import_traces(
     }
     run = execute_pipeline(dataset, pipeline, options, config=config)
     _use_trace_timing(run, pipeline.latency)
-    report = capability_report(views, match, dataset, settings, run, shape=shape, k=k)
+    report = capability_report(
+        views, match, dataset, settings, run, shape=shape, k=k, context=pipeline.context
+    )
     return run, report
 
 
@@ -760,6 +875,7 @@ def capability_report(
     *,
     shape: str,
     k: int,
+    context: Mapping[str, str | None] | None = None,
 ) -> dict[str, Any]:
     """What the traces recorded, what they could not show, and what was inferred.
 
@@ -790,6 +906,9 @@ def capability_report(
     def share(n: int, total: int) -> str:
         return f"{n} of {total}"
 
+    context_counts: Counter[str] = Counter({"observed": 0, "partial": 0, "none": 0})
+    for coverage in (context or {}).values():
+        context_counts[coverage or "none"] += 1
     total_stages = len(stage_spans)
     ids_ok = total_stages - unrecorded - missing_ids
     capabilities = {
@@ -836,9 +955,17 @@ def capability_report(
             "The benchmark's own filters and context were not checked against them.",
         ),
         "model_context": _capability(
-            "recorded_not_imported" if llm_context else "missing",
+            "observed"
+            if measured and context_counts["observed"] == measured
+            else (
+                "partial" if context_counts["observed"] + context_counts["partial"] else "missing"
+            ),
             f"LLM spans in {share(llm, len(views))} traces; input messages recorded in "
-            f"{llm_context}. Context, answer and citation evidence is not imported yet.",
+            f"{llm_context}. Of {measured} measured questions, the delivered documents were "
+            f"located in the prompt for {context_counts['observed']}, partly (some documents "
+            f"had no recorded text) for {context_counts['partial']}, and not at all for "
+            f"{context_counts['none']} (no prompt recorded). Inferred by matching recorded "
+            "document text in the prompt; answers and citations are not imported yet.",
         ),
         "replay": _capability(
             "not_available",

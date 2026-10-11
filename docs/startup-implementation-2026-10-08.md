@@ -1361,9 +1361,46 @@ milliseconds, metadata IDs and chunk deduplication, every gap code, duplicate tr
 subset and unknown-origin reranker inputs, private text kept out of the run, report and
 upload, latency never judged, CLI). Full suite, ruff, and mypy on Python 3.12 and 3.10 pass.
 
+## Step 40: model-context evidence (1.2, first part)
+
+The strategy's §11 story is a document retrieved correctly but missing from what the model
+saw. This step makes that loss observable, kept apart from retrieval quality.
+
+- **Contract:** optional `PipelineResult.context` (`ModelContext`: ordered items with
+  document ID, optional source reference and `truncated`; `coverage` and `method`). Python
+  and HTTP pipelines can report it. Runs store it per question as `model_context` (IDs and
+  flags only) and validate it.
+- **Analysis:** each relevant delivered document is recorded as reached in full,
+  **omitted** (only under observed coverage), **truncated**, or **unknown**. Document recall
+  is unchanged, so "recall passes, the model never saw it" is visible.
+- **Comparisons:** triage adds `context_lost` (a regression when the baseline's context had
+  the document in full), `context_loss` (informational, baseline context unknown),
+  `context_still_lost` and `context_recovered`. The workbench's pipeline-run view shows a
+  model-context panel.
+- **Trace import:** when LLM spans record input messages, delivered documents' recorded text
+  is located in the prompt (whole, cut at the start or end, or absent), labelled
+  `text_match`. Without recorded document text, context is `partial` and claims nothing.
+  The capability report now states for how many questions context was determined.
+- Context stays local: not in uploads, and no text is written anywhere.
+
+One defect was caught before commit: run records already use `context` for the request's
+tenant context, so the new per-question field is `model_context`.
+
+Not included: answer, citation and answer-judgment import, evidence groups ("A and B both
+needed"), and release-policy rules on context losses. These change verdicts and should be
+calibrated on real applications. The text-match inference has only been tested on synthetic
+prompts.
+
+Validation: 11 new Python tests (contract coherence, omitted and truncated documents beside
+perfect recall, partial and missing context, triage regression and unknown-baseline cases,
+validation, upload exclusion; trace prompts with trimmed, reordered, start-trimmed and
+unrecorded documents and no prompt) and 2 frontend tests. Full suite (1,634 passed, 22
+skipped), ruff, mypy on Python 3.12 and 3.10, TypeScript, Oxlint, 101 frontend tests and the
+workbench browser journey pass; the new panel was checked in Chromium on an imported trace.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–39). What remains needs owner
+The code-only work the strategy names is done (Steps 1–40). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 

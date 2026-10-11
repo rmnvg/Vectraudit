@@ -216,6 +216,15 @@ def _check_query(q: Any, k: int) -> None:
                 )
         except ValidationError as exc:
             raise RunFileError("invalid versioned evidence observation") from exc
+    if "model_context" in q:
+        from pydantic import ValidationError
+
+        from vectraudit.pipelines.models import ModelContext
+
+        try:
+            ModelContext.model_validate(q["model_context"])
+        except ValidationError as exc:
+            raise RunFileError("invalid model context record") from exc
     repeat_ids = q.get("repeat_ids")
     _expect(repeat_ids is None or _rankings(repeat_ids, k), "repeat_ids must be rankings")
     attempts = q.get("attempts", [])

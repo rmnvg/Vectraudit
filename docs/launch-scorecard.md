@@ -1,6 +1,6 @@
 # Launch scorecard
 
-**Status as of October 11, 2026, after Step 39.** This maps every gate in section 9 of the
+**Status as of October 11, 2026, after Step 40.** This maps every gate in section 9 of the
 [strategy](startup-strategy-2026-10-08.md) to what exists in the repository and what is
 still needed to check it. Steps refer to the
 [implementation log](startup-implementation-2026-10-08.md).
@@ -38,7 +38,7 @@ customer actions, not code.
 | Gate | Status | What exists | Still needed |
 |---|---|---|---|
 | Fresh engineer connects without founder-written code; setup and labelling time measured separately (1.1) | Partly built | Adapters, wrappers, `init`, connection test, document lookup; OpenInference trace import with a capability report (Step 39) | A real instrumented application imported (or another reader if partners use Langfuse or LangSmith); measured setup by an engineer who is not the founder |
-| Failure classes explained with linked evidence, mixed and unknown outcomes kept; retrieval, context and answer judgments separate (1.2) | Not built | Stage traces and loss attribution for retrieval; evidence coverage contract (Step 9) | Context, answer and citation records, and imported answer judgments, once real traces show what applications record |
+| Failure classes explained with linked evidence, mixed and unknown outcomes kept; retrieval, context and answer judgments separate (1.2) | Partly built | Stage traces and loss attribution for retrieval; evidence coverage contract (Step 9); model-context records and omitted/truncated findings, from pipelines or trace prompts (Step 40) | Answer and citation records and imported answer judgments; evidence groups; checking the text-match inference on real prompts |
 | Engineer verifies a real repair and turns it into a release check with less effort (1.3) | Partly built | Findings, regression cases, verification, optimizer under the release policy (Step 13), exports to CI | "Try this fix" interventions for the two failure classes seen in pilots; measured effort against the team's current workflow |
 | Optimizer, workbench, CLI and CI apply one release policy; exploratory results never look approved (1.4) | Built | Steps 13, 28, 31; one comparison function on every surface | Observation that teams read the labels as intended |
 | Benchmark review owner, representative coverage, source-change handling, protected validation; noise and upkeep measured (1.4, 1.8) | Partly built | Held-out splits and query families (Step 3), freshness and snapshots, A/A calibration (Steps 12, 25), cohort controls (Steps 20, 33) | A maintained production source integration (1.8); measured upkeep on a real benchmark |

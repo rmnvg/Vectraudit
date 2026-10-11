@@ -17,6 +17,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Model-context evidence: pipelines can report which documents actually reached the model
+  (`PipelineResult.context`), and trace imports infer it from recorded prompts. Runs show
+  relevant documents that were retrieved but omitted from, or cut short in, the prompt, and
+  comparisons flag new context losses. IDs and flags only; never uploaded.
 - `vectraudit workbench import-traces`: OpenInference traces (OTLP JSON or Phoenix span
   exports) become a run judged like a live one, with a capability report of what the traces
   record and what they cannot show. Unrecorded documents, ambiguous delivered rankings and
