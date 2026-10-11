@@ -46,6 +46,19 @@ make validation fail; the script restores it afterward.
 
 ## Short walkthrough and reports
 
+**To send ahead of a call**, build one self-contained page from the demo output:
+
+```bash
+uv run python examples/sample_evidence_report.py /tmp/vectraudit-pilot-demo \
+  --out sample-evidence-report.html
+```
+
+It tells the story in four steps (better on average, blocked by a critical question lost on
+one execution, fix verified, CI protects it), embeds both release reports, and is labelled as
+a synthetic demonstration at the top. It has no scripts and makes no network requests, so it
+can be emailed or attached. It contains no source code and no package.
+
+
 1. Open `candidate/report.html` in the output directory. Point out the improved nDCG and
    the failing critical-question row: repeat 2 returned only `unrelated`.
 2. Inspect `candidate/run.json` for both rankings and the recorded retrieve/rerank stages.

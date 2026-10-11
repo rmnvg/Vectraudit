@@ -1231,6 +1231,22 @@ is the founder's template for it:
 A blank header is in `docs/templates/discovery-ledger.csv`. The filled-in ledger must live
 outside the repository; customer names, incidents and traces never enter it.
 
+## Step 36: a shareable sample evidence report (Phase 0, §8)
+
+§8 suggests a "sample evidence report" to reduce trial friction without publishing source
+or the package, and §12 item 2 asks for the fail/fix/release demonstration in a form a
+prospect can see. The demo existed but needed a guided walkthrough of output folders.
+`examples/sample_evidence_report.py` builds one self-contained HTML page from the demo
+output:
+- a "synthetic demonstration" label that disclaims the numbers and any latency claim;
+- the four-step story with figures read from the reports (mean nDCG, the critical question,
+  the failing execution and what it returned, verdicts and exit codes) and a summary table;
+- both full release reports embedded in sandboxed frames, so the page stays one file.
+
+Checked: no scripts, external requests or local paths in the page; no horizontal scroll at
+desktop or phone width in a browser. Two tests build it from generated reports and cover the
+missing-demo error.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
