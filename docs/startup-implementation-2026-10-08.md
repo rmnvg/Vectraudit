@@ -1211,6 +1211,26 @@ Not included: pairing in CI release checks. Each side runs from its own checkout
 process, so interleaving needs a coordinator across two processes. Endpoint-version
 capture beyond the declared `pipeline_version` is also not included.
 
+## Step 35: discovery ledger template (Phase 0, §10)
+
+The code-only Tier 1 work is done; what remains needs customer inputs. The strategy's next
+concrete work (§12, item 3) is to start the discovery ledger. [discovery-ledger.md](discovery-ledger.md)
+is the founder's template for it:
+- **One row per conversation or pilot session**, with 24 columns that map to the
+  strategy's funnel, buying events, alternatives, the §8 pilot metrics (setup, labelling and
+  investigation minutes, accepted diagnoses, verified fixes, unprompted repeat runs,
+  decisions influenced, support time) and the roadmap item each row bears on.
+- **Entry rules:** observed, said and interpreted are kept apart; counts carry
+  denominators; failed and abandoned pilots are recorded.
+- **Qualification, conversation guide and checkpoint reading:** the §4 defer rules, the
+  seven §10 questions, and a table mapping each §10 experiment to the columns that answer it
+  and the decision if it fails.
+- **Where data comes from:** hosted usage is read from the existing monthly usage export and
+  the release timeline, with no new telemetry.
+
+A blank header is in `docs/templates/discovery-ledger.csv`. The filled-in ledger must live
+outside the repository; customer names, incidents and traces never enter it.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
