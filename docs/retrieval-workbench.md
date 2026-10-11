@@ -468,6 +468,67 @@ Nonzero vector weight requires query and corpus vectors from the same embedding 
 Its tenant filter is a reference implementation; use the customer's actual adapter to
 verify their authorization system. The phrase reranker is not a semantic cross-encoder.
 
+### Import OpenInference traces
+
+An application already instrumented with OpenInference (for example through Phoenix or an
+OpenTelemetry exporter) can be measured from its traces without writing an adapter:
+
+```bash
+vectraudit workbench import-traces benchmark.jsonl traces.jsonl \
+  --out current.run.json --report current.capabilities.json
+```
+
+The trace file is either OTLP JSON as the OpenTelemetry file exporter writes it (one
+`resourceSpans` object per line, or one object), or span records with `context.trace_id`,
+`context.span_id`, `parent_id`, `name`, `start_time`, `end_time` and `attributes`, as
+Phoenix exports them (one per line or a JSON array; flattened `attributes.*` columns and
+epoch-millisecond times are accepted). The result is an ordinary run file: `vectraudit check`
+judges two imported runs, or an imported run against a live one, under the same policy.
+
+How traces become a run:
+
+- **Questions.** A trace matches a benchmark question by its query text (the retriever's or
+  root span's `input.value`, ignoring case and spacing). Pass `--query-attribute
+  metadata.query_id` when the application records the question ID; questions with duplicate
+  text can only be matched that way. A question with several traces fails with
+  `trace_ambiguous` unless `--latest` picks the most recent.
+- **Documents.** `retrieval.documents.N.document.id` on RETRIEVER spans and
+  `reranker.output_documents` on RERANKER spans, in recorded order. `--id-field doc_id`
+  takes the ID from document metadata instead, for example when chunks are labelled by
+  source document; repeated IDs keep their best rank and the report counts them.
+- **Stages.** Retriever spans become stages of kind `custom` unless `--stage-kind bm25=keyword`
+  names them; rerankers are `rerank`. A reranker is connected to earlier stages only through
+  its recorded input documents: if the input is exactly earlier outputs they are its
+  parents; if it is a subset (the application passed on only the top results) the input is
+  shown as its own `… input` stage, so documents cut before reranking are attributed there
+  rather than to the reranker. Span nesting and timing are never treated as document flow.
+- **The delivered ranking** is the one stage no other stage consumes. When the traces have
+  several unconnected outputs (two retrievers fused by unrecorded code, or a reranker whose
+  input came from elsewhere) the question fails with `trace_final_ambiguous`; pass
+  `--final-span NAME`. `--k` defaults to the longest delivered ranking.
+
+Gaps stay gaps. A question with no trace (`trace_missing`), no retrieval span
+(`trace_no_retrieval`), a delivering span with no recorded documents
+(`trace_documents_unrecorded`) or a document without an ID (`document_id_missing`) fails with
+that cause; the run is then `partial` and cannot pass a release check.
+
+The capability report, printed and optionally saved as JSON, states for the imported traces:
+stable document IDs, the delivered ranking, observed stages, document flow between stages,
+filters and tenant context (OpenInference has no standard attribute for filters; metadata
+key names and session or user IDs are listed), model context (whether LLM input messages
+were recorded; context and answer evidence is not imported yet), replay and latency. It holds
+counts, span names and attribute names only.
+
+What an import cannot do:
+
+- **Rerun anything.** A trace file records what happened; testing a change needs a
+  registered Python or HTTP pipeline.
+- **Measure latency.** Latency is the application's own span timing (first retrieval span
+  start to the delivered ranking's end) under whatever load it had. Comparisons never judge
+  it, against measured latency or against a `p95_max_ms` limit, and say so.
+- **Carry text.** Document content, prompts and model context stay in the trace file; the
+  run keeps IDs, scores and timings, and uploads follow the usual sharing projection.
+
 ## No-answer and permissions
 
 ```json

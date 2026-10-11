@@ -80,6 +80,28 @@ CALL_FAILURES = {
         "The adapter returned more than the requested k documents.",
         "Explicitly truncate the delivered results to request.k, including the final trace stage.",
     ),
+    "trace_missing": (
+        "No imported trace matched this question.",
+        "Trace the question through the application, or check the question ID attribute or "
+        "query text used for matching.",
+    ),
+    "trace_ambiguous": (
+        "Several imported traces matched this question.",
+        "Import one trace per question, or pass --latest to use the most recent one.",
+    ),
+    "trace_no_retrieval": (
+        "The question's trace has no retriever or reranker span.",
+        "Instrument retrieval with OpenInference so RETRIEVER spans record their documents.",
+    ),
+    "trace_final_ambiguous": (
+        "The trace records several retrieval outputs and none is known to be delivered.",
+        "Pass --final-span with the span name whose documents the application delivers.",
+    ),
+    "trace_documents_unrecorded": (
+        "The span holding the delivered ranking recorded no documents.",
+        "Record retrieval.documents (or reranker.output_documents) on that span; a span "
+        "without documents is a gap, not an empty result.",
+    ),
 }
 
 
