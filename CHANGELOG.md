@@ -8,6 +8,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `examples/sample_evidence_report.py`: one self-contained, clearly synthetic page from the
+  pilot demo (fail, explain, fix, protect) to send to prospects before a call.
 - Discovery ledger template (`docs/discovery-ledger.md`, blank CSV in `docs/templates/`) for
   recording qualified conversations and pilot sessions against the strategy's experiments.
   The filled-in ledger is kept outside the repository.
