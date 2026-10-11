@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Concurrent optimization: `workbench optimize` runs each candidate with its manifest
+  `concurrency` and `max_rps` (tuning and held-out runs alike) and accepts
+  `--max-attempts` and `--retry-budget`. When candidates were measured at different
+  concurrency, the result says their p95 latencies do not compare like for like.
 - Actual versus planned spend: `workbench run`, `optimize` and `monitor` now report the
   calls actually made (warm-ups, retries and failed calls included) and the cost adapters
   reported, beside the preview's plan. Run files carry a `usage` block per question and in

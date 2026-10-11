@@ -229,11 +229,25 @@ def optimize_command(
     baseline: Annotated[
         str | None, typer.Option(help="Candidate name of the current configuration.")
     ] = None,
+    max_attempts: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            max=10,
+            help="Tries per call for transient failures; 1 disables automatic retries.",
+        ),
+    ] = RetryPolicy().max_attempts,
+    retry_budget: Annotated[
+        int, typer.Option(min=0, help="Maximum automatic retries per candidate run.")
+    ] = RetryPolicy().max_retries,
     max_calls: MaxCalls = None,
     max_spend: MaxSpend = None,
     measured: Measured = None,
 ) -> None:
     """Bounded candidate search; one held-out validation; recommendations require review.
+
+    Each candidate runs with its manifest ``concurrency`` and ``max_rps``, as in
+    ``workbench run``.
 
     With --policy and --baseline, only a candidate that passes the release policy against the
     baseline on held-out questions is reported as approved (exit 0; 3 otherwise). Without a
@@ -247,6 +261,7 @@ def optimize_command(
         if len(spec.candidates) > spec.max_candidates:
             raise ValueError("candidate count exceeds max_candidates")
         ds = load_dataset(manifest.parent / spec.dataset)
+        retry = RetryPolicy(max_attempts=max_attempts, max_retries=retry_budget)
         budget = _guard(
             spec,
             ds,
@@ -255,6 +270,7 @@ def optimize_command(
             max_spend=max_spend,
             measured=measured,
             baseline=baseline,
+            retry=retry,
         )
         candidates = [
             (c.name, open_adapter(c.adapter, manifest.parent), c.params) for c in spec.candidates
@@ -271,11 +287,18 @@ def optimize_command(
             corpus_version=spec.corpus_version,
             policy=rules,
             baseline=baseline,
+            execution={
+                c.name: {"concurrency": c.concurrency, "max_rps": c.max_rps}
+                for c in spec.candidates
+            },
+            retry=retry,
         )
         result["usage"] = reconcile(planned_total(budget), result["usage"])
         _write(out, result)
         typer.echo(f"{result['status_label']}: {result['selected'] or 'none'}")
         typer.echo(f"Usage: {reconcile_line(result['usage'])}")
+        if result["latency_note"]:
+            typer.echo(f"Note: {result['latency_note']}")
         check = (result["heldout"] or {}).get("check")
         if check is not None:
             typer.echo(f"Held-out release check: {check['verdict']}")
