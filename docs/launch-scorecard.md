@@ -1,6 +1,6 @@
 # Launch scorecard
 
-**Status as of October 11, 2026, after Step 37.** This maps every gate in section 9 of the
+**Status as of October 11, 2026, after Step 39.** This maps every gate in section 9 of the
 [strategy](startup-strategy-2026-10-08.md) to what exists in the repository and what is
 still needed to check it. Steps refer to the
 [implementation log](startup-implementation-2026-10-08.md).
@@ -37,7 +37,7 @@ customer actions, not code.
 
 | Gate | Status | What exists | Still needed |
 |---|---|---|---|
-| Fresh engineer connects without founder-written code; setup and labelling time measured separately (1.1) | Partly built | Adapters, wrappers, `init`, connection test, document lookup | Trace import and a capability report, built for the trace format design partners actually use; measured setup by an engineer who is not the founder |
+| Fresh engineer connects without founder-written code; setup and labelling time measured separately (1.1) | Partly built | Adapters, wrappers, `init`, connection test, document lookup; OpenInference trace import with a capability report (Step 39) | A real instrumented application imported (or another reader if partners use Langfuse or LangSmith); measured setup by an engineer who is not the founder |
 | Failure classes explained with linked evidence, mixed and unknown outcomes kept; retrieval, context and answer judgments separate (1.2) | Not built | Stage traces and loss attribution for retrieval; evidence coverage contract (Step 9) | Context, answer and citation records, and imported answer judgments, once real traces show what applications record |
 | Engineer verifies a real repair and turns it into a release check with less effort (1.3) | Partly built | Findings, regression cases, verification, optimizer under the release policy (Step 13), exports to CI | "Try this fix" interventions for the two failure classes seen in pilots; measured effort against the team's current workflow |
 | Optimizer, workbench, CLI and CI apply one release policy; exploratory results never look approved (1.4) | Built | Steps 13, 28, 31; one comparison function on every surface | Observation that teams read the labels as intended |
@@ -68,7 +68,7 @@ understood costs and sustainable support economics. Record them in the
 3. **Hold 10–15 qualified conversations**, recorded in the ledger, using the sample evidence
    report.
 4. **Run the CI step once on GitHub-hosted runners** in a staging or partner repository.
-5. **Start the first design partnership.** Then choose the trace format (1.1), failure
+5. **Start the first design partnership.** Then confirm the trace format (1.1), failure
    classes (1.2, 1.3) and deeper bet (Tier 2) from what that team actually has.
 
 Building more features before step 5 would be guessing at requirements, which the strategy

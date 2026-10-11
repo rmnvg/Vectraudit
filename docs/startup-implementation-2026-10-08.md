@@ -1322,9 +1322,48 @@ the pilot demo pass unchanged.
 This is a review by the same author as most of the code, not an independent one. The
 scorecard keeps that gate open until someone else reviews the verdict logic.
 
+## Step 39: OpenInference trace import and capability report (1.1)
+
+Customer traces are not available yet, so this builds the strategy's named first candidate
+(OpenInference) with the reader kept separate from matching, stage building and reporting.
+If design partners use Langfuse or LangSmith, a new reader feeds the same import.
+
+- `vectraudit workbench import-traces DATASET TRACES` reads OTLP JSON or Phoenix span
+  exports, matches traces to benchmark questions by query text or a question ID attribute,
+  and writes an ordinary run file, scored by the existing runner and judged by `check` like
+  any run. A capability report lists stable IDs, delivered ranking, stages, document flow,
+  filters and tenant context, model context, replay and latency, with counts and attribute
+  names only.
+- **No fabricated stages or edges.** Retrievers are `custom` unless named; rerankers connect
+  to earlier stages only through their recorded input documents. A subset input becomes its
+  own stage, so a cut before reranking is not blamed on the reranker; an input of unknown
+  origin leaves stage coverage partial and losses unattributed.
+- **Gaps fail with a cause:** `trace_missing`, `trace_ambiguous`, `trace_no_retrieval`,
+  `trace_final_ambiguous`, `trace_documents_unrecorded`, `document_id_missing`. The run is
+  then partial and cannot pass.
+- **Latency from traces is never judged.** Runs record `timing.source = "trace"` (kept in
+  uploads), and the comparison reports traced latency without applying latency rules.
+- Document text, prompts and model context stay in the trace file.
+
+One defect was found while writing tests: the reader treated timezone digits as
+fractional seconds in ISO timestamps; fixed before commit. The first linking rule (exact
+match only) rejected the common case of an application passing only the top retrieved
+documents to the reranker; it was replaced by the input-stage rule above.
+
+Not included: context, answer and citation import (1.2); Langfuse or LangSmith readers;
+a browser view of the capability report. The fixtures are written from the OpenInference
+conventions, not exported from a real application, so the acceptance gate (a supported
+instrumented application imports without a custom adapter; a second engineer follows the
+documented path) is still open.
+
+Validation: 12 new tests (OTLP and span-record exports, dataframe columns with epoch
+milliseconds, metadata IDs and chunk deduplication, every gap code, duplicate traces,
+subset and unknown-origin reranker inputs, private text kept out of the run, report and
+upload, latency never judged, CLI). Full suite, ruff, and mypy on Python 3.12 and 3.10 pass.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–37). What remains needs owner
+The code-only work the strategy names is done (Steps 1–39). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 
@@ -1335,7 +1374,8 @@ section 9 gate to its current evidence and what is still needed. In order:
 2. **Owner decisions** in the pilot offer and trust package drafts.
 3. **Qualified conversations** recorded in the discovery ledger, with the sample evidence
    report as the leave-behind.
-4. **First design partnership.** Then choose the trace format (1.1), the context and answer
+4. **First design partnership.** Then confirm the trace format (1.1; OpenInference import
+   exists, Step 39), the context and answer
    evidence (1.2), the repair loop's failure classes (1.3), the benchmark upkeep integration
    (1.8) and the Tier 2 bet from that team's real traces, incidents and channel.
 

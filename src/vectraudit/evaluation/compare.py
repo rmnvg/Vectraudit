@@ -714,6 +714,22 @@ class _Check:
         if not bl or not cl:
             return
         rule = self.policy.latency
+        if any(_traced(r) for r in (self.base, self.cand)):
+            # Span timestamps record production load, not a controlled measurement.
+            self.out["latency"] = {
+                "baseline": bl,
+                "candidate": cl,
+                "p50_change_pct": None,
+                "p95_change_pct": None,
+                "same_environment": False,
+                "compared": False,
+                "paired": False,
+            }
+            self.warnings.append(
+                "Latency was not judged: an imported run's latency comes from application "
+                "traces recorded under unknown load, not from a controlled measurement."
+            )
+            return
         envs = [_environment(r) for r in (self.base, self.cand)]
         same_env = envs[0] == envs[1]
         workers = [_concurrency(r) for r in (self.base, self.cand)]
@@ -874,6 +890,11 @@ def _paired(base: Mapping[str, Any], cand: Mapping[str, Any]) -> bool:
         and bt.get("paired_with") == cand.get("run_id")
         and ct.get("paired_with") == base.get("run_id")
     )
+
+
+def _traced(run: Mapping[str, Any]) -> bool:
+    """Whether the run's latency was imported from application traces, not measured."""
+    return (run.get("timing") or {}).get("source") == "trace"
 
 
 def _overlapped(run: Mapping[str, Any]) -> int:

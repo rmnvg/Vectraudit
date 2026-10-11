@@ -191,7 +191,8 @@ def _payload(
     }
     out["timing"] = _scalars(
         record.get("timing"),
-        "warmup repeats concurrency max_rps overlapped_runs order paired_with wall_s embedding_s",
+        "warmup repeats concurrency max_rps overlapped_runs order paired_with wall_s embedding_s "
+        "source",
     )
     out["metric_contract"] = _scalars(record["metric_contract"], "version k repeat_aggregation")
     provenance = record.get("provenance") or {}

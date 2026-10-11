@@ -17,6 +17,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench import-traces`: OpenInference traces (OTLP JSON or Phoenix span
+  exports) become a run judged like a live one, with a capability report of what the traces
+  record and what they cannot show. Unrecorded documents, ambiguous delivered rankings and
+  untraced questions fail with a stated cause; traced latency is never judged.
 - Launch scorecard (`docs/launch-scorecard.md`): every launch gate from the strategy mapped
   to the evidence that exists, what is still needed and who must act. No gate is marked met
   without customer evidence.

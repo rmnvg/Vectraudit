@@ -457,6 +457,77 @@ def preview_command(
         _write(json_out, budget)
 
 
+@workbench_app.command("import-traces")
+def import_traces_command(
+    dataset: Annotated[Path, typer.Argument(help="Benchmark dataset (JSONL) with labels.")],
+    traces: Annotated[Path, typer.Argument(help="OpenInference export: OTLP JSON or spans.")],
+    out: Annotated[Path, typer.Option(help="Run file to write.")] = Path("traces.run.json"),
+    report: Annotated[
+        Path | None, typer.Option(help="Also write the capability report as JSON.")
+    ] = None,
+    label: Annotated[str | None, typer.Option(help="Run label.")] = None,
+    k: Annotated[
+        int | None,
+        typer.Option(min=1, max=10000, help="Ranking depth; default the longest traced one."),
+    ] = None,
+    query_attribute: Annotated[
+        str | None,
+        typer.Option(
+            help="Span attribute holding the question ID (metadata.query_id); "
+            "without it, traces match questions by query text."
+        ),
+    ] = None,
+    id_field: Annotated[
+        str | None,
+        typer.Option(help="Document metadata field to use as the document ID (doc_id)."),
+    ] = None,
+    final_span: Annotated[
+        str | None,
+        typer.Option(help="Span name whose documents are delivered, when traces have several."),
+    ] = None,
+    stage_kind: Annotated[
+        list[str] | None,
+        typer.Option(help="SPAN=KIND for retriever spans (bm25=keyword); default custom."),
+    ] = None,
+    latest: Annotated[
+        bool,
+        typer.Option("--latest", help="Use the most recent trace when a question has several."),
+    ] = False,
+) -> None:
+    """Turn traced application requests into a run file and report what traces can show.
+
+    The run is scored and checked like a live run (``vectraudit check``). It cannot be
+    rerun: retesting a change needs a registered pipeline. Latency comes from the
+    application's spans and is never compared with measured latency. Exits 2 on unusable
+    input; a run with untraced or unusable questions is written as ``partial``.
+    """
+    from vectraudit.pipelines.traces import Settings, import_traces, render_report
+
+    try:
+        kinds = {}
+        for item in stage_kind or []:
+            name, sep, kind = item.partition("=")
+            if not sep or not name:
+                raise ValueError(f"--stage-kind expects SPAN=KIND, got {item!r}")
+            kinds[name] = kind
+        settings = Settings(
+            query_attribute=query_attribute,
+            id_field=id_field,
+            final_span=final_span,
+            stage_kinds=kinds,
+            duplicates="latest" if latest else "error",
+        )
+        run, result = import_traces(load_dataset(dataset), traces, settings, k=k, label=label)
+        _write(out, run)
+        if report is not None:
+            _write(report, result)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render_report(result))
+    typer.echo(f"\nWrote {out} ({run['status']}).")
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None
