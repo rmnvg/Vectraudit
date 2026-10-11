@@ -1298,20 +1298,19 @@ as missing merely because their customer validation is pending.
 
 ## Next increments
 
-1. **Finish distribution acceptance (1.9).** Provision the selected channel and verify
-   independent customer credentials using the concrete checklist in `RELEASING.md`. Review
-   support/trust commitments, and run the reusable CI step once on GitHub-hosted runners;
-   do not substitute local unit tests for customer install evidence.
-2. **Design-partner inputs for the rest of Tier 1.** The code-only items of 1.0, 1.4, 1.5,
-   1.6, 1.7 and 1.10 are in place. Trace import (1.1), context/answer evidence (1.2), the
-   repair loop's failure classes (1.3), benchmark upkeep integration (1.8) and the delivery
-   channel need a design partner's real traces, incidents and channel. 1.9 needs the
-   distribution channel provisioned. A smaller code-only candidate while those are arranged:
-   context-derived cohorts (1.4), which first needs a decision on recording context values
-   in runs under the sharing boundary.
-3. **Trace import (1.1) and context/answer evidence (1.2).** Choose the trace format from a
-   design partner's real traces before building.
+The code-only work the strategy names is done (Steps 1–37). What remains needs owner
+decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
+section 9 gate to its current evidence and what is still needed. In order:
 
-Pilot offer, supported scope, discovery ledger, support policy and trust materials accompany
-these increments. Trace-import and deeper diagnosis choices follow representative customer
-inputs. Customer evidence and commercial readiness remain unverified.
+1. **Distribution acceptance (1.9).** Make the source repository private, provision the
+   distribution channel and per-customer credentials using the checklist in `RELEASING.md`,
+   test a revocation, and run the reusable CI step once on GitHub-hosted runners. Local unit
+   tests are not customer install evidence.
+2. **Owner decisions** in the pilot offer and trust package drafts.
+3. **Qualified conversations** recorded in the discovery ledger, with the sample evidence
+   report as the leave-behind.
+4. **First design partnership.** Then choose the trace format (1.1), the context and answer
+   evidence (1.2), the repair loop's failure classes (1.3), the benchmark upkeep integration
+   (1.8) and the Tier 2 bet from that team's real traces, incidents and channel.
+
+Customer evidence and commercial readiness remain unverified.
