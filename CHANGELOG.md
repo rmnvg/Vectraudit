@@ -8,6 +8,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Discovery ledger template (`docs/discovery-ledger.md`, blank CSV in `docs/templates/`) for
+  recording qualified conversations and pilot sessions against the strategy's experiments.
+  The filled-in ledger is kept outside the repository.
 - Paired runs: `workbench run --paired` runs two candidates interleaved per question,
   alternating which goes first, so endpoint drift and cache warm-up affect both alike.
   Comparisons and reports say when latency came from a paired recording, and warn when
