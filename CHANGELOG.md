@@ -8,6 +8,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Launch scorecard (`docs/launch-scorecard.md`): every launch gate from the strategy mapped
+  to the evidence that exists, what is still needed and who must act. No gate is marked met
+  without customer evidence.
 - Paired release checks: `vectraudit release run-paired` records the approved and proposed
   pipelines interleaved per question, each in its own worker process from its own
   checkout; set `paired: true` on the CI step to use it. Each side's variables reach only
