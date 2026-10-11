@@ -328,6 +328,15 @@ part of the candidate's configuration identity. They are part of the checkpoint 
 resume with the same values. Runs record `timing.concurrency` and `timing.max_rps`. Latency
 measured with several queries in flight is latency under load, so release checks compare
 latency only between runs with the same concurrency and otherwise say why they did not.
+
+**Two evaluations at once.** The browser workbench runs up to two evaluations at the same
+time, for example the current configuration and a candidate. Each shows its own progress
+and cancel button; a third start is refused until one finishes. A registered pipeline runs
+one evaluation at a time, because its `concurrency` and `max_rps` describe one run and two
+would silently double the load on its endpoint. The built-in hybrid baseline builds its own
+index per run and may overlap freely. Each run records `timing.overlapped_runs`, the number
+of other evaluations that ran beside it. Comparisons warn when either side overlapped,
+because latency then includes that extra load; re-run alone before relying on latency.
 Guided evaluations use the registered candidate's settings. An exported release check copies
 the concurrency and rate limit its candidate run was measured with into `release.json`
 (`concurrency`, `max_rps`; omitted when serial, so earlier versions can still read the

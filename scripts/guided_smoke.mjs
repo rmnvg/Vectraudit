@@ -69,7 +69,7 @@ try {
     await page.getByRole('status').getByText(/^Evaluation (complete|partial)/).waitFor({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Run evaluation' }).waitFor()
     // The previous run's status stays visible; wait for this run's recorded row instead.
-    await page.getByText(label, { exact: true }).waitFor({ timeout: 20_000 })
+    await page.getByRole('status', { name: `Evaluation ${label}` }).getByText(/Evaluation complete/).waitFor({ timeout: 20_000 })
   }
   await evaluate('Baseline', 'none', 50)
   // A shallower candidate pool: a plausible latency fix that loses a relevant document.

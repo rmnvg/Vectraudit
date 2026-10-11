@@ -1131,6 +1131,33 @@ Not included: running several candidates at the same time. Candidates still run 
 another, each with its own concurrency, so one endpoint's rate limits are never exceeded by
 two candidates at once.
 
+## Step 32: two evaluations at once (1.5)
+
+The PRD targets two concurrent workspace runs; the workbench ran one evaluation at a time
+and refused a second with "already running". Now:
+- **Two at once:** the workspace runs up to two evaluations (`MAX_EVALUATIONS`); a third
+  start gets a clear 429 naming the limit. The browser tracks each evaluation separately,
+  with its own progress and cancel, and explains why **Run another evaluation** is disabled.
+- **One per registered pipeline:** a second simultaneous evaluation of the same registered
+  pipeline is refused (409). Its declared `concurrency` and `max_rps` describe one run, and
+  two would double the load on its endpoint without anyone choosing that. Built-in hybrid
+  runs are independent and may overlap. A refused or failed start frees the pipeline at
+  once.
+- **Honest latency:** each run records `timing.overlapped_runs`. Comparisons, locally and
+  in the hosted check, warn when either side ran beside another evaluation, because its
+  latency includes that load. The count is a plain integer added to the projection's timing
+  allowlist so both surfaces warn alike. Verdict rules are unchanged.
+
+Validation: two registered pipelines were held inside their adapters at the same time; the
+same pipeline was refused; the overlap counts were 1 and 1, and 0 for a later run alone. A
+third evaluation was refused, the pipeline was freed after a refused start, and the
+comparison warning appeared locally and in the hosted projection. The four browser smokes
+pass after their waits moved from the run's label (now shown while running) to its
+completion. An ad hoc browser run drove two slow registered adapters side by side.
+
+Not included: queueing a third evaluation instead of refusing it, and a cross-run rate
+limiter that would let one pipeline run twice within its declared limits.
+
 ## October 9 code audit
 
 The strategy is deliberately broader than one engineering phase. This table separates
@@ -1144,7 +1171,7 @@ as missing merely because their customer validation is pending.
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. | Measured execution protocol and context-derived cohorts. |
-| **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. Step 31: optimization runs each candidate at its own concurrency, rate limit and retry policy. | Two simultaneous workspace runs, and declared customer 1,000-question CI-window acceptance. |
+| **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. Step 31: optimization runs each candidate at its own concurrency, rate limit and retry policy. Step 32: two evaluations at once in the workbench, one per registered pipeline, with overlap recorded. | Declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
 | **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. Step 29: declared monitor schedules; a monitor that stops reporting raises one overdue alert, resolved by the next run. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; additional CI only on demand. |
 | **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |

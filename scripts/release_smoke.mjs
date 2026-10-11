@@ -45,7 +45,7 @@ try {
     await page.getByLabel('Retrieval depth').fill(String(depth))
     await page.getByLabel('Reranker').selectOption(reranker)
     await page.getByRole('button', { name: 'Run evaluation', exact: true }).click()
-    await page.getByText(label, { exact: true }).waitFor()
+    await page.getByRole('status', { name: `Evaluation ${label}` }).getByText(/Evaluation complete/).waitFor()
   }
   await evaluate('Baseline', 50, 'none')
   await evaluate('Candidate', 2, 'phrase')

@@ -222,12 +222,19 @@ def test_cancellation_and_capacity_do_not_save_partial_results(client, monkeypat
     first = client.post("/api/guided/jobs", json=options(draft)).json()["id"]
     try:
         assert entered.wait(5)
-        assert client.post("/api/guided/jobs", json=options(draft)).status_code == 429
-        assert client.post(f"/api/guided/jobs/{first}/cancel").json()["cancel_requested"]
+        # Two evaluations may run at once; the third waits for capacity.
+        second = client.post("/api/guided/jobs", json=options(draft))
+        assert second.status_code == 202
+        third = client.post("/api/guided/jobs", json=options(draft))
+        assert third.status_code == 429
+        assert "2 evaluations are already running" in third.json()["detail"]
+        for job in (first, second.json()["id"]):
+            assert client.post(f"/api/guided/jobs/{job}/cancel").json()["cancel_requested"]
     finally:
         release.set()
-    assert client.app.state.guided.jobs.get(first).wait(10)
-    assert client.get(f"/api/guided/jobs/{first}").json()["status"] == "cancelled"
+    for job in (first, second.json()["id"]):
+        assert client.app.state.guided.jobs.get(job).wait(10)
+        assert client.get(f"/api/guided/jobs/{job}").json()["status"] == "cancelled"
     assert not list(tmp_path.glob("*.run.json"))
 
 
