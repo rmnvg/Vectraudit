@@ -712,7 +712,15 @@ class _Check:
             "p95_change_pct": change["p95"],
             "same_environment": same_env,
             "compared": compared,
+            # Recorded interleaved, question by question: drift fell on both sides alike.
+            "paired": _paired(self.base, self.cand),
         }
+        warmups = [(r.get("timing") or {}).get("warmup") for r in (self.base, self.cand)]
+        if all(isinstance(w, int) for w in warmups) and warmups[0] != warmups[1]:
+            self.warnings.append(
+                f"Warm-up differed (baseline {warmups[0]}, candidate {warmups[1]} calls): the "
+                "first questions of one side may have met colder caches."
+            )
         if workers[0] != workers[1]:
             self.warnings.append(
                 f"Latency was not compared: the runs used different concurrency "
@@ -841,6 +849,16 @@ def _environment(run: Mapping[str, Any]) -> dict[str, Any]:
 def _concurrency(run: Mapping[str, Any]) -> int:
     value = (run.get("timing") or {}).get("concurrency", 1)
     return value if isinstance(value, int) else 1
+
+
+def _paired(base: Mapping[str, Any], cand: Mapping[str, Any]) -> bool:
+    """Whether the two runs were recorded interleaved with each other (``execute_paired``)."""
+    bt, ct = base.get("timing") or {}, cand.get("timing") or {}
+    return bool(
+        bt.get("order") == ct.get("order") == "interleaved"
+        and bt.get("paired_with") == cand.get("run_id")
+        and ct.get("paired_with") == base.get("run_id")
+    )
 
 
 def _overlapped(run: Mapping[str, Any]) -> int:
