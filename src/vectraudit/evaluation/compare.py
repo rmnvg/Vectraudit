@@ -725,6 +725,17 @@ class _Check:
             )
         elif not same_env:
             self.warnings.append("Latency compared across different runner environments.")
+        overlapped = [_overlapped(r) for r in (self.base, self.cand)]
+        if any(overlapped):
+            sides = " and ".join(
+                f"{side} beside {n} other{'s' * (n != 1)}"
+                for side, n in zip(("baseline", "candidate"), overlapped, strict=True)
+                if n
+            )
+            self.warnings.append(
+                f"Latency includes extra load: evaluations ran at the same time in the "
+                f"workbench ({sides}). Re-run alone before relying on latency."
+            )
         if rule.p95_max_ms is not None and cl["p95"] > rule.p95_max_ms + EPS:
             self.flag(
                 Verdict.FAIL,
@@ -830,6 +841,12 @@ def _environment(run: Mapping[str, Any]) -> dict[str, Any]:
 def _concurrency(run: Mapping[str, Any]) -> int:
     value = (run.get("timing") or {}).get("concurrency", 1)
     return value if isinstance(value, int) else 1
+
+
+def _overlapped(run: Mapping[str, Any]) -> int:
+    """How many other workbench evaluations ran during this one (0 when unrecorded)."""
+    value = (run.get("timing") or {}).get("overlapped_runs", 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _env_label(env: Mapping[str, Any]) -> str:

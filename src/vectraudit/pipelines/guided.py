@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 import sqlite3
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -105,8 +106,46 @@ def write_run(path: Path, run: dict[str, Any]) -> None:
     atomic_write(path, text + "\n")
 
 
+MAX_EVALUATIONS = 2
+"""Evaluations one workspace runs at the same time (the PRD's two concurrent runs)."""
+
+
+class PipelineBusy(Exception):
+    """The registered pipeline already has an evaluation running in this workspace."""
+
+
+class _Overlap:
+    """Which evaluations are running, so each run records whether others ran beside it.
+
+    A registered pipeline runs one evaluation at a time: its declared concurrency and rate
+    limit describe one run, and two at once would silently double the load on its endpoint.
+    Built-in hybrid runs build their own index and may overlap freely.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._active: dict[str, dict[str, Any]] = {}
+
+    def enter(self, identifier: str, pipeline: str) -> None:
+        with self._lock:
+            if pipeline != "builtin" and any(
+                a["pipeline"] == pipeline for a in self._active.values()
+            ):
+                raise PipelineBusy(pipeline)
+            others = set(self._active)
+            for other in others:
+                self._active[other]["seen"].add(identifier)
+            self._active[identifier] = {"pipeline": pipeline, "seen": others}
+
+    def leave(self, identifier: str) -> int:
+        """Forget ``identifier``; returns how many other evaluations overlapped it."""
+        with self._lock:
+            entry = self._active.pop(identifier, None)
+            return len(entry["seen"]) if entry else 0
+
+
 class GuidedWorkspace:
-    """One local artifact directory, durable drafts, and a single evaluation worker."""
+    """One local artifact directory, durable drafts, and up to two concurrent evaluations."""
 
     def __init__(
         self, root: Path, manifest: Path | None = None, policy: Path | None = None
@@ -116,7 +155,8 @@ class GuidedWorkspace:
         self.root = root.resolve()
         self.drafts = self.root / ".workbench" / "drafts"
         self.token = secrets.token_urlsafe(32)
-        self.jobs = JobRunner(max_workers=1, max_pending=0, max_completed=32)
+        self.jobs = JobRunner(max_workers=MAX_EVALUATIONS, max_pending=0, max_completed=32)
+        self.running = _Overlap()
         self.manifest = load_manifest(manifest) if manifest else None
         self.manifest_root = manifest.resolve().parent if manifest else self.root
         # Registration is trusted process configuration, never accepted from a browser request.
@@ -399,6 +439,17 @@ class GuidedWorkspace:
         }
 
         def work(progress: ProgressFn) -> dict[str, Any]:
+            try:
+                run = evaluate(progress)
+            finally:
+                overlapped = self.running.leave(identifier)
+            # Latency measured while another evaluation ran is latency under extra load.
+            run["timing"]["overlapped_runs"] = overlapped
+            if run["status"] != "cancelled":
+                write_run(self.root / f"{run['run_id']}.run.json", run)
+            return run
+
+        def evaluate(progress: ProgressFn) -> dict[str, Any]:
             progress(0, "Preparing pipeline")
             pipeline = factory()
             with task_lock(evaluation_path):
@@ -425,8 +476,6 @@ class GuidedWorkspace:
                 "split": body.mode,
             }
             # Cancelled runs remain in the journal; they are not release artifacts.
-            if run["status"] != "cancelled":
-                write_run(self.root / f"{run['run_id']}.run.json", run)
             return run
 
         with task_lock(evaluation_path, timeout=0):
@@ -435,11 +484,13 @@ class GuidedWorkspace:
                 active = self.jobs.get(previous["job_id"])
                 if active and active.as_dict()["status"] == "running":
                     raise JobCapacityError("This evaluation is already running")
+            self.running.enter(identifier, body.pipeline)
             # Persist before scheduling: a process may stop before the worker starts.
             _write(evaluation_path, saved)
             try:
                 self.jobs.get_or_start(identifier, work)
             except JobCapacityError:
+                self.running.leave(identifier)
                 if previous:
                     _write(evaluation_path, previous)
                 else:
@@ -462,6 +513,15 @@ def _document_display(
         "code": failed["code"] if failed else None,
         "verified": all(s["verified"] for s in sides),
     }
+
+
+CAPACITY = (
+    f"{MAX_EVALUATIONS} evaluations are already running. Wait for one to finish or cancel it."
+)
+PIPELINE_BUSY = (
+    "This pipeline already has an evaluation running. Its concurrency and rate limit apply to "
+    "one evaluation at a time; wait for it to finish or cancel it."
+)
 
 
 def guided_router(workspace: GuidedWorkspace) -> APIRouter:
@@ -501,9 +561,9 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
         try:
             return {"id": workspace.start(body)}
         except JobCapacityError as exc:
-            raise HTTPException(
-                429, "An evaluation is already running. Wait or cancel it."
-            ) from exc
+            raise HTTPException(429, CAPACITY) from exc
+        except PipelineBusy as exc:
+            raise HTTPException(409, PIPELINE_BUSY) from exc
 
     @router.get("/evaluations", dependencies=auth)
     def evaluations() -> list[dict[str, Any]]:
@@ -514,9 +574,9 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
         try:
             return {"id": workspace.resume(identifier, body)}
         except JobCapacityError as exc:
-            raise HTTPException(
-                429, "An evaluation is already running. Wait or cancel it."
-            ) from exc
+            raise HTTPException(429, CAPACITY) from exc
+        except PipelineBusy as exc:
+            raise HTTPException(409, PIPELINE_BUSY) from exc
 
     @router.get("/jobs/{identifier}", dependencies=auth)
     def job(identifier: str) -> dict[str, Any]:

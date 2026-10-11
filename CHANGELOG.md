@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Two evaluations at once in the workbench, each with its own progress and cancel. A
+  registered pipeline runs one evaluation at a time so its declared concurrency and rate
+  limit hold; the built-in baseline may overlap. Runs record `timing.overlapped_runs`, and
+  comparisons warn when latency was measured beside another evaluation.
 - Concurrent optimization: `workbench optimize` runs each candidate with its manifest
   `concurrency` and `max_rps` (tuning and held-out runs alike) and accepts
   `--max-attempts` and `--retry-budget`. When candidates were measured at different

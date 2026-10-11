@@ -9,6 +9,9 @@ import PipelineTest from './PipelineTest'
 import { reviewRequestKey } from '../lib/benchmarkTools'
 import type { Irrelevant } from '../lib/benchmarkTools'
 import RegressionCases from './RegressionCases'
+import { EvaluationProgress } from '../components/EvaluationProgress'
+import { MAX_EVALUATIONS, activeJobs, startBlocker, withStarted } from '../lib/evaluations'
+import type { TrackedJob } from '../lib/evaluations'
 import { FailingRules } from '../components/FailingRules'
 import ReleaseExport from './ReleaseExport'
 import EvaluationRecovery from './EvaluationRecovery'
@@ -52,8 +55,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   const [mode, setMode] = useState('explore')
   const [remote, setRemote] = useState(false)
   const [heldout, setHeldout] = useState(false)
-  const [jobId, setJobId] = useState('')
-  const [job, setJob] = useState<JobState | null>(null)
+  const [jobs, setJobs] = useState<TrackedJob[]>([])
   const [runs, setRuns] = useState<RunListing[]>([])
   const [baseId, setBaseId] = useState('')
   const [candidateId, setCandidateId] = useState('')
@@ -72,31 +74,19 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
     return () => controller.abort()
   }, [])
 
-  useEffect(() => {
-    if (!jobId || !session) return
-    let stopped = false
-    let timer: ReturnType<typeof setTimeout>
-    const controller = new AbortController()
-    const poll = async () => {
-      try {
-        const state = await guidedRequest<JobState>(`jobs/${jobId}`, session.token, undefined, controller.signal)
-        if (stopped) return
-        setJob(state)
-        if (state.status === 'running') timer = setTimeout(poll, 500)
-        else {
-          setJobId('')
-          if (state.run) {
-            const run = state.run
-            setRuns(previous => [...previous.filter(r => r.run_id !== run.run_id), run])
-            setBaseId(previous => previous || run.run_id)
-            setCandidateId(run.run_id)
-          }
-        }
-      } catch (e) { if (!stopped) { setError(String(e)); setJobId('') } }
+  /** A job's latest state; a finished run joins the recorded evaluations and the comparison. */
+  function updateJob(id: string, state: JobState) {
+    setJobs(previous => previous.map(j => j.id === id ? { ...j, state } : j))
+    if (state.status !== 'running' && state.run) {
+      const run = state.run
+      setRuns(previous => [...previous.filter(r => r.run_id !== run.run_id), run])
+      setBaseId(previous => previous || run.run_id)
+      setCandidateId(run.run_id)
     }
-    void poll()
-    return () => { stopped = true; clearTimeout(timer); controller.abort() }
-  }, [jobId, session])
+  }
+  function track(id: string, jobLabel: string, jobPipeline: string, message: string) {
+    setJobs(previous => withStarted(previous, { id, label: jobLabel, pipeline: jobPipeline, state: { status: 'running', progress: 0, message } }))
+  }
 
   useEffect(() => {
     if (!session?.token) return
@@ -111,7 +101,9 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
 
   const choice = session?.pipelines.find(p => p.id === pipeline)
   const current = rows[selected]
-  const running = !!jobId || submitting
+  const active = activeJobs(jobs)
+  const blocker = startBlocker(jobs, pipeline)
+  const running = !!blocker || submitting
   const exploreCount = rows.filter(r => r.split !== 'heldout').length
   const heldoutCount = rows.length - exploreCount
 
@@ -158,7 +150,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
         vector_weight: weight, reranker, corpus: pipeline === 'builtin' ? corpus : '',
         mode, confirm_remote: remote, confirm_heldout: heldout,
       })
-      setJob({ status: 'running', progress: 0, message: 'Preparing evaluation' }); setJobId(started.id)
+      track(started.id, label, pipeline, 'Preparing evaluation')
     } catch (e) { setError(String(e)) } finally { setSubmitting(false) }
   }
   /** Listed runs omit per-query records; fetch the one being inspected. */
@@ -241,9 +233,12 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       {mode === 'heldout' && <label className="mt-5 flex gap-2 rounded-lg bg-amber-500/10 p-4 text-sm"><input type="checkbox" checked={heldout} onChange={e => setHeldout(e.target.checked)} /><span>I am validating a chosen configuration on {heldoutCount} held-out queries. Repeated tuning against these results contaminates the benchmark.</span></label>}
       {choice?.kind === 'http' && <label className="mt-5 flex gap-2 rounded-lg bg-amber-500/10 p-4 text-sm"><input type="checkbox" checked={remote} onChange={e => setRemote(e.target.checked)} /><span>Send query text, vectors, filters and user context to {choice.destination} for this evaluation.</span></label>}
       {dirty && <p className="mt-4 text-sm text-amber-600">Save benchmark changes before running.</p>}
-      <div className="mt-5 flex flex-wrap gap-3"><button className={primary} disabled={!draft || dirty || running || (mode === 'heldout' && !heldout) || (choice?.kind === 'http' && !remote)} onClick={() => void evaluate()}>{running ? 'Evaluation running…' : 'Run evaluation'}</button>{jobId && <button className={button} onClick={() => void guidedRequest(`jobs/${jobId}/cancel`, session.token, {}).catch(e => setError(String(e)))}>Cancel evaluation</button>}</div>
-      {job && <div className="mt-5" role="status"><p className="text-sm">{job.status === 'done' ? `Evaluation ${job.run?.status || 'complete'}` : job.status} · {job.message}</p><progress aria-label="Evaluation progress" className="mt-2 w-full accent-teal-600" value={job.progress} max={1} />{job.error && <p className="mt-2 text-sm text-red-600">{job.error}</p>}<p className="mt-1 text-xs text-muted">Cancellation takes effect between queries. An active adapter call finishes first.</p></div>}
-      <EvaluationRecovery token={session.token} busy={running} onStart={id => { setJobId(id); setJob({ status: 'running', progress: 0, message: 'Loading saved evaluation' }) }} />
+      <div className="mt-5 flex flex-wrap gap-3"><button className={primary} disabled={!draft || dirty || running || (mode === 'heldout' && !heldout) || (choice?.kind === 'http' && !remote)} onClick={() => void evaluate()}>{submitting ? 'Starting…' : active.length ? 'Run another evaluation' : 'Run evaluation'}</button></div>
+      {blocker && <p className="mt-2 text-xs text-muted">{blocker}</p>}
+      {active.length > 0 && !blocker && <p className="mt-2 text-xs text-muted">Up to {MAX_EVALUATIONS} evaluations run at once, one per registered pipeline. Latency measured while another evaluation runs includes that load; comparisons say so.</p>}
+      {jobs.map(j => <EvaluationProgress key={j.id} token={session.token} job={j} onUpdate={updateJob} onError={setError} />)}
+      {jobs.length > 0 && <p className="mt-1 text-xs text-muted">Cancellation takes effect between queries. An active adapter call finishes first.</p>}
+      <EvaluationRecovery token={session.token} busy={active.length >= MAX_EVALUATIONS} onStart={id => track(id, 'Resumed evaluation', '', 'Loading saved evaluation')} />
       {runs.length > 0 && <div className="mt-6 space-y-3"><h3 className="font-semibold">Recorded evaluations</h3>{runs.map(run => <div key={run.run_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4"><div><b className="text-sm">{run.label}</b><p className="mt-1 text-xs text-muted">{run.status} · {run.summary.n_queries} queries · nDCG {format(run.summary.metrics?.ndcg)} · p95 {format(run.summary.latency_ms?.p95)} ms</p></div><button className={button} onClick={() => void inspect(run)}>Inspect failures</button></div>)}<button className={button} onClick={() => { setLabel('Candidate fix'); setStep(3) }}>Compare a fix</button></div>}
     </section>}
     {step === 3 && <section className={`${panel} space-y-5`}><div><h2 className="text-xl font-semibold">Compare a measured fix</h2><p className="mt-2 text-sm text-muted">Keep the benchmark and k unchanged. Change pipeline configuration, record another run, then inspect both results.</p></div><button className={button} onClick={() => { setLabel('Candidate fix'); setStep(2) }}>Evaluate another configuration</button>
