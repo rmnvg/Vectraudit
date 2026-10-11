@@ -259,6 +259,43 @@ def _execute(
     journal: Checkpoint | None,
     retry_errors: bool,
 ) -> dict[str, Any]:
+    record, shared, workers = _open_record(
+        dataset, pipeline, options, config, corpus_version, journal
+    )
+    start = time.perf_counter()
+    results: dict[int, dict[str, Any]] = {}
+    try:
+        if workers == 1:
+            _serial(dataset, pipeline, options, shared, progress, journal, retry_errors, results)
+        else:
+            _concurrent(
+                dataset,
+                pipeline,
+                options,
+                shared,
+                workers,
+                progress,
+                journal,
+                retry_errors,
+                results,
+            )
+        if progress is not None:
+            progress(len(dataset), len(dataset))
+        status = "partial" if any(e["error"] for e in results.values()) else "complete"
+    except (KeyboardInterrupt, JobCancelledError):
+        status = "cancelled"
+    return _close_record(record, results, status, start, dataset, journal)
+
+
+def _open_record(
+    dataset: Dataset,
+    pipeline: Pipeline,
+    options: RunOptions,
+    config: dict[str, Any] | None,
+    corpus_version: str | None,
+    journal: Checkpoint | None,
+) -> tuple[dict[str, Any], _Shared, int]:
+    """A run record's header, before any query runs; returns it with its shared state."""
     record = (journal.record if journal else None) or _skeleton(dataset, options, None, None)
     record["queries"] = []
     record["status"] = "partial"
@@ -291,29 +328,18 @@ def _execute(
     }
     if journal:
         journal.put("record", record)
-    start = time.perf_counter()
-    shared = _Shared(policy, max_rps)
-    results: dict[int, dict[str, Any]] = {}
-    try:
-        if workers == 1:
-            _serial(dataset, pipeline, options, shared, progress, journal, retry_errors, results)
-        else:
-            _concurrent(
-                dataset,
-                pipeline,
-                options,
-                shared,
-                workers,
-                progress,
-                journal,
-                retry_errors,
-                results,
-            )
-        if progress is not None:
-            progress(len(dataset), len(dataset))
-        status = "partial" if any(e["error"] for e in results.values()) else "complete"
-    except (KeyboardInterrupt, JobCancelledError):
-        status = "cancelled"
+    return record, _Shared(policy, max_rps), workers
+
+
+def _close_record(
+    record: dict[str, Any],
+    results: dict[int, dict[str, Any]],
+    status: str,
+    start: float,
+    dataset: Dataset,
+    journal: Checkpoint | None,
+) -> dict[str, Any]:
+    """Attach the query results, summary and usage once a run stops."""
     record["queries"] = [results[i] for i in sorted(results)]
     record["status"] = status
     record["timing"]["wall_s"] = time.perf_counter() - start
@@ -332,6 +358,77 @@ def _execute(
     if journal:
         journal.put("record", record)
     return record
+
+
+@dataclass(frozen=True)
+class PairedSide:
+    """One side of a paired execution: the pipeline and how it was configured."""
+
+    pipeline: Pipeline
+    options: RunOptions
+    config: dict[str, Any] | None = None
+    corpus_version: str | None = None
+
+
+def execute_paired(
+    dataset: Dataset,
+    first: PairedSide,
+    second: PairedSide,
+    *,
+    progress: Callable[[int, int], None] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run two pipelines over the same questions, interleaved, and return both run records.
+
+    Each question runs on both sides back to back, and the side that goes first alternates
+    (A then B, then B then A), so drift in the endpoint, network or caches during the run
+    falls on both sides alike instead of on whichever ran second. Both runs are serial: the
+    pairing is per question. Each record names the other in ``timing.paired_with`` and
+    ``timing.order`` is ``interleaved``. Checkpoints and resume are not supported here.
+    """
+    for side in (first, second):
+        workers = side.options.concurrency if isinstance(side.options, PipelineOptions) else 1
+        if workers != 1:
+            raise ValueError("Paired execution runs one question at a time; use concurrency 1")
+        if side.options.repeats != first.options.repeats or side.options.k != first.options.k:
+            raise ValueError("Paired runs need the same k and repeats on both sides")
+    sides: list[tuple[PairedSide, dict[str, Any], _Shared, dict[int, dict[str, Any]]]] = []
+    for side in (first, second):
+        record, shared, _ = _open_record(
+            dataset, side.pipeline, side.options, side.config, side.corpus_version, None
+        )
+        sides.append((side, record, shared, {}))
+    a, b = sides
+    for record, other in ((a[1], b[1]), (b[1], a[1])):
+        record["timing"]["order"] = "interleaved"
+        record["timing"]["paired_with"] = other["run_id"]
+        record["timing"]["scope"] += "; interleaved with a paired run, alternating which goes first"
+    start = time.perf_counter()
+    status = "complete"
+    try:
+        for index, q in enumerate(dataset.queries):
+            if progress is not None:
+                progress(index, len(dataset))
+            order = (a, b) if index % 2 == 0 else (b, a)
+            for side, _record, shared, results in order:
+
+                def alive(index: int = index) -> None:
+                    if progress is not None:
+                        progress(index, len(dataset))
+
+                entry = _measure(q, index, side.pipeline, side.options, shared, alive)
+                _finish(entry, 1, None)
+                results[index] = entry
+        if progress is not None:
+            progress(len(dataset), len(dataset))
+    except (KeyboardInterrupt, JobCancelledError):
+        status = "cancelled"
+    out = []
+    for _side, record, _shared, results in sides:
+        side_status = status
+        if status == "complete" and any(e["error"] for e in results.values()):
+            side_status = "partial"
+        out.append(_close_record(record, results, side_status, start, dataset, None))
+    return out[0], out[1]
 
 
 def _reuse(journal: Checkpoint | None, query_id: str, retry_errors: bool) -> dict[str, Any] | None:

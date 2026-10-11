@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Paired runs: `workbench run --paired` runs two candidates interleaved per question,
+  alternating which goes first, so endpoint drift and cache warm-up affect both alike.
+  Comparisons and reports say when latency came from a paired recording, and warn when
+  the two runs used different warm-up.
 - Cohorts from context: a benchmark header can declare `"cohort_fields": ["tenant"]`, and
   each question then also belongs to cohort `tenant=<value>`, judged by the policy's cohort
   rules like a tag. A change that hurts one tenant now fails that tenant's cohort. Derived

@@ -66,6 +66,12 @@ def _metric_rows(metrics: Mapping[str, Any]) -> list[list[str]]:
     ]
 
 
+PAIRED_NOTE = (
+    "Latency recorded interleaved (paired execution): each question ran on both sides back to "
+    "back, alternating which went first, so drift during the run affected both alike."
+)
+
+
 def _latency_rows(latency: Mapping[str, Any] | None) -> list[list[str]]:
     if not latency:
         return []
@@ -191,6 +197,8 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     latency = _latency_rows(result["latency"])
     if latency:
         out += [_md_table(["Latency", "Baseline", "Candidate", "Change"], latency), ""]
+        if (result["latency"] or {}).get("paired"):
+            out += [PAIRED_NOTE, ""]
     if tolerance := tolerance_line(result):
         out += [tolerance, ""]
     if cohorts := cohort_line(result):
@@ -455,11 +463,13 @@ def render_html(result: Mapping[str, Any]) -> str:
         )
     latency = result.get("latency")
     if latency:
-        note = "" if latency["compared"] else " (not compared: different runner environments)"
+        note = "" if latency["compared"] else " (not compared; see warnings)"
         parts.append(f"<h2>Latency{_e(note)}</h2>")
         parts.append(
             _html_table(["Percentile", "Baseline", "Candidate", "Change"], _latency_rows(latency))
         )
+        if latency.get("paired"):
+            parts.append(f"<p>{_e(PAIRED_NOTE)}</p>")
     queries = result.get("queries")
     if queries:
         metric = _METRIC_NAMES.get(queries["primary_metric"], queries["primary_metric"])

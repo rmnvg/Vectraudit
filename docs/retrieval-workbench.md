@@ -329,6 +329,16 @@ resume with the same values. Runs record `timing.concurrency` and `timing.max_rp
 measured with several queries in flight is latency under load, so release checks compare
 latency only between runs with the same concurrency and otherwise say why they did not.
 
+**Paired runs.** `workbench run manifest.json --paired` runs a manifest's two candidates
+interleaved: each question runs on both, back to back, and the side that goes first
+alternates (A then B, then B then A). An endpoint that slows down, a cache that warms up or
+network noise during the run then affects both sides alike, instead of whichever ran second.
+Prefer it when comparing latency of two configurations on the same endpoint. Paired runs are
+serial (`concurrency` 1) and cannot be resumed; each run records `timing.order:
+"interleaved"` and the other's ID in `timing.paired_with`, and comparisons and reports say
+when latency came from a paired recording. Comparisons also warn when the two runs used
+different warm-up, since one side may have met colder caches.
+
 **Two evaluations at once.** The browser workbench runs up to two evaluations at the same
 time, for example the current configuration and a candidate. Each shows its own progress
 and cancel button; a third start is refused until one finishes. A registered pipeline runs

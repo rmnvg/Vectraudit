@@ -116,6 +116,14 @@ def run_command(
     max_calls: MaxCalls = None,
     max_spend: MaxSpend = None,
     measured: Measured = None,
+    paired: Annotated[
+        bool,
+        typer.Option(
+            "--paired",
+            help="Run exactly two candidates interleaved, question by question, alternating "
+            "which goes first, so endpoint drift affects both alike. Serial; no resume.",
+        ),
+    ] = False,
 ) -> None:
     """Execute trusted Python, HTTP or built-in hybrid candidates from a local manifest.
 
@@ -132,6 +140,9 @@ def run_command(
         ds = load_dataset(manifest.parent / spec.dataset)
         if len({c.name for c in spec.candidates}) != len(spec.candidates):
             raise ValueError("candidate names must be unique")
+        if paired:
+            _run_paired(spec, ds, manifest, out, retry, resume, max_calls, max_spend, measured)
+            return
         # A resumed batch was already approved when it started: plan it, but don't refuse.
         budget = _guard(
             spec,
@@ -217,6 +228,68 @@ def run_command(
     except (OSError, ValueError, ImportError, AttributeError, sqlite3.Error) as exc:
         typer.echo(f"Workbench configuration error: {exc}", err=True)
         raise typer.Exit(2) from exc
+
+
+def _run_paired(
+    spec: Any,
+    ds: Any,
+    manifest: Path,
+    out: Path,
+    retry: RetryPolicy,
+    resume: Path | None,
+    max_calls: int | None,
+    max_spend: float | None,
+    measured: list[Path] | None,
+) -> None:
+    """``workbench run --paired``: two candidates, interleaved per question."""
+    from vectraudit.pipelines.runner import PairedSide, execute_paired
+
+    if resume is not None:
+        raise ValueError("--paired runs cannot be resumed; start a new paired run")
+    if len(spec.candidates) != 2:
+        raise ValueError("--paired needs a manifest with exactly two candidates")
+    if any(c.concurrency != 1 for c in spec.candidates):
+        raise ValueError("--paired runs one question at a time; set concurrency 1")
+    budget = _guard(
+        spec, ds, "run", max_calls=max_calls, max_spend=max_spend, measured=measured, retry=retry
+    )
+    sides = []
+    for candidate in spec.candidates:
+        config = candidate_config(candidate, manifest.parent)
+        sides.append(
+            PairedSide(
+                open_adapter(candidate.adapter, manifest.parent),
+                PipelineOptions(
+                    k=spec.k,
+                    params=candidate.params,
+                    repeats=spec.repeats,
+                    warmup=0,
+                    label=candidate.name,
+                    retry=retry,
+                    max_rps=candidate.max_rps,
+                ),
+                config,
+                spec.corpus_version or config.get("corpus_sha256"),
+            )
+        )
+    runs = execute_paired(ds, sides[0], sides[1])
+    incomplete = False
+    for candidate, run in zip(spec.candidates, runs, strict=True):
+        used = _used(
+            run,
+            planned_for(
+                budget,
+                candidate.name,
+                retry_budget=retry.max_retries,
+                max_attempts=retry.max_attempts,
+            ),
+        )
+        write_run(out / f"{run['run_id']}.run.json", run)
+        typer.echo(f"{candidate.name}: {run['status']} ({run['run_id']}, paired)")
+        typer.echo(f"  {used}")
+        incomplete |= run["status"] != "complete"
+    if incomplete:
+        raise typer.Exit(2)
 
 
 @workbench_app.command("optimize")
