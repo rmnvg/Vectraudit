@@ -6,6 +6,15 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ## [Unreleased]
 
+### Fixed
+
+- A run file marked complete but containing failed or missing questions is now rejected; it
+  could crash a comparison or hide failures.
+- A regression could pass if the regressed questions had no scores on the candidate side
+  only; such comparisons are now not comparable.
+- Comparisons validate every run (not only newer-format ones), so duplicate rows and
+  non-finite metrics can no longer reach a verdict.
+
 ### Added
 
 - Launch scorecard (`docs/launch-scorecard.md`): every launch gate from the strategy mapped

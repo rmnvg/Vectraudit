@@ -124,7 +124,13 @@ def test_unequal_family_sizes_get_equal_weight_and_identical_bootstrap():
 def test_family_mean_uses_paired_measured_rows_only():
     base = grouped([1.0, 0.0, 0.5], ["a", "a", "b"])
     cand = grouped([0.0, 1.0, 0.5], ["a", "a", "b"])
-    cand["queries"][1]["metrics"] = None
+    # A query scored on one side only is incomparable evidence, never silently dropped.
+    one_sided = copy.deepcopy(cand)
+    one_sided["queries"][1]["metrics"] = None
+    assert compare_runs(base, one_sided)["verdict"] == "not_comparable"
+    # Unscored on both sides (unlabelled), it is simply not part of the quality mean.
+    for run in (base, cand):
+        run["queries"][1]["metrics"] = None
     result = compare_runs(base, cand)
     metric = result["metrics"]["ndcg"]
     assert metric["n"] == metric["n_families"] == 2
@@ -179,7 +185,8 @@ def test_hard_failures_are_not_averaged_away_even_below_minimum():
     base = grouped([1.0] * 40, ["a"] * 40)
     for q in base["queries"]:
         q["permission_checked"] = True
-        q["no_answer_correct"] = True
+    # q1 is a no-answer question: unlabelled, and the baseline correctly returns nothing.
+    base["queries"][1].update(no_answer_correct=True, ids=[], metrics=None)
     cand = copy.deepcopy(base)
     cand["queries"][0]["forbidden_ids"] = ["private"]
     cand["queries"][1]["no_answer_correct"] = False

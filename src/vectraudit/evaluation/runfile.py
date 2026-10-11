@@ -92,6 +92,17 @@ def check_run(data: Any) -> dict[str, Any]:
         _expect(q["query_id"] not in seen, f"duplicate query_id {q['query_id']!r}")
         seen.add(q["query_id"])
     _expect(len(queries) <= dataset["n_queries"], "more queries than the dataset has")
+    if data["status"] == "complete":
+        # "Complete" is what lets a run be judged at all, so it must mean what it says.
+        _expect(
+            not any(q.get("error") for q in queries),
+            "a complete run cannot contain failed queries; mark it partial",
+        )
+        _expect(
+            len(queries) == dataset["n_queries"],
+            f"a complete run must measure every dataset query ({len(queries)} of "
+            f"{dataset['n_queries']})",
+        )
     record: dict[str, Any] = data
     return record
 
