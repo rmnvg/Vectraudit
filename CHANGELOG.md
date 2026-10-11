@@ -17,6 +17,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Answer judgments and evidence sufficiency: benchmarks can declare `required_evidence`
+  groups ("A and B together, or C"), runs record whether a complete group was delivered and
+  reached the model, and `vectraudit workbench attach-answers` imports human or tool
+  judgments (Ragas, DeepEval, Langfuse, Phoenix) to diagnose each question's first
+  observable loss, separating context losses from wrong answers. Model judges' agreement
+  with human review is reported; disagreements are kept as disputes.
 - Model-context evidence: pipelines can report which documents actually reached the model
   (`PipelineResult.context`), and trace imports infer it from recorded prompts. Runs show
   relevant documents that were retrieved but omitted from, or cut short in, the prompt, and

@@ -562,8 +562,72 @@ which are **unknown**. These are separate from retrieval metrics: recall can be 
 the model saw nothing useful. Comparisons list a newly lost document as a `context_lost`
 finding (regression) when the baseline's context included it in full; when the baseline did not
 record context the finding is informational, because it cannot say whether the loss is new.
-Context evidence is not part of uploads. It does not yet change release verdicts or judge
-answers; answer and citation judgments are a later step.
+Context evidence is not part of uploads and does not change release verdicts.
+
+Set `truncated: false` on items the application knows it passed whole; `null` (the default)
+leaves completeness unknown, so a group of such documents cannot be called sufficient.
+
+### Required evidence and answer judgments
+
+Document recall says the right documents were found, not that enough of them reached the
+model. A benchmark question can declare what answering needs, as alternative groups of its
+relevant documents:
+
+```json
+{"query_id": "refund-annual", "text": "Can I get a full refund on my annual plan?",
+ "relevant": {"refund-policy": 1, "annual-exception": 1, "billing-faq": 1},
+ "required_evidence": [["refund-policy", "annual-exception"], ["billing-faq"]]}
+```
+
+Here either the policy *and* its exception, or the FAQ alone, is enough. Runs then record
+for each such question whether a complete group was **delivered** and whether one reached
+the model **in full** (`sufficient`, `insufficient`, `unknown`, or `unrecorded` without
+context evidence). A question whose exception was trimmed reads "delivered: sufficient;
+context: insufficient", even though its document recall is perfect.
+
+Vectraudit does not grade answers. Attach the judgments your team or tools already produce:
+
+```bash
+vectraudit workbench attach-answers current.run.json judgments.jsonl \
+  --out current.judged.run.json --threshold ragas.answer_correctness=0.7
+```
+
+One judgment per line, naming the question by `query_id` (or by `trace_id` for runs imported
+from traces, so Phoenix or Langfuse evaluations keyed by trace attach directly):
+
+```json
+{"query_id": "refund-annual", "evaluator": "support-review", "kind": "human", "verdict": "incorrect", "rubric": "v3"}
+{"query_id": "refund-annual", "evaluator": "ragas.answer_correctness", "evaluator_version": "0.2", "kind": "model", "score": 0.41}
+```
+
+- `verdict` is `correct`, `partial` or `incorrect`. A judgment with only a `score` needs a
+  `--threshold` for its evaluator; there is no default, and without one the question is
+  reported as unjudged.
+- `outcome` (`answered`, `abstained`, `handoff`) keeps a generated abstention or an
+  appropriate handoff apart from a wrong answer.
+- Human judgments decide when present; otherwise model judgments do. Disagreement among the
+  deciding judgments makes the verdict `disputed`. Each model evaluator's agreement with
+  human review is reported on the questions both judged.
+- Explanations and answer text are not read. Evaluator names, versions and rubrics are kept.
+
+Each judged question then gets a **diagnosis**: the first observable loss on the path from
+retrieval to answer, with the facts behind it. It is not a root cause.
+
+| Diagnosis | Meaning |
+|---|---|
+| `answered_wrong_despite_evidence` | A complete required group reached the model; the answer was still wrong |
+| `lost_in_context` | A complete group was delivered but did not reach the model intact |
+| `lost_downstream` | Required evidence was in a recorded stage and dropped before delivery |
+| `not_observed` | Required evidence was in no recorded stage (instrumentation or the source may be missing) |
+| `context_unknown` | A complete group was delivered; the context record cannot show whether it reached the model |
+| `answered_correctly`, `correct_without_required_evidence` | Correct; the second flags answers the declared evidence does not explain |
+| `abstained_despite_evidence`, `abstained`, `handoff` | The application did not answer |
+| `disputed`, `unjudged`, `no_required_evidence` | Not enough to diagnose |
+
+The command writes a new run file and leaves the original unchanged. Comparisons add
+`answer_regressed` when an answer judged correct in the baseline is judged partial or
+incorrect in the candidate, with the candidate's diagnosis. Answers do not change release
+verdicts yet, and none of this is uploaded.
 
 ## No-answer and permissions
 

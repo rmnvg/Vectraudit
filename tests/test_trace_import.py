@@ -570,3 +570,13 @@ def test_no_prompt_means_no_context_claim(tmp_path):
 def test_a_document_trimmed_at_the_start_is_also_cut_short(tmp_path):
     q, _ = import_context(tmp_path, f"Context: …{POLICY_TEXT[-70:]}", {"d3": POLICY_TEXT})
     assert q["model_context"]["items"] == [{"id": "d3", "truncated": True}]
+
+
+def test_imported_questions_link_to_their_trace_for_trace_keyed_judgments(tmp_path):
+    run, _ = import_traces(dataset(), write_otlp(tmp_path / "t.jsonl", good_traces()))
+    assert {q["query_id"]: q["trace_id"] for q in run["queries"]} == {
+        "q1": "t1",
+        "q2": "t2",
+        "q3": "t3",
+    }
+    assert all("trace_id" not in q for q in project_run(run)["queries"])

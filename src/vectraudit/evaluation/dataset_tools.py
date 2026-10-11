@@ -139,7 +139,15 @@ def import_rows(records: Iterable[Mapping[str, Any]], columns: ColumnMap) -> lis
         }
         if filters:
             row["filter"] = filters
-        for key in ("no_answer", "context", "history", "forbidden", "split", "family_id"):
+        for key in (
+            "no_answer",
+            "context",
+            "history",
+            "forbidden",
+            "split",
+            "family_id",
+            "required_evidence",
+        ):
             value = rec.get(key)
             if value not in (None, ""):
                 if isinstance(value, str) and key not in {"split", "family_id"}:
@@ -222,6 +230,8 @@ def dataset_rows(ds: Dataset) -> list[dict[str, Any]]:
             row["forbidden"] = list(q.forbidden)
         if q.split != "explore":
             row["split"] = q.split
+        if q.required_evidence:
+            row["required_evidence"] = [list(g) for g in q.required_evidence]
         rows.append(row)
     return rows
 
@@ -284,6 +294,7 @@ def _query_fields(q: DatasetQuery) -> dict[str, Any]:
         "no_answer": q.no_answer,
         "split": q.split,
         "tags": list(q.tags),
+        "required_evidence": [list(g) for g in q.required_evidence],
     }
 
 

@@ -10,6 +10,10 @@ run time), or both. ``relevant`` maps document ids to non-negative grades; a que
 it is unlabelled and only contributes ANN recall and latency. ``filter`` is a portable
 filter: field -> scalar, all conditions AND-ed. ``tags`` name the cohorts a query belongs to.
 
+``required_evidence`` says what answering needs, as alternative groups of relevant
+documents: ``[["policy", "exception"], ["summary"]]`` means *policy and exception together*,
+or *summary alone*. Without it, which documents are sufficient is not judged.
+
 An optional first line ``{"dataset": {...}}`` holds metadata: ``name``, ``description``,
 ``embedding_model`` (set by ``vectraudit dataset embed``), ``normalized`` and
 ``cohort_fields``: context fields whose values define cohorts. With
@@ -64,7 +68,10 @@ _KEYS = {
     "forbidden",
     "split",
     "history",
+    "required_evidence",
 }
+MAX_EVIDENCE_GROUPS = 16
+MAX_GROUP_SIZE = 32
 _META_KEYS = {"name", "description", "embedding_model", "normalized", "provenance", "cohort_fields"}
 MAX_COHORT_FIELDS = 10
 _FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
@@ -104,6 +111,8 @@ class DatasetQuery:
     family_id: str | None = None
     """Shared independent sampling unit; defaults to this query's own ID."""
     history: tuple[ConversationTurn, ...] = ()
+    required_evidence: tuple[tuple[str, ...], ...] = ()
+    """Alternative groups of documents; any one complete group is sufficient to answer."""
     cohorts: tuple[str, ...] = ()
     """Cohorts derived from the header's ``cohort_fields`` (``tenant=acme``); not authored,
     so they are never written back into the dataset."""
@@ -296,7 +305,11 @@ def _parse_query(obj: Any) -> DatasetQuery:
     split = obj.get("split", "explore")
     if split not in {"explore", "heldout"}:
         raise ValueError("split must be explore or heldout")
+    required = _required(obj.get("required_evidence"), relevant)
+    if no_answer and required:
+        raise ValueError("no_answer cannot coexist with required_evidence")
     return DatasetQuery(
+        required_evidence=required,
         no_answer=no_answer,
         context=CONTEXT.validate_python({} if obj.get("context") is None else obj["context"]),
         history=tuple(HISTORY.validate_python(obj.get("history", []))),
@@ -348,6 +361,27 @@ def _relevant(value: Any) -> dict[str, float]:
     return out
 
 
+def _required(value: Any, relevant: dict[str, float]) -> tuple[tuple[str, ...], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_EVIDENCE_GROUPS:
+        raise ValueError(
+            f"required_evidence must be a list of 1-{MAX_EVIDENCE_GROUPS} groups of document ids"
+        )
+    groups = []
+    for group in value:
+        if not isinstance(group, list) or not 1 <= len(group) <= MAX_GROUP_SIZE:
+            raise ValueError(f"each required_evidence group lists 1-{MAX_GROUP_SIZE} document ids")
+        ids = tuple(sorted({_identifier(doc, "a required document id") for doc in group}))
+        missing = [doc for doc in ids if relevant.get(doc, 0) <= 0]
+        if missing:
+            raise ValueError(
+                f"required documents must be relevant (positive grade): {', '.join(missing)}"
+            )
+        groups.append(ids)
+    return tuple(sorted(set(groups)))
+
+
 def _filter(value: Any) -> dict[str, FilterValue]:
     if value is None:
         return {}
@@ -397,6 +431,11 @@ def _fingerprint(queries: list[DatasetQuery], meta: dict[str, Any]) -> str:
             **({"history": [turn.model_dump() for turn in q.history]} if q.history else {}),
             **({"forbidden": list(q.forbidden)} if q.forbidden else {}),
             **({"split": q.split} if q.split != "explore" else {}),
+            **(
+                {"required_evidence": [list(g) for g in q.required_evidence]}
+                if q.required_evidence
+                else {}
+            ),
             # Only present when used, so datasets without spans keep their versions.
             **(
                 {"relevant_spans": [[s.doc_id, s.start, s.end, s.grade] for s in q.relevant_spans]}
