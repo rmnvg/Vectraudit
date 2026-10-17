@@ -1642,6 +1642,37 @@ No code. The remaining work is owner and customer action, so this step prepares 
   brackets and keeps everything inside the customer's environment. No price is recommended
   without market data; the brief proposes testing two price points instead.
 
+## Step 49: source-to-context lineage (2.1, first part)
+
+The owner asked to keep building past the customer-independent plan, so this starts the
+strategy's preferred deeper bet. Its limits stay stated: it is validated on fixtures, not on
+a customer's ingestion pipeline.
+
+- **[`vectraudit workbench lineage`](lineage.md):** reads a customer-exported lineage
+  manifest (per source: revision, extracted length, chunk ranges, index state and revision,
+  optional chunk hashes) and a benchmark with passage labels, optionally with a run. Each
+  passage gets its first loss: source missing, empty or truncated extraction, not chunked,
+  split across chunks, not indexed, stale index, not retrieved, lost downstream, or lost in
+  context.
+- **Advice follows the evidence:** ingestion losses produce "fix ingestion before changing
+  retrieval"; boundary splits suggest overlapping or section chunking; stale chunks suggest
+  re-indexing. `--fail-on-ingestion` exits 3 for CI.
+- **Corpus findings:** empty extraction, stale chunks still indexed beside current ones,
+  duplicate chunks, and questions where duplicates took result slots.
+- The strategy's 2.1 acceptance is reproduced on a fixture: a chunk-boundary defect
+  produces a finding, and the repaired manifest recovers the passage.
+
+One defect found by the tests: following runs through their per-question context analysis
+missed trimmed chunks for span-labelled questions; lineage now reads the raw context record.
+
+Not included: freshness over time across exports, the workbench view, linking lineage into
+investigations, and evidence from a real ingestion export.
+
+Validation: 23 new tests (every stage, missing sources, unverified revisions, the boundary
+defect and its repair, run integration through retrieval, delivery, omitted and trimmed
+context, source-ID runs, corpus findings, manifest validation, CLI and CI gating). Full suite
+(1,702 passed, 22 skipped), ruff and mypy on Python 3.12 and 3.10 pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

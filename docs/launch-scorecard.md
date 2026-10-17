@@ -1,6 +1,6 @@
 # Launch scorecard
 
-**Status as of October 11, 2026, after Step 47.** This maps every gate in section 9 of the
+**Status as of October 11, 2026, after Step 49.** This maps every gate in section 9 of the
 [strategy](startup-strategy-2026-10-08.md) to what exists in the repository and what is
 still needed to check it. Steps refer to the
 [implementation log](startup-implementation-2026-10-08.md).
@@ -47,7 +47,7 @@ customer actions, not code.
 | Lead understands the decision; second engineer reproduces it; CI and delivery route work (1.6, 1.7) | Partly built | Lead summaries and trends (Step 16), shared records (Step 15), webhooks and Slack (Step 18), monitor staleness (Step 29), CI step (Step 27), paired runs (Steps 34, 37) | A lead and a second engineer on a real team; the first customer's actual channel |
 | Cases, benchmark identities and decisions shared, kept for the agreed history window regardless of run retention (1.6) | Built | Decision ledger (Step 10), shared records (Step 15), recurring problems (Step 22) linked to shared investigations (Step 47) | Retention window agreed with the customer |
 | Thresholds from measured A/A noise; regressions accepted only through audited, expiring exceptions; safety failures need a higher role or cannot be waived (1.10) | Built | Steps 11, 12, 25, 28 | A/A calibration on the customer's own runner and endpoint |
-| A deeper advantage customers pay for works on real systems (Tier 2) | Not built | Chunking and span experiments, permission scenarios as starting points | Choice of lineage, freshness or permission lifecycle from repeated customer pull, then proof on a real system |
+| A deeper advantage customers pay for works on real systems (Tier 2) | Partly built | Chunking and span experiments, permission scenarios; source-to-context lineage from a customer export (Step 49) | Choice of lineage, freshness or permission lifecycle from repeated customer pull, then proof on a real system |
 | No known correctness defect can turn incomplete or incomparable evidence into an approved release | Built (no known defect) | Incomplete and errored runs never pass; errors and incomparable runs cannot be accepted (Step 11); comparability checks on query sets, families, repeats, concurrency, environment, overlap and pairing; adversarial audit fixed two defects (Step 38) | A review by someone other than the author before claiming it |
 | Release artifact, backends, workload and deployment have current end-to-end evidence, including hosted tenant isolation, restore, revocation, sharing and deletion in the target environment | Partly built | Route-level tenant audit, deletion and retention tests, PostgreSQL runs; live pgvector, Pinecone and Weaviate tests run only where CI provisions them | Runs in the chosen target environment; live backend runs for the backends a customer uses |
 | Installation, upgrades, rollback, support ownership and limits documented; no mocked proof presented as live | Partly built | [RELEASING](RELEASING.md), `init --ci-only` upgrades (Step 27), [cloud operations](cloud-operations.md), trust package draft | Owner-approved support policy; a real upgrade and rollback on a customer install |

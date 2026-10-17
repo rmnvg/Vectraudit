@@ -819,6 +819,51 @@ def investigations_command(
         _write(json_out, result)
 
 
+@workbench_app.command("lineage")
+def lineage_command(
+    manifest: Annotated[Path, typer.Argument(help="Lineage manifest (JSONL) you exported.")],
+    dataset: Annotated[Path, typer.Argument(help="Benchmark with relevant_spans.")],
+    run: Annotated[Path | None, typer.Option(help="Also follow passages through this run.")] = None,
+    ids: Annotated[
+        str, typer.Option(help="What the run's result IDs are: chunk or source.")
+    ] = "chunk",
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_ingestion: Annotated[
+        bool,
+        typer.Option(
+            "--fail-on-ingestion",
+            help="Exit 3 when any required passage is lost before retrieval.",
+        ),
+    ] = False,
+) -> None:
+    """Follow each required passage from source to model context; name its first loss.
+
+    Reads your export and benchmark (and a run, if given); nothing is re-ingested and no
+    document text is read. Losses before retrieval are ingestion problems that a different
+    embedding model cannot fix.
+    """
+    from vectraudit.evaluation.lineage import check_lineage, read_manifest, render
+
+    try:
+        report = check_lineage(
+            load_dataset(dataset),
+            read_manifest(manifest),
+            load_run(run) if run else None,
+            ids=ids,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Lineage error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    if not report["passages"]:
+        typer.echo("The benchmark labels no relevant_spans, so there is nothing to follow.")
+    else:
+        typer.echo(render(report))
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_ingestion and report["ingestion_losses"]:
+        raise typer.Exit(3)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None
