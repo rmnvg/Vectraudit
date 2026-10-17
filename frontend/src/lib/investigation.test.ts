@@ -35,3 +35,11 @@ it('describes each passage on its lineage path', async () => {
   expect(lineageLine({ source_id: 'policy', start: 0, end: 10, loss: null, unknown: 'model context' })).toBe('policy characters 0 to 10: intact; unknown: model context')
   expect(lossLabel({ class: 'ingestion', doc_id: 'policy', stage: 'stale_index', detail: 'characters 0 to 10' })).toBe('policy lost during ingestion at stale index: characters 0 to 10')
 })
+
+it('describes each content change and stale content', async () => {
+  const { freshnessLine } = await import('./investigation')
+  const row = { source_id: 'policy', change: 'update', changed_at: '2026-10-18T09:00:00Z', deadline: '', status: 'lingering', new_content_indexed: true, stale_chunks: ['policy#0@r8'] }
+  expect(freshnessLine(row)).toBe('policy updated 2026-10-18T09:00:00Z: lingering: old content is still indexed (1 stale chunk)')
+  expect(freshnessLine({ ...row, change: 'archive', status: 'pending', stale_chunks: [] })).toBe('policy archived 2026-10-18T09:00:00Z: still inside its propagation window')
+  expect(lossLabel({ class: 'stale_content', doc_id: 'policy#0@r8', detail: 'update of policy; reached the context' })).toBe('policy#0@r8 retired content served: update of policy; reached the context')
+})

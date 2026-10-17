@@ -7,6 +7,7 @@ export interface Investigation {
   losses: Loss[]; hypotheses: string[]; hypotheses_note: string; cautions: string[]; uncertainty: string[]
   fixes: FixSuggestion[]; unaddressed: string[]; regression: { new_losses: Loss[] } | null
   lineage?: LineageRow[] | null
+  freshness?: Freshness | null
   pipeline: { name: string; remote: string | null; params: Record<string, unknown> }
   trial: { available: boolean; reason: string | null; explore_questions: number; heldout_questions: number; repeats: number; k: number }
 }
@@ -17,6 +18,22 @@ export function lineageLine(row: LineageRow): string {
   const passage = `${row.source_id} characters ${row.start} to ${row.end}`
   if (row.loss) return `${passage}: first lost at ${row.loss.replaceAll('_', ' ')}`
   return `${passage}: intact${row.unknown ? `; unknown: ${row.unknown}` : ''}${row.revision_unverified ? ' (indexed revision unverified)' : ''}`
+}
+
+export interface FreshnessChange { source_id: string; change: string; changed_at: string; deadline: string; status: string; new_content_indexed: boolean | null; stale_chunks: string[] }
+export interface Freshness { as_of: string; chunk_level: boolean; historical: boolean; unindexed_labels: string[]; changes: FreshnessChange[] }
+
+const FRESHNESS: Record<string, string> = {
+  propagated: 'propagated',
+  pending: 'still inside its propagation window',
+  overdue: 'overdue: the new content is not indexed',
+  lingering: 'lingering: old content is still indexed',
+}
+
+/** One content change touching this question, and where it stood when the run was recorded. */
+export function freshnessLine(row: FreshnessChange): string {
+  const stale = row.status === 'lingering' && row.stale_chunks.length ? ` (${row.stale_chunks.length} stale chunk${row.stale_chunks.length === 1 ? '' : 's'})` : ''
+  return `${row.source_id} ${row.change}d ${row.changed_at}: ${FRESHNESS[row.status] ?? row.status}${stale}`
 }
 
 export interface TrialRow {
@@ -42,6 +59,8 @@ const CLASSES: Record<string, string> = {
   no_answer: 'results delivered for a question with no answer',
   error: 'the question failed',
   ingestion: 'lost during ingestion',
+  stale_content: 'retired content served',
+  conflicting_versions: 'conflicting versions delivered together',
 }
 
 /** `kb-7 dropped at rerank (rerank)`; one line per recorded loss. */

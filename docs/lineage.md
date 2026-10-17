@@ -123,3 +123,25 @@ one source delivered together. Questions tagged `historical` may legitimately re
 content and are not checked; your benchmark decides which questions those are.
 `--fail-on-stale` exits 3 when anything is overdue, lingering, served stale or conflicting,
 so the check can run on a schedule after content updates.
+
+### Freshness in investigations
+
+Register the change log beside the lineage export to see it when investigating a question:
+
+```bash
+vectraudit workbench serve workbench-runs --manifest pipelines.json \
+  --lineage lineage.jsonl --changes changes.jsonl
+```
+
+The panel's **Knowledge freshness** section lists the changes to sources the question
+touched (delivered, labelled relevant, or replacing one of those), judged at the time the
+run was recorded. Retired content the question was served becomes a `stale_content` loss
+saying whether it reached the results or the model context, and two revisions delivered
+together a `conflicting_versions` loss; a caution says to re-index or purge, because ranking
+changes only hide stale content, and no declared fix is offered for either. A labelled
+document whose new content is not indexed yet gets no retrieval fix, like an ingestion loss.
+Changes still inside their window are listed as uncertainty, as are `historical` questions.
+With `--lineage-ids source`, removed sources are found but an old revision of an updated
+source cannot be told apart from the new one, and the panel says so.
+`vectraudit workbench investigate … --lineage lineage.jsonl --changes changes.jsonl` does the
+same on the command line. A change log without a lineage export is refused at startup.

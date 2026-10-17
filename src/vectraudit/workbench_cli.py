@@ -596,6 +596,10 @@ def investigate_command(
     lineage_ids: Annotated[
         str, typer.Option(help="What the run's result IDs are: chunk or source.")
     ] = "chunk",
+    changes: Annotated[
+        Path | None,
+        typer.Option(help="Content change log, to flag stale content (needs --lineage)."),
+    ] = None,
     json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
 ) -> None:
     """What one question lost and where, possible causes, and the declared fixes to try.
@@ -620,12 +624,28 @@ def investigate_command(
                 ids=lineage_ids,
             )
             rows = [r for r in report["rows"] if r["query_id"] == query]
+        freshness = None
+        if changes is not None:
+            from vectraudit.evaluation.freshness import question_freshness, read_changes
+            from vectraudit.evaluation.lineage import read_manifest
+
+            if lineage is None:
+                raise ValueError("--changes needs the --lineage export it is checked against")
+            freshness = question_freshness(
+                read_changes(changes),
+                read_manifest(lineage),
+                record,
+                query,
+                dataset=load_dataset(manifest.parent / spec.dataset),
+                ids=lineage_ids,
+            )
         result = investigate(
             record,
             query,
             available_fixes(chosen, manifest.parent),
             baseline=load_run(baseline) if baseline else None,
             lineage=rows,
+            freshness=freshness,
         )
     except (OSError, ValueError) as exc:
         typer.echo(f"Investigation error: {exc}", err=True)
@@ -634,7 +654,8 @@ def investigate_command(
     for loss in result["losses"] or [{"class": "none"}]:
         where = f" at {loss['stage'].replace('_', ' ')}" if loss.get("stage") else ""
         doc = f" {loss['doc_id']}" if loss.get("doc_id") else ""
-        typer.echo(f"  lost{doc}: {loss['class'].replace('_', ' ')}{where}")
+        detail = f" ({loss['detail']})" if loss.get("detail") else ""
+        typer.echo(f"  lost{doc}: {loss['class'].replace('_', ' ')}{where}{detail}")
     if result["regression"] is not None:
         typer.echo(f"  new since the baseline: {len(result['regression']['new_losses'])}")
     for title, key in (
@@ -1078,6 +1099,10 @@ def serve_command(
     lineage_ids: Annotated[
         str, typer.Option(help="What run result IDs are in the lineage export: chunk or source.")
     ] = "chunk",
+    changes: Annotated[
+        Path | None,
+        typer.Option(help="Content change log (JSONL) investigations use to flag stale content."),
+    ] = None,
 ) -> None:
     """Open the local workbench without requiring a FAISS index. No data is uploaded."""
     import uvicorn
@@ -1092,7 +1117,7 @@ def serve_command(
             typer.echo(f"Policy error: {exc}", err=True)
             raise typer.Exit(2) from exc
     try:
-        app = create_workbench(directory, manifest, policy, lineage, lineage_ids)
+        app = create_workbench(directory, manifest, policy, lineage, lineage_ids, changes)
     except ValueError as exc:
         typer.echo(f"Workbench configuration error: {exc}", err=True)
         raise typer.Exit(2) from exc
