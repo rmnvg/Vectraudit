@@ -1840,6 +1840,31 @@ changed document; unverified checks without inventories; environment and cost di
 different benchmarks refused; inventories refuse text; dotted range filters; the CLI).
 Full suite, ruff and mypy on Python 3.12 and 3.10 pass.
 
+## Step 57: production intake (1.8)
+
+- **`vectraudit workbench intake TRACES DATASET --state DIR`** runs on each new
+  OpenInference export: a cursor (newest start time plus the trace IDs at that instant)
+  takes only new traces from overlapping exports.
+- **Matched questions:** a production ranking with none of the question's labelled relevant
+  documents is a likely recurrence, linked to the question's regression cases; verified
+  cases are flagged for reopening. `--fail-on-recurrence` exits 3.
+- **New questions:** a de-duplicated review queue (text plus named context fields) with
+  counts, first and last seen and trace IDs; priority from frequency and feedback
+  (`negative`, `escalated`, `positive`), which never becomes labels; a seeded independent
+  sample chosen before any signal and kept in capped exports; reviewer routing by context;
+  `promoted` once the question enters the benchmark. `--export-review` writes an unlabelled
+  benchmark for passage review.
+- Ambiguous matches, missing question text and unreadable rankings are counted, not judged.
+
+Not included: matching paraphrases, measuring reviewer minutes, a hosted queue, and a
+customer's production traces.
+
+Validation: 8 new tests (recurrence and de-duplicated queue, feedback never labelling,
+overlapping exports and same-instant traces, promotion, case links and reopening, an
+independent sample stable under signals and kept in a capped export, ambiguous text,
+invalid feedback and routes, the CLI). Full suite, ruff and mypy on Python 3.12 and 3.10
+pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

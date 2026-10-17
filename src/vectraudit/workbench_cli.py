@@ -1165,6 +1165,92 @@ def migration_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("intake")
+def intake_command(
+    traces: Annotated[Path, typer.Argument(help="New OpenInference export (OTLP JSON or spans).")],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark, with labels.")],
+    state: Annotated[
+        Path, typer.Option(help="Folder holding the cursor and review queue (kept local).")
+    ] = Path("intake"),
+    feedback: Annotated[
+        Path | None,
+        typer.Option(help="Feedback per trace (JSONL: trace_id, signal); selects, never labels."),
+    ] = None,
+    routes: Annotated[
+        Path | None,
+        typer.Option(help='Reviewer rules: [{"when": {"tenant": "acme"}, "reviewer": "ana"}].'),
+    ] = None,
+    context_field: Annotated[
+        list[str] | None,
+        typer.Option(help="Trace metadata field kept as question context (repeatable)."),
+    ] = None,
+    sample_rate: Annotated[
+        float,
+        typer.Option(min=0, max=1, help="Share of new questions kept as an independent sample."),
+    ] = 0.1,
+    workspace: Annotated[
+        Path | None, typer.Option(help="Workbench folder, to link recurrences to regression cases.")
+    ] = None,
+    export_review: Annotated[
+        Path | None, typer.Option(help="Write pending questions as an unlabelled benchmark.")
+    ] = None,
+    reviewer: Annotated[
+        str | None, typer.Option(help="With --export-review: only this reviewer's questions.")
+    ] = None,
+    id_field: Annotated[
+        str | None, typer.Option(help="Document metadata field to use as the document ID.")
+    ] = None,
+    final_span: Annotated[
+        str | None, typer.Option(help="Span name whose documents are delivered.")
+    ] = None,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_recurrence: Annotated[
+        bool,
+        typer.Option("--fail-on-recurrence", help="Exit 3 when a likely recurrence is found."),
+    ] = False,
+) -> None:
+    """Production intake: take new traces since the last run into benchmark upkeep.
+
+    Matched questions that missed their labelled documents are likely recurrences; new
+    questions join a de-duplicated review queue with priority from feedback and frequency,
+    an independent sample, and a routed reviewer. Run it on each new export.
+    """
+    from vectraudit.pipelines.intake import (
+        intake,
+        read_feedback,
+        read_routes,
+        render,
+        review_dataset,
+    )
+    from vectraudit.pipelines.traces import Settings
+
+    try:
+        report = intake(
+            traces,
+            load_dataset(dataset),
+            state,
+            settings=Settings(id_field=id_field, final_span=final_span),
+            context_fields=context_field or (),
+            feedback=read_feedback(feedback) if feedback else None,
+            routes=read_routes(routes) if routes else (),
+            sample_rate=sample_rate,
+            workspace=workspace,
+        )
+        if export_review is not None:
+            text = review_dataset(state, reviewer=reviewer)
+            export_review.write_text(text, encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Intake error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    if export_review is not None:
+        typer.echo(f"Review file: {export_review}")
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_recurrence and report["likely_recurrences"]:
+        raise typer.Exit(3)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None

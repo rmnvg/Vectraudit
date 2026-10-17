@@ -21,6 +21,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Production intake (`vectraudit workbench intake`): takes new OpenInference traces since a
+  cursor, reports likely recurrences of benchmark questions (linked to regression cases),
+  and keeps a de-duplicated review queue prioritised by feedback and frequency, with an
+  independent sample and reviewer routing; feedback never becomes labels.
+
 - Migration report (`vectraudit workbench migration`): the current and proposed systems on
   one benchmark under the release policy, plus corpus equivalence and ID mapping from each
   system's inventory, filter semantics against document metadata, environment differences,
