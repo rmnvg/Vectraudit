@@ -106,6 +106,12 @@ strategy's progress document rather than in this file.
 
 ## Product data that helps (and what not to collect)
 
+During pilot sessions, investigations opened in the workbench record their own measures:
+`vectraudit workbench investigations <workspace>` gives minutes to an accepted diagnosis and
+to a verified fix (`investigation_minutes`), accepted and disputed diagnoses (`diagnosis`),
+fixes verified under the policy and reproduced by a second engineer (`fix_verified`). Copy
+the numbers into the ledger; the records themselves stay on the team's machine.
+
 For teams using the hosted service, two existing records answer `repeat_runs` without
 asking:
 

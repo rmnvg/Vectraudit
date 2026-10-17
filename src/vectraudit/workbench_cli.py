@@ -772,6 +772,53 @@ def try_fix_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("investigations")
+def investigations_command(
+    workspace: Annotated[Path, typer.Argument(help="Workbench directory (workbench serve).")],
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+) -> None:
+    """Pilot measures from investigation records: diagnoses, verified fixes, times.
+
+    Counts are given with their denominators and medians with their sample sizes. Names in
+    the records are self-reported in the local workbench.
+    """
+    from vectraudit.pipelines.investigation_records import RECORD_FORMAT, summarize
+
+    folder = workspace / ".workbench" / "investigations"
+    try:
+        records = []
+        for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+            if path.is_symlink():
+                continue
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if record.get("format") == RECORD_FORMAT:
+                records.append(record)
+        result = summarize(records)
+    except (OSError, ValueError, KeyError) as exc:
+        typer.echo(f"Investigation records error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    n = result["investigations"]
+    diagnosis = result["diagnosis"]
+    typer.echo(f"{n} investigations ({result['open']} open)")
+    typer.echo(
+        f"Diagnoses: {diagnosis['accepted']} of {n} accepted, {diagnosis['disputed']} "
+        f"disputed, {diagnosis['pending']} pending"
+    )
+    typer.echo(
+        f"Fixes verified under policy: {result['fixes_verified']} of {n}; reproduced by a "
+        f"second engineer: {result['reproduced_by_second_engineer']}"
+    )
+    for key, label in (
+        ("minutes_to_accepted_diagnosis", "Minutes to an accepted diagnosis"),
+        ("minutes_to_verified_fix", "Minutes to a verified fix"),
+    ):
+        stat = result[key]
+        if stat["n"]:
+            typer.echo(f"{label}: median {stat['median']} (n={stat['n']})")
+    if json_out is not None:
+        _write(json_out, result)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None

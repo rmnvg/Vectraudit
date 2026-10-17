@@ -652,6 +652,17 @@ with the same configuration; otherwise the panel says why. Trials and validation
 toward the workbench's two concurrent evaluations, and their runs are kept under
 `.workbench/fixes/`, apart from the recorded runs used for comparisons.
 
+**Investigation records.** Enter your name in the panel and the investigation is recorded
+in `.workbench/investigations/`: who opened it and when, **Accept diagnosis** or
+**Dispute** (with a reason), **Request evidence** that the diagnosis is missing, every fix
+trial and validation as it finishes, and **Close investigation** with an outcome. Closing as
+*fixed* needs an approved validation; a trial alone is exploratory. Records hold IDs,
+names, reasons and timestamps, never question or document text, and names are self-reported.
+`vectraudit workbench investigations <workspace>` summarises them for a pilot: diagnoses
+accepted, disputed and pending, fixes verified, fixes reproduced by a second engineer (an
+approved validation of the same fix by someone other than the opener), and median minutes to
+an accepted diagnosis and to a verified fix, each with its sample size.
+
 **Investigate** reads one question of a run, without opening any adapter. It lists what was
 lost and where (not observed, lost at a named stage, left out of or cut short in the model
 context, answered wrong despite evidence, or a permission or no-answer failure), possible
