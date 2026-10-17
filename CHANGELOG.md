@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Fixed
 
+- A forbidden document served in a failed attempt was hidden by a clean retry: failed
+  attempts now keep the forbidden documents they served (results and model context), and
+  the release check fails on them, locally and in hosted checks.
+- A candidate that stopped recording the model context skipped the context-leak check its
+  baseline could be judged by; such a comparison is now not comparable.
+- Knowledge freshness counted old content served while its change was still inside the
+  propagation window as a failure; it is now listed as pending.
 - A forbidden source document returned as a chunk (a result whose source reference names it)
   was not caught by permission checks; it now is.
 - The workbench policy editor dropped `critical_context` rules when an existing policy was

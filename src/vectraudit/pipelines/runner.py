@@ -732,11 +732,12 @@ def _measure(
         "error": None,
     }
     rankings: list[list[str]] = []
+    samples: list[float] = []
+    results: list[PipelineResult] = []
     calls = _Calls(pipeline, request, shared, alive)
     try:
         if index < options.warmup:
             calls("warmup")
-        samples, results = [], []
         for repeat in range(options.repeats):
             raw, t0 = calls(f"repeat {repeat + 1}")
             result = PipelineResult.model_validate(raw.model_dump())
@@ -852,6 +853,14 @@ def _measure(
         # Rankings observed before the failure stay in the attempt history, so a
         # retry cannot hide a critical document that went missing.
         entry["repeat_ids"] = rankings or None
+        if q.forbidden and results:
+            # Likewise forbidden documents those executions served: a clean retry must not
+            # hide a leak that already reached the user.
+            entry["permission_checked"] = True
+            entry["forbidden_ids"] = sorted(
+                {d for r in results for d in forbidden_delivered(r, q.forbidden)}
+            )
+            entry["permission_path"] = permission_path(results, q.forbidden)
     if calls.retries:
         entry["retries"] = calls.retries
     entry["usage"] = calls.usage()

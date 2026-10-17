@@ -145,12 +145,51 @@ class _Check:
                     f"safety.forbidden:{candidate['query_id']}",
                 )
             self._permission_path(candidate)
+            self._failed_attempts(candidate)
+            self._context_coverage(base, candidate)
             if candidate.get("no_answer_correct") is False:
                 self.flag(
                     Verdict.FAIL,
                     f"No-answer assertion failed for {candidate['query_id']}.",
                     f"safety.no_answer:{candidate['query_id']}",
                 )
+
+    def _context_coverage(self, base: Mapping[str, Any], candidate: Mapping[str, Any]) -> None:
+        """A candidate that stops recording model context cannot pass the context-leak check
+        its baseline could be judged by."""
+        before, after = base.get("permission_path"), candidate.get("permission_path")
+        could = isinstance(before, Mapping) and before.get("context_recorded") is True
+        can = isinstance(after, Mapping) and after.get("context_recorded") is True
+        if could and not can:
+            self.flag(
+                Verdict.NOT_COMPARABLE,
+                f"The candidate no longer records the model context in full for "
+                f"{candidate['query_id']}, so forbidden documents reaching the model cannot be "
+                "checked as they were in the baseline.",
+            )
+
+    def _failed_attempts(self, candidate: Mapping[str, Any]) -> None:
+        """A forbidden document served before a failure counts, even if a retry was clean."""
+        leaked: set[str] = set()
+        for attempt in candidate.get("attempts") or []:
+            result = attempt.get("result") if isinstance(attempt, Mapping) else None
+            if not isinstance(result, Mapping) or attempt.get("status") != "failed":
+                continue
+            leaked |= set(result.get("forbidden_ids") or [])
+            path = result.get("permission_path")
+            if isinstance(path, Mapping):
+                leaked |= {d["doc_id"] for d in path["documents"] if d.get("context") is True}
+                boundary = set(self.policy.forbidden_stages)
+                leaked |= {d["doc_id"] for d in path["documents"] if boundary & set(d["kinds"])}
+        if leaked:
+            self.flag(
+                Verdict.FAIL,
+                f"Forbidden documents reached the user in a failed attempt for "
+                f"{candidate['query_id']} that was later retried: "
+                + ", ".join(sorted(leaked))
+                + ".",
+                f"safety.forbidden:{candidate['query_id']}",
+            )
 
     def _permission_path(self, candidate: Mapping[str, Any]) -> None:
         """Forbidden documents upstream of the results: the model context always fails; the
