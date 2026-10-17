@@ -122,6 +122,12 @@ pair).
 cached before the probe can mask a leak. Probe a fresh deployment, or one whose cache has
 expired.
 
+## See it run
+
+`examples/reliability_story_demo.py` plants a revocation the assistant never received and a
+cache shared between users, and verifies both corrections (see
+[pilot release validation](pilot-release-validation.md#third-demonstration-content-and-access-that-changed)).
+
 ## Limits
 
 - **Cached answers before the probe:** they can mask a cache leak (see above).

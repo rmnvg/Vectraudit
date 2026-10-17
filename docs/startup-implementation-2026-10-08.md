@@ -1882,6 +1882,26 @@ Validation: 7 frontend tests and 6 fixture contract tests. Full suite (1,778 pas
 skipped), ruff, frontend checks and build, and the workbench and guided browser journeys
 pass; all six reports were rendered in Chromium from a workspace folder.
 
+## Step 59: a demonstration for the permission and freshness offer (§4, §8)
+
+- **`examples/reliability_story_demo.py`** runs three planted defects through product code
+  on a tiny synthetic assistant:
+  - a refund-policy update whose old revision stays indexed and reaches the model context
+    (`lingering`, conflicting revisions), cleared by re-indexing;
+  - an access revocation from a change log that the assistant's own index never received
+    (the release check fails on the forbidden document in the results and context, and
+    passes after the sync);
+  - a cache keyed by question text that leaks one user's payroll answer to another, clean
+    once the user is in the key.
+- It writes `reliability-story.html`, labelled synthetic, as a leave-behind for this entry
+  offer, and the JSON reports the workbench's Checks tab reads. The failure-investigation
+  offer already has its demonstration (Step 44); migration assurance has the report itself
+  (Step 56).
+
+Validation: 2 new tests (the three defects and corrections; the folder's reports are the
+formats the Checks tab reads); the page and the Checks tab were checked in Chromium. Full
+suite, ruff and mypy pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
