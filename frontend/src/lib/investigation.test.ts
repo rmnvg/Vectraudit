@@ -20,3 +20,11 @@ it('says a moved loss is progress, not a recovery', () => {
   expect(trialOutcome(row)).toBe('rel now dropped at final (truncate) (moved, not recovered)')
   expect(trialOutcome({ ...row, moved: [], recovered: [lost] })).toBe('recovered rel')
 })
+
+it('closes as fixed only after an approved validation', async () => {
+  const { canCloseFixed } = await import('./investigation')
+  const record = { id: 'a', status: 'open' as const, opened_by: 'A', opened_at: '', diagnosis: { status: 'accepted' as const }, requests: [], trials: [{ id: 't', fix: 'f' }], validations: [], outcome: null }
+  expect(canCloseFixed(record)).toBe(false)
+  expect(canCloseFixed({ ...record, validations: [{ id: 'v', fix: 'f', approved: false }] })).toBe(false)
+  expect(canCloseFixed({ ...record, validations: [{ id: 'v', fix: 'f', approved: true }] })).toBe(true)
+})

@@ -1535,9 +1535,39 @@ passing, hosted parity, validation and hash stability, old runs, ledger counts, 
 end to end). Full suite, ruff, and mypy on Python 3.12 and 3.10 pass; the page was rendered
 in Chromium.
 
+## Step 45: investigation records for pilot measurement (1.3 acceptance)
+
+1.3's acceptance is measured: investigation time, accepted and disputed diagnoses, and
+repairs reproduced by a second engineer. §11 also asks for "a way to dispute a diagnosis or
+request missing evidence". Neither existed, so a pilot could not produce these numbers
+without manual timekeeping.
+
+- **Records:** opening an investigation in the workbench (after entering a name) starts a
+  record in `.workbench/investigations/`. **Accept diagnosis**, **Dispute** (reason
+  required), **Request evidence**, automatic linking of each finished fix trial and
+  validation (read from the workspace, same run only), and **Close investigation** with an
+  outcome. *Fixed* requires an approved validation. Closed records cannot change.
+- **Measures:** minutes to the first accepted diagnosis and to the first approved
+  validation; reproduction by a second engineer (approved validations of the same fix by two
+  names, at least one not the opener). `vectraudit workbench investigations <workspace>`
+  and `GET /api/guided/investigations` summarise them with denominators and sample sizes;
+  the discovery ledger now points to it.
+- Records hold IDs, names, reasons and timestamps, never question or document text. Names
+  are self-reported; the workbench has no sign-in.
+
+Not included: sharing records with the hosted project, verified identities, and
+investigation records from the CLI-only `investigate`/`try-fix` path.
+
+Validation: 3 new API tests (the full loop with dispute, evidence request, linking,
+refusals, reproduction, closed-record immutability, summary and CLI; results from another
+run refused; reproduction rules), 1 frontend test, and the guided browser journey extended
+to record a name, accept the diagnosis, link the trial and measurement automatically and
+close the investigation. Full suite, ruff, mypy on Python 3.12 and 3.10, TypeScript,
+Oxlint, 105 frontend tests, the build and the guided, market-fit and release journeys pass.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–44). What remains needs owner
+The code-only work the strategy names is done (Steps 1–45). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 

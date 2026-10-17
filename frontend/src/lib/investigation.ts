@@ -57,3 +57,34 @@ export function trialOutcome(row: TrialRow): string {
   if (!parts.length) parts.push(row.regressed ? 'lower nDCG' : 'unchanged')
   return parts.join(' · ')
 }
+
+export interface InvestigationRecord {
+  id: string; status: 'open' | 'closed'; opened_by: string; opened_at: string
+  diagnosis: { status: 'pending' | 'accepted' | 'disputed'; by?: string; reason?: string | null }
+  requests: { what: string; by: string; at: string }[]
+  trials: { id: string; fix: string | null }[]; validations: { id: string; fix: string | null; approved: boolean }[]
+  outcome: string | null
+  measures?: { minutes_to_accepted_diagnosis: number | null; minutes_to_verified_fix: number | null; reproduced_by_second_engineer: boolean }
+}
+export const OUTCOMES = [
+  ['fixed', 'Fixed (verified by an approved validation)'],
+  ['not_fixed', 'Not fixed'],
+  ['no_fix_needed', 'No fix needed'],
+  ['abandoned', 'Abandoned'],
+] as const
+
+const NAME_KEY = 'vectraudit.reviewer'
+
+/** The reviewer name this browser last used; recorded with decisions, never verified. */
+export function savedName(): string {
+  try { return localStorage.getItem(NAME_KEY) ?? '' } catch { return '' }
+}
+
+export function rememberName(name: string): void {
+  try { localStorage.setItem(NAME_KEY, name) } catch { /* private window: the name is kept for this page only */ }
+}
+
+/** Whether closing as fixed is allowed: only an approved validation verifies a repair. */
+export function canCloseFixed(record: InvestigationRecord): boolean {
+  return record.validations.some(v => v.approved)
+}

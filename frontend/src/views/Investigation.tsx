@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { guidedRequest } from '../lib/guided'
 import type { JobState } from '../lib/guided'
-import { lossLabel, trialCalls, trialOutcome } from '../lib/investigation'
-import type { Investigation as Data, Trial, Validation } from '../lib/investigation'
+import { OUTCOMES, canCloseFixed, lossLabel, rememberName, savedName, trialCalls, trialOutcome } from '../lib/investigation'
+import type { Investigation as Data, InvestigationRecord, Trial, Validation } from '../lib/investigation'
 
 const button = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2 disabled:opacity-50'
 const primary = 'rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50'
@@ -33,6 +33,12 @@ export default function Investigation({ token, runId, queryId, baselineId, polic
   const [busy, setBusy] = useState('')
   const [trial, setTrial] = useState<Trial | null>(null)
   const [validation, setValidation] = useState<Validation | null>(null)
+  const [name, setName] = useState(savedName)
+  const [draftName, setDraftName] = useState('')
+  const [record, setRecord] = useState<InvestigationRecord | null>(null)
+  const [reason, setReason] = useState('')
+  const [missing, setMissing] = useState('')
+  const [outcome, setOutcome] = useState('fixed')
 
   useEffect(() => {
     let live = true
@@ -41,11 +47,34 @@ export default function Investigation({ token, runId, queryId, baselineId, polic
     return () => { live = false }
   }, [token, runId, queryId, baselineId])
 
+  // The record opens when the investigation does, so its times start here.
+  useEffect(() => {
+    if (!name) return
+    let live = true
+    guidedRequest<InvestigationRecord>('investigations', token, { run: runId, query_id: queryId, baseline: baselineId ?? null, by: name })
+      .then(value => { if (live) setRecord(value) }, (e: unknown) => { if (live) setError(e instanceof Error ? e.message : String(e)) })
+    return () => { live = false }
+  }, [token, runId, queryId, baselineId, name])
+
+  const act = async (action: string, body: object) => {
+    if (!record) return
+    setError('')
+    try {
+      const updated = await guidedRequest<InvestigationRecord>(`investigations/${record.id}/${action}`, token, { ...body, by: name })
+      setRecord(action === 'close' ? await guidedRequest<InvestigationRecord>(`investigations/${record.id}`, token) : updated)
+      return true
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return false
+    }
+  }
+
   const run = async (path: string, body: object, kind: 'trial' | 'validation') => {
     setError(''); setBusy('Starting…')
     try {
       const { id } = await guidedRequest<{ id: string }>(path, token, body)
       const result = await finished<Trial | Validation>(token, id, setBusy)
+      if (record?.status === 'open') await act('results', { result: result.id })
       if (kind === 'trial') { setTrial(result as Trial); setValidation(null) } else setValidation(result as Validation)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -102,5 +131,29 @@ export default function Investigation({ token, runId, queryId, baselineId, polic
       {validation.check && <ul className="mt-1 list-disc pl-5 text-xs">{validation.check.reasons.map(r => <li key={r}>{r}</li>)}</ul>}
       {validation.approved && <p className="mt-2 text-xs">Promote as a manifest candidate: <code className="break-all">{JSON.stringify({ name: validation.promote.name, params: validation.promote.params })}</code></p>}
     </div>}
+
+    <div aria-label="Investigation record" className="space-y-2 rounded-lg border border-line p-3 text-sm">
+      <h4 className="font-semibold">Investigation record</h4>
+      {!name ? <div className="flex flex-wrap items-end gap-2"><label className="text-sm">Your name, recorded with your decisions<input aria-label="Your name" value={draftName} onChange={e => setDraftName(e.target.value)} className="ml-2 rounded-lg border border-line bg-page px-2 py-1 text-sm" /></label><button className={button} disabled={!draftName.trim()} onClick={() => { rememberName(draftName.trim()); setName(draftName.trim()) }}>Start recording</button><p className="w-full text-xs text-muted">Pilots measure time to an accepted diagnosis, disputed diagnoses and verified fixes from these records. Names are not verified.</p></div>
+      : !record ? <p className="text-muted">Opening the record…</p> : <>
+        <p className="text-xs text-muted">Opened by {record.opened_by} · recording as {name} · {record.status}</p>
+        <p>Diagnosis: <b>{record.diagnosis.status}</b>{record.diagnosis.by ? ` by ${record.diagnosis.by}` : ''}{record.diagnosis.reason ? `: ${record.diagnosis.reason}` : ''}</p>
+        {record.status === 'open' && <div className="flex flex-wrap items-center gap-2">
+          <button className={button} onClick={() => void act('diagnosis', { status: 'accepted' })}>Accept diagnosis</button>
+          <input aria-label="Dispute reason" placeholder="Why the diagnosis is wrong or incomplete" value={reason} onChange={e => setReason(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line bg-page px-2 py-1 text-sm" />
+          <button className={button} disabled={!reason.trim()} onClick={() => void act('diagnosis', { status: 'disputed', reason }).then(ok => { if (ok) setReason('') })}>Dispute</button>
+        </div>}
+        {record.requests.length > 0 && <ul className="list-disc pl-5 text-xs text-muted">{record.requests.map(r => <li key={r.at + r.what}>Evidence requested by {r.by}: {r.what}</li>)}</ul>}
+        {record.status === 'open' && <div className="flex flex-wrap items-center gap-2">
+          <input aria-label="Missing evidence" placeholder="Evidence needed: a trace, a corpus version, a judgment…" value={missing} onChange={e => setMissing(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line bg-page px-2 py-1 text-sm" />
+          <button className={button} disabled={!missing.trim()} onClick={() => void act('requests', { what: missing }).then(ok => { if (ok) setMissing('') })}>Request evidence</button>
+        </div>}
+        <p className="text-xs text-muted">{record.trials.length} trial(s) and {record.validations.length} validation(s) linked; {record.validations.filter(v => v.approved).length} approved.</p>
+        {record.status === 'open' ? <div className="flex flex-wrap items-center gap-2">
+          <select aria-label="Outcome" value={outcome} onChange={e => setOutcome(e.target.value)} className="rounded-lg border border-line bg-page px-2 py-1 text-sm">{OUTCOMES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <button className={button} disabled={outcome === 'fixed' && !canCloseFixed(record)} onClick={() => void act('close', { outcome })}>Close investigation</button>
+        </div> : <p role="status">Closed: <b>{record.outcome?.replaceAll('_', ' ')}</b>{record.measures?.minutes_to_accepted_diagnosis != null ? ` · ${record.measures.minutes_to_accepted_diagnosis} min to an accepted diagnosis` : ''}{record.measures?.minutes_to_verified_fix != null ? ` · ${record.measures.minutes_to_verified_fix} min to a verified fix` : ''}</p>}
+      </>}
+    </div>
   </section>
 }

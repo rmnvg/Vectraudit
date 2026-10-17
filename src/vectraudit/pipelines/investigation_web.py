@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
@@ -19,6 +19,7 @@ from pydantic import Field
 from vectraudit.core.jobs import JobCapacityError, ProgressFn
 from vectraudit.evaluation.dataset import Dataset, parse_dataset
 from vectraudit.evaluation.runfile import load_run
+from vectraudit.labelling.storage import task_lock
 from vectraudit.pipelines.guided import (
     CAPACITY,
     PIPELINE_BUSY,
@@ -36,12 +37,22 @@ from vectraudit.pipelines.investigate import (
     try_plan,
     validate_fix,
 )
+from vectraudit.pipelines.investigation_records import (
+    close,
+    link_result,
+    measures,
+    new_record,
+    request_evidence,
+    set_diagnosis,
+    summarize,
+)
 from vectraudit.pipelines.lexical import hybrid_pipeline
 from vectraudit.pipelines.local_display import run_questions
 from vectraudit.pipelines.manifest import Adapter, Candidate, candidate_config, open_adapter
 from vectraudit.pipelines.models import Contract
 from vectraudit.pipelines.release import corpus_version as documents_version
 from vectraudit.pipelines.runtime import Pipeline
+from vectraudit.pipelines.workflows import LocalRecords
 
 
 class InvestigateIn(Contract):
@@ -57,6 +68,38 @@ class TrialIn(Contract):
     sample: int = Field(default=20, ge=0, le=200)
     seed: int = Field(default=0, ge=0, le=2**31)
     confirm_remote: bool = False
+
+
+Name = Annotated[str, Field(min_length=1, max_length=80)]
+
+
+class OpenIn(Contract):
+    run: str
+    query_id: str = Field(min_length=1, max_length=512)
+    baseline: str | None = None
+    by: Name
+
+
+class DiagnosisIn(Contract):
+    status: str
+    by: Name
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class RequestIn(Contract):
+    what: str = Field(min_length=1, max_length=2000)
+    by: Name
+
+
+class LinkIn(Contract):
+    result: str
+    by: Name
+
+
+class CloseIn(Contract):
+    outcome: str
+    by: Name
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class ValidateIn(Contract):
@@ -319,12 +362,76 @@ def investigation_router(workspace: GuidedWorkspace) -> APIRouter:
         except PipelineBusy as exc:
             raise HTTPException(409, PIPELINE_BUSY) from exc
 
-    @router.get("/fixes/{identifier}")
-    def saved(identifier: str) -> dict[str, Any]:
+    def saved_result(identifier: str) -> dict[str, Any]:
         path = trials / f"{_identifier(identifier)}.json"
         if path.is_symlink() or not path.is_file():
             raise HTTPException(404, "Fix trial not found")
         value: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return value
+
+    @router.get("/fixes/{identifier}")
+    def saved(identifier: str) -> dict[str, Any]:
+        return saved_result(identifier)
+
+    records = LocalRecords(workspace, "investigations")
+
+    def change(identifier: str, edit: Any) -> dict[str, Any]:
+        path = records.path(identifier)
+        with task_lock(path):
+            record = records.read(identifier)
+            if record["status"] != "open":
+                raise HTTPException(409, "This investigation is closed")
+            try:
+                edit(record)
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            return records.write(record)
+
+    @router.post("/investigations")
+    def open_record(body: OpenIn) -> dict[str, Any]:
+        run = load(body.run)
+        losses = [loss["class"] for loss in investigate(run, body.query_id)["losses"]]
+        for existing in records.list():
+            if (
+                existing["status"] == "open"
+                and existing["run"] == body.run
+                and existing["query_id"] == body.query_id
+            ):
+                return existing
+        identifier = uuid.uuid4().hex
+        return records.write(
+            new_record(identifier, body.run, body.query_id, body.baseline, body.by, losses)
+        )
+
+    @router.get("/investigations")
+    def summary() -> dict[str, Any]:
+        return summarize(records.list())
+
+    @router.get("/investigations/{identifier}")
+    def read_record(identifier: str) -> dict[str, Any]:
+        return {**records.read(identifier), "measures": measures(records.read(identifier))}
+
+    @router.post("/investigations/{identifier}/diagnosis")
+    def diagnosis(identifier: str, body: DiagnosisIn) -> dict[str, Any]:
+        return change(identifier, lambda r: set_diagnosis(r, body.status, body.by, body.reason))
+
+    @router.post("/investigations/{identifier}/requests")
+    def evidence(identifier: str, body: RequestIn) -> dict[str, Any]:
+        return change(identifier, lambda r: request_evidence(r, body.what, body.by))
+
+    @router.post("/investigations/{identifier}/results")
+    def link(identifier: str, body: LinkIn) -> dict[str, Any]:
+        result = saved_result(body.result)  # read from disk: the browser cannot invent results
+
+        def attach(record: dict[str, Any]) -> None:
+            if result.get("run") != record["run"]:
+                raise ValueError("this result tried a fix on a different run")
+            link_result(record, result, body.by)
+
+        return change(identifier, attach)
+
+    @router.post("/investigations/{identifier}/close")
+    def finish(identifier: str, body: CloseIn) -> dict[str, Any]:
+        return change(identifier, lambda r: close(r, body.outcome, body.by, body.note))
 
     return router

@@ -17,6 +17,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Investigation records: accept or dispute a diagnosis, request missing evidence, link fix
+  trials and validations, and close with an outcome; `vectraudit workbench investigations`
+  reports diagnoses, verified and reproduced fixes and median times for pilot measurement.
 - `critical_context` release rules: a question's required evidence must reach the model in
   full on every execution; unknown or unrecorded context is never a pass, and hosted checks
   reach the same verdict.
