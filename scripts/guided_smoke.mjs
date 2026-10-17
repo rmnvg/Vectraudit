@@ -104,6 +104,23 @@ try {
   await page.getByText('current-guide dropped here').waitFor()
   await page.screenshot({ path: join(workspace, 'guided-compare.png'), fullPage: true })
 
+  // Investigate: the loss, unestablished causes and the pipeline's declared fixes; try one
+  // on exploratory questions, then measure it on held-out questions.
+  await finding.getByRole('button', { name: 'Investigate this question' }).click()
+  const investigation = page.getByRole('region', { name: 'Investigation invoice' })
+  await investigation.getByText('current-guide not in any recorded stage').waitFor()
+  assert.match(await investigation.textContent(), /none is established/)
+  await investigation.getByRole('listitem').filter({ hasText: 'raise candidate depth' }).getByRole('button', { name: /^Try this fix/ }).click()
+  const trial = investigation.getByLabel('Fix trial')
+  await trial.getByText(/1 of 1 failing question\(s\) fully recovered/).waitFor({ timeout: 20_000 })
+  assert.match(await trial.textContent(), /recovered current-guide/)
+  assert.match(await trial.textContent(), /not a release decision/)
+  await trial.getByRole('checkbox').check()
+  await trial.getByRole('button', { name: /held-out questions/ }).click()
+  await investigation.getByRole('status').getByText(/without a release policy; not approved/).waitFor({ timeout: 20_000 })
+  await investigation.screenshot({ path: join(workspace, 'guided-investigation.png') })
+  await investigation.getByRole('button', { name: 'Close' }).click()
+
   const cases = page.getByRole('region', { name: 'Regression cases' })
   await cases.getByRole('button', { name: 'Track finding', exact: true }).click()
   await cases.locator('details').getByText('invoice export', { exact: true }).waitFor()

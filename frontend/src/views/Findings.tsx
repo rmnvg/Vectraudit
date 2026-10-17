@@ -22,7 +22,7 @@ const located = (stages: StageLoss[] | string[]): stages is StageLoss[] => stage
 export type Inspect = (run: Run, focus: { query: string; doc: string }) => void
 
 /** Ranked, evidence-linked findings for a baseline/candidate comparison. */
-export default function Findings({ comparison, onInspect, onReview, reviewableQueries = [] }: { comparison: Comparison; onInspect: Inspect; onReview?: (query: string) => void; reviewableQueries?: string[] }) {
+export default function Findings({ comparison, onInspect, onReview, onInvestigate, reviewableQueries = [] }: { comparison: Comparison; onInspect: Inspect; onReview?: (query: string) => void; onInvestigate?: (query: string) => void; reviewableQueries?: string[] }) {
   const { triage, files, baseline, candidate, question_display: display } = comparison
   const [filter, setFilter] = useState<Severity | 'all'>('all')
   const [selected, setSelected] = useState(triage.items[0]?.query_id || baseline.queries[0]?.query_id || '')
@@ -52,6 +52,7 @@ export default function Findings({ comparison, onInspect, onReview, reviewableQu
         {item ? <section aria-label={`Finding ${item.query_id}`} className="space-y-3">{item.findings.map((f, i) => <FindingCard key={i} finding={f} doc={doc} onDocument={setDoc} file={files.candidate} titles={comparison.document_display} />)}
           {!item.stages_recorded && <p className="text-xs text-muted">This pipeline recorded no stage traces, so losses cannot be located inside it.</p>}
           <div className="flex flex-wrap gap-2"><button className={button} onClick={() => onInspect(baseline, { query: item.query_id, doc })}>Open in baseline run</button><button className={button} onClick={() => onInspect(candidate, { query: item.query_id, doc })}>Open in candidate run</button></div>
+          {onInvestigate && <button className={button} onClick={() => onInvestigate(item.query_id)}>Investigate this question</button>}
           {onReview && reviewableQueries.includes(item.query_id) && <button className={button} onClick={() => onReview(item.query_id)}>Review passages for this question</button>}
           <p className="text-xs text-muted">Evidence: <code>{files.baseline}</code> · <code>{files.candidate}</code> · verdict <code>{files.check}</code></p>
         </section> : <p className="text-sm text-muted">Choose a finding.</p>}

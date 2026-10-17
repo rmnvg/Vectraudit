@@ -641,6 +641,17 @@ vectraudit workbench try-fix pipelines.json --candidate current \
   --fix "pack whole documents" --query refund-annual --validate --policy release-policy.json
 ```
 
+**In the browser:** after comparing two runs in the guided workflow, choose a finding and
+**Investigate this question**. The panel shows the same investigation, a **Try this fix**
+button per declared fix with its planned call count, the trial's results, and, after
+confirming held-out use, **Validate under** the selected release policy (without a policy
+the measurement is labelled exploratory and not approved). A fix can be tried only on the
+configuration that produced the run: the saved benchmark must be unchanged, the built-in
+pipeline's corpus must match the run's, and a registered pipeline must still be registered
+with the same configuration; otherwise the panel says why. Trials and validations count
+toward the workbench's two concurrent evaluations, and their runs are kept under
+`.workbench/fixes/`, apart from the recorded runs used for comparisons.
+
 **Investigate** reads one question of a run, without opening any adapter. It lists what was
 lost and where (not observed, lost at a named stage, left out of or cut short in the model
 context, answered wrong despite evidence, or a permission or no-answer failure), possible

@@ -3,6 +3,7 @@ import { MAX_QUESTIONS, criticalSummary, demoCorpus, demoQueries, executionLabel
 import type { Comparison, Draft, GuidedSession, JobState, QueryRow } from '../lib/guided'
 import type { Run, RunListing } from '../lib/workbench'
 import Findings from './Findings'
+import Investigation from './Investigation'
 import { BenchmarkSnapshots, ImportQuestions, PermissionBuilder } from './BenchmarkTools'
 import PassageReview from './PassageReview'
 import PipelineTest from './PipelineTest'
@@ -60,6 +61,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
   const [baseId, setBaseId] = useState('')
   const [candidateId, setCandidateId] = useState('')
   const [comparison, setComparison] = useState<Comparison | null>(null)
+  const [investigating, setInvestigating] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [comparing, setComparing] = useState(false)
   const [policyId, setPolicyId] = useState<PolicyChoice>(undefined)
@@ -167,6 +169,7 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
     try {
       const result = await guidedRequest<Comparison>('compare', session.token, { baseline: baseId, candidate: candidateId, policy: policyId ?? null })
       setComparison(result)
+      setInvestigating(null)
     } catch (e) { setError(String(e)) } finally { setComparing(false) }
   }
   function addRows(additions: QueryRow[], importHeader?: Record<string, unknown>) {
@@ -251,7 +254,8 @@ export default function GuidedWorkflow({ onInspect }: { onInspect: Inspect }) {
       </section>}
       {comparison && <><div role="status" className="rounded-xl bg-surface-2 p-4"><b className={comparison.check.verdict === 'pass' ? 'text-teal-600' : comparison.check.verdict === 'fail' ? 'text-red-600' : 'text-amber-600'}>Release comparison: {comparison.check.verdict}</b><span className="ml-2 text-xs text-muted">under {policyLabel(comparison.policy)}{comparison.policy?.source === 'exploratory' ? ' (exploratory, not a release decision)' : ''}</span>{(comparison.policy?.id ?? null) !== (policyId ?? null) && <p className="mt-2 text-xs text-amber-600">The selected policy changed since this comparison. Compare again to apply it.</p>}{comparison.check.n_families != null && <p className="mt-2 text-sm">{comparison.check.n_queries} query rows · {comparison.check.n_families} independent families</p>}{comparison.check.reasons.map((r, i) => <p className="mt-2 text-sm" key={i}>{r.message}</p>)}{comparison.check.warnings.map((w, i) => <p className="mt-2 text-xs text-muted" key={i}>{w}</p>)}<FailingRules token={session?.token ?? ''} options={comparison.acceptance ?? []} checkFile={comparison.files.check} /></div>
         <ReleaseExport key={`${comparison.files.check}-export`} token={session.token} comparison={comparison} defaultName={draft?.name || name} />
-        <Findings key={comparison.files.check} comparison={comparison} onInspect={onInspect} reviewableQueries={draft ? rows.filter(r => r.split !== 'heldout').map(r => r.query_id) : []} onReview={query => { const index = rows.findIndex(r => r.query_id === query); if (index >= 0) { setSelected(index); setBaseId(comparison.baseline.run_id); setCandidateId(comparison.candidate.run_id); setStep(1) } }} />
+        <Findings key={comparison.files.check} comparison={comparison} onInspect={onInspect} onInvestigate={setInvestigating} reviewableQueries={draft ? rows.filter(r => r.split !== 'heldout').map(r => r.query_id) : []} onReview={query => { const index = rows.findIndex(r => r.query_id === query); if (index >= 0) { setSelected(index); setBaseId(comparison.baseline.run_id); setCandidateId(comparison.candidate.run_id); setStep(1) } }} />
+        {investigating && <Investigation key={`${comparison.files.check}-${investigating}`} token={session.token} runId={comparison.candidate.run_id} baselineId={comparison.baseline.run_id} queryId={investigating} policyId={comparison.policy?.source === 'exploratory' ? null : comparison.policy?.id ?? null} policyLabel={policyLabel(comparison.policy)} onClose={() => setInvestigating(null)} />}
       </>}
       <RegressionCases token={session.token} comparison={comparison} runs={runs} policy={policyId ?? null} policyRef={policyRef} />
     </section>}

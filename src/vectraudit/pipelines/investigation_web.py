@@ -1,0 +1,330 @@
+"""Workbench API for the investigation screen: explain a question, try a fix, validate it.
+
+A fix can be tried only on the configuration that produced the run: the run's saved
+benchmark must be unchanged, the built-in pipeline's corpus must match the run's corpus
+version, and a registered pipeline must still be registered with the same configuration.
+Otherwise the screen explains why instead of running something else.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from dataclasses import dataclass
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from pydantic import Field
+
+from vectraudit.core.jobs import JobCapacityError, ProgressFn
+from vectraudit.evaluation.dataset import Dataset, parse_dataset
+from vectraudit.evaluation.runfile import load_run
+from vectraudit.pipelines.guided import (
+    CAPACITY,
+    PIPELINE_BUSY,
+    Document,
+    GuidedWorkspace,
+    PipelineBusy,
+    _identifier,
+    _write,
+    write_run,
+)
+from vectraudit.pipelines.investigate import (
+    available_fixes,
+    investigate,
+    try_fix,
+    try_plan,
+    validate_fix,
+)
+from vectraudit.pipelines.lexical import hybrid_pipeline
+from vectraudit.pipelines.local_display import run_questions
+from vectraudit.pipelines.manifest import Adapter, Candidate, candidate_config, open_adapter
+from vectraudit.pipelines.models import Contract
+from vectraudit.pipelines.release import corpus_version as documents_version
+from vectraudit.pipelines.runtime import Pipeline
+
+
+class InvestigateIn(Contract):
+    run: str
+    query_id: str = Field(min_length=1, max_length=512)
+    baseline: str | None = None
+
+
+class TrialIn(Contract):
+    run: str
+    fix: str = Field(min_length=1, max_length=128)
+    query_ids: list[str] = Field(min_length=1, max_length=50)
+    sample: int = Field(default=20, ge=0, le=200)
+    seed: int = Field(default=0, ge=0, le=2**31)
+    confirm_remote: bool = False
+
+
+class ValidateIn(Contract):
+    run: str
+    fix: str = Field(min_length=1, max_length=128)
+    policy: str | None = None
+    confirm_heldout: bool = False
+    confirm_remote: bool = False
+
+
+@dataclass
+class _Source:
+    """The configuration that produced a run, if it can be run again here."""
+
+    candidate: Candidate
+    pipeline_key: str
+    dataset: Dataset | None
+    factory: Any
+    config: dict[str, Any]
+    corpus_version: str | None
+    remote: str | None
+    has_vectors: bool
+    blocker: str | None
+
+
+def _source(workspace: GuidedWorkspace, run: dict[str, Any]) -> _Source:
+    backend = run.get("backend") or {}
+    config = dict(backend.get("config") or {})
+    label = str(run.get("label") or "run")[:128]
+    source = run.get("benchmark_source") or {}
+    dataset = None
+    blocker = None
+    draft: dict[str, Any] | None = None
+    try:
+        draft = workspace.load_draft(str(source.get("draft_id")))
+    except HTTPException:
+        blocker = "This run's saved benchmark is not in this workspace."
+    if draft is not None:
+        if draft["revision"] != source.get("revision"):
+            blocker = "The benchmark changed after this run; run it again before trying a fix."
+        dataset = parse_dataset(draft["dataset"])
+    if config.get("adapter") == "hybrid":
+        documents = [
+            Document.model_validate_json(line).model_dump(exclude_none=True)
+            for line in ((draft or {}).get("corpus") or "").splitlines()
+            if line.strip()
+        ]
+        if blocker is None and documents_version(documents) != backend.get("corpus_version"):
+            blocker = "The benchmark's corpus differs from the one this run used."
+        params = {
+            k: v
+            for k, v in (config.get("params") or {}).items()
+            if type(v) in (str, int, float, bool)
+        }
+        candidate = Candidate(
+            name=label, adapter=Adapter(kind="hybrid", corpus="draft corpus"), params=params
+        )
+
+        def built() -> Pipeline:
+            return hybrid_pipeline(documents)
+
+        return _Source(
+            candidate,
+            "builtin",
+            dataset,
+            built,
+            config,
+            backend.get("corpus_version"),
+            None,
+            bool(documents) and all("vector" in d for d in documents),
+            blocker,
+        )
+    for key, registered in workspace.registry.items():
+        if candidate_config(registered, workspace.manifest_root).get("sha256") == config.get(
+            "sha256"
+        ):
+            adapter = registered.adapter
+
+            def opened(adapter: Adapter = adapter) -> Pipeline:
+                return open_adapter(adapter, workspace.manifest_root)
+
+            version = workspace.manifest.corpus_version if workspace.manifest else None
+            return _Source(
+                registered,
+                key,
+                dataset,
+                opened,
+                config,
+                version or backend.get("corpus_version"),
+                str(adapter.target) if adapter.kind == "http" else None,
+                False,
+                blocker,
+            )
+    candidate = Candidate(
+        name=label, adapter=Adapter(kind="python", target="unregistered:pipeline")
+    )
+    return _Source(
+        candidate,
+        "",
+        dataset,
+        None,
+        config,
+        None,
+        None,
+        False,
+        blocker
+        or "The pipeline that produced this run is not registered with the same configuration "
+        "in this workbench session.",
+    )
+
+
+def _fix(source: _Source, name: str) -> Any:
+    for fix in available_fixes(source.candidate, has_vectors=source.has_vectors):
+        if fix.name == name:
+            return fix
+    raise HTTPException(422, f"{source.candidate.name} declares no fix named {name!r}")
+
+
+def investigation_router(workspace: GuidedWorkspace) -> APIRouter:
+    """Routes under ``/api/guided``; the caller adds the session authorization."""
+    router = APIRouter()
+    trials = workspace.root / ".workbench" / "fixes"
+
+    def load(identifier: str) -> dict[str, Any]:
+        return load_run(workspace.run_path(identifier))
+
+    @router.post("/investigate")
+    def explain(body: InvestigateIn) -> dict[str, Any]:
+        run = load(body.run)
+        source = _source(workspace, run)
+        fixes = available_fixes(source.candidate, has_vectors=source.has_vectors)
+        baseline = load(body.baseline) if body.baseline else None
+        result = investigate(run, body.query_id, fixes, baseline=baseline)
+        held = sum(q.split == "heldout" for q in source.dataset.queries) if source.dataset else 0
+        explore = (
+            {q.query_id for q in source.dataset.queries if q.split == "explore"}
+            if (source.dataset)
+            else set()
+        )
+        return {
+            **result,
+            "question": run_questions(workspace, run)["texts"].get(body.query_id),
+            "pipeline": {
+                "name": source.candidate.name,
+                "remote": source.remote,
+                "params": dict(source.candidate.params),
+            },
+            "trial": {
+                "available": source.blocker is None and body.query_id in explore,
+                "reason": source.blocker
+                or (
+                    None
+                    if body.query_id in explore
+                    else "Held-out questions are reserved for validation; fixes are tried on "
+                    "exploratory questions."
+                ),
+                "explore_questions": len(explore),
+                "heldout_questions": held,
+                "repeats": (run.get("timing") or {}).get("repeats") or 1,
+                "k": run["search"]["k"],
+            },
+        }
+
+    def start(
+        run_id: str, confirm_remote: bool, kind: str, work: Any, source: _Source
+    ) -> dict[str, str]:
+        if source.blocker is not None or source.factory is None or source.dataset is None:
+            raise HTTPException(409, source.blocker or "This run cannot be run again here.")
+        if source.remote and not confirm_remote:
+            raise HTTPException(422, f"Confirm query transfer to {source.remote}")
+        identifier = uuid.uuid4().hex
+        trials.mkdir(parents=True, exist_ok=True)
+
+        def job(progress: ProgressFn) -> dict[str, Any]:
+            try:
+                progress(0, "Preparing pipeline")
+                result: dict[str, Any] = work(source.factory(), progress)
+            finally:
+                workspace.running.leave(identifier)
+            folder = trials / identifier
+            folder.mkdir(exist_ok=True)
+            for side, recorded in result.pop("runs").items():
+                write_run(folder / f"{side}.run.json", recorded)
+            result.update(kind=kind, run=run_id, id=identifier)
+            _write(trials / f"{identifier}.json", result)
+            return result
+
+        workspace.running.enter(identifier, source.pipeline_key)
+        try:
+            workspace.jobs.get_or_start(identifier, job)
+        except JobCapacityError as exc:
+            workspace.running.leave(identifier)
+            raise HTTPException(429, CAPACITY) from exc
+        return {"id": identifier}
+
+    @router.post("/fixes/try", status_code=202)
+    def trial(body: TrialIn) -> dict[str, str]:
+        run = load(body.run)
+        source = _source(workspace, run)
+        fix = _fix(source, body.fix)
+        if source.dataset is not None:
+            try_plan(source.dataset, body.query_ids, body.sample, body.seed)  # validate first
+        k, repeats = run["search"]["k"], (run.get("timing") or {}).get("repeats") or 1
+
+        def work(pipeline: Pipeline, progress: ProgressFn) -> dict[str, Any]:
+            progress(0.1, "Running current and fixed configurations")
+            assert source.dataset is not None
+            return try_fix(
+                source.dataset,
+                pipeline,
+                source.candidate,
+                fix,
+                body.query_ids,
+                k=k,
+                repeats=repeats,
+                sample=body.sample,
+                seed=body.seed,
+                config=source.config,
+                corpus_version=source.corpus_version,
+            )
+
+        try:
+            return start(body.run, body.confirm_remote, "trial", work, source)
+        except PipelineBusy as exc:
+            raise HTTPException(409, PIPELINE_BUSY) from exc
+
+    @router.post("/fixes/validate", status_code=202)
+    def validate(body: ValidateIn) -> dict[str, str]:
+        run = load(body.run)
+        source = _source(workspace, run)
+        fix = _fix(source, body.fix)
+        if not body.confirm_heldout:
+            raise HTTPException(422, "Confirm validation on held-out questions explicitly")
+        if source.dataset is not None and not any(
+            q.split == "heldout" for q in source.dataset.queries
+        ):
+            raise HTTPException(
+                422, "The benchmark has no held-out questions to validate the fix on"
+            )
+        rules, _ = workspace.policies.resolve(body.policy)
+        k, repeats = run["search"]["k"], (run.get("timing") or {}).get("repeats") or 1
+
+        def work(pipeline: Pipeline, progress: ProgressFn) -> dict[str, Any]:
+            progress(0.1, "Running both configurations on held-out questions")
+            assert source.dataset is not None
+            return validate_fix(
+                source.dataset,
+                pipeline,
+                source.candidate,
+                fix,
+                rules if body.policy is not None else None,
+                k=k,
+                repeats=repeats,
+                config=source.config,
+                corpus_version=source.corpus_version,
+            )
+
+        try:
+            return start(body.run, body.confirm_remote, "validation", work, source)
+        except PipelineBusy as exc:
+            raise HTTPException(409, PIPELINE_BUSY) from exc
+
+    @router.get("/fixes/{identifier}")
+    def saved(identifier: str) -> dict[str, Any]:
+        path = trials / f"{_identifier(identifier)}.json"
+        if path.is_symlink() or not path.is_file():
+            raise HTTPException(404, "Fix trial not found")
+        value: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return value
+
+    return router

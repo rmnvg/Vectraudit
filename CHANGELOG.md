@@ -17,6 +17,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Investigation panel in the guided workbench: from a finding, **Investigate this question**
+  shows the loss, unestablished causes, cautions and the pipeline's declared fixes, with
+  **Try this fix** and held-out **Validate** buttons running as workspace jobs.
 - Investigate and try a fix: `vectraudit workbench investigate` explains one failed
   question (losses, hypotheses, cautions, uncertainty) and lists the fixes its pipeline
   declares; `vectraudit workbench try-fix` runs current and fixed configurations

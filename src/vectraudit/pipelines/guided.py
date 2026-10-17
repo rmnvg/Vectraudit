@@ -630,6 +630,7 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
         }
 
     from vectraudit.pipelines.diagnostics import diagnostic_router
+    from vectraudit.pipelines.investigation_web import investigation_router
     from vectraudit.pipelines.release_workflow import release_router
     from vectraudit.pipelines.review import review_router
     from vectraudit.pipelines.workflows import workflow_router
@@ -638,4 +639,5 @@ def guided_router(workspace: GuidedWorkspace) -> APIRouter:
     router.include_router(release_router(workspace), dependencies=auth)
     router.include_router(review_router(workspace), dependencies=auth)
     router.include_router(diagnostic_router(workspace), dependencies=auth)
+    router.include_router(investigation_router(workspace), dependencies=auth)
     return router
