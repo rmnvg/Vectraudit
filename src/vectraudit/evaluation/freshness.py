@@ -231,6 +231,100 @@ def _served(
     }
 
 
+def run_time(run: Mapping[str, Any]) -> datetime:
+    """When a run was recorded: the moment its freshness is judged at."""
+    created = run.get("created_at")
+    if not isinstance(created, str):
+        return datetime.now(timezone.utc)
+    return _time(created)
+
+
+def question_freshness(
+    changes: Sequence[Change],
+    sources: Mapping[str, SourceRecord],
+    run: Mapping[str, Any],
+    query_id: str,
+    *,
+    dataset: Dataset | None = None,
+    ids: str = "chunk",
+    window_minutes: int = DEFAULT_WINDOW_MINUTES,
+) -> dict[str, Any]:
+    """Freshness evidence for one question of a run, judged at the run's recorded time.
+
+    ``changes`` lists only the changes to sources this question touched: delivered,
+    labelled relevant, or replacing one of those. ``stale`` and ``conflicts`` are what the
+    run delivered for this question. With source IDs in results, stale chunk revisions
+    cannot be told apart, so ``chunk_level`` is false and only removed sources are found.
+    """
+    report = check_freshness(
+        changes,
+        sources,
+        as_of=run_time(run),
+        window_minutes=window_minutes,
+        run=run if ids == "chunk" else None,
+        dataset=dataset,
+    )
+    owner = {c.chunk_id: s.source_id for s in sources.values() for c in s.chunks}
+    query: Mapping[str, Any] = next(
+        (q for q in run.get("queries") or [] if q.get("query_id") == query_id), {}
+    )
+    delivered = list(query.get("ids") or [])
+    label = next((q for q in dataset.queries if q.query_id == query_id), None) if dataset else None
+    historical = label is not None and HISTORICAL_TAG in label.cohort_tags
+    labelled = (
+        {d for d, g in label.relevant.items() if g > 0} | {s.doc_id for s in label.relevant_spans}
+        if label
+        else set()
+    )
+    touched = {owner.get(i, i) for i in [*delivered, *labelled]}
+    rows = [
+        row
+        for row in report["changes"]
+        if row["source_id"] in touched
+        or any(
+            c.source_id == row["source_id"] and c.replaced_by in touched
+            for c in changes
+            if c.change == "replace"
+        )
+    ]
+    served = report["served"] or {}
+    stale = [s for s in served.get("stale") or [] if s["query_id"] == query_id]
+    if ids == "source" and not historical:
+        removed = {
+            row["source_id"]
+            for row in rows
+            if row["change"] != "update" and row["status"] in ("lingering", "pending")
+        }
+        # A removed source still delivered; with source IDs an updated one cannot be judged.
+        stale = [
+            {
+                "query_id": query_id,
+                "chunk_id": doc,
+                "source_id": doc,
+                "change": next(r["change"] for r in rows if r["source_id"] == doc),
+                "where": "results",
+            }
+            for doc in delivered
+            if doc in removed
+        ]
+    # Labelled documents whose new content is not indexed yet: retrieval cannot find them.
+    replaced = {c.source_id: c.replaced_by for c in changes if c.change == "replace"}
+    waiting = {
+        replaced.get(row["source_id"]) or row["source_id"]
+        for row in rows
+        if row["new_content_indexed"] is False
+    }
+    return {
+        "as_of": report["as_of"],
+        "chunk_level": ids == "chunk",
+        "unindexed_labels": sorted(d for d in labelled if owner.get(d, d) in waiting),
+        "historical": historical,
+        "changes": rows,
+        "stale": stale,
+        "conflicts": [c for c in served.get("conflicts") or [] if c["query_id"] == query_id],
+    }
+
+
 def render(report: Mapping[str, Any]) -> str:
     """The freshness report as plain text for the terminal."""
     counts = report["counts"]

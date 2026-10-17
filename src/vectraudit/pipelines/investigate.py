@@ -28,6 +28,7 @@ from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import Dataset, parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.exceptions import failing_rules
+from vectraudit.evaluation.freshness import HISTORICAL_TAG
 from vectraudit.evaluation.lineage import EXPLAIN as LINEAGE_EXPLAIN
 from vectraudit.evaluation.lineage import INGESTION
 from vectraudit.evaluation.policy import Policy, policy_sha256
@@ -202,13 +203,18 @@ def investigate(
     *,
     baseline: Mapping[str, Any] | None = None,
     lineage: Sequence[Mapping[str, Any]] | None = None,
+    freshness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """What one question lost, the facts, possible causes and the declared fixes to try.
 
     ``lineage`` holds this question's rows from :func:`vectraudit.evaluation.lineage.
     check_lineage`. A passage lost during ingestion becomes an ``ingestion`` loss, and
     retrieval fixes are not suggested for its document: they cannot recover text that was
-    never indexed intact.
+    never indexed intact. ``freshness`` is this question's
+    :func:`vectraudit.evaluation.freshness.question_freshness`: retired content it was
+    served becomes a ``stale_content`` loss, versions delivered together a
+    ``conflicting_versions`` loss, and a labelled document whose new content is not indexed
+    yet gets no retrieval fix either.
     """
     by_id = {q["query_id"]: q for q in run["queries"]}
     if query_id not in by_id:
@@ -273,6 +279,9 @@ def investigate(
             "chunking or indexing first: retrieval changes cannot recover text that is not "
             "indexed intact."
         )
+    if freshness is not None:
+        _add_freshness(freshness, losses, hypotheses, cautions, uncertainty)
+        explained |= set(freshness["unindexed_labels"])
     fixable = [
         loss
         for loss in losses
@@ -323,7 +332,63 @@ def investigate(
         "fixes": suggested,
         "unaddressed": unaddressed,
         "lineage": list(lineage) if lineage is not None else None,
+        "freshness": dict(freshness) if freshness is not None else None,
     }
+
+
+def _add_freshness(
+    freshness: Mapping[str, Any],
+    losses: list[dict[str, Any]],
+    hypotheses: list[str],
+    cautions: list[str],
+    uncertainty: list[str],
+) -> None:
+    """Stale and conflicting content, and changes still propagating, for one question."""
+    for hit in freshness["stale"]:
+        losses.append(
+            {
+                "class": "stale_content",
+                "doc_id": hit["chunk_id"],
+                "detail": f"{hit['change']} of {hit['source_id']}; reached the {hit['where']}",
+            }
+        )
+    for conflict in freshness["conflicts"]:
+        losses.append(
+            {
+                "class": "conflicting_versions",
+                "doc_id": conflict["source_id"],
+                "detail": "revisions " + ", ".join(conflict["revisions"]),
+            }
+        )
+    if freshness["stale"] or freshness["conflicts"]:
+        hypotheses.append(
+            "The index still holds content the change log retired: the old revision was not "
+            "removed when the source changed, or a cache still serves it."
+        )
+        cautions.append(
+            "Stale content is an indexing or cache defect. Re-index or purge the old "
+            "revision; ranking changes only hide it."
+        )
+    for doc in freshness["unindexed_labels"]:
+        hypotheses.append(
+            f"{doc}: its new content is not indexed yet, so no retrieval change can find it."
+        )
+    pending = [r["source_id"] for r in freshness["changes"] if r["status"] == "pending"]
+    if pending:
+        uncertainty.append(
+            ", ".join(pending)
+            + " changed and is still inside its propagation window; results may still change."
+        )
+    if not freshness["chunk_level"]:
+        uncertainty.append(
+            "Results are source IDs, so an old revision of an updated source cannot be told "
+            "apart from the new one."
+        )
+    if freshness["historical"]:
+        uncertainty.append(
+            f"This question is tagged {HISTORICAL_TAG}, so old content is allowed and was "
+            "not flagged."
+        )
 
 
 def _subset(dataset: Dataset, ids: Sequence[str]) -> Dataset:

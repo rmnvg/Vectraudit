@@ -1716,6 +1716,28 @@ a broken export or ID mode; the CLI) and 1 frontend test. Full suite (1,720 pass
 skipped), ruff, mypy on Python 3.12 and 3.10, the frontend checks and build, and the guided
 journey pass; the panel section was checked in Chromium with a registered export.
 
+## Step 52: freshness in investigations (2.1 meets 1.3)
+
+- **`workbench serve --changes changes.jsonl`** (beside `--lineage`) registers a content
+  change log at startup, validated immediately; a change log without lineage is refused.
+  `workbench investigate --changes` does the same on the command line.
+- **`question_freshness`** judges the changes to sources one question touched (delivered,
+  labelled relevant, or replacing one of those) at the time the run was recorded.
+- **The investigation panel** gains a *Knowledge freshness* section. Stale content served
+  becomes a `stale_content` loss (results or context), two revisions delivered together a
+  `conflicting_versions` loss, with a re-index-or-purge caution; neither is a fixable class.
+  Labelled content whose new revision or replacement is not indexed gets no retrieval fix.
+  Pending changes, historical questions and source-level IDs are stated as uncertainty.
+
+Not included: propagation across a series of exports, caches outside the index, and a
+customer's change log.
+
+Validation: 7 new Python tests (stale context and conflicts as losses; unindexed labels
+withhold fixes; pending changes; historical exemption; source-ID mode; the workbench API;
+startup refusal; the CLI) and 1 frontend test. Full suite (1,727 passed, 22 skipped), ruff,
+mypy on Python 3.12 and 3.10 and the frontend checks and build pass; the panel section was
+checked in Chromium on the starter example with a registered change log.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

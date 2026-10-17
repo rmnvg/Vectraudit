@@ -19,6 +19,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Investigations use a content change log (`workbench serve --changes`, `investigate
+  --changes`, with `--lineage`): stale content a question was served and conflicting
+  versions become losses with a re-index caution, the panel lists changes to the sources the
+  question touched, and labelled content not yet indexed gets no retrieval fix.
 - Investigations use a lineage export (`workbench serve --lineage`, `investigate --lineage`):
   passages lost during ingestion are named in the panel, and retrieval fixes are no longer
   suggested for them.

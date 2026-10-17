@@ -25,10 +25,11 @@ def create_workbench(
     policy: Path | None = None,
     lineage: Path | None = None,
     lineage_ids: str = "chunk",
+    changes: Path | None = None,
 ) -> FastAPI:
     """Serve a bounded artifact directory and the shared product UI."""
     root = directory.resolve()
-    workspace = GuidedWorkspace(root, manifest, policy, lineage, lineage_ids)
+    workspace = GuidedWorkspace(root, manifest, policy, lineage, lineage_ids, changes)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

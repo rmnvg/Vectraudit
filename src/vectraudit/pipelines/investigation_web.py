@@ -250,7 +250,21 @@ def investigation_router(workspace: GuidedWorkspace) -> APIRouter:
                 source.dataset, workspace.lineage, run, ids=workspace.lineage_ids
             )
             lineage = [r for r in report["rows"] if r["query_id"] == body.query_id]
-        result = investigate(run, body.query_id, fixes, baseline=baseline, lineage=lineage)
+        freshness = None
+        if workspace.changes is not None and workspace.lineage is not None:
+            from vectraudit.evaluation.freshness import question_freshness
+
+            freshness = question_freshness(
+                workspace.changes,
+                workspace.lineage,
+                run,
+                body.query_id,
+                dataset=source.dataset,
+                ids=workspace.lineage_ids,
+            )
+        result = investigate(
+            run, body.query_id, fixes, baseline=baseline, lineage=lineage, freshness=freshness
+        )
         held = sum(q.split == "heldout" for q in source.dataset.queries) if source.dataset else 0
         explore = (
             {q.query_id for q in source.dataset.queries if q.split == "explore"}

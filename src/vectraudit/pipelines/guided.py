@@ -154,6 +154,7 @@ class GuidedWorkspace:
         policy: Path | None = None,
         lineage: Path | None = None,
         lineage_ids: str = "chunk",
+        changes: Path | None = None,
     ) -> None:
         from vectraudit.pipelines.release_workflow import PolicyStore
 
@@ -182,6 +183,11 @@ class GuidedWorkspace:
             raise LineageError("lineage IDs must be chunk or source")
         self.lineage = read_manifest(lineage) if lineage else None
         self.lineage_ids = lineage_ids
+        if changes is not None and self.lineage is None:
+            raise LineageError("a change log needs the lineage export it is checked against")
+        from vectraudit.evaluation.freshness import read_changes
+
+        self.changes = read_changes(changes) if changes else None
         self._run_summaries: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
 
     def run_summary(self, identifier: str) -> dict[str, Any]:
