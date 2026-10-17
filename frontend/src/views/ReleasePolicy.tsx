@@ -87,12 +87,21 @@ function PolicyEditor({ token, base, onSaved }: { token: string; base: PolicyRec
       </div>)}</div></div>
 
     <div className="space-y-2"><h4 className="text-sm font-semibold">Critical questions</h4>
-      <p className="text-xs text-muted">Require a particular document within the top results for a question. These rules judge the candidate’s recorded ranking even when average quality improves. The question must be in the selected benchmark split and maximum rank must not exceed retrieval k. Repeated calls currently use the first recorded ranking.</p>
+      <p className="text-xs text-muted">Require a particular document within the top results for a question. These rules judge the candidate’s recorded ranking even when average quality improves. The question must be in the selected benchmark split and maximum rank must not exceed retrieval k. Every repeated execution must meet the rank.</p>
       {form.criticalQueries.map((rule, index) => <div key={index} className="flex flex-wrap items-end gap-3">
         {(['queryId', 'docId', 'maxRank'] as const).map(field => <label key={field} className="min-w-0 text-xs">{field === 'queryId' ? 'Query ID' : field === 'docId' ? 'Document ID' : 'Maximum rank'}<input aria-label={`Critical ${index + 1} ${field}`} className={field === 'maxRank' ? small : input} value={rule[field]} onChange={e => update({ criticalQueries: form.criticalQueries.map((item, i) => i === index ? { ...item, [field]: e.target.value } : item) })} /></label>)}
         <button className={button} onClick={() => update({ criticalQueries: form.criticalQueries.filter((_, i) => i !== index) })}>Remove assertion {index + 1}</button>
       </div>)}
       <button className={button} onClick={() => update({ criticalQueries: [...form.criticalQueries, { queryId: '', docId: '', maxRank: '3' }] })}>Add critical assertion</button>
+    </div>
+
+    <div className="space-y-2"><h4 className="text-sm font-semibold">Evidence that must reach the model</h4>
+      <p className="text-xs text-muted">The question’s required evidence (declared in the benchmark) must reach the model in full on every execution, as the pipeline’s model-context records show. Unrecorded or unknown context is not comparable, never a pass.</p>
+      {form.criticalContext.map((queryId, index) => <div key={index} className="flex flex-wrap items-end gap-3">
+        <label className="min-w-0 text-xs">Question ID<input aria-label={`Context ${index + 1} queryId`} className={input} value={queryId} onChange={e => update({ criticalContext: form.criticalContext.map((item, i) => i === index ? e.target.value : item) })} /></label>
+        <button className={button} onClick={() => update({ criticalContext: form.criticalContext.filter((_, i) => i !== index) })}>Remove context assertion {index + 1}</button>
+      </div>)}
+      <button className={button} onClick={() => update({ criticalContext: [...form.criticalContext, ''] })}>Add context assertion</button>
     </div>
 
     <div className="grid gap-4 sm:grid-cols-3">

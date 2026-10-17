@@ -64,6 +64,7 @@ export interface InvestigationRecord {
   requests: { what: string; by: string; at: string }[]
   trials: { id: string; fix: string | null }[]; validations: { id: string; fix: string | null; approved: boolean }[]
   outcome: string | null
+  protections?: { policy_id: string; name: string; version: number; rules: { kind: string }[]; by: string }[]
   measures?: { minutes_to_accepted_diagnosis: number | null; minutes_to_verified_fix: number | null; reproduced_by_second_engineer: boolean }
 }
 export const OUTCOMES = [

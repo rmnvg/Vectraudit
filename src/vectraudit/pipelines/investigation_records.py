@@ -171,3 +171,63 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         "note": "Names are self-reported in the local workbench. Small counts are stories, "
         "not rates; report them with their denominators.",
     }
+
+
+def protection_policy(
+    raw: Mapping[str, Any], query_id: str, *, context: bool, rank: tuple[str, int] | None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """``raw`` plus rules protecting one question; returns the policy and the rules added.
+
+    Existing rules are kept and not duplicated; nothing else in the policy changes.
+    """
+    if not context and rank is None:
+        raise ValueError("choose at least one rule: evidence in context or a document's rank")
+    policy = {key: value for key, value in raw.items()}
+    added: list[dict[str, Any]] = []
+    if context:
+        rules = list(policy.get("critical_context") or [])
+        if all(rule.get("query_id") != query_id for rule in rules):
+            rule = {"query_id": query_id}
+            rules.append(rule)
+            added.append({"kind": "context", **rule})
+        policy["critical_context"] = rules
+    if rank is not None:
+        doc_id, max_rank = rank
+        rules = list(policy.get("critical_queries") or [])
+        existing = [r for r in rules if (r.get("query_id"), r.get("doc_id")) == (query_id, doc_id)]
+        if existing and existing[0].get("max_rank") != max_rank:
+            raise ValueError(
+                f"the policy already requires {doc_id} within the top "
+                f"{existing[0].get('max_rank')} for this question; edit it in the policy editor"
+            )
+        if not existing:
+            rank_rule: dict[str, Any] = {
+                "query_id": query_id,
+                "doc_id": doc_id,
+                "max_rank": max_rank,
+            }
+            rules.append(rank_rule)
+            added.append({"kind": "rank", **rank_rule})
+        policy["critical_queries"] = rules
+    return policy, added
+
+
+def record_protection(
+    record: dict[str, Any], policy: Mapping[str, Any], added: list[dict[str, Any]], by: str
+) -> None:
+    """Note which policy version now protects the question. Allowed on a closed record."""
+    if record.get("outcome") != "fixed":
+        raise ValueError("protect a question after its fix is verified and the record closed")
+    at = now()
+    record.setdefault("protections", []).append(
+        {
+            "policy_id": policy["id"],
+            "name": policy["name"],
+            "version": policy["version"],
+            "sha256": policy["sha256"],
+            "rules": added,
+            "by": by,
+            "at": at,
+        }
+    )
+    record["events"].append({"at": at, "kind": "protected", "by": by, "policy_id": policy["id"]})

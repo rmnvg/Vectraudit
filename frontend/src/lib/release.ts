@@ -48,6 +48,8 @@ export interface PolicyForm {
   /** How allowed drops are judged: the measured change, clear harm, or shown within tolerance. */
   dropTest: DropTest
   criticalQueries: { queryId: string; docId: string; maxRank: string }[]
+  /** Questions whose required evidence must reach the model on every execution. */
+  criticalContext: string[]
 }
 
 /** The scaffolded CI policy (`vectraudit init`): a reasonable first release contract. */
@@ -67,6 +69,9 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 export function formFromPolicy(raw: RawPolicy): PolicyForm {
   if ('critical_queries' in raw && (!Array.isArray(raw.critical_queries) || raw.critical_queries.some(item => !item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !['query_id', 'doc_id', 'max_rank'].includes(key))))) {
     throw new Error('critical_queries must be a list of query_id, doc_id and max_rank rules.')
+  }
+  if ('critical_context' in raw && (!Array.isArray(raw.critical_context) || raw.critical_context.some(item => !item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => key !== 'query_id')))) {
+    throw new Error('critical_context must be a list of query_id rules.')
   }
   const metrics = object(raw.metrics)
   const latency = object(raw.latency)
@@ -94,6 +99,7 @@ export function formFromPolicy(raw: RawPolicy): PolicyForm {
       const rule = object(item)
       return { queryId: typeof rule.query_id === 'string' ? rule.query_id : '', docId: typeof rule.doc_id === 'string' ? rule.doc_id : '', maxRank: text(rule.max_rank) }
     }) : [],
+    criticalContext: Array.isArray(raw.critical_context) ? raw.critical_context.map(item => { const id = object(item).query_id; return typeof id === 'string' ? id : '' }) : [],
   }
 }
 
@@ -143,7 +149,15 @@ export function policyFromForm(form: PolicyForm): { policy?: RawPolicy; errors: 
     return { query_id: rule.queryId, doc_id: rule.docId, max_rank: rank }
   })
   if (criticalQueries.length > 1000) errors.push('Use at most 1000 critical assertions.')
-  if (!Object.keys(metrics).length && maxRegressed === undefined && !Object.keys(cohortMetrics).length && !criticalQueries.length) {
+  const contextSeen = new Set<string>()
+  const criticalContext = form.criticalContext.map((queryId, i) => {
+    if (!queryId.trim() || queryId.length > 512) errors.push(`Context assertion ${i + 1} needs a question ID of 1–512 characters.`)
+    if (contextSeen.has(queryId)) errors.push(`Context assertion ${i + 1} repeats a question.`)
+    contextSeen.add(queryId)
+    return { query_id: queryId }
+  })
+  if (criticalContext.length > 1000) errors.push('Use at most 1000 context assertions.')
+  if (!Object.keys(metrics).length && maxRegressed === undefined && !Object.keys(cohortMetrics).length && !criticalQueries.length && !criticalContext.length) {
     errors.push('Add at least one quality rule: a metric, a regressed-question limit or a cohort rule.')
   }
   const latency: Record<string, number | boolean> = {}
@@ -171,6 +185,7 @@ export function policyFromForm(form: PolicyForm): { policy?: RawPolicy; errors: 
     require_significance: form.dropTest === 'significance',
     ...(form.dropTest === 'non_inferiority' && { non_inferiority: true }),
     ...(criticalQueries.length > 0 && { critical_queries: criticalQueries }),
+    ...(criticalContext.length > 0 && { critical_context: criticalContext }),
     ...form.preserved,
   }
   return errors.length ? { errors } : { policy, errors }

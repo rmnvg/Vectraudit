@@ -106,3 +106,77 @@ def test_reproduction_needs_a_second_person():
         {"id": "c", "fix": "f", "by": "Ben", "approved": True, "at": record["opened_at"]}
     )
     assert measures(record)["reproduced_by_second_engineer"] is True
+
+
+def fixed_record(client):
+    run = evaluate(client, save(client))
+    record = opened(client, run)
+    post(client, record, "diagnosis", {"status": "accepted", "by": "Asha"})
+    body = {"run": run["run_id"], "fix": FIX, "policy": "startup", "confirm_heldout": True}
+    validation = start(client, "fixes/validate", body)
+    post(client, record, "results", {"result": validation["id"], "by": "Asha"})
+    return post(client, record, "close", {"outcome": "fixed", "by": "Asha"})
+
+
+def test_a_verified_fix_protects_its_question_in_a_new_policy_version(client):
+    policy = client.post(
+        "/api/guided/policies",
+        json={"name": "Refunds release", "policy": {"metrics": {"ndcg": {"max_drop": 0.0}}}},
+    ).json()
+    record = fixed_record(client)
+    rank = {"policy": policy["id"], "by": "Asha", "doc_id": "b", "max_rank": 1}
+    result = post(client, record, "protect", rank)
+    assert result["added"] == [{"kind": "rank", "query_id": "refund", "doc_id": "b", "max_rank": 1}]
+    assert (result["policy"]["name"], result["policy"]["version"]) == ("Refunds release", 2)
+    assert result["policy"]["supersedes"] == policy["id"]
+    assert result["policy"]["policy"]["critical_queries"] == [
+        {"query_id": "refund", "doc_id": "b", "max_rank": 1}
+    ]
+    assert result["policy"]["policy"]["metrics"] == {"ndcg": {"max_drop": 0.0}}  # kept
+    assert "investigation" in result["policy"]["note"]
+    assert result["record"]["protections"][0]["version"] == 2
+
+    again = post(client, record, "protect", {**rank, "policy": result["policy"]["id"]})
+    assert again["added"] == []  # already protected: no duplicate rule, same version
+    assert again["policy"]["version"] == 2
+    post(
+        client, record, "protect", {**rank, "max_rank": 2, "policy": result["policy"]["id"]}, 422
+    )  # a conflicting rank is changed in the editor, not silently replaced
+
+    # The built-in pipeline records no model context: a context rule could never be judged.
+    post(client, record, "protect", {"policy": policy["id"], "by": "Asha", "context": True}, 422)
+    post(
+        client,
+        record,
+        "protect",
+        {"policy": "startup", "by": "Asha", "doc_id": "b", "max_rank": 1},
+        422,
+    )
+    post(client, record, "protect", {**rank, "max_rank": 5}, 422)  # beyond the run's k
+
+
+def test_only_a_verified_fix_can_be_protected(client):
+    policy = client.post(
+        "/api/guided/policies",
+        json={"name": "P", "policy": {"metrics": {"ndcg": {"max_drop": 0.0}}}},
+    ).json()
+    record = opened(client, evaluate(client, save(client)))
+    post(
+        client,
+        record,
+        "protect",
+        {"policy": policy["id"], "by": "Asha", "doc_id": "b", "max_rank": 1},
+        409,
+    )
+
+
+def test_protection_rules_add_without_duplicating():
+    from vectraudit.pipelines.investigation_records import protection_policy
+
+    raw = {"metrics": {}, "critical_context": [{"query_id": "q"}]}
+    policy, added = protection_policy(raw, "q", context=True, rank=None)
+    assert added == []
+    assert policy["critical_context"] == [{"query_id": "q"}]
+    policy, added = protection_policy(raw, "r", context=True, rank=("d", 3))
+    assert [a["kind"] for a in added] == ["context", "rank"]
+    assert raw["critical_context"] == [{"query_id": "q"}]  # the input is not modified

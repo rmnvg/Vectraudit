@@ -1565,9 +1565,38 @@ to record a name, accept the diagnosis, link the trial and measurement automatic
 close the investigation. Full suite, ruff, mypy on Python 3.12 and 3.10, TypeScript,
 Oxlint, 105 frontend tests, the build and the guided, market-fit and release journeys pass.
 
+## Step 46: protect the repaired question, and keep context rules through edits
+
+§11's fifth decision is "protect and return": the verified configuration and the case it
+fixed should be checked automatically from then on. After Step 45 that still meant typing a
+rule into the policy editor by hand, and the editor could not express Step 44's rule.
+
+- **Defect fixed:** the workbench policy editor kept only `exceptions` among the blocks it
+  does not edit, so editing and saving a policy with `critical_context` dropped the rule
+  silently. It now has context assertions (**Add context assertion**), validates them, and
+  keeps them through every save. Stale help text claiming critical rules judge only the first
+  ranking was corrected.
+- **Protect this question:** on an investigation closed as fixed, the panel adds a context
+  rule and/or a rank rule for the question to a saved policy, as a new version noting the
+  investigation. Duplicates are no-ops; conflicting ranks are refused for the editor;
+  context rules are refused when the pipeline records no model context; ranks above the
+  run's k and the read-only startup policy are refused. The investigation records which
+  policy version protects the question.
+
+Not included: protecting from the CLI-only path, and automatically selecting the new policy
+version for the next comparison (the panel says to select it).
+
+Validation: 3 new API tests (protection in a new version with existing rules kept, duplicate
+and conflicting rules, context refusal without context records, startup and k limits; only a
+verified fix can protect; rule builder never mutates its input), 1 frontend test for the
+editor round trip, and a browser journey under a saved policy: investigate, try the fix,
+validate (approved), close as fixed and protect, confirmed through the API to produce
+version 2 with the rule. Full suite, ruff, mypy on Python 3.12 and 3.10, TypeScript, Oxlint,
+106 frontend tests, the build and the guided, market-fit and release journeys pass.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–45). What remains needs owner
+The code-only work the strategy names is done (Steps 1–46). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 

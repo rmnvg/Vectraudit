@@ -65,3 +65,15 @@ describe('release policy form', () => {
     expect(policyLabel({ id: 'x', name: 'Release', version: 2, sha256: 'a'.repeat(64), source: 'workspace' })).toBe('Release v2 · aaaaaaaaaaaa')
   })
 })
+
+it('keeps context assertions through an edit instead of dropping them', () => {
+  const raw = { version: 1, metrics: { ndcg: { max_drop: 0.02 } }, critical_context: [{ query_id: 'account-recovery' }] }
+  const { policy, errors } = policyFromForm(formFromPolicy(raw))
+  expect(errors).toEqual([])
+  expect(policy?.critical_context).toEqual([{ query_id: 'account-recovery' }])
+  expect(() => formFromPolicy({ critical_context: [{ query_id: 'q', doc_id: 'd' }] })).toThrow()
+  const repeated = formFromPolicy({ ...raw, critical_context: [{ query_id: 'q' }, { query_id: 'q' }] })
+  expect(policyFromForm(repeated).errors).toContain('Context assertion 2 repeats a question.')
+  const onlyContext = policyFromForm({ ...formFromPolicy({ critical_context: [{ query_id: 'q' }] }) })
+  expect(onlyContext.errors).toEqual([])
+})
