@@ -864,6 +864,71 @@ def lineage_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("freshness")
+def freshness_command(
+    changes: Annotated[Path, typer.Argument(help="Content change log (JSONL).")],
+    manifest: Annotated[
+        Path, typer.Argument(help="Lineage export taken after the changes (JSONL).")
+    ],
+    run: Annotated[Path | None, typer.Option(help="A run recorded after the changes.")] = None,
+    dataset: Annotated[
+        Path | None,
+        typer.Option(help="The run's benchmark, so questions tagged historical are exempt."),
+    ] = None,
+    as_of: Annotated[
+        str | None,
+        typer.Option(help="ISO time the export reflects; default the run's time, else now."),
+    ] = None,
+    window_minutes: Annotated[
+        int, typer.Option(min=0, help="Propagation window for changes that declare none.")
+    ] = 60,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_stale: Annotated[
+        bool,
+        typer.Option(
+            "--fail-on-stale",
+            help="Exit 3 when content is overdue, lingering, stale in results or conflicting.",
+        ),
+    ] = False,
+) -> None:
+    """Knowledge freshness: did each content change reach the index, results and context?
+
+    Changes still inside their propagation window are pending, not failures. Reads your
+    exports only; nothing is re-indexed and no document text is read.
+    """
+    from datetime import datetime, timezone
+
+    from vectraudit.evaluation.freshness import check_freshness, read_changes, render
+    from vectraudit.evaluation.lineage import read_manifest
+
+    try:
+        recorded = load_run(run) if run else None
+        if as_of:
+            moment = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        elif recorded is not None:
+            moment = datetime.fromisoformat(recorded["created_at"])
+        else:
+            moment = datetime.now(timezone.utc)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        report = check_freshness(
+            read_changes(changes),
+            read_manifest(manifest),
+            as_of=moment,
+            window_minutes=window_minutes,
+            run=recorded,
+            dataset=load_dataset(dataset) if dataset else None,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Freshness error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_stale and report["failing"]:
+        raise typer.Exit(3)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None
