@@ -1902,6 +1902,30 @@ Validation: 2 new tests (the three defects and corrections; the folder's reports
 formats the Checks tab reads); the page and the Checks tab were checked in Chromium. Full
 suite, ruff and mypy pass.
 
+## Step 60: second verdict audit (§9 correctness gate)
+
+Steps 49–59 added new paths into the release verdict, so the Step 38 audit was repeated on
+them. Three defects were found, each with a regression test that fails on the old code:
+
+- **A clean retry hid a leak.** When a question failed partway (repeat 1 served a forbidden
+  document, repeat 2 errored), its attempt history kept only rankings, and the retried
+  attempt was the only one judged, so the check **passed**. Failed attempts now keep the
+  forbidden documents they served and their permission path; any leak in a failed attempt
+  (results, model context or a forbidden stage) fails the safety rule. Hosted checks agree,
+  because uploads carry the same fields.
+- **Dropping context instrumentation passed silently.** A candidate that stopped recording
+  model context could not be checked for forbidden documents reaching the model, yet the
+  comparison passed. Losing context coverage the baseline had is now not comparable.
+- **Freshness raised a false alarm.** Old content served while its change was inside the
+  propagation window counted as failing, contradicting "pending is not a failure". It is
+  now reported under `served.pending`.
+
+Validation: 5 regression tests (each fails on the previous code). Full suite (1,785 passed,
+22 skipped) and frontend tests (115) pass. One run had a single failure that did not
+reproduce in two reruns; it is noted here as a possible intermittent test, not resolved.
+This remains a review by the code's author; the scorecard keeps the gate open for an
+independent one.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

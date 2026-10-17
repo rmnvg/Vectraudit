@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -132,6 +133,7 @@ def check_freshness(
         latest[change.source_id] = change
     rows: list[dict[str, Any]] = []
     stale_ids: dict[str, dict[str, str]] = {}
+    pending: set[str] = set()
     for change in latest.values():
         window = change.window_minutes if change.window_minutes is not None else window_minutes
         deadline = _time(change.changed_at) + timedelta(minutes=window)
@@ -140,6 +142,8 @@ def check_freshness(
         indexed = _new_indexed(change, sources)
         for chunk in stale:
             stale_ids[chunk] = {"source_id": change.source_id, "change": change.change}
+        if within:
+            pending.add(change.source_id)
         if not within and stale:
             status = "lingering"
         elif not within and indexed is False:
@@ -159,7 +163,7 @@ def check_freshness(
                 "stale_chunks": stale,
             }
         )
-    served = _served(run, dataset, stale_ids, sources) if run is not None else None
+    served = _served(run, dataset, stale_ids, sources, pending) if run is not None else None
     counts: dict[str, int] = {}
     for row in rows:
         status = str(row["status"])
@@ -182,8 +186,13 @@ def _served(
     dataset: Dataset | None,
     stale_ids: Mapping[str, Mapping[str, str]],
     sources: Mapping[str, SourceRecord],
+    pending: AbstractSet[str] = frozenset(),
 ) -> dict[str, Any]:
-    """Stale content a run delivered or put in context, and conflicting versions."""
+    """Stale content a run delivered or put in context, and conflicting versions.
+
+    Old content of a source whose change is still inside its window is expected while it
+    propagates: it is listed under ``pending``, never counted as stale or conflicting.
+    """
     historical = (
         {q.query_id for q in dataset.queries if HISTORICAL_TAG in q.cohort_tags}
         if dataset
@@ -192,7 +201,9 @@ def _served(
     revision_of = {
         c.chunk_id: (s.source_id, c.indexed_revision) for s in sources.values() for c in s.chunks
     }
-    stale, conflicts = [], []
+    stale: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+    waiting: list[dict[str, Any]] = []
     for q in run.get("queries") or []:
         if q.get("error") or q["query_id"] in historical:
             continue
@@ -201,7 +212,7 @@ def _served(
         in_context = {item["id"] for item in (context or {}).get("items") or []}
         for chunk in delivered:
             if chunk in stale_ids:
-                stale.append(
+                (waiting if stale_ids[chunk]["source_id"] in pending else stale).append(
                     {
                         "query_id": q["query_id"],
                         "chunk_id": chunk,
@@ -216,7 +227,7 @@ def _served(
                 versions.setdefault(source, set()).add(revision)
         for source, seen in versions.items():
             if len(seen - {None}) > 1:
-                conflicts.append(
+                (waiting if source in pending else conflicts).append(
                     {
                         "query_id": q["query_id"],
                         "source_id": source,
@@ -228,6 +239,7 @@ def _served(
         "historical_questions_exempt": sorted(historical),
         "stale": stale,
         "conflicts": conflicts,
+        "pending": waiting,
     }
 
 
@@ -354,6 +366,11 @@ def render(report: Mapping[str, Any]) -> str:
             lines.append(
                 f"  {conflict['query_id']}: {conflict['source_id']} delivered in revisions "
                 + ", ".join(conflict["revisions"])
+            )
+        if served.get("pending"):
+            lines.append(
+                f"{len(served['pending'])} old or conflicting result(s) belong to changes still "
+                "inside their window; not failures yet."
             )
         if served["historical_questions_exempt"]:
             lines.append(

@@ -271,6 +271,15 @@ def _check_query(q: Any, k: int) -> None:
             or _rankings(result["repeat_ids"], k),
             "attempt repeat_ids must be rankings",
         )
+        if result is not None and result.get("forbidden_ids"):
+            _expect(
+                isinstance(result["forbidden_ids"], list)
+                and all(isinstance(d, str) for d in result["forbidden_ids"])
+                and result.get("permission_checked") is True,
+                "attempt forbidden_ids must be document ids from a permission check",
+            )
+        if result is not None and "permission_path" in result:
+            _permission_path(result)
     if error is not None:
         return
     ids = q.get("ids")
