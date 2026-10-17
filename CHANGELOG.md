@@ -19,6 +19,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Source-to-context lineage (`vectraudit workbench lineage`): follows each labelled passage
+  through a customer-exported ingestion manifest and an optional run, names the first stage
+  that lost it (extraction, chunk boundary, index, stale revision, retrieval, delivery or
+  context), and lists empty, stale and duplicate chunks; `--fail-on-ingestion` gates CI.
 - Shared investigations: investigation records can be shared with the hosted project
   (states, counts, times, outcome and protecting policy versions; no names or free text), and
   hosted recurring problems link to them.
