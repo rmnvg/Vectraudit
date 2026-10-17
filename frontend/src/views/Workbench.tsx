@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import RepeatSelector from '../components/RepeatSelector'
 import { executionView } from '../lib/repeats'
 import GuidedWorkflow from './GuidedWorkflow'
+import CheckReports from './CheckReports'
+import { isCheckReport } from '../lib/checks'
+import type { CheckReport } from '../lib/checks'
 import { parseArtifact } from '../lib/workbench'
 import type { Answer, Artifact, Benchmark, ContextEvidence, Monitor, Optimization, Run } from '../lib/workbench'
 
-const tabs = ['Guided workflow', 'Pipeline runs', 'Experiments', 'Benchmark', 'Monitoring', 'Setup'] as const
+const tabs = ['Guided workflow', 'Pipeline runs', 'Experiments', 'Benchmark', 'Monitoring', 'Checks', 'Setup'] as const
 type Tab = typeof tabs[number]
 const number = (value: number | null | undefined, digits = 2) => value == null ? '—' : value.toFixed(digits)
 const panel = 'rounded-2xl border border-line bg-surface p-5'
@@ -15,6 +18,7 @@ const button = 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface
 export default function Workbench() {
   const [tab, setTab] = useState<Tab>('Guided workflow')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [checks, setChecks] = useState<{ report: CheckReport; name: string }[]>([])
   const [files, setFiles] = useState<string[]>([])
   const [error, setError] = useState('')
   const [focus, setFocus] = useState<{ run: string; query: string; doc: string } | null>(null)
@@ -25,7 +29,13 @@ export default function Workbench() {
       if (data?.artifacts) setFiles(data.artifacts.map((f: { name: string }) => f.name))
     }).catch(() => { /* File import also works in the index UI. */ })
   }, [])
-  const accept = (raw: unknown) => {
+  const accept = (raw: unknown, name = '') => {
+    if (isCheckReport(raw)) {
+      setChecks(items => [...items, { report: raw, name }])
+      setTab('Checks')
+      setError('')
+      return
+    }
     const data = parseArtifact(raw)
     if (data.format === "vectraudit.run") {
       const existing = runs.findIndex(r => r.run_id === data.run_id)
@@ -46,7 +56,7 @@ export default function Workbench() {
     try {
       const response = await fetch(`api/workbench/${encodeURIComponent(name)}`)
       if (!response.ok) throw new Error('Could not read this artifact.')
-      accept(await response.json())
+      accept(await response.json(), name)
     } catch (e) { setError(String(e)) } finally { setBusy(false) }
   }
   return <div className="mx-auto max-w-[1500px] space-y-6 p-5 md:p-9">
@@ -57,7 +67,7 @@ export default function Workbench() {
       <div className="flex flex-wrap items-center gap-3"><span className="rounded-full bg-teal-500/10 px-3 py-1.5 text-xs text-teal-600">Local workspace</span>
         <label className={`${button} cursor-pointer bg-ink text-page`}>Import artifacts<input aria-label="Import artifacts" type="file" accept=".json" multiple className="sr-only" onChange={async e => {
           for (const file of Array.from(e.target.files || [])) {
-            try { if (file.size > 64 * 1024 * 1024) throw new Error('File exceeds 64 MiB'); accept(JSON.parse(await file.text())) } catch (err) { setError(String(err)) }
+            try { if (file.size > 64 * 1024 * 1024) throw new Error('File exceeds 64 MiB'); accept(JSON.parse(await file.text()), file.name) } catch (err) { setError(String(err)) }
           }
           e.target.value = ''
         }} /></label></div>
@@ -80,6 +90,7 @@ export default function Workbench() {
     </div> : <Empty title="Optimize against your budget." text="Compare retrieval depth, hybrid weights and rerankers. Only feasible candidates are selected; one selected candidate is validated on held-out queries." command="vectraudit workbench optimize manifest.json --out optimization.json" />)}
     {tab === 'Benchmark' && (benchmark ? <div className="grid gap-5 lg:grid-cols-2"><div className={panel}><h2 className="text-lg font-semibold">Benchmark health</h2><p className="my-4 text-3xl font-semibold">{benchmark.n_labelled}<span className="text-base font-normal text-muted"> / {benchmark.n_queries} annotated</span></p><p className="text-sm text-muted">{benchmark.duplicates.length} duplicate groups · {benchmark.unannotated.length} awaiting judgment</p><h3 className="mb-3 mt-6 font-medium">Coverage to add</h3>{benchmark.suggestions.map(s => <div key={s.category} className="border-t border-line py-3"><div className="text-sm font-semibold">{s.category.replaceAll('_', ' ')}</div><p className="mt-1 text-sm text-muted">{s.instruction}</p></div>)}</div><div className={panel}><h2 className="font-semibold">Human judgment queue</h2><p className="my-3 text-sm text-muted">Exploratory queries only. Suggestions never become labels automatically.</p>{benchmark.judgment_queue.slice(0, 100).map((q, i) => <div key={i} className="border-t border-line py-3 text-sm"><span className="font-mono">{q.query_id} → {q.doc_id}</span><p className="mt-1 text-muted">{q.reason}</p></div>)}{!benchmark.judgment_queue.length && <p className="text-sm text-muted">No pooled documents awaiting judgment. Supply candidate runs to build a review queue.</p>}</div></div> : <Empty title="A benchmark you can trust." text="Find duplicate questions, missing test categories and documents that need a human judgment. Keep exploratory work separate from the final held-out benchmark." command="vectraudit workbench benchmark queries.jsonl --runs workbench-runs" />)}
     {tab === 'Monitoring' && (monitors.length ? <div className="space-y-4">{monitors.map((m, i) => <div key={i} className={panel}><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{new Date(m.created_at).toLocaleString()}</h2><Badge good={m.verdict === 'pass'}>{m.verdict}</Badge></div><div className="mt-4 grid gap-4 text-sm md:grid-cols-4"><span>Corpus: <b>{m.drift.corpus}</b></span><span>Configuration: <b>{m.drift.configuration}</b></span><span>Changed queries: <b>{m.drift.results.length}</b></span><span>p95: <b>{number(m.summary.latency_ms?.p95)} ms</b></span></div>{m.alerts.map((a, j) => <p key={j} className="mt-3 text-sm text-red-600">{a.message}</p>)}</div>)}</div> : <Empty title="Make regressions visible." text="Schedule checks against a frozen baseline. Track result changes and distinguish corpus changes from configuration changes. Import multiple monitor artifacts to review trends." command="vectraudit workbench monitor manifest.json baseline.run.json" />)}
+    {tab === 'Checks' && (checks.length ? <CheckReports reports={checks.map(c => c.report)} names={checks.map(c => c.name)} /> : <Empty title="Lineage, freshness, permissions, migrations and intake." text="Import the JSON these checks write to read them here: where labelled passages were lost, stale content served, revoked documents still reaching users, cache leaks between users, migration readiness and production recurrences. The checks run from the command line against your exports." command="vectraudit workbench lineage lineage.jsonl questions.jsonl --json lineage.json" />)}
     {tab === 'Setup' && <div className="grid gap-5 lg:grid-cols-2"><div className={panel}><h2 className="text-lg font-semibold">One local workflow</h2><ol className="mt-4 space-y-4 text-sm"><li>1. Import questions with <code>vectraudit dataset import</code>.</li><li>2. Judge candidate documents with <code>vectraudit label</code>.</li><li>3. Define Python, HTTP or hybrid candidates in a manifest.</li><li>4. Run, inspect and optimize in this workbench.</li><li>5. Use <code>vectraudit check</code> for release comparisons.</li><li>6. Schedule <code>vectraudit workbench monitor</code>.</li></ol></div><div className={panel}><h2 className="text-lg font-semibold">Your data stays with you</h2><p className="mt-4 text-sm leading-7 text-muted">Imported artifacts are read in this browser. Saved benchmarks and evaluation results stay in the configured workspace directory. Pipeline execution happens in your local process. An HTTP adapter sends query text, vectors, filters and user context to the endpoint you configure. Cloud upload is a separate, explicit action.</p><p className="mt-4 text-sm text-muted">Start with the runnable example in <code>examples/workbench/</code> and the workbench guide in <code>docs/retrieval-workbench.md</code>.</p></div></div>}
   </div>
 }

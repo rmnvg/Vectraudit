@@ -21,6 +21,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- A **Checks** tab in the workbench reads the JSON written by lineage, freshness, access,
+  cache-probe, migration and intake checks as cards with a verdict, headline and findings.
+  `workbench access --json` now writes a top-level format (`vectraudit.access`).
+
 - Production intake (`vectraudit workbench intake`): takes new OpenInference traces since a
   cursor, reports likely recurrences of benchmark questions (linked to regression cases),
   and keeps a de-duplicated review queue prioritised by feedback and frequency, with an

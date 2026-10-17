@@ -1,6 +1,6 @@
 # Launch scorecard
 
-**Status as of October 11, 2026, after Step 57.** This maps every gate in section 9 of the
+**Status as of October 11, 2026, after Step 58.** This maps every gate in section 9 of the
 [strategy](startup-strategy-2026-10-08.md) to what exists in the repository and what is
 still needed to check it. Steps refer to the
 [implementation log](startup-implementation-2026-10-08.md).

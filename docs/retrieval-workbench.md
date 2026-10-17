@@ -830,6 +830,25 @@ inventory coverage is not inferred from a small query sample. Built-in corpus fi
 content-hashed automatically. HTTP/Python deployments must supply immutable corpus versions
 and version their adapter configuration when deployed code changes.
 
+## Read check reports in the Checks tab
+
+The deeper checks run from the command line against your exports:
+- [lineage and freshness](lineage.md);
+- [access changes and the cache probe](permission-lifecycle.md);
+- the [migration report](migration-report.md);
+- the [production intake](production-intake.md).
+
+Write their JSON (`--json report.json`) into the workbench folder, or import the file. The
+**Checks** tab then shows each report as a card with three parts:
+- **Verdict:** pass, fail, or needs attention.
+- **Headline:** a one-line summary.
+- **Findings:** for example where a labelled passage was first lost, stale content served,
+  a revoked document still reaching users, a cache leak and whether the answer matched the
+  other user's, migration concerns, and production recurrences.
+
+The tab only reads these reports. The checks themselves run where your exports and
+credentials are.
+
 ## Validation and deployment boundaries
 
 `tests/test_pipelines.py`, `tests/test_workbench.py`, `tests/test_guided_workbench.py`,
