@@ -47,7 +47,9 @@ def failed_questions(result: dict[str, Any]) -> dict[str, list[str]]:
     and named by a failing critical or safety rule. IDs only, as the upload already shares."""
     regressed = [q["query_id"] for q in ((result.get("queries") or {}).get("regressed") or [])]
     critical = [
-        a["query_id"] for a in result.get("critical_queries") or [] if a.get("verdict") == "fail"
+        a["query_id"]
+        for a in [*(result.get("critical_queries") or []), *(result.get("critical_context") or [])]
+        if a.get("verdict") == "fail"
     ]
     safety = [
         rule.split(":", 1)[1]  # fixed prefix; the question ID is everything after it
@@ -71,7 +73,8 @@ def summarize_check(result: dict[str, Any]) -> dict[str, Any]:
         for name, stats in (result.get("metrics") or {}).items()
     }
     latency = result.get("latency") or None
-    critical = result.get("critical_queries") or []
+    # Critical rules of both kinds: a document's rank and evidence reaching the model.
+    critical = [*(result.get("critical_queries") or []), *(result.get("critical_context") or [])]
     drift = result.get("drift")
     return {
         "version": SUMMARY_VERSION,

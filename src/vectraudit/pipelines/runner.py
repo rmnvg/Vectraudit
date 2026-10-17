@@ -733,6 +733,15 @@ def _measure(
         sufficiency = evidence_sufficiency(q.required_evidence, result)
         if sufficiency is not None:
             entry["sufficiency"] = sufficiency
+            # Per execution, so a critical-context rule can require it on every repeat.
+            entry["repeat_sufficiency"] = [
+                {
+                    k: v
+                    for k, v in (evidence_sufficiency(q.required_evidence, r) or {}).items()
+                    if k in ("delivered", "context")
+                }
+                for r in results
+            ]
         if options.evidence and len(results) > 1:
             # Store only changed stage outputs; unchanged repeats reference the first trace.
             # Ignore timing-only changes: end-to-end latency samples remain per execution.

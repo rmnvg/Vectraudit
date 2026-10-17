@@ -21,6 +21,8 @@ ACCEPTED = "accepted"
 
 def rule_kind(rule: str) -> str:
     """``metric``, ``cohort``, ``regressed_queries``, ``latency``, ``critical`` or ``safety``."""
+    if rule.startswith("critical_context:"):
+        return "critical"
     for kind in ("metric", "cohort", "critical"):
         if rule.startswith(kind + ":"):
             return kind
