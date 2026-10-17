@@ -144,12 +144,51 @@ class _Check:
                     f"Forbidden documents delivered for {candidate['query_id']}.",
                     f"safety.forbidden:{candidate['query_id']}",
                 )
+            self._permission_path(candidate)
             if candidate.get("no_answer_correct") is False:
                 self.flag(
                     Verdict.FAIL,
                     f"No-answer assertion failed for {candidate['query_id']}.",
                     f"safety.no_answer:{candidate['query_id']}",
                 )
+
+    def _permission_path(self, candidate: Mapping[str, Any]) -> None:
+        """Forbidden documents upstream of the results: the model context always fails; the
+        policy's ``forbidden_stages`` fail too, and cannot pass on a run without a trace."""
+        query_id = candidate["query_id"]
+        path = candidate.get("permission_path")
+        rule = f"safety.forbidden:{query_id}"
+        boundary = set(self.policy.forbidden_stages)
+        if isinstance(path, Mapping):
+            in_context = [d["doc_id"] for d in path["documents"] if d.get("context") is True]
+            if in_context:
+                self.flag(
+                    Verdict.FAIL,
+                    f"Forbidden documents reached the model context for {query_id}: "
+                    + ", ".join(in_context)
+                    + ".",
+                    rule,
+                )
+            for doc in path["documents"]:
+                reached = sorted(boundary & set(doc["kinds"]))
+                if reached:
+                    self.flag(
+                        Verdict.FAIL,
+                        f"Forbidden document {doc['doc_id']} reached a "
+                        + " and ".join(reached)
+                        + f" stage for {query_id}, past the policy's permission boundary.",
+                        rule,
+                    )
+        if (
+            boundary
+            and candidate.get("permission_checked")
+            and not (isinstance(path, Mapping) and path.get("stages_recorded"))
+        ):
+            self.flag(
+                Verdict.NOT_COMPARABLE,
+                f"The policy forbids forbidden documents in {', '.join(sorted(boundary))} "
+                f"stages, but no stage trace shows where they travelled for {query_id}.",
+            )
 
     def _critical_queries(self) -> None:
         """Judge every recorded candidate execution, independently of aggregate quality.

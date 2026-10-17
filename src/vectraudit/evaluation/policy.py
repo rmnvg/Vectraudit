@@ -9,7 +9,8 @@ A policy is JSON::
      "max_regressed_queries": 10,
      "primary_metric": "ndcg",
      "cohorts": {"min_queries": 10, "metrics": {"ndcg": {"max_drop": 0.05}}},
-     "require_significance": false}
+     "require_significance": false,
+     "forbidden_stages": ["rerank"]}
 
 Every metric a policy names must be measurable in both runs, otherwise the check is not
 comparable: a missing label set or exact reference never passes silently. Without a
@@ -41,7 +42,10 @@ _TOP_KEYS = {
     "critical_queries",
     "critical_context",
     "exceptions",
+    "forbidden_stages",
 }
+STAGE_KINDS = ("keyword", "vector", "filter", "fusion", "rerank", "truncate", "custom")
+"""Pipeline stage kinds, as recorded in stage traces."""
 EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical")
 """Rule kinds a policy may open to audited exceptions. Safety rules are governed separately."""
 COHORT_CONTROLS = ("none", "bonferroni")
@@ -150,6 +154,10 @@ class Policy:
     critical_queries: tuple[CriticalQueryRule, ...] = ()
     exceptions: ExceptionRule | None = None
     critical_context: tuple[CriticalContextRule, ...] = ()
+    forbidden_stages: tuple[str, ...] = ()
+    """Stage kinds a forbidden document must never reach, as input or output (for example
+    ``rerank``: a third-party reranker must not see it). Forbidden documents in the results
+    or the model context always fail; this extends the boundary upstream."""
 
     def as_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -167,6 +175,10 @@ class Policy:
             result.pop("critical_queries")
         else:
             result["critical_queries"] = [asdict(rule) for rule in self.critical_queries]
+        if not self.forbidden_stages:
+            result.pop("forbidden_stages")
+        else:
+            result["forbidden_stages"] = list(self.forbidden_stages)
         if not self.critical_context:
             result.pop("critical_context")
         else:
@@ -258,6 +270,7 @@ def parse_policy(raw: Any) -> Policy:
         critical_queries=_critical_rules(raw.get("critical_queries", [])),
         critical_context=_context_rules(raw.get("critical_context", [])),
         exceptions=_exception_rules(raw["exceptions"]) if "exceptions" in raw else None,
+        forbidden_stages=_stage_kinds(raw.get("forbidden_stages", [])),
     )
     has_quality_rule = (
         bool(metrics)
@@ -292,6 +305,14 @@ def _exception_rules(raw: Any) -> ExceptionRule:
     return ExceptionRule(
         allow=tuple(dict.fromkeys(allow)), approver=approver, safety=safety, max_days=max_days
     )
+
+
+def _stage_kinds(raw: Any) -> tuple[str, ...]:
+    _expect(
+        isinstance(raw, list) and all(kind in STAGE_KINDS for kind in raw),
+        f"forbidden_stages lists stage kinds from {list(STAGE_KINDS)}",
+    )
+    return tuple(sorted(set(raw)))
 
 
 def _context_rules(raw: Any) -> tuple[CriticalContextRule, ...]:

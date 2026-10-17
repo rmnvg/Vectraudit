@@ -255,6 +255,8 @@ def _check_query(q: Any, k: int) -> None:
             ),
             "repeat_sufficiency must state delivered and context evidence per execution",
         )
+    if "permission_path" in q:
+        _permission_path(q)
     repeat_ids = q.get("repeat_ids")
     _expect(repeat_ids is None or _rankings(repeat_ids, k), "repeat_ids must be rankings")
     attempts = q.get("attempts", [])
@@ -336,6 +338,30 @@ def _number(x: Any) -> bool:
 
 def _fraction(x: Any) -> bool:
     return _number(x) and 0 <= x <= 1
+
+
+def _permission_path(q: dict[str, Any]) -> None:
+    """Where forbidden documents travelled: compare_runs reads it, so it is checked here."""
+    path = q["permission_path"]
+    message = "permission_path must list each forbidden document's stages and destinations"
+    _expect(q.get("permission_checked") is True, "permission_path requires a permission check")
+    _expect(
+        isinstance(path, dict)
+        and type(path.get("stages_recorded")) is bool
+        and type(path.get("context_recorded")) is bool
+        and isinstance(path.get("documents"), list),
+        message,
+    )
+    for doc in path["documents"]:
+        _expect(
+            isinstance(doc, dict)
+            and isinstance(doc.get("doc_id"), str)
+            and isinstance(doc.get("kinds"), list)
+            and all(isinstance(kind, str) for kind in doc["kinds"])
+            and type(doc.get("results")) is bool
+            and (doc.get("context") is None or type(doc.get("context")) is bool),
+            message,
+        )
 
 
 def _expect(condition: bool, message: str) -> None:

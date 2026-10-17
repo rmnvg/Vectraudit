@@ -1738,6 +1738,30 @@ startup refusal; the CLI) and 1 frontend test. Full suite (1,727 passed, 22 skip
 mypy on Python 3.12 and 3.10 and the frontend checks and build pass; the panel section was
 checked in Chromium on the starter example with a registered change log.
 
+## Step 53: where forbidden documents travelled (2.2, first part)
+
+- **`permission_path`** on every permission-checked question: each forbidden document seen
+  in any execution, the stages it reached as output or input, and whether it reached the
+  results or the model context (unknown when context was not recorded in full).
+- **Release checks:** a forbidden document in the model context fails even when the results
+  are clean; a policy's new `forbidden_stages` (stage kinds such as `rerank`) fails one that
+  reaches those stages, and is not comparable on a run without a stage trace. Both use the
+  existing `safety.forbidden:<question>` rule, so exceptions treat them as safety failures.
+- **Fixed:** forbidden documents now match by a hit's source ID too, so a forbidden source
+  returned as a chunk is caught.
+- Findings and investigations name context leaks; the hosted projection carries document
+  IDs, stage kinds and flags; run files validate the record; the policy editor keeps the
+  field.
+
+Not included: permission changes over time (revocation and membership updates with a
+propagation window), cache isolation between principals, and a customer-built scenario.
+
+Validation: 7 new Python tests (the path, the planted reranker-before-access-control defect
+caught only by the boundary, a context leak with clean results that cannot be waived,
+unrecorded context and untraced runs, chunk-level source matching, the hosted projection,
+malformed records and policies) and 1 frontend test. Full suite, ruff, mypy on Python 3.12 and
+3.10 and the frontend checks pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
