@@ -22,6 +22,31 @@ budget fails it. It writes `context-story.html`, a self-contained page labelled 
 for prospects. Like the first demonstration it is a behavioural fixture, not evidence about
 any real application.
 
+## Third demonstration: content and access that changed
+
+```bash
+uv run python examples/reliability_story_demo.py --out /tmp/vectraudit-reliability
+uv run vectraudit workbench serve /tmp/vectraudit-reliability   # then open the Checks tab
+```
+
+This demonstrates the "permission and freshness reliability" entry offer. Three planted
+defects are each found and their corrections verified, through product code:
+
+1. **Stale answer.** A refund-policy update left the old revision indexed, and the old
+   revision reached the model context beside the new one (`lingering`, one conflicting
+   pair). After re-indexing the change is `propagated`.
+2. **Revocation that never arrived.** An access change log revokes the payroll document for
+   one user. The expected access comes from that log, and the label is removed for review.
+   The assistant's own access index was never synced, so the release check fails on the
+   forbidden document in the results and the model context. It passes after the sync.
+3. **Shared cache.** A cache keyed by question text leaks the payroll answer from one user
+   to another (the answer was identical to the first user's). With the user in the key,
+   the cache probe is clean.
+
+It writes `reliability-story.html`, labelled synthetic, and the JSON reports the Checks tab
+reads. Like the other demonstrations, it is a behavioural fixture, not evidence about any
+real application.
+
 ## Reproduce the release demonstration
 
 From a development checkout with dependencies and the frontend built:

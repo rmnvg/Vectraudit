@@ -21,6 +21,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `examples/reliability_story_demo.py`: a synthetic demonstration of the permission and
+  freshness reliability offer: a stale answer, a revocation the assistant never received and
+  a cache shared between users, each found and its correction verified; it writes a page for
+  prospects and the reports the Checks tab reads.
+
 - A **Checks** tab in the workbench reads the JSON written by lineage, freshness, access,
   cache-probe, migration and intake checks as cards with a verdict, headline and findings.
   `workbench access --json` now writes a top-level format (`vectraudit.access`).
