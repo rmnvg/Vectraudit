@@ -286,6 +286,40 @@ def timeline(
 MAX_CASES_READ = 2000
 
 
+def investigations_by_question(
+    session: Session, project: Project, query_ids: set[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """Shared investigations for ``query_ids``: the newest upload of each local record."""
+    if not query_ids:
+        return {}
+    rows = session.scalars(
+        select(SharedRecord)
+        .where(SharedRecord.project_id == project.id, SharedRecord.kind == "investigation")
+        .order_by(SharedRecord.uploaded_at.desc(), SharedRecord.id.desc())
+        .limit(MAX_CASES_READ)
+    )
+    found: dict[str, list[dict[str, Any]]] = {}
+    seen_sources: set[str] = set()
+    for row in rows:
+        data = row.data.get("data") or {}
+        qid = data.get("query_id")
+        if qid not in query_ids or row.source_id in seen_sources:
+            continue
+        seen_sources.add(row.source_id)
+        found.setdefault(qid, []).append(
+            {
+                "record_id": row.id,
+                "source_id": row.source_id,
+                "status": data.get("status"),
+                "outcome": data.get("outcome"),
+                "diagnosis": data.get("diagnosis"),
+                "protected": bool(data.get("protections")),
+                "uploaded_at": row.uploaded_at,
+            }
+        )
+    return found
+
+
 def cases_by_question(
     session: Session, project: Project, query_ids: set[str]
 ) -> dict[str, list[dict[str, Any]]]:

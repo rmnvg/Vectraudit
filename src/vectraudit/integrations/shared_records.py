@@ -15,7 +15,7 @@ from vectraudit.evaluation.policy import parse_policy, policy_sha256
 
 MAX_BYTES = 4 * 1024 * 1024
 PROFILE = "workbench-metadata-v1"
-Kind = Literal["case", "benchmark", "policy"]
+Kind = Literal["case", "benchmark", "policy", "investigation"]
 ID = Annotated[str, Field(min_length=1, max_length=512)]
 Hash = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 LocalID = Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]
@@ -110,6 +110,52 @@ class SavedPolicy(Metadata):
     rules: dict[str, Any]
 
 
+class TrialLink(Metadata):
+    id: LocalID
+    fix: ID | None
+    recovered_focus: int | None = Field(default=None, ge=0)
+    regressed: int | None = Field(default=None, ge=0)
+    at: Annotated[str, Field(max_length=64)]
+
+
+class ValidationLink(Metadata):
+    id: LocalID
+    fix: ID | None
+    status: Literal["approved_under_policy", "not_approved", "exploratory_only"] | None
+    approved: bool
+    at: Annotated[str, Field(max_length=64)]
+
+
+class Protection(Metadata):
+    policy_id: LocalID
+    version: int = Field(ge=1)
+    sha256: Hash
+    rules: list[Literal["context", "rank"]] = Field(max_length=10)
+    at: Annotated[str, Field(max_length=64)]
+
+
+class Investigation(Metadata):
+    """One investigated question: states, counts and times. Names, dispute reasons,
+    evidence requests and notes stay local."""
+
+    query_id: ID
+    run: LocalID
+    baseline: LocalID | None
+    status: Literal["open", "closed"]
+    opened_at: Annotated[str, Field(max_length=64)]
+    closed_at: Annotated[str, Field(max_length=64)] | None
+    losses: list[ID] = Field(max_length=100)
+    diagnosis: Literal["pending", "accepted", "disputed"]
+    evidence_requests: int = Field(ge=0)
+    trials: list[TrialLink] = Field(max_length=200)
+    validations: list[ValidationLink] = Field(max_length=200)
+    outcome: Literal["fixed", "not_fixed", "no_fix_needed", "abandoned"] | None
+    protections: list[Protection] = Field(max_length=200)
+    minutes_to_accepted_diagnosis: float | None = Field(ge=0)
+    minutes_to_verified_fix: float | None = Field(ge=0)
+    reproduced_by_second_engineer: bool
+
+
 class Sharing(Metadata):
     profile: Literal["workbench-metadata-v1"]
     query_text: bool
@@ -155,6 +201,7 @@ def validate_record(value: Any) -> dict[str, Any]:
         "case": Case,
         "benchmark": Benchmark,
         "policy": SavedPolicy,
+        "investigation": Investigation,
     }
     model = models[envelope.kind]
     validated = model.model_validate(envelope.data)
@@ -233,6 +280,34 @@ def project_record(
         parse_policy(record["policy"])
         data["rules"] = record["policy"]
         data = SavedPolicy.model_validate(data).model_dump()
+    elif kind == "investigation":
+        from vectraudit.pipelines.investigation_records import measures
+
+        found = measures(record)
+        data = _select(record, "query_id run baseline status opened_at losses outcome")
+        data |= {
+            "closed_at": record.get("closed_at"),
+            "diagnosis": record["diagnosis"]["status"],
+            "evidence_requests": len(record["requests"]),
+            "trials": [_select(t, "id fix recovered_focus regressed at") for t in record["trials"]],
+            "validations": [_select(v, "id fix status approved at") for v in record["validations"]],
+            "protections": [
+                {
+                    **_select(p, "policy_id version sha256 at"),
+                    "rules": [rule["kind"] for rule in p["rules"]],
+                }
+                for p in record.get("protections") or []
+            ],
+            **{
+                key: found[key]
+                for key in (
+                    "minutes_to_accepted_diagnosis",
+                    "minutes_to_verified_fix",
+                    "reproduced_by_second_engineer",
+                )
+            },
+        }
+        data = Investigation.model_validate(data).model_dump()
     else:
         raise ValueError("Unknown shared record kind")
     payload = dict(

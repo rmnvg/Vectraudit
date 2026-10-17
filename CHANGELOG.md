@@ -19,6 +19,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Shared investigations: investigation records can be shared with the hosted project
+  (states, counts, times, outcome and protecting policy versions; no names or free text), and
+  hosted recurring problems link to them.
 - **Protect this question**: a fix verified in an investigation adds context and rank rules
   for its question to a saved release policy as a new version, recorded on the
   investigation.

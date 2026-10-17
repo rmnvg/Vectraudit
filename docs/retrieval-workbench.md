@@ -1192,7 +1192,10 @@ regression case, a selected frozen benchmark or a selected saved policy.
 From the command line: `vectraudit workbench share WORKSPACE_DIR case CASE_ID
 --project acme/search`. Add `--preview` to see exactly what would be sent without
 credentials. Owners, notes, passages and context are never sent; question text and the
-titles of a case's cited documents only with `--share-query-text`. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).
+titles of a case's cited documents only with `--share-query-text`. An investigation record
+(`workbench share WORKSPACE_DIR investigation ID`, or **Share** in the investigation panel)
+sends its states, counts, times, outcome and protecting policy versions, never names,
+reasons, evidence requests or notes; hosted recurring problems then link to it. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).
 
 Reproduce the full browser journey with `node scripts/market_fit_smoke.mjs` after building
 the UI. It tests grading/reload, snapshots, findings, incident review, permission creation

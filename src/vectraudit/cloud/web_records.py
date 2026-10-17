@@ -58,6 +58,9 @@ def records_page(
             if row.kind == "case"
             else f"{len(data['judgments'])} questions"
             if row.kind == "benchmark"
+            else f"{data['query_id']}: investigation {data['status']}"
+            + (f", {data['outcome']}" if data.get("outcome") else "")
+            if row.kind == "investigation"
             else f"Policy version {data['version']}"
         )
         table.append(
@@ -79,7 +82,8 @@ def records_page(
         "Records remain after raw runs expire.</p>"
         f'<p><a href="{base}/records">All</a> · <a href="{base}/records?kind=case">Cases</a> · '
         f'<a href="{base}/records?kind=benchmark">Benchmarks</a> · '
-        f'<a href="{base}/records?kind=policy">Policies</a></p>'
+        f'<a href="{base}/records?kind=policy">Policies</a> · '
+        f'<a href="{base}/records?kind=investigation">Investigations</a></p>'
         + web._table(
             [
                 "Kind",
@@ -235,6 +239,55 @@ def record_page(
             )
         )
         count = len(data["judgments"])
+    elif row.kind == "investigation":
+        minutes = data["minutes_to_accepted_diagnosis"]
+        fixed_in = data["minutes_to_verified_fix"]
+        body += (
+            f"<h2>Investigation of {e(data['query_id'])}</h2>"
+            f"<p>Status: <strong>{e(data['status'])}</strong>"
+            + (f", outcome <strong>{e(data['outcome'])}</strong>" if data["outcome"] else "")
+            + f". Diagnosis: <strong>{e(data['diagnosis'])}</strong>; "
+            f"{data['evidence_requests']} evidence request(s). Run {e(data['run'])}.</p>"
+            f"<p>Losses when opened: {e(', '.join(data['losses']) or 'none recorded')}.</p>"
+            "<p>"
+            + (f"{minutes} min to an accepted diagnosis. " if minutes is not None else "")
+            + (f"{fixed_in} min to a verified fix. " if fixed_in is not None else "")
+            + ("Reproduced by a second engineer." if data["reproduced_by_second_engineer"] else "")
+            + '</p><p class="muted">Reviewer names, dispute reasons, evidence requests and '
+            "notes stay on the investigating team's machine.</p>"
+            + "<h2>Fix trials and validations</h2>"
+            + web._table(
+                ["When", "Kind", "Fix", "Result"],
+                [
+                    [
+                        e(t["at"]),
+                        "trial",
+                        e(t.get("fix")),
+                        e(f"{t.get('recovered_focus')} recovered, {t.get('regressed')} regressed"),
+                    ]
+                    for t in data["trials"]
+                ]
+                + [
+                    [e(v["at"]), "validation", e(v.get("fix")), e(v.get("status"))]
+                    for v in data["validations"]
+                ],
+                "No fixes tried.",
+            )
+            + "<h2>Protected by</h2>"
+            + web._table(
+                ["When", "Policy version", "Rules"],
+                [
+                    [
+                        e(p["at"]),
+                        e(f"{p['policy_id'][:8]} v{p['version']}"),
+                        e(", ".join(p["rules"]) or "already protected"),
+                    ]
+                    for p in data["protections"]
+                ],
+                "Not protected by a policy rule.",
+            )
+        )
+        count = 0
     else:
         body += (
             f"<h2>Saved policy version {data['version']}</h2><p>SHA-256: {e(data['sha256'])}. "

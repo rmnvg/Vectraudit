@@ -11,12 +11,24 @@ from typing import Any
 from vectraudit.integrations.shared_records import Kind, preview_record, project_record
 from vectraudit.pipelines.guided import GuidedWorkspace
 
-CATEGORIES = {"case": "cases", "benchmark": "benchmarks", "policy": "policies"}
+CATEGORIES = {
+    "case": "cases",
+    "benchmark": "benchmarks",
+    "policy": "policies",
+    "investigation": "investigations",
+}
 GENERIC_ERROR = "Cannot share this record. Check its kind, ID, schema and workspace path."
 WITHHELD = {
     "case": ["owner", "investigation notes", "passage and document text", "context and filters"],
     "benchmark": ["passage and document text", "context and filters", "draft notes"],
     "policy": ["saved notes"],
+    "investigation": [
+        "reviewer names",
+        "dispute reasons",
+        "evidence requests",
+        "closing notes",
+        "question and document text",
+    ],
 }
 
 
@@ -32,8 +44,10 @@ def projection(
     from vectraudit.pipelines.workflows import LocalRecords
 
     if kind not in CATEGORIES:
-        raise ValueError("Kind must be case, benchmark or policy")
+        raise ValueError("Kind must be case, benchmark, policy or investigation")
     record = LocalRecords(workspace, CATEGORIES[kind]).read(identifier)
+    if kind == "investigation":
+        share_query_text = False  # investigations hold no question text to share
     if kind == "case" and share_query_text:
         record = CaseQuestionDisplay(workspace).decorate(record)
     return project_record(kind, record, share_query_text=share_query_text)
@@ -60,6 +74,16 @@ def describe(projected: dict[str, Any]) -> dict[str, Any]:
             "forbidden IDs",
         ]
         texts = [q["text"] for q in data["judgments"] if q.get("text")]
+    elif kind == "investigation":
+        included = [
+            f"Question ID {data['query_id']}, its losses and status ({data['status']})",
+            f"Diagnosis {data['diagnosis']}, {data['evidence_requests']} evidence request(s) "
+            "counted",
+            f"{len(data['trials'])} trial(s), {len(data['validations'])} validation(s), "
+            f"{len(data['protections'])} protecting policy version(s)",
+            "Times to an accepted diagnosis and a verified fix",
+        ]
+        texts = []
     else:
         included = [f"Policy version {data['version']} and its rules ({data['sha256'][:12]})"]
         texts = []
