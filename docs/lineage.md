@@ -68,6 +68,24 @@ happen), and identical chunks, with the questions where duplicates took result s
 - Freshness over time (an update reaching the index within a propagation window) needs
   repeated exports; this check reads one export.
 
+## In investigations
+
+Start the workbench with the export to use lineage when investigating a failed question:
+
+```bash
+vectraudit workbench serve workbench-runs --manifest pipelines.json \
+  --lineage lineage.jsonl --lineage-ids chunk
+```
+
+The export is validated when the server starts, like the manifest; the browser never names
+files. The investigation panel then shows a **Source lineage** section with each labelled
+passage's first loss. A passage lost during ingestion appears as an `ingestion` loss with its
+stage, the explanation is listed among the possible causes, and a caution says to fix
+extraction, chunking or indexing first. **Retrieval fixes are not suggested for a document
+whose passage was lost during ingestion**: a deeper candidate pool cannot fetch text that is
+not indexed intact. Fixes for other losses on the same question are still offered.
+`vectraudit workbench investigate … --lineage lineage.jsonl` does the same on the command line.
+
 ## Knowledge freshness
 
 Lineage reads one export. **Knowledge freshness** asks whether content changes actually

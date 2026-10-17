@@ -242,7 +242,15 @@ def investigation_router(workspace: GuidedWorkspace) -> APIRouter:
         source = _source(workspace, run)
         fixes = available_fixes(source.candidate, has_vectors=source.has_vectors)
         baseline = load(body.baseline) if body.baseline else None
-        result = investigate(run, body.query_id, fixes, baseline=baseline)
+        lineage = None
+        if workspace.lineage is not None and source.dataset is not None:
+            from vectraudit.evaluation.lineage import check_lineage
+
+            report = check_lineage(
+                source.dataset, workspace.lineage, run, ids=workspace.lineage_ids
+            )
+            lineage = [r for r in report["rows"] if r["query_id"] == body.query_id]
+        result = investigate(run, body.query_id, fixes, baseline=baseline, lineage=lineage)
         held = sum(q.split == "heldout" for q in source.dataset.queries) if source.dataset else 0
         explore = (
             {q.query_id for q in source.dataset.queries if q.split == "explore"}

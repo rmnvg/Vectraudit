@@ -19,6 +19,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Investigations use a lineage export (`workbench serve --lineage`, `investigate --lineage`):
+  passages lost during ingestion are named in the panel, and retrieval fixes are no longer
+  suggested for them.
 - Knowledge freshness (`vectraudit workbench freshness`): checks a content change log against
   a lineage export and an optional run: changes propagated, pending, overdue or lingering,
   stale content served in results or context, and conflicting versions; questions tagged

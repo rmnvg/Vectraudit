@@ -148,7 +148,12 @@ class GuidedWorkspace:
     """One local artifact directory, durable drafts, and up to two concurrent evaluations."""
 
     def __init__(
-        self, root: Path, manifest: Path | None = None, policy: Path | None = None
+        self,
+        root: Path,
+        manifest: Path | None = None,
+        policy: Path | None = None,
+        lineage: Path | None = None,
+        lineage_ids: str = "chunk",
     ) -> None:
         from vectraudit.pipelines.release_workflow import PolicyStore
 
@@ -169,6 +174,14 @@ class GuidedWorkspace:
             if candidate.adapter.kind == "http":
                 HTTPPipeline(str(candidate.adapter.target), timeout=candidate.adapter.timeout)
         self.policies = PolicyStore(self, policy)
+        # A lineage export is trusted startup configuration, like the manifest: validated
+        # now, so a broken export fails at start rather than inside an investigation.
+        from vectraudit.evaluation.lineage import LineageError, read_manifest
+
+        if lineage_ids not in ("chunk", "source"):
+            raise LineageError("lineage IDs must be chunk or source")
+        self.lineage = read_manifest(lineage) if lineage else None
+        self.lineage_ids = lineage_ids
         self._run_summaries: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
 
     def run_summary(self, identifier: str) -> dict[str, Any]:
