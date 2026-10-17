@@ -19,6 +19,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Knowledge freshness (`vectraudit workbench freshness`): checks a content change log against
+  a lineage export and an optional run: changes propagated, pending, overdue or lingering,
+  stale content served in results or context, and conflicting versions; questions tagged
+  `historical` are exempt.
 - Source-to-context lineage (`vectraudit workbench lineage`): follows each labelled passage
   through a customer-exported ingestion manifest and an optional run, names the first stage
   that lost it (extraction, chunk boundary, index, stale revision, retrieval, delivery or

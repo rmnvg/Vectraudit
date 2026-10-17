@@ -67,3 +67,41 @@ happen), and identical chunks, with the questions where duplicates took result s
   delivery"; the report says so.
 - Freshness over time (an update reaching the index within a propagation window) needs
   repeated exports; this check reads one export.
+
+## Knowledge freshness
+
+Lineage reads one export. **Knowledge freshness** asks whether content changes actually
+reached the index, the results and the model context in time. (It is unrelated to *label*
+freshness, which checks benchmark judgments against a changed corpus.)
+
+```bash
+vectraudit workbench freshness changes.jsonl lineage.jsonl --run after.run.json \
+  --dataset questions.jsonl --fail-on-stale
+```
+
+The change log comes from your content system, one change per line:
+
+```json
+{"source_id": "refund-policy", "change": "update", "to_revision": "r9", "changed_at": "2026-10-18T09:00:00Z", "window_minutes": 60}
+{"source_id": "old-faq", "change": "replace", "replaced_by": "faq-2026", "changed_at": "2026-10-17T12:00:00Z"}
+{"source_id": "promo-2025", "change": "delete", "changed_at": "2026-10-16T08:00:00Z"}
+```
+
+`change` is `update` (with `to_revision`), `replace` (with `replaced_by`), `delete` or
+`archive`. Each change has a propagation window (`window_minutes`, default `--window-minutes`
+60). The lineage export must be taken after the changes; `--as-of` says when (default: the
+run's time, else now). Only the latest change per source is judged.
+
+| Status | Meaning |
+|---|---|
+| `propagated` | The new content is indexed and the old content is gone |
+| `pending` | Still inside the window; not a failure |
+| `overdue` | Past the window and the new revision or replacement is not indexed |
+| `lingering` | Past the window and the old revision, or the replaced, deleted or archived source, is still indexed |
+
+With a run recorded after the changes, the report also lists stale chunks that reached a
+question's **results** or **model context**, and **conflicting versions**: two revisions of
+one source delivered together. Questions tagged `historical` may legitimately reach old
+content and are not checked; your benchmark decides which questions those are.
+`--fail-on-stale` exits 3 when anything is overdue, lingering, served stale or conflicting,
+so the check can run on a schedule after content updates.

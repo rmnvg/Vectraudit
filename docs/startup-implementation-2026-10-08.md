@@ -1673,6 +1673,28 @@ defect and its repair, run integration through retrieval, delivery, omitted and 
 context, source-ID runs, corpus findings, manifest validation, CLI and CI gating). Full suite
 (1,702 passed, 22 skipped), ruff and mypy on Python 3.12 and 3.10 pass.
 
+## Step 50: knowledge freshness (2.1, second part)
+
+- **[`vectraudit workbench freshness`](lineage.md#knowledge-freshness):** reads a content
+  change log (update with a new revision, replace with a successor, delete, archive; each
+  with a time and optional propagation window) and a lineage export taken afterwards. Each
+  change is `propagated`, `pending` (inside its window, not a failure), `overdue` (new content
+  not indexed after the window) or `lingering` (old revision or removed source still
+  indexed).
+- **With a run:** stale chunks that reached a question's results or model context, and
+  conflicting revisions of one source delivered together. Questions tagged `historical` are
+  exempt, as the strategy asks customers to define precedence. `--fail-on-stale` exits 3.
+- The strategy's freshness acceptance is reproduced on a fixture: a stale answer served from
+  an old revision is reported, and after re-indexing the same check passes.
+
+Not included: tracking propagation across a series of exports (time to propagate),
+caches outside the index, and validation on a customer's change log.
+
+Validation: 14 new tests (every status for updates and the window, replacements, deletions
+and archives, per-change windows and superseded changes, stale results and context with
+conflicts, the repair, historical exemptions, invalid change logs, CLI and CI gating). Full
+suite, ruff and mypy on Python 3.12 and 3.10 pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
