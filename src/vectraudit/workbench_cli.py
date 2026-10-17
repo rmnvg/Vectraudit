@@ -567,6 +567,211 @@ def attach_answers_command(
     typer.echo(f"\nWrote {out}.")
 
 
+def _candidate(spec: Any, name: str | None) -> Any:
+    names = [c.name for c in spec.candidates]
+    if name is None:
+        if len(names) != 1:
+            raise ValueError(f"--candidate is required: one of {', '.join(names)}")
+        return spec.candidates[0]
+    for candidate in spec.candidates:
+        if candidate.name == name:
+            return candidate
+    raise ValueError(f"no candidate {name!r} in the manifest: {', '.join(names)}")
+
+
+@workbench_app.command("investigate")
+def investigate_command(
+    manifest: Path,
+    run: Annotated[Path, typer.Argument(help="Run file holding the failed question.")],
+    query: Annotated[str, typer.Argument(help="Question ID to investigate.")],
+    candidate: Annotated[
+        str | None, typer.Option(help="Manifest candidate that produced the run.")
+    ] = None,
+    baseline: Annotated[
+        Path | None, typer.Option(help="Earlier run, to show which losses are new.")
+    ] = None,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+) -> None:
+    """What one question lost and where, possible causes, and the declared fixes to try.
+
+    Reads files only: no adapter is opened. Fixes come from the candidate's ``fixes`` in the
+    manifest (and built-in ones for the hybrid baseline); nothing else is suggested.
+    """
+    from vectraudit.pipelines.investigate import available_fixes, investigate
+
+    try:
+        spec = load_manifest(manifest)
+        record = load_run(run)
+        chosen = _candidate(spec, candidate or record.get("label"))
+        result = investigate(
+            record,
+            query,
+            available_fixes(chosen, manifest.parent),
+            baseline=load_run(baseline) if baseline else None,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Investigation error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(f"{query} in {chosen.name}:")
+    for loss in result["losses"] or [{"class": "none"}]:
+        where = f" at {loss['stage']}" if loss.get("stage") else ""
+        doc = f" {loss['doc_id']}" if loss.get("doc_id") else ""
+        typer.echo(f"  lost{doc}: {loss['class'].replace('_', ' ')}{where}")
+    if result["regression"] is not None:
+        typer.echo(f"  new since the baseline: {len(result['regression']['new_losses'])}")
+    for title, key in (
+        ("Possible causes (not established)", "hypotheses"),
+        ("Cautions", "cautions"),
+        ("Uncertain", "uncertainty"),
+    ):
+        if result[key]:
+            typer.echo(f"{title}:")
+            for line in result[key]:
+                typer.echo(f"  - {line}")
+    if result["fixes"]:
+        typer.echo("Fixes to try (declared by the pipeline):")
+        for fix in result["fixes"]:
+            typer.echo(f"  - {fix['name']}: {json.dumps(fix['params'])}")
+        typer.echo(
+            f"Try one: vectraudit workbench try-fix {manifest} --candidate "
+            f"'{chosen.name}' --fix '<name>' --query {query}"
+        )
+    elif result["unaddressed"]:
+        typer.echo(
+            "No declared fix addresses: " + ", ".join(result["unaddressed"]) + ". Declare "
+            'fixes the pipeline supports under the candidate\'s "fixes" in the manifest.'
+        )
+    if json_out is not None:
+        _write(json_out, result)
+
+
+@workbench_app.command("try-fix")
+def try_fix_command(
+    manifest: Path,
+    fix: Annotated[str, typer.Option(help="Name of a declared fix.")],
+    query: Annotated[list[str], typer.Option(help="Failing question ID (repeatable).")],
+    candidate: Annotated[str | None, typer.Option(help="Manifest candidate to fix.")] = None,
+    sample: Annotated[
+        int, typer.Option(min=0, max=1000, help="Other exploratory questions checked.")
+    ] = 20,
+    seed: Annotated[int, typer.Option(help="Seed for choosing the sample.")] = 0,
+    validate: Annotated[
+        bool,
+        typer.Option("--validate", help="Then judge the fix on held-out questions under --policy."),
+    ] = False,
+    policy: Annotated[Path | None, typer.Option(help="Release policy for --validate.")] = None,
+    out: Annotated[Path, typer.Option(help="Directory for results and runs.")] = Path("fix-trials"),
+    max_calls: MaxCalls = None,
+) -> None:
+    """Try a declared fix: current and fixed configurations, interleaved, on failing and
+    sampled exploratory questions; optionally validate it under the release policy.
+
+    The trial is exploratory and never uses held-out questions. ``--validate`` runs both
+    configurations on held-out questions and approves only if the policy passes. Exit 3
+    when the trial shows regressions or validation is not approved.
+    """
+    from vectraudit.pipelines.investigate import (
+        available_fixes,
+        try_fix,
+        try_plan,
+        validate_fix,
+    )
+
+    try:
+        spec = load_manifest(manifest)
+        chosen = _candidate(spec, candidate)
+        fixes = {f.name: f for f in available_fixes(chosen, manifest.parent)}
+        if fix not in fixes:
+            raise ValueError(f"{chosen.name} declares no fix {fix!r}: {', '.join(fixes) or 'none'}")
+        if validate and policy is None:
+            raise ValueError("--validate needs --policy; approval is only under a policy")
+        ds = load_dataset(manifest.parent / spec.dataset)
+        planned = try_plan(ds, query, sample, seed)
+        held = sum(q.split == "heldout" for q in ds.queries) if validate else 0
+        calls = 2 * (len(planned) + held) * spec.repeats
+        typer.echo(
+            f"Plan: {len(planned)} exploratory questions"
+            + (f" and {held} held-out questions" if validate else "")
+            + f", two configurations, {spec.repeats} repeats: {calls} calls."
+        )
+        if max_calls is not None and calls > max_calls:
+            raise ValueError(f"{calls} planned calls exceed --max-calls {max_calls}")
+        rules = load_policy(policy) if policy else None
+        config = candidate_config(chosen, manifest.parent)
+        pipeline = open_adapter(chosen.adapter, manifest.parent)
+        version = spec.corpus_version or config.get("corpus_sha256")
+        trial = try_fix(
+            ds,
+            pipeline,
+            chosen,
+            fixes[fix],
+            query,
+            k=spec.k,
+            repeats=spec.repeats,
+            sample=sample,
+            seed=seed,
+            config=config,
+            corpus_version=version,
+        )
+        out.mkdir(parents=True, exist_ok=True)
+        for side, run in trial.pop("runs").items():
+            write_run(out / f"trial-{side}.run.json", run)
+        _write(out / "trial.json", trial)
+        result = None
+        if validate:
+            result = validate_fix(
+                ds,
+                pipeline,
+                chosen,
+                fixes[fix],
+                rules,
+                k=spec.k,
+                repeats=spec.repeats,
+                config=config,
+                corpus_version=version,
+            )
+            for side, run in result.pop("runs").items():
+                write_run(out / f"validation-{side}.run.json", run)
+            _write(out / "validation.json", result)
+    except (OSError, ValueError, PolicyError, ImportError, AttributeError) as exc:
+        typer.echo(f"Fix trial error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    focus = len(trial["focus"])
+    typer.echo(
+        f"Exploratory trial of {fix!r}: {trial['recovered_focus']} of {focus} failing "
+        f"question(s) fully recovered; {len(trial['regressed'])} of {trial['questions']} "
+        "questions regressed."
+    )
+    for row in trial["rows"]:
+        if row["focus"] or row["regressed"]:
+            marks = []
+            if row["recovered"]:
+                marks.append(f"recovered {len(row['recovered'])}")
+            if row["moved"]:
+                marks.append(f"moved {len(row['moved'])} to a later stage")
+            if row["introduced"]:
+                marks.append(f"{len(row['introduced'])} new loss(es)")
+            typer.echo(
+                f"  {row['query_id']}: nDCG {row['ndcg_before']} -> {row['ndcg_after']}"
+                + (f"; {', '.join(marks)}" if marks else "")
+            )
+    if trial["untargeted_focus"]:
+        typer.echo(
+            "The fix targets none of the recorded losses of: "
+            + ", ".join(trial["untargeted_focus"])
+        )
+    typer.echo(trial["status_label"])
+    if result is not None:
+        typer.echo(result["status_label"])
+        for reason in (result["check"] or {}).get("reasons", []):
+            typer.echo(f"  - {reason}")
+        if result["approved"]:
+            typer.echo(f"Promote: {json.dumps(result['promote']['params'])}")
+    typer.echo(f"Wrote {out}.")
+    if trial["regressed"] or (result is not None and not result["approved"]):
+        raise typer.Exit(3)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None

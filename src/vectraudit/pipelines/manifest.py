@@ -34,6 +34,39 @@ class Adapter(Contract):
         return self
 
 
+FIXABLE = (
+    "not_observed",
+    "lost_downstream",
+    "lost_in_context",
+    "answered_wrong_despite_evidence",
+)
+"""Failure classes a declared fix may address; permission and no-answer failures are not
+among them, because loosening access is never a repair."""
+
+
+class Fix(Contract):
+    """A bounded change the pipeline supports, as parameter overrides, and what it targets.
+
+    ``addresses`` names failure classes (``lost_downstream``), optionally narrowed to a stage
+    kind (``lost_downstream:rerank``). Only declared fixes are ever suggested.
+    """
+
+    name: str = Field(min_length=1, max_length=128)
+    addresses: list[str] = Field(min_length=1, max_length=16)
+    params: dict[str, str | int | float | bool] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def known(self) -> Fix:
+        for item in self.addresses:
+            kind, _, stage = item.partition(":")
+            if kind not in FIXABLE or (stage and kind != "lost_downstream"):
+                raise ValueError(
+                    f"fix {self.name!r} addresses {item!r}; use one of {', '.join(FIXABLE)}, "
+                    "or lost_downstream:<stage kind>"
+                )
+        return self
+
+
 class Candidate(Contract):
     name: str = Field(min_length=1, max_length=128)
     adapter: Adapter
@@ -46,6 +79,14 @@ class Candidate(Contract):
     cost_per_call_usd: float | None = Field(default=None, ge=0, le=1000)
     """Declared price of one pipeline call, used by ``workbench preview`` when no earlier run
     of this candidate reported ``cost_usd``."""
+    fixes: list[Fix] = Field(default_factory=list, max_length=20)
+    """Changes this pipeline supports, offered by ``workbench investigate`` and ``try-fix``."""
+
+    @model_validator(mode="after")
+    def unique_fixes(self) -> Candidate:
+        if len({fix.name for fix in self.fixes}) != len(self.fixes):
+            raise ValueError("fix names must be unique within a candidate")
+        return self
 
 
 class Manifest(Contract):
@@ -108,7 +149,7 @@ def candidate_config(candidate: Candidate, root: Path) -> dict[str, Any]:
     # Execution settings and declared prices change how fast or costly queries run, not what
     # the pipeline returns, so they stay out of the configuration identity (and existing
     # identities stay unchanged).
-    excluded = {"concurrency", "max_rps", "cost_per_call_usd"}
+    excluded = {"concurrency", "max_rps", "cost_per_call_usd", "fixes"}
     if candidate.pipeline_version is None:
         excluded.add("pipeline_version")
     raw = candidate.model_dump_json(exclude=excluded)

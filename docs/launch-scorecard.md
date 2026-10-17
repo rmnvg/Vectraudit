@@ -1,6 +1,6 @@
 # Launch scorecard
 
-**Status as of October 11, 2026, after Step 41.** This maps every gate in section 9 of the
+**Status as of October 11, 2026, after Step 42.** This maps every gate in section 9 of the
 [strategy](startup-strategy-2026-10-08.md) to what exists in the repository and what is
 still needed to check it. Steps refer to the
 [implementation log](startup-implementation-2026-10-08.md).
@@ -39,7 +39,7 @@ customer actions, not code.
 |---|---|---|---|
 | Fresh engineer connects without founder-written code; setup and labelling time measured separately (1.1) | Partly built | Adapters, wrappers, `init`, connection test, document lookup; OpenInference trace import with a capability report (Step 39) | A real instrumented application imported (or another reader if partners use Langfuse or LangSmith); measured setup by an engineer who is not the founder |
 | Failure classes explained with linked evidence, mixed and unknown outcomes kept; retrieval, context and answer judgments separate (1.2) | Partly built | Stage traces and loss attribution for retrieval; evidence coverage contract (Step 9); model-context records and omitted/truncated findings, from pipelines or trace prompts (Step 40); required-evidence groups, imported answer judgments with human agreement, and per-question diagnosis separating context loss from wrong answers (Step 41) | Citation support; the chosen failure classes explained on a real application; checking text matching and model judges against the customer's human review |
-| Engineer verifies a real repair and turns it into a release check with less effort (1.3) | Partly built | Findings, regression cases, verification, optimizer under the release policy (Step 13), exports to CI | "Try this fix" interventions for the two failure classes seen in pilots; measured effort against the team's current workflow |
+| Engineer verifies a real repair and turns it into a release check with less effort (1.3) | Partly built | Findings, regression cases, verification, optimizer under the release policy (Step 13), exports to CI; investigation of a failed question, declared fixes, paired exploratory trials and held-out validation under the policy (Step 42) | The investigation screen in the workbench; fixes for the two failure classes seen in pilots; measured effort against the team's current workflow |
 | Optimizer, workbench, CLI and CI apply one release policy; exploratory results never look approved (1.4) | Built | Steps 13, 28, 31; one comparison function on every surface | Observation that teams read the labels as intended |
 | Benchmark review owner, representative coverage, source-change handling, protected validation; noise and upkeep measured (1.4, 1.8) | Partly built | Held-out splits and query families (Step 3), freshness and snapshots, A/A calibration (Steps 12, 25), cohort controls (Steps 20, 33) | A maintained production source integration (1.8); measured upkeep on a real benchmark |
 | Agreed workload fits its declared window with retry, cancel and resume (1.5) | Partly built | Concurrency, rate limits, retries, checkpoints, 1,000-question suites, two concurrent runs (Steps 4–6, 32), spend preview and usage (Steps 19, 30) | A declared customer workload measured end to end in their CI window |
