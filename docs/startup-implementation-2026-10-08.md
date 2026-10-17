@@ -1789,6 +1789,32 @@ the planted defect and its correction, a context-only leak, pending changes, mov
 archives and ordering, invalid logs, the CLI). Full suite, ruff and mypy on Python 3.12 and
 3.10 pass.
 
+## Step 55: cache isolation (2.2, third part)
+
+- **`vectraudit workbench cache-probe MANIFEST`** pairs each question that has forbidden
+  documents with the same question (family or text) under another context, then calls the
+  primer and the target serially through the manifest's pipeline. Any forbidden document
+  the target receives, in results, model context or a recorded stage, is a leak.
+- **Primer first, by design:** a test shows that asking the target first fills a text-keyed
+  cache with its own clean answer and hides the defect, and another shows a normal run in
+  benchmark order already leaks through such a cache, so a normal run is no clean
+  reference. Each leak instead records whether the target's answer was identical to the
+  primer's (a shared cache entry, or an access check ignoring the context) or not (the
+  access check itself).
+- Failed calls make the probe incomplete, never clean; the number of calls is bounded and
+  stated before running.
+
+The strategy's acceptance, on fixtures: a cache keyed on question text alone leaks the
+payroll document to the restricted user; keyed on text and user, the probe is clean.
+
+Not included: clearing the application's caches (probe a fresh deployment), concurrency
+between principals, the workbench UI, and a customer-built scenario.
+
+Validation: 8 new tests (pairing by family and by text, the planted defect and its
+correction, why the target must not go first, why a normal run is no reference, a leak
+unlike the primer's answer, failed calls, the call bound, the CLI). Full suite, ruff and
+mypy on Python 3.12 and 3.10 pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

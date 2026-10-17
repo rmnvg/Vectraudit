@@ -21,6 +21,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Cache isolation probe (`vectraudit workbench cache-probe`): asks each permission-scenario
+  question after the same question under another context, serially, and reports forbidden
+  documents that crossed over, with whether the answer was identical to the primer's.
+
 - Permission lifecycle (`vectraudit workbench access`): an access change log (revoke, grant,
   move, archive, with propagation windows) becomes each question's expected access in a
   written benchmark, with revoked labels listed for review; a run recorded after the changes

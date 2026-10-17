@@ -6,7 +6,7 @@ application has to catch up: its index, its caches and anything it hands to a re
 the model. These checks test that catch-up. They don't prove the authorization is correct.
 A passing check is evidence about the principals and documents tested.
 
-Two pieces work together:
+Three pieces work together:
 
 1. **Where forbidden documents travelled** (every permission check): see
    [release checks](release-checks.md#where-forbidden-documents-travelled). A forbidden
@@ -15,6 +15,7 @@ Two pieces work together:
 2. **Access changes over time** (this page): an access change log from your identity or
    content system becomes the expected access, judged after each change's propagation
    window.
+3. **Cache isolation** (below): one user's question must not warm another user's answer.
 
 ## The access change log
 
@@ -86,10 +87,44 @@ The check is judged at the run's recorded time unless you pass `--as-of`.
 
 `--write-dataset` and `--run` can be combined. `--json` writes both reports.
 
+## Cache isolation
+
+A cache keyed on the question text alone serves one user's documents to the next user who
+asks the same thing. That cache might hold results, filtered candidates, reranked lists or
+packed prompts. A normal evaluation catches this only by accident of order.
+
+```bash
+vectraudit workbench cache-probe pipelines.json --candidate current --fail-on-leak
+```
+
+**Which questions are probed.** The probe uses questions the benchmark already has: the
+same question (same `family_id`, otherwise the same text) asked under different contexts,
+where at least one of them has `forbidden` documents. Permission scenarios create exactly
+these.
+
+**How each pair runs.** For each such *target* and each *primer* asked under another
+context, the probe calls the primer first, then the target, serially, using the manifest's
+pipeline. The primer must go first: asking the target first would cache its own clean
+answer, and the defect would hide.
+
+**What counts as a leak.** Any forbidden document the target receives, in the results,
+the model context or a recorded stage. Each leak also records what the probe observed:
+
+- **Identical to the primer's answer:** what a shared cache entry produces, though an
+  access check that ignores the user looks the same.
+- **Different from the primer's answer:** the access check itself let the document through.
+
+**Exit codes.** `--fail-on-leak` exits 3 when there is any leak, or when calls failed and
+the probe is incomplete. `--max-pairs` (default 500) bounds the number of calls (2 per
+pair).
+
+**Run it on a fresh deployment.** The probe cannot clear your caches, and an answer
+cached before the probe can mask a leak. Probe a fresh deployment, or one whose cache has
+expired.
+
 ## Limits
 
-- **Cache isolation between principals:** not checked as a separate scenario. Permission
-  scenarios that clone a question across contexts exercise it only if they run in order.
+- **Cached answers before the probe:** they can mask a cache leak (see above).
 - **Time to propagate:** not tracked across a series of runs.
 - **Customer change logs:** the check has not yet been run on one.
 - **Data stays local:** nothing here uploads the change log or the derived benchmark. Keep

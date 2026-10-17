@@ -1051,6 +1051,54 @@ def access_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("cache-probe")
+def cache_probe_command(
+    manifest: Path,
+    candidate: Annotated[
+        str | None, typer.Option(help="Candidate to probe (required if several).")
+    ] = None,
+    max_pairs: Annotated[
+        int, typer.Option(min=1, help="Refuse more target/primer pairs than this (2 calls each).")
+    ] = 500,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_leak: Annotated[
+        bool,
+        typer.Option(
+            "--fail-on-leak", help="Exit 3 on any leak, or when calls failed (incomplete)."
+        ),
+    ] = False,
+) -> None:
+    """Cache isolation: does one context's question warm another context's answer?
+
+    For each question asked under several contexts with forbidden documents (permission
+    scenarios), calls it under another context first, then under its own, in order. Probe a
+    fresh deployment: answers cached before the probe can mask a leak.
+    """
+    from vectraudit.pipelines.cache_probe import cache_probe, probe_pairs, render
+
+    try:
+        spec = load_manifest(manifest)
+        chosen = _candidate(spec, candidate)
+        ds = load_dataset(manifest.parent / spec.dataset)
+        pairs = len(probe_pairs(ds))
+        typer.echo(f"Plan: {pairs} target/primer pair(s), {2 * pairs} calls, serially.")
+        report = cache_probe(
+            ds,
+            open_adapter(chosen.adapter, manifest.parent),
+            k=spec.k,
+            params=chosen.params,
+            max_pairs=max_pairs,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Cache probe error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_leak and (report["failing"] or not report["complete"]):
+        raise typer.Exit(3)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None
