@@ -39,6 +39,7 @@ _TOP_KEYS = {
     "require_significance",
     "non_inferiority",
     "critical_queries",
+    "critical_context",
     "exceptions",
 }
 EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical")
@@ -102,6 +103,17 @@ class CriticalQueryRule:
 
 
 @dataclass(frozen=True)
+class CriticalContextRule:
+    """A question whose required evidence must reach the model in full on every execution.
+
+    Needs ``required_evidence`` in the benchmark and model-context records in the runs; a
+    run that cannot show it is not comparable, never a pass.
+    """
+
+    query_id: str
+
+
+@dataclass(frozen=True)
 class ExceptionRule:
     """Which failing rules a team may accept through an audited, expiring exception.
 
@@ -137,6 +149,7 @@ class Policy:
     is_default: bool = False
     critical_queries: tuple[CriticalQueryRule, ...] = ()
     exceptions: ExceptionRule | None = None
+    critical_context: tuple[CriticalContextRule, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -154,6 +167,10 @@ class Policy:
             result.pop("critical_queries")
         else:
             result["critical_queries"] = [asdict(rule) for rule in self.critical_queries]
+        if not self.critical_context:
+            result.pop("critical_context")
+        else:
+            result["critical_context"] = [asdict(rule) for rule in self.critical_context]
         return result
 
 
@@ -239,6 +256,7 @@ def parse_policy(raw: Any) -> Policy:
         require_significance=_bool(raw, "require_significance", False),
         non_inferiority=_bool(raw, "non_inferiority", False),
         critical_queries=_critical_rules(raw.get("critical_queries", [])),
+        critical_context=_context_rules(raw.get("critical_context", [])),
         exceptions=_exception_rules(raw["exceptions"]) if "exceptions" in raw else None,
     )
     has_quality_rule = (
@@ -246,6 +264,7 @@ def parse_policy(raw: Any) -> Policy:
         or max_regressed is not None
         or bool(cohorts.metrics)
         or bool(policy.critical_queries)
+        or bool(policy.critical_context)
     )
     _expect(has_quality_rule, "a policy needs at least one metric or regressed-query rule")
     _expect(
@@ -273,6 +292,23 @@ def _exception_rules(raw: Any) -> ExceptionRule:
     return ExceptionRule(
         allow=tuple(dict.fromkeys(allow)), approver=approver, safety=safety, max_days=max_days
     )
+
+
+def _context_rules(raw: Any) -> tuple[CriticalContextRule, ...]:
+    _expect(isinstance(raw, list), "critical_context must be a list")
+    _expect(len(raw) <= 1000, "critical_context supports at most 1000 assertions")
+    rules: list[CriticalContextRule] = []
+    for item in raw:
+        _expect(isinstance(item, dict), "critical_context entries must be objects")
+        _no_unknown(item, {"query_id"}, "critical_context")
+        value = item.get("query_id")
+        _expect(
+            isinstance(value, str) and bool(value.strip()) and len(value) <= 512,
+            "critical_context.query_id must be a nonempty string of at most 512 characters",
+        )
+        _expect(all(r.query_id != value for r in rules), "duplicate critical_context question")
+        rules.append(CriticalContextRule(value))
+    return tuple(rules)
 
 
 def _critical_rules(raw: Any) -> tuple[CriticalQueryRule, ...]:

@@ -243,6 +243,18 @@ def _check_query(q: Any, k: int) -> None:
             in ("sufficient", "insufficient", "unknown", "unrecorded"),
             "sufficiency must state delivered and context evidence",
         )
+    if "repeat_sufficiency" in q:
+        rows = q["repeat_sufficiency"]
+        _expect(
+            isinstance(rows, list)
+            and all(
+                isinstance(r, dict)
+                and r.get("delivered") in ("sufficient", "insufficient")
+                and r.get("context") in ("sufficient", "insufficient", "unknown", "unrecorded")
+                for r in rows
+            ),
+            "repeat_sufficiency must state delivered and context evidence per execution",
+        )
     repeat_ids = q.get("repeat_ids")
     _expect(repeat_ids is None or _rankings(repeat_ids, k), "repeat_ids must be rankings")
     attempts = q.get("attempts", [])

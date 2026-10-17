@@ -5,6 +5,23 @@ connect to their application, and use again for a later change. Release configur
 passage review, connection diagnostics, critical assertions, document lookup and resumable
 evaluations are implemented. Customer acceptance remains to be demonstrated.
 
+## Second demonstration: evidence that never reached the model
+
+```bash
+uv run python examples/context_story_demo.py --out /tmp/vectraudit-context-story
+```
+
+The strategy's §11 story, run end to end through product code on a tiny synthetic support
+assistant whose context packing has a character budget. Human review (a synthetic review
+file) judges the account-recovery answer wrong although document recall is 1.00; the run
+shows the required evidence delivered but cut short in the model context
+(`lost_in_context`); the declared fix "pack whole documents" is tried (recovered, no
+regressions) and validated on a held-out question under the release policy; the fixed
+configuration passes a policy with `critical_context`, and a later release that reverts the
+budget fails it. It writes `context-story.html`, a self-contained page labelled synthetic,
+for prospects. Like the first demonstration it is a behavioural fixture, not evidence about
+any real application.
+
 ## Reproduce the release demonstration
 
 From a development checkout with dependencies and the frontend built:

@@ -17,6 +17,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `critical_context` release rules: a question's required evidence must reach the model in
+  full on every execution; unknown or unrecorded context is never a pass, and hosted checks
+  reach the same verdict.
+- `examples/context_story_demo.py`: the retrieved-but-never-seen story, from wrong answer to
+  protected release, through product code; writes a synthetic one-page summary.
 - Investigation panel in the guided workbench: from a finding, **Investigate this question**
   shows the loss, unestablished causes, cautions and the pipeline's declared fixes, with
   **Try this fix** and held-out **Validate** buttons running as workspace jobs.

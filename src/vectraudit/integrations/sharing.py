@@ -109,6 +109,11 @@ def _query(
         ]
     if "repeat_ann_recall" in query:
         out["repeat_ann_recall"] = query["repeat_ann_recall"]
+    if "repeat_sufficiency" in query:
+        # States only, so hosted critical-context checks reach the local verdict.
+        out["repeat_sufficiency"] = [
+            _scalars(row, "delivered context") for row in query["repeat_sufficiency"]
+        ]
     out["error"] = _error(query.get("error"))
     out.setdefault("ann_recall", None)
     out.setdefault("nondeterministic", False)

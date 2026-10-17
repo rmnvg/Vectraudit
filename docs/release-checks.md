@@ -407,6 +407,27 @@ verdict, the worst observed rank, the number of executions checked, and up to te
 executions with their repeat (and attempt, for retried queries) and observed ranking. HTML and
 Markdown reports include passed and failed assertions and a table of failing executions.
 
+### Required evidence must reach the model
+
+A document can rank first and still never reach the model, or reach it with the clause that
+mattered trimmed away. `critical_context` protects a question against that:
+
+```json
+{
+  "version": 1,
+  "metrics": {"ndcg": {"max_drop": 0.02}},
+  "critical_context": [{"query_id": "account-recovery"}]
+}
+```
+
+The question's `required_evidence` (declared in the benchmark) must reach the model in full,
+as recorded by the pipeline's model-context evidence, on **every** execution. A demonstrated
+loss on any execution fails (rule `critical_context:<question>`, which exceptions treat as a
+critical rule). Context that was not recorded, or whose completeness is unknown, is not
+comparable, never a pass; so is a question without `required_evidence`, or a run recorded
+before per-execution sufficiency existed. Uploads carry only each execution's sufficiency
+states, so hosted checks reach the same verdict. Policies without the rule keep their hashes.
+
 ### Every repeat counts
 
 Runs record one ranking per execution (`repeat_ids`), and a critical document must meet its

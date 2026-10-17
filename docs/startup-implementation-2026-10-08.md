@@ -1503,9 +1503,41 @@ measure it on held-out questions. Full suite (1,661 passed, 22 skipped), ruff, m
 Python 3.12 and 3.10, TypeScript, Oxlint, 104 frontend tests, the build and the guided,
 market-fit and release journeys pass.
 
+## Step 44: protect a repaired context case, and demonstrate the whole story
+
+The strategy's §11 story ends with "the next release now checks this case automatically",
+which Steps 40–43 could not yet do: release policies ignored context.
+
+- **`critical_context` policy rule:** a named question's required evidence must reach the
+  model in full on every execution. Runs record sufficiency per repeat; a demonstrated loss
+  on any execution fails, unrecorded or unknown context is not comparable, and so are
+  questions without required evidence and older runs. Exceptions treat it as a critical
+  rule; uploads carry per-execution states so hosted checks agree; the decision ledger
+  counts it with other critical failures. Existing policy hashes are unchanged.
+- **`examples/context_story_demo.py`:** a synthetic support assistant whose packing budget
+  trims the account-recovery exception. Through product code: human review marks the answer
+  wrong while recall is 1.00; the run shows the evidence delivered but insufficient in
+  context; the diagnosis is `lost_in_context`; the declared packing fix is tried (1 of 1
+  recovered, 0 regressions) and approved on a held-out question under the policy; the fixed
+  release passes a `critical_context` policy and a later release reverting the budget fails
+  it. It writes a self-contained page, labelled synthetic, for prospects (§8 acquisition).
+
+One test correction: the legacy policy-hash test rebuilds the old canonical form from the
+dataclass, so it now drops the new empty field as it does for earlier optional fields. The
+real hash was unchanged.
+
+Not included: an aggregate context-loss metric in policies (still needs calibration on real
+applications), a policy-editor control for the rule (JSON import works), and a video or
+hosted copy of the page.
+
+Validation: 8 new tests (every-execution failure, unknown and ungrouped context never
+passing, hosted parity, validation and hash stability, old runs, ledger counts, and the demo
+end to end). Full suite, ruff, and mypy on Python 3.12 and 3.10 pass; the page was rendered
+in Chromium.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–43). What remains needs owner
+The code-only work the strategy names is done (Steps 1–44). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 

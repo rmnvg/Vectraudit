@@ -118,6 +118,7 @@ class _Check:
             self.out["n_families"] = family_count(b for b, _ in pairs)
             self._safety(pairs)
             self._critical_queries()
+            self._critical_context()
             self._quality(pairs)
             self._cohorts(pairs)
             self._latency()
@@ -205,6 +206,68 @@ class _Check:
                     f"critical:{rule.query_id}:{rule.doc_id}" if verdict == Verdict.FAIL else None,
                 )
         self.out["critical_queries"] = assertions
+
+    def _critical_context(self) -> None:
+        """Required evidence must reach the model in full on every candidate execution.
+
+        A demonstrated loss on any execution fails. Context that was not recorded, or whose
+        completeness is unknown, is insufficient evidence: not comparable, never a pass.
+        """
+        if not self.policy.critical_context:
+            return
+        queries = {q["query_id"]: q for q in self.cand["queries"]}
+        repeats = (self.cand.get("timing") or {}).get("repeats")
+        results = []
+        for rule in self.policy.critical_context:
+            query = queries.get(rule.query_id)
+            states: list[str] = []
+            if query is None:
+                verdict, detail = Verdict.NOT_COMPARABLE, "the question was not measured"
+            elif query.get("error"):
+                verdict, detail = Verdict.ERROR, "the question has no successful measurement"
+            elif not isinstance(query.get("repeat_sufficiency"), list):
+                verdict, detail = (
+                    Verdict.NOT_COMPARABLE,
+                    "the run records no per-execution evidence sufficiency; declare "
+                    "required_evidence for the question and re-run",
+                )
+            elif isinstance(repeats, int) and len(query["repeat_sufficiency"]) != repeats:
+                verdict, detail = Verdict.NOT_COMPARABLE, "sufficiency is missing for some repeats"
+            else:
+                states = [row.get("context") for row in query["repeat_sufficiency"]]
+                lost = states.count("insufficient")
+                unknown = len(states) - lost - states.count("sufficient")
+                if lost:
+                    verdict = Verdict.FAIL
+                    detail = (
+                        f"the required evidence did not reach the model intact on {lost} of "
+                        f"{len(states)} executions"
+                    )
+                elif unknown:
+                    verdict = Verdict.NOT_COMPARABLE
+                    detail = (
+                        f"whether it reached the model is unknown on {unknown} of "
+                        f"{len(states)} executions (context unrecorded or incomplete)"
+                    )
+                else:
+                    verdict, detail = Verdict.PASS, f"held on all {len(states)} executions"
+            results.append(
+                {
+                    "query_id": rule.query_id,
+                    "verdict": verdict.value,
+                    "executions": len(states),
+                    "context": states,
+                    "detail": detail,
+                }
+            )
+            if verdict != Verdict.PASS:
+                self.flag(
+                    verdict,
+                    f"Critical context {rule.query_id}: its required evidence must reach the "
+                    f"model in full on every execution; {detail}.",
+                    f"critical_context:{rule.query_id}" if verdict == Verdict.FAIL else None,
+                )
+        self.out["critical_context"] = results
 
     # --- gates -----------------------------------------------------------------------
 
@@ -362,7 +425,7 @@ class _Check:
         self.out["metrics"] = available
         if (
             not available
-            and self.policy.critical_queries
+            and (self.policy.critical_queries or self.policy.critical_context)
             and not self.policy.metrics
             and self.policy.max_regressed_queries is None
             and not self.policy.cohorts.metrics
