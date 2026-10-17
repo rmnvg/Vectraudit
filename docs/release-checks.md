@@ -458,7 +458,8 @@ result ID or by the hit's source ID, so a forbidden source is caught through its
 
 Uploads carry document IDs, stage kinds and the two flags (not stage names), so hosted checks
 reach the same verdict. As with every permission check, a passing suite is evidence about the
-scenarios tested, not proof that authorization is correct.
+scenarios tested, not proof that authorization is correct. To test access that changes
+over time (revocations, moves, archives) see [permission lifecycle](permission-lifecycle.md).
 
 ### Every repeat counts
 
