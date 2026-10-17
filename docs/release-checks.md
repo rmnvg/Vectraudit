@@ -431,6 +431,35 @@ states, so hosted checks reach the same verdict. Policies without the rule keep 
 The workbench's policy editor edits these assertions (**Add context assertion**) and keeps
 them through every save.
 
+### Where forbidden documents travelled
+
+A permission check that inspects only the final results misses two leaks: a forbidden
+document handed to the model without being shown, and one sent to a stage that should never
+see it, such as a third-party reranker running before access control. For every question
+with `forbidden` documents, runs record a `permission_path`: each forbidden document seen in
+any execution, the stages it reached (as a stage's output, or as its input through a parent
+stage), and whether it reached the results or the model context. Forbidden documents match by
+result ID or by the hit's source ID, so a forbidden source is caught through its chunks.
+
+- **In the model context:** always fails (rule `safety.forbidden:<question>`, like a
+  delivered forbidden document), even when the results are clean. Context that was not
+  recorded in full is reported as unknown, not as clean.
+- **Upstream stages:** a policy names the stage kinds a forbidden document must never reach:
+
+  ```json
+  {"version": 1, "metrics": {"ndcg": {"max_drop": 0.02}}, "forbidden_stages": ["rerank"]}
+  ```
+
+  Kinds are those of stage traces: `keyword`, `vector`, `filter`, `fusion`, `rerank`,
+  `truncate` and `custom`. Reaching one fails with the same safety rule. A run whose trace
+  does not show stages for a permission-checked question is not comparable under such a
+  policy, never a pass. Policies without it keep their hashes, and the workbench editor keeps
+  it through every save.
+
+Uploads carry document IDs, stage kinds and the two flags (not stage names), so hosted checks
+reach the same verdict. As with every permission check, a passing suite is evidence about the
+scenarios tested, not proof that authorization is correct.
+
 ### Every repeat counts
 
 Runs record one ranking per execution (`repeat_ids`), and a critical document must meet its

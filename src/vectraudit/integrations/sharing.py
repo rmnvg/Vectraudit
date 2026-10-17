@@ -132,6 +132,21 @@ def _query(
             for row in query["repeat_safety"]
             if isinstance(row, dict)
         ]
+    if isinstance(query.get("permission_path"), dict):
+        # Document IDs, stage kinds and flags, so hosted checks judge the same boundary;
+        # stage names stay local, like the rest of the stage trace.
+        path = query["permission_path"]
+        out["permission_path"] = {
+            **_scalars(path, "stages_recorded context_recorded"),
+            "documents": [
+                {
+                    **_scalars(doc, "doc_id results context"),
+                    "kinds": [k for k in doc.get("kinds", []) if isinstance(k, str)],
+                }
+                for doc in path.get("documents") or []
+                if isinstance(doc, dict)
+            ],
+        }
     if "retries" in query:
         out["retries"] = [
             {**_scalars(row, "call attempt delay_s"), "code": (_error(row) or {})["code"]}

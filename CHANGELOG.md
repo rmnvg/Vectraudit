@@ -8,6 +8,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Fixed
 
+- A forbidden source document returned as a chunk (a result whose source reference names it)
+  was not caught by permission checks; it now is.
 - The workbench policy editor dropped `critical_context` rules when an existing policy was
   edited and saved; it now edits and keeps them.
 - A run file marked complete but containing failed or missing questions is now rejected; it
@@ -18,6 +20,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   non-finite metrics can no longer reach a verdict.
 
 ### Added
+
+- Permission checks follow forbidden documents upstream: runs record a `permission_path`
+  (stages reached, results, model context). A forbidden document in the model context fails
+  even when the results are clean, and a policy's `forbidden_stages` (for example `rerank`)
+  fails one that reaches those stage kinds. Findings and investigations name context leaks.
 
 - Investigations use a content change log (`workbench serve --changes`, `investigate
   --changes`, with `--lineage`): stale content a question was served and conflicting

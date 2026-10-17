@@ -22,7 +22,7 @@ from vectraudit.labelling.storage import task_lock
 from vectraudit.pipelines.budget import usage
 from vectraudit.pipelines.checkpoint import Checkpoint, identity, validate_path
 from vectraudit.pipelines.errors import RETRYABLE, PipelineCallError, run_failure
-from vectraudit.pipelines.models import PipelineRequest, PipelineResult
+from vectraudit.pipelines.models import ContextItem, Hit, PipelineRequest, PipelineResult
 from vectraudit.pipelines.runtime import Pipeline
 
 
@@ -208,6 +208,80 @@ def failure_analysis(result: PipelineResult, relevant: dict[str, float]) -> list
                 }
             )
     return findings
+
+
+def _forbidden_key(hit: Hit | ContextItem, forbidden: set[str]) -> str | None:
+    """The forbidden document a hit or context item is, by its ID or its source ID."""
+    if hit.id in forbidden:
+        return hit.id
+    if hit.source is not None and hit.source.source_id in forbidden:
+        return hit.source.source_id
+    return None
+
+
+def forbidden_delivered(result: PipelineResult, forbidden: Sequence[str]) -> list[str]:
+    """Forbidden documents among the final results, matched by ID or source ID."""
+    wanted = set(forbidden)
+    return sorted({k for h in result.hits if (k := _forbidden_key(h, wanted)) is not None})
+
+
+def permission_path(results: Sequence[PipelineResult], forbidden: Sequence[str]) -> dict[str, Any]:
+    """Where each forbidden document travelled, across every execution.
+
+    A document *reached* a stage when the stage output it, or when one of its parents did
+    (it was that stage's input: a reranker sees its candidates). ``context`` is ``None``
+    when an execution did not record the model context in full, since absence then proves
+    nothing. IDs, stage names and kinds only; never text.
+    """
+    wanted = set(forbidden)
+    docs: dict[str, dict[str, Any]] = {}
+
+    def entry(doc: str) -> dict[str, Any]:
+        return docs.setdefault(
+            doc, {"doc_id": doc, "stages": {}, "results": False, "context": False}
+        )
+
+    stages_recorded = all(r.stages for r in results)
+    context_recorded = all(
+        r.context is not None and r.context.coverage == "observed" for r in results
+    )
+    for result in results:
+        outputs = {
+            s.name: {k for h in s.hits if (k := _forbidden_key(h, wanted)) is not None}
+            for s in result.stages
+        }
+        for stage in result.stages:
+            inputs = set().union(*(outputs.get(p, set()) for p in stage.parents))
+            for doc in outputs[stage.name] | inputs:
+                seen = entry(doc)["stages"].setdefault(
+                    stage.name, {"name": stage.name, "kind": stage.kind, "as": "input"}
+                )
+                if doc in outputs[stage.name]:
+                    seen["as"] = "output"
+        for doc in forbidden_delivered(result, forbidden):
+            entry(doc)["results"] = True
+        for item in result.context.items if result.context is not None else []:
+            key = _forbidden_key(item, wanted)
+            if key is not None:
+                entry(key)["context"] = True
+    documents = []
+    for doc in sorted(docs):
+        row = docs[doc]
+        stages = list(row["stages"].values())
+        documents.append(
+            {
+                "doc_id": doc,
+                "stages": stages,
+                "kinds": sorted({s["kind"] for s in stages}),
+                "results": row["results"],
+                "context": True if row["context"] else (False if context_recorded else None),
+            }
+        )
+    return {
+        "stages_recorded": stages_recorded,
+        "context_recorded": context_recorded,
+        "documents": documents,
+    }
 
 
 def context_analysis(result: PipelineResult, relevant: dict[str, float]) -> dict[str, Any] | None:
@@ -694,7 +768,7 @@ def _measure(
             **repeat_quality(rankings, q.relevant, options.k),
             nondeterministic=any(r.hits != result.hits for r in results[1:]),
             no_answer_correct=all(not r.hits for r in results) if q.no_answer else None,
-            forbidden_ids=sorted({h.id for r in results for h in r.hits} & set(q.forbidden)),
+            forbidden_ids=sorted({d for r in results for d in forbidden_delivered(r, q.forbidden)}),
             permission_checked=bool(q.forbidden),
             abstained=result.abstained,
             cost_usd=(
@@ -709,7 +783,7 @@ def _measure(
             ),
             repeat_safety=[
                 {
-                    "forbidden_ids": sorted({h.id for h in r.hits} & set(q.forbidden)),
+                    "forbidden_ids": forbidden_delivered(r, q.forbidden),
                     "no_answer_correct": not r.hits if q.no_answer else None,
                 }
                 for r in results
@@ -727,6 +801,8 @@ def _measure(
             if options.evidence
             else None,
         )
+        if q.forbidden:
+            entry["permission_path"] = permission_path(results, q.forbidden)
         if result.context is not None:
             # IDs and flags only; never text. Repeat 1, like the primary stage evidence.
             entry["model_context"] = result.context.model_dump(exclude_none=True)

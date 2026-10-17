@@ -37,6 +37,7 @@ describe('release policy form', () => {
     const { policy } = policyFromForm(form)
     expect(policy?.cohorts).toEqual(raw.cohorts)
     expect(policy?.exceptions).toEqual(exceptions)
+    expect(policyFromForm(formFromPolicy({ ...raw, forbidden_stages: ['rerank'] })).policy?.forbidden_stages).toEqual(['rerank'])
     form.cohortControl = false
     expect(policyFromForm(form).policy?.cohorts).toEqual({ min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } } })
   })

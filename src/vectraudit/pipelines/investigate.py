@@ -92,8 +92,19 @@ def query_losses(query: Mapping[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if query.get("error"):
         return [{"class": "error", "code": (query["error"] or {}).get("code")}]
-    for doc in query.get("forbidden_ids") or []:
+    delivered = set(query.get("forbidden_ids") or [])
+    for doc in sorted(delivered):
         out.append({"class": "permission", "doc_id": doc})
+    path = query.get("permission_path")
+    for doc in (path.get("documents") or []) if isinstance(path, Mapping) else []:
+        if doc.get("context") is True and doc["doc_id"] not in delivered:
+            out.append(
+                {
+                    "class": "permission",
+                    "doc_id": doc["doc_id"],
+                    "detail": "reached the model context",
+                }
+            )
     if query.get("no_answer_correct") is False:
         out.append({"class": "no_answer", "doc_ids": list(query.get("ids") or [])})
     evidence = query.get("evidence")

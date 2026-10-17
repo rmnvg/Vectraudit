@@ -41,7 +41,8 @@ export interface PolicyForm {
   cohortMetrics: Record<Metric, { enabled: boolean; maxDrop: string }>
   /** Bonferroni control across judged cohort rules (`cohorts.control`). */
   cohortControl: boolean
-  /** Policy blocks this form does not edit (audited exceptions), kept unchanged. */
+  /** Policy blocks this form does not edit (audited exceptions, the permission stage
+   *  boundary), kept unchanged. */
   preserved: RawPolicy
   p95Pct: string; p50Pct: string; p95Ms: string; minIncreaseMs: string
   sameEnvironment: boolean
@@ -88,7 +89,7 @@ export function formFromPolicy(raw: RawPolicy): PolicyForm {
     cohortMinQueries: text(cohorts.min_queries ?? 10),
     cohortMetrics: Object.fromEntries(METRICS.map(m => [m, { enabled: m in cohortMetrics, maxDrop: text(object(cohortMetrics[m]).max_drop) }])) as PolicyForm['cohortMetrics'],
     cohortControl: cohorts.control === 'bonferroni',
-    preserved: 'exceptions' in raw ? { exceptions: raw.exceptions } : {},
+    preserved: Object.fromEntries((['exceptions', 'forbidden_stages'] as const).filter(key => key in raw).map(key => [key, raw[key]])),
     p95Pct: text(latency.p95_max_increase_pct),
     p50Pct: text(latency.p50_max_increase_pct),
     p95Ms: text(latency.p95_max_ms),

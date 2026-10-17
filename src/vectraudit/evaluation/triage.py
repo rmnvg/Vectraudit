@@ -177,6 +177,12 @@ def _answer_findings(b: Mapping[str, Any], c: Mapping[str, Any]) -> list[dict[st
     return []
 
 
+def _forbidden_in_context(q: Mapping[str, Any]) -> list[str]:
+    path = q.get("permission_path")
+    documents = path.get("documents") if isinstance(path, Mapping) else None
+    return [d["doc_id"] for d in documents or [] if d.get("context") is True]
+
+
 def _stages_with(q: Mapping[str, Any], doc: str) -> list[str]:
     evidence = q.get("evidence")
     stages = evidence.get("stages") if isinstance(evidence, Mapping) else None
@@ -248,18 +254,30 @@ def _query_findings(
         return findings, None, None
 
     forbidden = list(c.get("forbidden_ids") or [])
-    if forbidden:
-        before = set(b.get("forbidden_ids") or [])
+    leaked = [d for d in _forbidden_in_context(c) if d not in forbidden]
+    if forbidden or leaked:
+        before = set(b.get("forbidden_ids") or []) | set(_forbidden_in_context(b))
+        message = (
+            f"Delivered {len(forbidden)} forbidden document(s): " + ", ".join(forbidden)
+            if forbidden
+            else ""
+        )
+        if leaked:
+            message += ("; " if message else "") + (
+                f"{len(leaked)} more reached the model context without being delivered: "
+                + ", ".join(leaked)
+            )
         findings.append(
             {
                 "kind": "permission",
                 "severity": "blocking",
-                "doc_ids": forbidden,
-                "new_doc_ids": [d for d in forbidden if d not in before],
-                "documents": [{"doc_id": d, "stages": _stages_with(c, d)} for d in forbidden],
-                "message": f"Delivered {len(forbidden)} forbidden document(s): "
-                + ", ".join(forbidden)
-                + ("" if before else ". The baseline delivered none."),
+                "doc_ids": [*forbidden, *leaked],
+                "context_doc_ids": leaked,
+                "new_doc_ids": [d for d in [*forbidden, *leaked] if d not in before],
+                "documents": [
+                    {"doc_id": d, "stages": _stages_with(c, d)} for d in [*forbidden, *leaked]
+                ],
+                "message": message + ("" if before else ". The baseline delivered none."),
             }
         )
     if c.get("no_answer_correct") is False:
