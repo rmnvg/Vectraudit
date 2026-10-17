@@ -428,6 +428,9 @@ comparable, never a pass; so is a question without `required_evidence`, or a run
 before per-execution sufficiency existed. Uploads carry only each execution's sufficiency
 states, so hosted checks reach the same verdict. Policies without the rule keep their hashes.
 
+The workbench's policy editor edits these assertions (**Add context assertion**) and keeps
+them through every save.
+
 ### Every repeat counts
 
 Runs record one ranking per execution (`repeat_ids`), and a critical document must meet its

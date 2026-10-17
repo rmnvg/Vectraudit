@@ -42,6 +42,8 @@ from vectraudit.pipelines.investigation_records import (
     link_result,
     measures,
     new_record,
+    protection_policy,
+    record_protection,
     request_evidence,
     set_diagnosis,
     summarize,
@@ -100,6 +102,14 @@ class CloseIn(Contract):
     outcome: str
     by: Name
     note: str | None = Field(default=None, max_length=2000)
+
+
+class ProtectIn(Contract):
+    policy: str
+    by: Name
+    context: bool = False
+    doc_id: str | None = Field(default=None, min_length=1, max_length=512)
+    max_rank: int | None = Field(default=None, ge=1, le=10000)
 
 
 class ValidateIn(Contract):
@@ -429,6 +439,55 @@ def investigation_router(workspace: GuidedWorkspace) -> APIRouter:
             link_result(record, result, body.by)
 
         return change(identifier, attach)
+
+    @router.post("/investigations/{identifier}/protect")
+    def protect(identifier: str, body: ProtectIn) -> dict[str, Any]:
+        from vectraudit.pipelines.release_workflow import STARTUP, PolicyIn
+
+        if body.policy == STARTUP:
+            raise HTTPException(
+                422, "The startup policy is read-only; save it as a workspace policy first"
+            )
+        if (body.doc_id is None) != (body.max_rank is None):
+            raise HTTPException(422, "A rank rule needs both a document and a maximum rank")
+        path = records.path(identifier)
+        with task_lock(path):
+            record = records.read(identifier)
+            if record.get("outcome") != "fixed":
+                raise HTTPException(
+                    409, "Protect a question after its fix is verified and the record closed"
+                )
+            run = load(record["run"])
+            query = next(q for q in run["queries"] if q["query_id"] == record["query_id"])
+            states = [r.get("context") for r in query.get("repeat_sufficiency") or []]
+            if body.context and (not states or "unrecorded" in states):
+                # A rule the pipeline cannot be judged on would block every later release.
+                raise HTTPException(
+                    422,
+                    "This question cannot be protected in context: it needs required_evidence "
+                    "in the benchmark and a pipeline that records what reaches the model",
+                )
+            if body.max_rank is not None and body.max_rank > run["search"]["k"]:
+                raise HTTPException(422, "The maximum rank cannot exceed the run's k")
+            current = workspace.policies.record(body.policy)
+            rank = (body.doc_id, body.max_rank) if body.doc_id and body.max_rank else None
+            try:
+                raw, added = protection_policy(
+                    current["policy"], record["query_id"], context=body.context, rank=rank
+                )
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            saved = workspace.policies.save(
+                PolicyIn(
+                    name=current["name"],
+                    policy=raw,
+                    note=f"Protects {record['query_id']} after investigation "
+                    f"{identifier[:8]} (fixed); added by {body.by}.",
+                )
+            )
+            record_protection(record, saved, added, body.by)
+            records.write(record)
+        return {"record": record, "policy": saved, "added": added}
 
     @router.post("/investigations/{identifier}/close")
     def finish(identifier: str, body: CloseIn) -> dict[str, Any]:

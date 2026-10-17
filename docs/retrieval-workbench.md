@@ -658,6 +658,16 @@ in `.workbench/investigations/`: who opened it and when, **Accept diagnosis** or
 trial and validation as it finishes, and **Close investigation** with an outcome. Closing as
 *fixed* needs an approved validation; a trial alone is exploratory. Records hold IDs,
 names, reasons and timestamps, never question or document text, and names are self-reported.
+**Protect this question.** Once an investigation is closed as fixed, the panel adds rules
+that keep the question from regressing to a saved release policy, as a new version (earlier
+versions and checks stay as they were): its required evidence must reach the model on every
+execution (`critical_context`), and/or a named document must rank within a top limit
+(`critical_queries`). Existing rules are kept and never duplicated; a conflicting rank is
+changed in the policy editor, not silently replaced. The context rule is refused when the
+pipeline records no model context, because a rule that can never be judged would block every
+later release. The startup policy is read-only; save a workspace copy first. The record
+notes which policy version now protects the question.
+
 `vectraudit workbench investigations <workspace>` summarises them for a pilot: diagnoses
 accepted, disputed and pending, fixes verified, fixes reproduced by a second engineer (an
 approved validation of the same fix by someone other than the opener), and median minutes to

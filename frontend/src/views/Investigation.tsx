@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { guidedRequest } from '../lib/guided'
 import type { JobState } from '../lib/guided'
+import type { PolicyListing } from '../lib/release'
 import { OUTCOMES, canCloseFixed, lossLabel, rememberName, savedName, trialCalls, trialOutcome } from '../lib/investigation'
 import type { Investigation as Data, InvestigationRecord, Trial, Validation } from '../lib/investigation'
 
@@ -39,6 +40,41 @@ export default function Investigation({ token, runId, queryId, baselineId, polic
   const [reason, setReason] = useState('')
   const [missing, setMissing] = useState('')
   const [outcome, setOutcome] = useState('fixed')
+  const [policies, setPolicies] = useState<PolicyListing['policies']>([])
+  const [protectPolicy, setProtectPolicy] = useState('')
+  const [protectContext, setProtectContext] = useState(false)
+  const [protectDoc, setProtectDoc] = useState('')
+  const [protectRank, setProtectRank] = useState('1')
+  const [protectedNote, setProtectedNote] = useState('')
+  const verified = record?.status === 'closed' && record.outcome === 'fixed'
+
+  useEffect(() => {
+    if (!verified) return
+    let live = true
+    guidedRequest<PolicyListing>('policies', token).then(listing => {
+      if (!live) return
+      const latest = listing.policies.filter(p => p.latest)
+      setPolicies(latest)
+      setProtectPolicy(current => current || latest[0]?.id || '')
+    }, () => { if (live) setPolicies([]) })
+    return () => { live = false }
+  }, [token, verified])
+
+  const protect = async () => {
+    if (!record) return
+    setError('')
+    try {
+      const result = await guidedRequest<{ record: InvestigationRecord; policy: { name: string; version: number; id: string }; added: unknown[] }>(
+        `investigations/${record.id}/protect`, token,
+        { policy: protectPolicy, by: name, context: protectContext, ...(protectDoc.trim() ? { doc_id: protectDoc.trim(), max_rank: Number(protectRank) } : {}) })
+      setRecord(result.record)
+      setProtectedNote(result.added.length ? `Added ${result.added.length} rule(s) to ${result.policy.name} v${result.policy.version}. Select it for the next comparison or release export.` : `${result.policy.name} v${result.policy.version} already protects this question.`)
+      setPolicies(current => [...current.filter(p => p.name !== result.policy.name), result.policy as PolicyListing['policies'][number]])
+      setProtectPolicy(result.policy.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   useEffect(() => {
     let live = true
@@ -152,7 +188,19 @@ export default function Investigation({ token, runId, queryId, baselineId, polic
         {record.status === 'open' ? <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Outcome" value={outcome} onChange={e => setOutcome(e.target.value)} className="rounded-lg border border-line bg-page px-2 py-1 text-sm">{OUTCOMES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
           <button className={button} disabled={outcome === 'fixed' && !canCloseFixed(record)} onClick={() => void act('close', { outcome })}>Close investigation</button>
-        </div> : <p role="status">Closed: <b>{record.outcome?.replaceAll('_', ' ')}</b>{record.measures?.minutes_to_accepted_diagnosis != null ? ` · ${record.measures.minutes_to_accepted_diagnosis} min to an accepted diagnosis` : ''}{record.measures?.minutes_to_verified_fix != null ? ` · ${record.measures.minutes_to_verified_fix} min to a verified fix` : ''}</p>}
+        </div> : <><p role="status">Closed: <b>{record.outcome?.replaceAll('_', ' ')}</b>{record.measures?.minutes_to_accepted_diagnosis != null ? ` · ${record.measures.minutes_to_accepted_diagnosis} min to an accepted diagnosis` : ''}{record.measures?.minutes_to_verified_fix != null ? ` · ${record.measures.minutes_to_verified_fix} min to a verified fix` : ''}</p>
+          {verified && <div aria-label="Protect this question" className="space-y-2 rounded-lg bg-surface-2 p-3">
+            <h5 className="font-semibold">Protect this question in later releases</h5>
+            <p className="text-xs text-muted">Adds rules to a saved release policy as a new version; earlier versions and checks are unchanged.</p>
+            {!policies.length ? <p className="text-xs text-muted">Save a release policy first; the startup policy is read-only.</p> : <>
+              <label className="block text-sm">Policy<select aria-label="Policy to protect with" value={protectPolicy} onChange={e => setProtectPolicy(e.target.value)} className="ml-2 rounded-lg border border-line bg-page px-2 py-1 text-sm">{policies.map(p => <option key={p.id} value={p.id ?? ''}>{p.name} v{p.version}</option>)}</select></label>
+              <label className="flex gap-2 text-sm"><input type="checkbox" checked={protectContext} onChange={e => setProtectContext(e.target.checked)} /><span>Its required evidence must reach the model on every execution</span></label>
+              <div className="flex flex-wrap items-end gap-2 text-sm"><label>Document that must rank<input aria-label="Protected document" value={protectDoc} onChange={e => setProtectDoc(e.target.value)} className="ml-2 w-40 rounded-lg border border-line bg-page px-2 py-1 text-sm" /></label><label>within the top<input aria-label="Protected rank" inputMode="numeric" value={protectRank} onChange={e => setProtectRank(e.target.value)} className="ml-2 w-16 rounded-lg border border-line bg-page px-2 py-1 text-sm" /></label></div>
+              <button className={primary} disabled={!protectPolicy || (!protectContext && !protectDoc.trim())} onClick={() => void protect()}>Protect this question</button>
+            </>}
+            {protectedNote && <p role="status" className="text-sm">{protectedNote}</p>}
+            {(record.protections ?? []).length > 0 && <ul className="list-disc pl-5 text-xs text-muted">{(record.protections ?? []).map(p => <li key={p.policy_id + p.version}>{p.name} v{p.version}: {p.rules.map(r => r.kind).join(', ') || 'already protected'} · by {p.by}</li>)}</ul>}
+          </div>}</>}
       </>}
     </div>
   </section>

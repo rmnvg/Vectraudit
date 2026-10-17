@@ -8,6 +8,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Fixed
 
+- The workbench policy editor dropped `critical_context` rules when an existing policy was
+  edited and saved; it now edits and keeps them.
 - A run file marked complete but containing failed or missing questions is now rejected; it
   could crash a comparison or hide failures.
 - A regression could pass if the regressed questions had no scores on the candidate side
@@ -17,6 +19,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- **Protect this question**: a fix verified in an investigation adds context and rank rules
+  for its question to a saved release policy as a new version, recorded on the
+  investigation.
 - Investigation records: accept or dispute a diagnosis, request missing evidence, link fix
   trials and validations, and close with an outcome; `vectraudit workbench investigations`
   reports diagnoses, verified and reproduced fixes and median times for pilot measurement.
