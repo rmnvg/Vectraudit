@@ -1099,6 +1099,72 @@ def cache_probe_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("migration")
+def migration_command(
+    current: Annotated[Path, typer.Argument(help="Run of the current system.")],
+    proposed: Annotated[Path, typer.Argument(help="Run of the proposed system, same benchmark.")],
+    dataset: Annotated[Path, typer.Argument(help="The labelled benchmark both runs answered.")],
+    policy: Annotated[
+        Path | None, typer.Option(help="Release policy; without it the result is exploratory.")
+    ] = None,
+    current_inventory: Annotated[
+        Path | None, typer.Option(help="Current system's documents (JSONL: id, sha256, metadata).")
+    ] = None,
+    proposed_inventory: Annotated[
+        Path | None, typer.Option(help="Proposed system's documents (JSONL: id, sha256, metadata).")
+    ] = None,
+    costs: Annotated[
+        Path | None,
+        typer.Option(help='Declared cost estimates: {"current": {"reindex_usd": 0}, ...}.'),
+    ] = None,
+    out: Annotated[Path, typer.Option(help="Markdown report.")] = Path("migration-report.md"),
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_unless_ready: Annotated[
+        bool,
+        typer.Option(
+            "--fail-unless-ready",
+            help="Exit 3 unless the policy passes and no migration concern remains.",
+        ),
+    ] = False,
+) -> None:
+    """Migration assurance: compare two systems on one benchmark under the release policy.
+
+    Adds the checks a migration needs: corpus equivalence and ID mapping from each system's
+    inventory, filter semantics against document metadata, environment differences, and
+    measured versus declared costs. Reads your exports only; nothing is copied or re-indexed.
+    """
+    from vectraudit.evaluation.migration import (
+        migration_report,
+        read_inventory,
+        render_migration,
+    )
+
+    try:
+        report = migration_report(
+            load_run(current),
+            load_run(proposed),
+            load_dataset(dataset),
+            load_policy(policy) if policy else DEFAULT_POLICY,
+            current_inventory=read_inventory(current_inventory) if current_inventory else None,
+            proposed_inventory=read_inventory(proposed_inventory) if proposed_inventory else None,
+            declared_costs=json.loads(costs.read_text(encoding="utf-8")) if costs else None,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Migration error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    out.write_text(render_migration(report), encoding="utf-8")
+    if json_out is not None:
+        _write(json_out, report)
+    typer.echo(
+        f"{'Ready' if report['migration_ready'] else 'Not ready'} to migrate: policy verdict "
+        f"{report['verdict']}, {len(report['concerns'])} concern(s). Report: {out}"
+    )
+    for concern in report["concerns"]:
+        typer.echo(f"  - {concern}")
+    if fail_unless_ready and not report["migration_ready"]:
+        raise typer.Exit(3)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None

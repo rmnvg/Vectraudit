@@ -21,6 +21,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Migration report (`vectraudit workbench migration`): the current and proposed systems on
+  one benchmark under the release policy, plus corpus equivalence and ID mapping from each
+  system's inventory, filter semantics against document metadata, environment differences,
+  and measured versus declared costs; `--fail-unless-ready` gates the migration.
+
 - Cache isolation probe (`vectraudit workbench cache-probe`): asks each permission-scenario
   question after the same question under another context, serially, and reports forbidden
   documents that crossed over, with whether the answer was identical to the primer's.

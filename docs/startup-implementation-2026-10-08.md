@@ -1815,6 +1815,31 @@ correction, why the target must not go first, why a normal run is no reference, 
 unlike the primer's answer, failed calls, the call bound, the CLI). Full suite, ruff and
 mypy on Python 3.12 and 3.10 pass.
 
+## Step 56: migration report (2.5, "migration assurance")
+
+- **`vectraudit workbench migration CURRENT PROPOSED DATASET`** compares two
+  customer-configured systems recorded on the same benchmark (others are refused) under the
+  release policy, and adds what a migration needs:
+  - corpus equivalence from each system's inventory (IDs, hashes, metadata; text refused),
+    with labelled documents missing from the proposed system named as a corpus gap;
+  - ID mapping: IDs a system returned that its inventory lacks, or mostly unknown IDs;
+  - filter semantics: returned documents whose metadata fails the question's filter under
+    the portable semantics;
+  - environment differences side by side, and measured spend beside declared estimates.
+- **"Ready to migrate"** needs the policy to pass and no concern left; missing inventories
+  are concerns, so unverified equivalence never reads as ready. `--fail-unless-ready` gates
+  CI. The pilot offer now lists migration assurance, ingestion and freshness, and the
+  permission lifecycle checks.
+
+Not included: running both systems from the report (record the runs first, paired if
+possible), browser views, and a customer migration.
+
+Validation: 10 new tests (an equivalent migration is ready; an ignored filter is caught
+while metrics hold; unmapped IDs; a labelled document missing from the new corpus and a
+changed document; unverified checks without inventories; environment and cost disclosure;
+different benchmarks refused; inventories refuse text; dotted range filters; the CLI).
+Full suite, ruff and mypy on Python 3.12 and 3.10 pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

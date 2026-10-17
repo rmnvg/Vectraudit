@@ -31,7 +31,9 @@ retrieval incident, or a planned reranker, embedding or database change.
 | Runtime | Python 3.10–3.13 on Linux and macOS. Windows is not verified |
 | CI | GitHub Actions templates; any other CI can run the same command line |
 | Scale | Up to 1,000 questions per benchmark in the workbench; concurrent runs with rate limits and automatic retries |
-| Permissions | Tenant/user context and filters per question; forbidden-document and no-answer assertions |
+| Ingestion and freshness | From your ingestion export (offsets, revisions and index state; no text): where each labelled passage was first lost, from extraction through chunking and indexing to the model; and from your content change log, whether updates, replacements and deletions reached the index, results and model context within their window |
+| Permissions | Tenant/user context and filters per question; forbidden-document and no-answer assertions, including forbidden documents reaching the model context or stages your policy names (such as a reranker); access changes from your identity system's change log checked after their propagation window; a cache-isolation probe between users |
+| Migration assurance | Your current and proposed systems compared on the same benchmark under the release policy, with corpus equivalence and ID mapping from each system's document inventory, filter semantics checked against document metadata, environment differences and measured versus declared costs |
 | Team view (optional) | A hosted project with release timeline, plain-language summaries for the lead, trends, shared cases and notifications (signed webhook or Slack) |
 
 **Not part of this pilot:** importing Langfuse or LangSmith traces; evaluating answers
