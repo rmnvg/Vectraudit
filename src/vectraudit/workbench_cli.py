@@ -1015,7 +1015,7 @@ def share_command(
         ),
     ] = False,
 ) -> None:
-    """Share one saved case, benchmark snapshot or policy revision with a project."""
+    """Share one saved case, benchmark snapshot, policy revision or investigation."""
     from typing import cast
 
     from fastapi import HTTPException
@@ -1027,7 +1027,7 @@ def share_command(
 
     try:
         if kind not in CATEGORIES:
-            raise ValueError("Kind must be case, benchmark or policy")
+            raise ValueError("Kind must be case, benchmark, policy or investigation")
         if not workspace.is_dir():
             raise ValueError("Workspace directory does not exist")
         projected = projection(

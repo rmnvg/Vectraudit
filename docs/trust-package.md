@@ -43,6 +43,9 @@ versioned, allowlisted projection, never the raw file:
   assertions, numeric search parameters, text parameters as SHA-256 fingerprints, and pipeline
   identity.
 - **Shared cases, benchmarks and policies:** IDs, status, judgments and policy rules.
+- **Shared investigations:** question and run IDs, loss classes, diagnosis status, counts of
+  evidence requests, fix trial and validation results, outcome, protecting policy versions,
+  and times. Reviewer names, dispute reasons, evidence requests and notes are never sent.
 - **Question text and document titles:** sent only with an explicit opt-in. The workbench
   shows the text before you send it.
 

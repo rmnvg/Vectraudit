@@ -337,7 +337,7 @@ def _revision(record: dict[str, Any], expected: str) -> None:
 
 
 class ShareIn(Contract):
-    kind: Literal["case", "benchmark", "policy"]
+    kind: Literal["case", "benchmark", "policy", "investigation"]
     id: str = Field(pattern=r"^[a-f0-9]{32}$")
     share_query_text: bool = False
     confirm: bool = False

@@ -482,6 +482,17 @@ class RecurringCase(BaseModel):
     uploaded_at: datetime
 
 
+class RecurringInvestigation(BaseModel):
+    record_id: str
+    source_id: str
+    status: str | None
+    outcome: str | None
+    diagnosis: str | None
+    protected: bool
+    """Whether a policy rule was added for the question when the investigation was shared."""
+    uploaded_at: datetime
+
+
 class RecurringQuestion(BaseModel):
     query_id: str
     failures: int
@@ -497,6 +508,7 @@ class RecurringQuestion(BaseModel):
     last_failed_at: datetime
     last_check_id: str | None
     cases: list[RecurringCase]
+    investigations: list[RecurringInvestigation] = []
 
 
 class RecurringOut(BaseModel):
@@ -525,8 +537,11 @@ def recurring(
     cases = ledger.cases_by_question(
         session, access.project, {q["query_id"] for q in found["questions"]}
     )
+    asked = {q["query_id"] for q in found["questions"]}
+    investigations = ledger.investigations_by_question(session, access.project, asked)
     for question in found["questions"]:
         question["cases"] = cases.get(question["query_id"], [])
+        question["investigations"] = investigations.get(question["query_id"], [])
     return RecurringOut(**found)
 
 

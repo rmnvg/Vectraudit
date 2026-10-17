@@ -1594,9 +1594,40 @@ validate (approved), close as fixed and protect, confirmed through the API to pr
 version 2 with the rule. Full suite, ruff, mypy on Python 3.12 and 3.10, TypeScript, Oxlint,
 106 frontend tests, the build and the guided, market-fit and release journeys pass.
 
+## Step 47: shared investigations linked from recurring problems (1.6)
+
+1.6 asks the hosted decision view for "findings that recur across runs, with links to
+investigations". Recurring problems existed (Step 22), but investigations (Steps 45–46) were
+local, so a lead could not see that a recurring failure was being investigated, or had been
+fixed and protected.
+
+- **A fourth shared-record kind, `investigation`:** question and run IDs, loss classes,
+  diagnosis status, evidence-request count, trial and validation results, outcome,
+  protecting policy versions, and times to an accepted diagnosis and a verified fix.
+  Reviewer names, dispute reasons, evidence requests and notes are withheld; the
+  question-text setting does not apply. The allowlist is checked on both ends as for other
+  records.
+- **Sharing:** `vectraudit workbench share WORKSPACE investigation ID`, or **Share** in the
+  investigation panel (preview first, as for cases).
+- **Hosted:** recurring problems (page and API) gain an *Investigation* column linking each
+  question's newest shared investigation with its outcome and whether it is protected;
+  investigations have a record page and a records filter. The trust package lists the new
+  upload.
+
+One defect avoided before commit: the hosted records list summarised every unknown kind as
+a policy and would have crashed on an investigation.
+
+Not included: live status (shared records are snapshots) and sharing names under any setting.
+
+Validation: 4 new tests (no names or free text in the projection; tampered fields refused;
+the share panel never sends text for investigations; hosted recurring problems link the
+investigation, and the list and record pages render without private text). Full suite (1,679
+passed, 22 skipped), ruff, mypy on Python 3.12 and 3.10, TypeScript, Oxlint, 106 frontend
+tests, the build and the guided journey pass.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–46). What remains needs owner
+The code-only work the strategy names is done (Steps 1–47). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 

@@ -1,5 +1,5 @@
 /** Sharing a saved case, benchmark snapshot or policy with the hosted project. */
-export type ShareKind = 'case' | 'benchmark' | 'policy'
+export type ShareKind = 'case' | 'benchmark' | 'policy' | 'investigation'
 
 export interface ShareDestination { configured: boolean; url?: string; project?: string; message?: string; hint?: string | null }
 export interface SharePreview {

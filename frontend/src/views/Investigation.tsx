@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { guidedRequest } from '../lib/guided'
 import type { JobState } from '../lib/guided'
 import type { PolicyListing } from '../lib/release'
+import { ShareRecord } from '../components/ShareRecord'
 import { OUTCOMES, canCloseFixed, lossLabel, rememberName, savedName, trialCalls, trialOutcome } from '../lib/investigation'
 import type { Investigation as Data, InvestigationRecord, Trial, Validation } from '../lib/investigation'
 
@@ -201,6 +202,7 @@ export default function Investigation({ token, runId, queryId, baselineId, polic
             {protectedNote && <p role="status" className="text-sm">{protectedNote}</p>}
             {(record.protections ?? []).length > 0 && <ul className="list-disc pl-5 text-xs text-muted">{(record.protections ?? []).map(p => <li key={p.policy_id + p.version}>{p.name} v{p.version}: {p.rules.map(r => r.kind).join(', ') || 'already protected'} · by {p.by}</li>)}</ul>}
           </div>}</>}
+        <ShareRecord token={token} kind="investigation" id={record.id} label="this investigation record" />
       </>}
     </div>
   </section>

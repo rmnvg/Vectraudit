@@ -314,6 +314,9 @@ def recurring_rows(
     found = lead.recurring(ledger.history(session, project, limit=limit))
     questions = found["questions"][:top] if top else found["questions"]
     cases = ledger.cases_by_question(session, project, {q["query_id"] for q in questions})
+    investigations = ledger.investigations_by_question(
+        session, project, {q["query_id"] for q in questions}
+    )
     rows = []
     for q in questions:
         linked = cases.get(q["query_id"], [])
@@ -338,13 +341,39 @@ def recurring_rows(
             )
             or '<span class="muted">None shared</span>'
         )
+        investigated = (
+            " ".join(
+                f'<a href="{base}/records/{quote(i["record_id"])}">{e(i["source_id"][:8])}</a> '
+                f'<span class="muted">({e(i["outcome"] or i["status"] or "unknown")}'
+                + (", protected" if i["protected"] else "")
+                + " when shared)</span>"
+                for i in investigations.get(q["query_id"], [])
+            )
+            or '<span class="muted">None shared</span>'
+        )
         rows.append(
-            [question, f"{q['failures']} of {q['checks']}", e(kinds), state, last, case_links]
+            [
+                question,
+                f"{q['failures']} of {q['checks']}",
+                e(kinds),
+                state,
+                last,
+                case_links,
+                investigated,
+            ]
         )
     return found, rows
 
 
-RECURRING_HEADERS = ["Question", "Failed in", "How", "Now", "Last failed", "Regression case"]
+RECURRING_HEADERS = [
+    "Question",
+    "Failed in",
+    "How",
+    "Now",
+    "Last failed",
+    "Regression case",
+    "Investigation",
+]
 
 
 @router.get("/app/{workspace}/{project}/recurring")
