@@ -629,6 +629,62 @@ The command writes a new run file and leaves the original unchanged. Comparisons
 incorrect in the candidate, with the candidate's diagnosis. Answers do not change release
 verdicts yet, and none of this is uploaded.
 
+## Investigate a failure and try a fix
+
+From a failed question to a verified repair, without leaving the benchmark:
+
+```bash
+vectraudit workbench investigate pipelines.json runs/current.run.json refund-annual
+vectraudit workbench try-fix pipelines.json --candidate current \
+  --fix "pack whole documents" --query refund-annual
+vectraudit workbench try-fix pipelines.json --candidate current \
+  --fix "pack whole documents" --query refund-annual --validate --policy release-policy.json
+```
+
+**Investigate** reads one question of a run, without opening any adapter. It lists what was
+lost and where (not observed, lost at a named stage, left out of or cut short in the model
+context, answered wrong despite evidence, or a permission or no-answer failure), possible
+causes labelled as hypotheses, cautions, what is uncertain (no or partial stage trace,
+repeats that differ, context that could not be checked), and the fixes that address those
+losses. `--baseline` shows which losses are new.
+
+**Fixes are declared, never guessed.** A candidate lists the changes its pipeline supports
+as parameter overrides, and which failure classes each addresses:
+
+```json
+{"name": "current", "adapter": {"kind": "http", "target": "https://…"},
+ "params": {"depth": 50},
+ "fixes": [
+   {"name": "raise candidate depth", "addresses": ["not_observed"], "params": {"depth": 200}},
+   {"name": "pack whole documents", "addresses": ["lost_in_context"],
+    "params": {"context_budget": 12000}},
+   {"name": "rerank before cut-off", "addresses": ["lost_downstream:truncate"],
+    "params": {"reranker": "cross-encoder-v2"}}
+ ]}
+```
+
+`addresses` takes `not_observed`, `lost_downstream` (optionally narrowed to a stage kind, as
+in `lost_downstream:rerank`), `lost_in_context` and `answered_wrong_despite_evidence`.
+Permission and no-answer failures cannot be addressed by a fix: loosening access is never a
+repair. Fixes do not change the candidate's configuration identity. The built-in hybrid
+baseline declares its own: a deeper candidate pool, the phrase reranker, and vector fusion
+when the corpus has vectors.
+
+**Try** runs the current and the fixed configuration interleaved, question by question, on
+the failing questions plus a seeded sample of other exploratory questions (`--sample`,
+`--seed`). For each failing question it reports losses the fix **recovered**, losses that
+only **moved** to a later stage (progress, not a recovery), and for every question whether
+the fix **regressed** it: lower nDCG, a new loss on a document that had none, or an error.
+The plan's call count is printed first and `--max-calls` refuses an oversized trial.
+Held-out questions are never used, and the result is labelled exploratory.
+
+**Validate** (`--validate --policy`) then runs both configurations on the held-out
+questions and judges the fix with the full release policy. Only a pass reads "approved
+under policy"; the result names the merged parameters to promote as a manifest candidate,
+and its release check is exported as usual. A benchmark without held-out questions cannot
+validate a fix, since every question would already have been consulted. The command exits 3
+when the trial regressed questions or validation did not approve.
+
 ## No-answer and permissions
 
 ```json

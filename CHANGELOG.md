@@ -17,6 +17,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Investigate and try a fix: `vectraudit workbench investigate` explains one failed
+  question (losses, hypotheses, cautions, uncertainty) and lists the fixes its pipeline
+  declares; `vectraudit workbench try-fix` runs current and fixed configurations
+  interleaved on the failing and sampled exploratory questions, reporting recoveries, moved
+  losses and regressions, and `--validate` judges the fix under the release policy on
+  held-out questions. Candidates declare supported fixes in the manifest (`fixes`).
 - Answer judgments and evidence sufficiency: benchmarks can declare `required_evidence`
   groups ("A and B together, or C"), runs record whether a complete group was delivered and
   reached the model, and `vectraudit workbench attach-answers` imports human or tool

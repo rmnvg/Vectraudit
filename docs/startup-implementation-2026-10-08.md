@@ -1436,9 +1436,47 @@ and unmatched judgments; triage regression; invalid input; CLI). Full suite (1,6
 production build and the workbench browser journey pass; the answer panel was checked in
 Chromium.
 
+## Step 42: investigate a failure and try a declared fix (1.3, first part)
+
+The repair loop from a failed question to a validated fix, on the command line; the
+browser screen follows in the next step.
+
+- **Declared fixes:** manifest candidates list `fixes`: named parameter overrides with the
+  failure classes they address (`not_observed`, `lost_downstream[:stage kind]`,
+  `lost_in_context`, `answered_wrong_despite_evidence`). Only declared fixes are suggested,
+  permission and no-answer failures cannot be targeted, and fixes leave the configuration
+  identity unchanged. The hybrid baseline declares built-in fixes it can actually run.
+- **`workbench investigate`:** losses in path order (including context losses and answer
+  diagnoses from Steps 40–41), hypotheses labelled as unestablished, cautions (corpus
+  before embeddings; filters may be intended; permissions are never a repair), explicit
+  uncertainty, matching fixes, and new-versus-baseline losses.
+- **`workbench try-fix`:** current and fixed configurations interleaved on the failing
+  questions plus a seeded exploratory sample, with a call plan and `--max-calls`. Results
+  per question: recovered, moved to a later stage, introduced losses and nDCG changes.
+  Labelled exploratory; held-out questions are refused.
+- **`--validate --policy`:** both configurations on held-out questions under the saved
+  policy; "approved under policy" only on a pass, with the merged parameters to promote.
+
+One design correction before commit: comparing losses by class and document counted a loss
+that moved to a later stage as both recovered and regressed. Losses are now compared per
+document, and moved losses are reported separately.
+
+Not included: the investigation screen and "try this fix" buttons in the workbench, saving
+the promoted candidate into the manifest automatically, recorded-candidate replay (cheap
+reranking or packing experiments without calling the pipeline), and measured investigation
+time.
+
+Validation: 9 new tests (loss, hypothesis and fix matching; a moved loss is not a recovery;
+recovery and a planted regression both reported; seeded plans that refuse held-out
+questions; approval only on a held-out policy pass, refusal by a regression rule, and
+exploratory status without a policy; no validation without a held-out split; fixes cannot
+target safety failures or change identity; hybrid built-ins; CLI with call limits). Full
+suite (1,657 passed, 22 skipped), ruff, and mypy on Python 3.12 and 3.10 pass. Both commands
+were also run on the shipped example workbench.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–41). What remains needs owner
+The code-only work the strategy names is done (Steps 1–42). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 
