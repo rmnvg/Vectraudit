@@ -1,0 +1,186 @@
+{
+ "format": "vectraudit.migration_report",
+ "format_version": 1,
+ "current": {
+  "run_id": "02fc8c74c70e44a183599be0bff4d2b9",
+  "label": "pgvector"
+ },
+ "proposed": {
+  "run_id": "e8ee50308ce6458a8cebc30a4f25acc2",
+  "label": "qdrant"
+ },
+ "dataset_sha256": "30becb92f5f81fbf692996d9a843cd7a3dc4d86bdc18beb59540be8ffdc5de6a",
+ "verdict": "pass",
+ "corpus": {
+  "current_documents": 10,
+  "proposed_documents": 10,
+  "missing_in_proposed": [],
+  "n_missing_in_proposed": 0,
+  "added_in_proposed": [],
+  "n_added_in_proposed": 0,
+  "content_changed": [],
+  "n_content_changed": 0,
+  "content_unverified": 0,
+  "labelled_missing_in_proposed": [],
+  "equivalent": true
+ },
+ "id_mapping": {
+  "current": {
+   "returned": 12,
+   "unknown_to_labels_and_other_system": 0,
+   "unknown_rate": 0.0,
+   "not_in_inventory": [],
+   "n_not_in_inventory": 0,
+   "suspect": false
+  },
+  "proposed": {
+   "returned": 16,
+   "unknown_to_labels_and_other_system": 0,
+   "unknown_rate": 0.0,
+   "not_in_inventory": [],
+   "n_not_in_inventory": 0,
+   "suspect": false
+  }
+ },
+ "filters": {
+  "current": {
+   "checked": true,
+   "filtered_questions": 4,
+   "empty_results": 0,
+   "violations": [],
+   "n_violations": 0,
+   "unverifiable_results": 0
+  },
+  "proposed": {
+   "checked": true,
+   "filtered_questions": 4,
+   "empty_results": 0,
+   "violations": [
+    {
+     "query_id": "q1",
+     "doc_id": "d9",
+     "fields": [
+      "lang"
+     ]
+    },
+    {
+     "query_id": "q3",
+     "doc_id": "d9",
+     "fields": [
+      "lang"
+     ]
+    },
+    {
+     "query_id": "q5",
+     "doc_id": "d9",
+     "fields": [
+      "lang"
+     ]
+    },
+    {
+     "query_id": "q7",
+     "doc_id": "d9",
+     "fields": [
+      "lang"
+     ]
+    }
+   ],
+   "n_violations": 4,
+   "unverifiable_results": 0
+  }
+ },
+ "environment": [
+  {
+   "field": "runner",
+   "current": "Darwin/arm64, 11 CPUs, Python 3.12.14, vectraudit 0.1.0",
+   "proposed": "Darwin/arm64, 11 CPUs, Python 3.12.14, vectraudit 0.1.0",
+   "differs": false
+  },
+  {
+   "field": "backend",
+   "current": {
+    "name": "pipeline",
+    "backend": "pipeline"
+   },
+   "proposed": {
+    "name": "pipeline",
+    "backend": "pipeline"
+   },
+   "differs": false
+  },
+  {
+   "field": "configuration",
+   "current": {},
+   "proposed": {},
+   "differs": false
+  },
+  {
+   "field": "corpus version",
+   "current": null,
+   "proposed": null,
+   "differs": false
+  },
+  {
+   "field": "k",
+   "current": 2,
+   "proposed": 2,
+   "differs": false
+  },
+  {
+   "field": "embedder",
+   "current": null,
+   "proposed": null,
+   "differs": false
+  },
+  {
+   "field": "concurrency",
+   "current": 1,
+   "proposed": 1,
+   "differs": false
+  },
+  {
+   "field": "repeats",
+   "current": 1,
+   "proposed": 1,
+   "differs": false
+  },
+  {
+   "field": "latency source",
+   "current": "measured",
+   "proposed": "measured",
+   "differs": false
+  },
+  {
+   "field": "order",
+   "current": "separate",
+   "proposed": "separate",
+   "differs": false
+  }
+ ],
+ "environment_differs": [],
+ "costs": {
+  "measured": {
+   "current": {
+    "calls": 8,
+    "spend_usd": null,
+    "per_call_usd": null,
+    "unpriced_calls": 8
+   },
+   "proposed": {
+    "calls": 8,
+    "spend_usd": null,
+    "per_call_usd": null,
+    "unpriced_calls": 8
+   }
+  },
+  "declared": {
+   "current": {},
+   "proposed": {}
+  },
+  "note": "Measured spend comes from adapter-reported call costs; declared amounts are the team's estimates and are not measured."
+ },
+ "concerns": [
+  "The proposed system returned 4 document(s) that do not satisfy the question's filter."
+ ],
+ "migration_ready": false
+}

@@ -1865,6 +1865,23 @@ independent sample stable under signals and kept in a capped export, ambiguous t
 invalid feedback and routes, the CLI). Full suite, ruff and mypy on Python 3.12 and 3.10
 pass.
 
+## Step 58: the deeper checks in the browser (§2 "recurring work leaves the browser")
+
+- **Checks tab:** the workbench recognises the JSON reports of lineage, knowledge freshness,
+  access changes (applied and checked), the cache probe, migration and production intake,
+  from the workspace folder or a file import, and shows each as a card: pass, fail or
+  needs attention, a headline and the specific findings, so a lead can read them without
+  the terminal.
+- **Read-only by design:** the checks still run from the command line where the customer's
+  exports and credentials are; the browser never names files to run against.
+- **Shared fixtures:** the frontend is tested against real reports produced by the Python
+  checks on synthetic data, and a Python test fails if a report's shape drifts from its
+  fixture.
+
+Validation: 7 frontend tests and 6 fixture contract tests. Full suite (1,778 passed, 22
+skipped), ruff, frontend checks and build, and the workbench and guided browser journeys
+pass; all six reports were rendered in Chromium from a workspace folder.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

@@ -1,0 +1,47 @@
+{
+ "format": "vectraudit.access",
+ "format_version": 1,
+ "applied": {
+  "format": "vectraudit.access_changes",
+  "format_version": 1,
+  "as_of": "2026-10-18T12:00:00+00:00",
+  "affected": [
+   {
+    "query_id": "payroll-u17",
+    "now_forbidden": [
+     "payroll-2026"
+    ],
+    "no_longer_forbidden": []
+   }
+  ],
+  "labels_to_review": [
+   {
+    "query_id": "payroll-u17",
+    "removed_labels": [
+     "payroll-2026"
+    ]
+   }
+  ],
+  "pending": []
+ },
+ "check": {
+  "format": "vectraudit.access_check",
+  "format_version": 1,
+  "run_id": "7bb45d0353ca415285c212549bea47de",
+  "as_of": "2026-10-18T12:00:00+00:00",
+  "questions_checked": 1,
+  "violations": [
+   {
+    "query_id": "payroll-u17",
+    "doc_id": "payroll-2026",
+    "reached": [
+     "results",
+     "model context"
+    ]
+   }
+  ],
+  "pending": [],
+  "granted_unseen": [],
+  "failing": 1
+ }
+}

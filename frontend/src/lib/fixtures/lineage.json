@@ -1,0 +1,35 @@
+{
+ "format": "vectraudit.lineage",
+ "format_version": 1,
+ "dataset_sha256": "f1e56063ec135190c4a55d534e06b1c03b41c79276d4b7e99ecd480c7ac1e84d",
+ "run_id": null,
+ "ids": "chunk",
+ "passages": 1,
+ "first_loss": {
+  "split_across_chunks": 1
+ },
+ "ingestion_losses": 1,
+ "rows": [
+  {
+   "query_id": "refund",
+   "source_id": "policy",
+   "start": 450,
+   "end": 550,
+   "loss": "split_across_chunks",
+   "chunks": [
+    "policy#0",
+    "policy#1"
+   ]
+  }
+ ],
+ "corpus": {
+  "empty_extraction": [],
+  "stale_chunks_indexed": [],
+  "duplicate_chunks": [],
+  "duplicates_in_results": []
+ },
+ "advice": [
+  "1 passage(s) were lost during ingestion. Fix extraction, chunking or indexing first: a different embedding model cannot retrieve text that is not indexed intact.",
+  "Passages split across chunk boundaries: try overlapping chunks or splitting on section boundaries, then re-check lineage."
+ ]
+}

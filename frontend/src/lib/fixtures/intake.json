@@ -1,0 +1,33 @@
+{
+ "format": "vectraudit.intake",
+ "format_version": 1,
+ "traces_taken": 5,
+ "traces_already_taken": 0,
+ "matched_benchmark": 2,
+ "without_question_text": 0,
+ "unreadable": 0,
+ "ambiguous": 0,
+ "likely_recurrences": [
+  {
+   "query_id": "q2",
+   "trace_id": "t2",
+   "at": "1970-01-12T13:46:40+00:00",
+   "delivered": [
+    "d5",
+    "d6"
+   ],
+   "cases": [],
+   "reopen": []
+  }
+ ],
+ "queue": {
+  "pending": 2,
+  "updated": 2,
+  "promoted_now": 0,
+  "independent_sample": 0,
+  "unassigned": 2
+ },
+ "cursor": {
+  "after": "1970-02-16T07:06:40+00:00"
+ }
+}

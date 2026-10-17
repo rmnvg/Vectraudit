@@ -1022,7 +1022,7 @@ def access_command(
             moment = datetime.now(timezone.utc)
         if moment.tzinfo is None:
             moment = moment.replace(tzinfo=timezone.utc)
-        report: dict[str, Any] = {}
+        report: dict[str, Any] = {"format": "vectraudit.access", "format_version": 1}
         if write_dataset is not None:
             text, applied = apply_access_changes(
                 data, log, as_of=moment, window_minutes=window_minutes
