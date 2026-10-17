@@ -28,3 +28,10 @@ it('closes as fixed only after an approved validation', async () => {
   expect(canCloseFixed({ ...record, validations: [{ id: 'v', fix: 'f', approved: false }] })).toBe(false)
   expect(canCloseFixed({ ...record, validations: [{ id: 'v', fix: 'f', approved: true }] })).toBe(true)
 })
+
+it('describes each passage on its lineage path', async () => {
+  const { lineageLine } = await import('./investigation')
+  expect(lineageLine({ source_id: 'policy', start: 450, end: 550, loss: 'split_across_chunks' })).toBe('policy characters 450 to 550: first lost at split across chunks')
+  expect(lineageLine({ source_id: 'policy', start: 0, end: 10, loss: null, unknown: 'model context' })).toBe('policy characters 0 to 10: intact; unknown: model context')
+  expect(lossLabel({ class: 'ingestion', doc_id: 'policy', stage: 'stale_index', detail: 'characters 0 to 10' })).toBe('policy lost during ingestion at stale index: characters 0 to 10')
+})

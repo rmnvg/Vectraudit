@@ -3,7 +3,7 @@ import { guidedRequest } from '../lib/guided'
 import type { JobState } from '../lib/guided'
 import type { PolicyListing } from '../lib/release'
 import { ShareRecord } from '../components/ShareRecord'
-import { OUTCOMES, canCloseFixed, lossLabel, rememberName, savedName, trialCalls, trialOutcome } from '../lib/investigation'
+import { OUTCOMES, canCloseFixed, lineageLine, lossLabel, rememberName, savedName, trialCalls, trialOutcome } from '../lib/investigation'
 import type { Investigation as Data, InvestigationRecord, Trial, Validation } from '../lib/investigation'
 
 const button = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2 disabled:opacity-50'
@@ -134,6 +134,8 @@ export default function Investigation({ token, runId, queryId, baselineId, polic
     <div><h4 className="text-sm font-semibold">What was lost</h4>
       {data.losses.length ? <ul className="mt-1 list-disc pl-5 text-sm">{data.losses.map((loss, i) => <li key={i}>{lossLabel(loss)}</li>)}</ul> : <p className="mt-1 text-sm text-muted">No loss is recorded for this question in this run.</p>}
       {data.regression && <p className="mt-1 text-xs text-muted">{data.regression.new_losses.length === 1 ? '1 of these is' : `${data.regression.new_losses.length} of these are`} new since the baseline.</p>}</div>
+    {data.lineage && <div aria-label="Source lineage"><h4 className="text-sm font-semibold">Source lineage</h4>
+      {data.lineage.length ? <ul className="mt-1 list-disc pl-5 text-sm">{data.lineage.map(row => <li key={`${row.source_id}-${row.start}`}>{lineageLine(row)}</li>)}</ul> : <p className="mt-1 text-sm text-muted">The benchmark labels no passages for this question, so lineage cannot follow it.</p>}</div>}
     {data.hypotheses.length > 0 && <div><h4 className="text-sm font-semibold">Possible causes</h4><p className="text-xs text-muted">{data.hypotheses_note}</p><ul className="mt-1 list-disc pl-5 text-sm">{data.hypotheses.map(h => <li key={h}>{h}</li>)}</ul></div>}
     {data.cautions.length > 0 && <div className="rounded-lg bg-amber-500/10 p-3 text-sm"><b>Cautions</b><ul className="mt-1 list-disc pl-5">{data.cautions.map(c => <li key={c}>{c}</li>)}</ul></div>}
     {data.uncertainty.length > 0 && <div><h4 className="text-sm font-semibold">Uncertain</h4><ul className="mt-1 list-disc pl-5 text-sm text-muted">{data.uncertainty.map(u => <li key={u}>{u}</li>)}</ul></div>}

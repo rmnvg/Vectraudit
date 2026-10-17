@@ -20,11 +20,15 @@ from vectraudit.server.app import STATIC_DIR, _mount_frontend
 
 
 def create_workbench(
-    directory: Path, manifest: Path | None = None, policy: Path | None = None
+    directory: Path,
+    manifest: Path | None = None,
+    policy: Path | None = None,
+    lineage: Path | None = None,
+    lineage_ids: str = "chunk",
 ) -> FastAPI:
     """Serve a bounded artifact directory and the shared product UI."""
     root = directory.resolve()
-    workspace = GuidedWorkspace(root, manifest, policy)
+    workspace = GuidedWorkspace(root, manifest, policy, lineage, lineage_ids)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

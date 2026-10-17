@@ -28,6 +28,8 @@ from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import Dataset, parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.exceptions import failing_rules
+from vectraudit.evaluation.lineage import EXPLAIN as LINEAGE_EXPLAIN
+from vectraudit.evaluation.lineage import INGESTION
 from vectraudit.evaluation.policy import Policy, policy_sha256
 from vectraudit.pipelines.budget import combine
 from vectraudit.pipelines.manifest import Candidate, Fix
@@ -199,8 +201,15 @@ def investigate(
     fixes: Sequence[Fix] = (),
     *,
     baseline: Mapping[str, Any] | None = None,
+    lineage: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """What one question lost, the facts, possible causes and the declared fixes to try."""
+    """What one question lost, the facts, possible causes and the declared fixes to try.
+
+    ``lineage`` holds this question's rows from :func:`vectraudit.evaluation.lineage.
+    check_lineage`. A passage lost during ingestion becomes an ``ingestion`` loss, and
+    retrieval fixes are not suggested for its document: they cannot recover text that was
+    never indexed intact.
+    """
     by_id = {q["query_id"]: q for q in run["queries"]}
     if query_id not in by_id:
         raise ValueError(f"question {query_id!r} is not in this run")
@@ -243,9 +252,35 @@ def investigate(
         caution = CAUTIONS.get("filter" if loss.get("stage_kind") == "filter" else kind)
         if caution and caution not in cautions:
             cautions.append(caution)
+    explained: set[str] = set()
+    for row in lineage or []:
+        if row.get("loss") in INGESTION:
+            losses.append(
+                {
+                    "class": "ingestion",
+                    "doc_id": row["source_id"],
+                    "stage": row["loss"],
+                    "detail": f"characters {row['start']} to {row['end']}",
+                }
+            )
+            explained |= {row["source_id"], *row.get("chunks", [])}
+            text = f"{row['source_id']}: {LINEAGE_EXPLAIN[row['loss']]}"
+            if text not in hypotheses:
+                hypotheses.append(text)
+    if explained:
+        cautions.append(
+            "Lineage shows required passages were lost during ingestion. Fix extraction, "
+            "chunking or indexing first: retrieval changes cannot recover text that is not "
+            "indexed intact."
+        )
+    fixable = [
+        loss
+        for loss in losses
+        if not (loss["class"] == "not_observed" and loss.get("doc_id") in explained)
+    ]
     suggested = []
     for fix in fixes:
-        targets = [loss for loss in losses if addresses(fix, loss)]
+        targets = [loss for loss in fixable if addresses(fix, loss)]
         if targets:
             suggested.append(
                 {
@@ -255,7 +290,11 @@ def investigate(
                 }
             )
     unaddressed = sorted(
-        {loss["class"] for loss in losses if not any(addresses(fix, loss) for fix in fixes)}
+        {
+            loss["class"]
+            for loss in losses
+            if loss not in fixable or not any(addresses(fix, loss) for fix in fixes)
+        }
     )
     regression = None
     if baseline is not None:
@@ -283,6 +322,7 @@ def investigate(
         "uncertainty": uncertainty,
         "fixes": suggested,
         "unaddressed": unaddressed,
+        "lineage": list(lineage) if lineage is not None else None,
     }
 
 

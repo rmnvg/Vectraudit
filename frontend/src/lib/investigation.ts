@@ -6,9 +6,19 @@ export interface Investigation {
   query_id: string; question: string | null; metrics: Record<string, number> | null
   losses: Loss[]; hypotheses: string[]; hypotheses_note: string; cautions: string[]; uncertainty: string[]
   fixes: FixSuggestion[]; unaddressed: string[]; regression: { new_losses: Loss[] } | null
+  lineage?: LineageRow[] | null
   pipeline: { name: string; remote: string | null; params: Record<string, unknown> }
   trial: { available: boolean; reason: string | null; explore_questions: number; heldout_questions: number; repeats: number; k: number }
 }
+export interface LineageRow { source_id: string; start: number; end: number; loss: string | null; chunks?: string[]; unknown?: string; revision_unverified?: boolean }
+
+/** One passage's path: where it was first lost, or how far it is known to have travelled. */
+export function lineageLine(row: LineageRow): string {
+  const passage = `${row.source_id} characters ${row.start} to ${row.end}`
+  if (row.loss) return `${passage}: first lost at ${row.loss.replaceAll('_', ' ')}`
+  return `${passage}: intact${row.unknown ? `; unknown: ${row.unknown}` : ''}${row.revision_unverified ? ' (indexed revision unverified)' : ''}`
+}
+
 export interface TrialRow {
   query_id: string; focus: boolean; ndcg_before: number | null; ndcg_after: number | null
   targeted_losses: Loss[]; recovered: Loss[]; moved: { from: Loss; to: Loss }[]; introduced: Loss[]; regressed: boolean
@@ -31,12 +41,13 @@ const CLASSES: Record<string, string> = {
   permission: 'forbidden document delivered',
   no_answer: 'results delivered for a question with no answer',
   error: 'the question failed',
+  ingestion: 'lost during ingestion',
 }
 
 /** `kb-7 dropped at rerank (rerank)`; one line per recorded loss. */
 export function lossLabel(loss: Loss): string {
   const what = CLASSES[loss.class] ?? loss.class.replaceAll('_', ' ')
-  const where = loss.stage ? ` at ${loss.stage}${loss.stage_kind ? ` (${loss.stage_kind})` : ''}` : ''
+  const where = loss.stage ? ` at ${loss.stage.replaceAll('_', ' ')}${loss.stage_kind ? ` (${loss.stage_kind})` : ''}` : ''
   const detail = loss.detail ? `: ${loss.detail}` : loss.code ? `: ${loss.code}` : ''
   return `${loss.doc_id ? `${loss.doc_id} ` : ''}${what}${where}${detail}`
 }

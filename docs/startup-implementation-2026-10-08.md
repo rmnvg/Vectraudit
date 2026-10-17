@@ -1695,6 +1695,27 @@ and archives, per-change windows and superseded changes, stale results and conte
 conflicts, the repair, historical exemptions, invalid change logs, CLI and CI gating). Full
 suite, ruff and mypy on Python 3.12 and 3.10 pass.
 
+## Step 51: lineage in investigations (2.1 meets 1.3)
+
+- **`workbench serve --lineage lineage.jsonl --lineage-ids chunk|source`** registers a lineage
+  export at startup, validated immediately. `workbench investigate --lineage` does the same
+  on the command line.
+- **The investigation panel** gains a *Source lineage* section listing each labelled
+  passage's first loss. Ingestion losses become `ingestion` losses with their stage, the
+  lineage explanation joins the possible causes, and a caution says to fix ingestion first.
+- **Retrieval fixes are withheld** for a document whose passage was lost during ingestion
+  ("raise candidate depth" cannot fetch text that is not indexed intact); fixes for other
+  losses on the same question remain.
+
+Not included: freshness findings in the panel (they need a change log registered too), and a
+lineage view outside investigations.
+
+Validation: 4 new Python tests (ingestion losses withhold fixes and add causes and cautions;
+an intact passage keeps them; the workbench API with a registered export; startup refusal of
+a broken export or ID mode; the CLI) and 1 frontend test. Full suite (1,720 passed, 22
+skipped), ruff, mypy on Python 3.12 and 3.10, the frontend checks and build, and the guided
+journey pass; the panel section was checked in Chromium with a registered export.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

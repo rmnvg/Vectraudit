@@ -590,6 +590,12 @@ def investigate_command(
     baseline: Annotated[
         Path | None, typer.Option(help="Earlier run, to show which losses are new.")
     ] = None,
+    lineage: Annotated[
+        Path | None, typer.Option(help="Lineage export, to name ingestion losses.")
+    ] = None,
+    lineage_ids: Annotated[
+        str, typer.Option(help="What the run's result IDs are: chunk or source.")
+    ] = "chunk",
     json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
 ) -> None:
     """What one question lost and where, possible causes, and the declared fixes to try.
@@ -603,18 +609,30 @@ def investigate_command(
         spec = load_manifest(manifest)
         record = load_run(run)
         chosen = _candidate(spec, candidate or record.get("label"))
+        rows = None
+        if lineage is not None:
+            from vectraudit.evaluation.lineage import check_lineage, read_manifest
+
+            report = check_lineage(
+                load_dataset(manifest.parent / spec.dataset),
+                read_manifest(lineage),
+                record,
+                ids=lineage_ids,
+            )
+            rows = [r for r in report["rows"] if r["query_id"] == query]
         result = investigate(
             record,
             query,
             available_fixes(chosen, manifest.parent),
             baseline=load_run(baseline) if baseline else None,
+            lineage=rows,
         )
     except (OSError, ValueError) as exc:
         typer.echo(f"Investigation error: {exc}", err=True)
         raise typer.Exit(2) from exc
     typer.echo(f"{query} in {chosen.name}:")
     for loss in result["losses"] or [{"class": "none"}]:
-        where = f" at {loss['stage']}" if loss.get("stage") else ""
+        where = f" at {loss['stage'].replace('_', ' ')}" if loss.get("stage") else ""
         doc = f" {loss['doc_id']}" if loss.get("doc_id") else ""
         typer.echo(f"  lost{doc}: {loss['class'].replace('_', ' ')}{where}")
     if result["regression"] is not None:
@@ -1053,6 +1071,13 @@ def serve_command(
         Path | None,
         typer.Option(help="Offer this policy file (e.g. your CI policy) for comparisons."),
     ] = None,
+    lineage: Annotated[
+        Path | None,
+        typer.Option(help="Lineage export (JSONL) investigations use to name ingestion losses."),
+    ] = None,
+    lineage_ids: Annotated[
+        str, typer.Option(help="What run result IDs are in the lineage export: chunk or source.")
+    ] = "chunk",
 ) -> None:
     """Open the local workbench without requiring a FAISS index. No data is uploaded."""
     import uvicorn
@@ -1066,7 +1091,12 @@ def serve_command(
         except PolicyError as exc:
             typer.echo(f"Policy error: {exc}", err=True)
             raise typer.Exit(2) from exc
-    uvicorn.run(create_workbench(directory, manifest, policy), host="127.0.0.1", port=port)
+    try:
+        app = create_workbench(directory, manifest, policy, lineage, lineage_ids)
+    except ValueError as exc:
+        typer.echo(f"Workbench configuration error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    uvicorn.run(app, host="127.0.0.1", port=port)
 
 
 @workbench_app.command("export")
