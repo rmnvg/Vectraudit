@@ -64,7 +64,7 @@ understood costs and sustainable support economics. Record them in the
 ## What to do next, in order
 
 1. **Make the source repository private** and provision the distribution channel (1.9).
-2. **Fill the owner decisions** in the pilot offer and trust package.
+2. **Fill the owner decisions** in the pilot offer and trust package; options and recommendations are in [owner decisions](owner-decisions.md).
 3. **Hold 10–15 qualified conversations**, recorded in the ledger, using the sample evidence
    report.
 4. **Run the CI step once on GitHub-hosted runners** in a staging or partner repository.

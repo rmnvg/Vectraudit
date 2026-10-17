@@ -1625,6 +1625,23 @@ investigation, and the list and record pages render without private text). Full 
 passed, 22 skipped), ruff, mypy on Python 3.12 and 3.10, TypeScript, Oxlint, 106 frontend
 tests, the build and the guided journey pass.
 
+## Step 48: up-to-date pilot offer and an owner decision brief
+
+No code. The remaining work is owner and customer action, so this step prepares it.
+
+- **Pilot offer corrected.** It still listed trace import and judging the model's context
+  and answers as "not part of this pilot", and named none of the investigation and repair
+  work from Steps 39–47. Its capability table, exclusions, sessions and success measures now
+  describe what exists, with limits stated: OpenInference only, context inferred from
+  prompts where traces are used, answer judgments imported rather than computed, and
+  inferred results checked against the customer's own review.
+- **[Owner decisions](owner-decisions.md):** every open bracket in the pilot offer and trust
+  package, with options, a recommendation and the reason, ordered by what each blocks.
+  Recommendations are proposals; none is applied to customer-facing documents. The central
+  one: run the first pilots local or self-hosted only, which removes most trust-package
+  brackets and keeps everything inside the customer's environment. No price is recommended
+  without market data; the brief proposes testing two price points instead.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
@@ -1635,7 +1652,8 @@ section 9 gate to its current evidence and what is still needed. In order:
    distribution channel and per-customer credentials using the checklist in `RELEASING.md`,
    test a revocation, and run the reusable CI step once on GitHub-hosted runners. Local unit
    tests are not customer install evidence.
-2. **Owner decisions** in the pilot offer and trust package drafts.
+2. **Owner decisions** in the pilot offer and trust package drafts; a decision brief with options
+   and recommendations is in [owner decisions](owner-decisions.md) (Step 48).
 3. **Qualified conversations** recorded in the discovery ledger, with the sample evidence
    report as the leave-behind.
 4. **First design partnership.** Then confirm the trace format (1.1; OpenInference import
