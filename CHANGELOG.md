@@ -21,6 +21,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Permission lifecycle (`vectraudit workbench access`): an access change log (revoke, grant,
+  move, archive, with propagation windows) becomes each question's expected access in a
+  written benchmark, with revoked labels listed for review; a run recorded after the changes
+  is checked for revoked documents still reaching a stage, the results or the model context.
+
 - Permission checks follow forbidden documents upstream: runs record a `permission_path`
   (stages reached, results, model context). A forbidden document in the model context fails
   even when the results are clean, and a policy's `forbidden_stages` (for example `rerank`)

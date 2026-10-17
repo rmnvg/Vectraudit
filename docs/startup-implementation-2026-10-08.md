@@ -1762,6 +1762,33 @@ unrecorded context and untraced runs, chunk-level source matching, the hosted pr
 malformed records and policies) and 1 frontend test. Full suite, ruff, mypy on Python 3.12 and
 3.10 and the frontend checks pass.
 
+## Step 54: access changes over time (2.2, second part)
+
+- **An access change log** (`revoke`, `grant`, `move`, `archive`, each with a propagation
+  window) is read from the customer's identity or content system. A principal matches a
+  question through its context, including list-valued groups; the latest change in effect
+  per principal and document wins; changes inside their window are pending.
+- **`vectraudit workbench access --write-dataset`** applies the log to a benchmark: revoked
+  documents become forbidden, granted ones stop being forbidden, revoked labels are removed
+  and listed for review, and affected questions are tagged `access-change`. Release checks
+  then enforce the new access, including model context and `forbidden_stages` (Step 53).
+- **`--run`** checks a run recorded after the changes: revoked documents still reaching a
+  stage, the results or the model context are violations (`--fail-on-leak` exits 3);
+  pending changes and granted documents never delivered are reported, not failed.
+
+The strategy's acceptance, on fixtures: a planted revocation defect (the application's
+access index never received the revocation) fails the release check and the run check,
+and passes once the index is corrected. A revoked document handed only to the model is
+still caught.
+
+Not included: a cache-isolation scenario between principals, propagation time across a
+series of runs, the workbench UI, and a customer's change log.
+
+Validation: 12 new tests (principal matching, applying a revocation with label review,
+the planted defect and its correction, a context-only leak, pending changes, moves, grants,
+archives and ordering, invalid logs, the CLI). Full suite, ruff and mypy on Python 3.12 and
+3.10 pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

@@ -968,6 +968,89 @@ def freshness_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("access")
+def access_command(
+    changes: Annotated[Path, typer.Argument(help="Access change log (JSONL).")],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark whose contexts name principals.")],
+    run: Annotated[
+        Path | None, typer.Option(help="A run recorded after the changes, to check.")
+    ] = None,
+    write_dataset: Annotated[
+        Path | None,
+        typer.Option(help="Write the benchmark with the expected access applied (JSONL)."),
+    ] = None,
+    as_of: Annotated[
+        str | None,
+        typer.Option(help="ISO time to judge at; default the run's time, else now."),
+    ] = None,
+    window_minutes: Annotated[
+        int, typer.Option(min=0, help="Propagation window for changes that declare none.")
+    ] = 60,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_leak: Annotated[
+        bool,
+        typer.Option("--fail-on-leak", help="Exit 3 when a revoked document was still served."),
+    ] = False,
+) -> None:
+    """Permission lifecycle: apply an access change log to a benchmark, or check a run.
+
+    Expected access comes from your identity system's change log, never from the
+    application's own answers. Changes inside their propagation window are pending, not
+    failures. A passing check is evidence about these principals, not proof of authorization.
+    """
+    from datetime import datetime, timezone
+
+    from vectraudit.evaluation.access import (
+        apply_access_changes,
+        check_access,
+        read_access_changes,
+        render,
+    )
+
+    if run is None and write_dataset is None:
+        typer.echo("Give --run to check a run, --write-dataset to apply the changes, or both.")
+        raise typer.Exit(2)
+    try:
+        log = read_access_changes(changes)
+        data = load_dataset(dataset)
+        recorded = load_run(run) if run else None
+        if as_of:
+            moment = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        elif recorded is not None:
+            moment = datetime.fromisoformat(recorded["created_at"])
+        else:
+            moment = datetime.now(timezone.utc)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        report: dict[str, Any] = {}
+        if write_dataset is not None:
+            text, applied = apply_access_changes(
+                data, log, as_of=moment, window_minutes=window_minutes
+            )
+            write_dataset.write_text(text, encoding="utf-8")
+            report["applied"] = applied
+            typer.echo(
+                f"Wrote {write_dataset}: {len(applied['affected'])} question(s) changed access, "
+                f"{len(applied['pending'])} with changes still pending."
+            )
+            for item in applied["labels_to_review"]:
+                typer.echo(
+                    f"  review {item['query_id']}: removed revoked label(s) "
+                    + ", ".join(item["removed_labels"])
+                )
+        if recorded is not None:
+            checked = check_access(log, recorded, data, as_of=moment, window_minutes=window_minutes)
+            report["check"] = checked
+            typer.echo(render(checked))
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Access error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_leak and report.get("check", {}).get("failing"):
+        raise typer.Exit(3)
+
+
 @workbench_app.command("benchmark")
 def benchmark_command(
     dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None
