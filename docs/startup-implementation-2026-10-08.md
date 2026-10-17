@@ -1474,9 +1474,38 @@ target safety failures or change identity; hybrid built-ins; CLI with call limit
 suite (1,657 passed, 22 skipped), ruff, and mypy on Python 3.12 and 3.10 pass. Both commands
 were also run on the shipped example workbench.
 
+## Step 43: investigation screen with "try this fix" (1.3, second part)
+
+The browser side of Step 42, in the guided workflow where findings already appear.
+
+- **Investigate this question** on any finding opens a panel: question text, losses, new
+  losses since the baseline, unestablished causes, cautions, uncertainty and the pipeline's
+  declared fixes.
+- **Try this fix** shows its planned call count and runs a paired exploratory trial as a
+  workspace job; results list recovered, moved and newly lost documents per question, with
+  regressions highlighted. HTTP pipelines need the usual transfer confirmation.
+- **Validate** requires explicit held-out confirmation and judges the fix under the
+  comparison's release policy; without one the result is labelled a measurement, not an
+  approval. An approved fix shows the candidate parameters to promote.
+- New local API (`/api/guided/investigate`, `/fixes/try`, `/fixes/validate`,
+  `/fixes/{id}`) under the session token. A fix runs only against the configuration that
+  produced the run (same benchmark revision, corpus version or registered configuration);
+  otherwise the panel explains why. Held-out questions cannot be tried.
+
+Not included: writing the promoted candidate into the manifest, cheap replays of recorded
+candidates, the investigation in the hosted service, and measured investigation time.
+
+Validation: 4 new API tests (investigate, try and validate a fix end to end with policy
+approval; changed benchmark and unknown fix refused; held-out questions reserved; session
+token required), 3 frontend unit tests, and the guided browser journey extended to
+investigate a planted loss, try the built-in depth fix (recovered, no regressions) and
+measure it on held-out questions. Full suite (1,661 passed, 22 skipped), ruff, mypy on
+Python 3.12 and 3.10, TypeScript, Oxlint, 104 frontend tests, the build and the guided,
+market-fit and release journeys pass.
+
 ## Next increments
 
-The code-only work the strategy names is done (Steps 1–42). What remains needs owner
+The code-only work the strategy names is done (Steps 1–43). What remains needs owner
 decisions or customer inputs; the [launch scorecard](launch-scorecard.md) maps every
 section 9 gate to its current evidence and what is still needed. In order:
 

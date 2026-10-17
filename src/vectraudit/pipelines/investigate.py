@@ -132,11 +132,11 @@ def addresses(fix: Fix, loss: Mapping[str, Any]) -> bool:
     return False
 
 
-def builtin_fixes(candidate: Candidate, root: Path | None = None) -> list[Fix]:
+def builtin_fixes(candidate: Candidate, has_vectors: bool = False) -> list[Fix]:
     """Fixes the built-in hybrid baseline supports, from its current parameters.
 
-    Vector fusion is offered only when every corpus document has a vector (``root`` is the
-    manifest folder holding the corpus): without vectors the baseline cannot run it.
+    Vector fusion is offered only when every corpus document has a vector: without vectors
+    the baseline cannot run it.
     """
     if candidate.adapter.kind != "hybrid":
         return []
@@ -158,7 +158,7 @@ def builtin_fixes(candidate: Candidate, root: Path | None = None) -> list[Fix]:
                 params={"reranker": "phrase"},
             )
         )
-    if not params.get("vector_weight") and _has_vectors(candidate, root):
+    if not params.get("vector_weight") and has_vectors:
         fixes.append(
             Fix(
                 name="add vector similarity to fusion",
@@ -179,10 +179,17 @@ def _has_vectors(candidate: Candidate, root: Path | None) -> bool:
         return False
 
 
-def available_fixes(candidate: Candidate, root: Path | None = None) -> list[Fix]:
-    """Declared fixes, then built-in ones whose names the declaration does not reuse."""
+def available_fixes(
+    candidate: Candidate, root: Path | None = None, *, has_vectors: bool | None = None
+) -> list[Fix]:
+    """Declared fixes, then built-in ones whose names the declaration does not reuse.
+
+    ``root`` is the manifest folder holding a hybrid corpus; ``has_vectors`` overrides the
+    corpus check when the documents are held elsewhere (a workbench draft).
+    """
     declared = {fix.name for fix in candidate.fixes}
-    builtin = builtin_fixes(candidate, root)
+    vectors = _has_vectors(candidate, root) if has_vectors is None else has_vectors
+    builtin = builtin_fixes(candidate, vectors)
     return [*candidate.fixes, *(f for f in builtin if f.name not in declared)]
 
 
