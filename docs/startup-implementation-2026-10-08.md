@@ -1926,6 +1926,16 @@ reproduce in two reruns; it is noted here as a possible intermittent test, not r
 This remains a review by the code's author; the scorecard keeps the gate open for an
 independent one.
 
+## Step 61: documented commands checked against the real CLI (1.1 acceptance support)
+
+A pilot engineer follows the documentation literally, and the 1.1 acceptance asks a second
+engineer to follow the documented connection path alone. `tests/test_doc_commands.py`
+extracts every `vectraudit` invocation from fenced shell blocks in the README and `docs/`,
+plus the commands the workbench UI tells users to run, and walks the real command tree for
+each (nothing is executed): the subcommand must exist and every option shown must be
+accepted. All 111 current commands match; a self-check plants a wrong subcommand and a
+misspelled option and confirms both are caught, so the test cannot pass vacuously.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
