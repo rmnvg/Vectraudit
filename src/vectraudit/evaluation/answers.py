@@ -9,7 +9,9 @@ from a JSONL file, one judgment per line::
     {"trace_id": "4bf9…", "evaluator": "support-review", "rubric": "v3", "kind": "human",
      "verdict": "incorrect"}
 
-A judgment names its question by ``query_id`` or, for runs imported from traces, by
+The file may also be a Langfuse scores export or LangSmith feedback export, read through
+:mod:`vectraudit.evaluation.judgment_formats` once the caller names which scores judge
+answers. A judgment names its question by ``query_id`` or, for runs imported from traces, by
 ``trace_id``. ``verdict`` is ``correct``, ``partial`` or ``incorrect``; a judgment with only a
 ``score`` gets a verdict from a threshold the caller declares for that evaluator, never from
 a default. ``outcome`` (``answered``, ``abstained`` or ``handoff``) separates an answer from a
@@ -32,9 +34,11 @@ import json
 import math
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from vectraudit.evaluation import judgment_formats
 
 ANSWERS_FORMAT_VERSION = 1
 VERDICTS = ("correct", "partial", "incorrect")
@@ -105,83 +109,169 @@ class Judgment:
         }
 
 
-def _short(value: Any, what: str, line: int, *, required: bool = False) -> str | None:
+def _short(value: Any, what: str, where: str, *, required: bool = False) -> str | None:
     if value is None and not required:
         return None
     if not isinstance(value, str) or not value.strip() or len(value) > _TEXT_LIMIT:
         raise AnswerJudgmentError(
-            f"line {line}: {what} must be a non-empty string of at most {_TEXT_LIMIT} characters"
+            f"{where}: {what} must be a non-empty string of at most {_TEXT_LIMIT} characters"
         )
     return value
+
+
+def _judgment(
+    obj: Mapping[str, Any], where: str, thresholds: Mapping[str, float]
+) -> tuple[str, str, Judgment]:
+    keys = [k for k in ("query_id", "trace_id") if obj.get(k) is not None]
+    if len(keys) != 1:
+        raise AnswerJudgmentError(f"{where}: give exactly one of query_id or trace_id")
+    key = _short(obj[keys[0]], keys[0], where, required=True)
+    evaluator = _short(obj.get("evaluator"), "evaluator", where, required=True)
+    assert key is not None
+    assert evaluator is not None
+    kind = obj.get("kind", "model")
+    if kind not in KINDS:
+        raise AnswerJudgmentError(f"{where}: kind must be human or model")
+    outcome = obj.get("outcome", "answered")
+    if outcome not in OUTCOMES:
+        raise AnswerJudgmentError(f"{where}: outcome must be one of {', '.join(OUTCOMES)}")
+    score = obj.get("score")
+    if score is not None and (type(score) not in (int, float) or not math.isfinite(score)):
+        raise AnswerJudgmentError(f"{where}: score must be a finite number")
+    verdict = obj.get("verdict")
+    if verdict is not None and verdict not in VERDICTS:
+        raise AnswerJudgmentError(f"{where}: verdict must be one of {', '.join(VERDICTS)}")
+    if verdict is None and score is not None and evaluator in thresholds:
+        verdict = "correct" if score >= thresholds[evaluator] else "incorrect"
+    if verdict is None and score is None and outcome == "answered":
+        raise AnswerJudgmentError(f"{where}: a judgment needs a verdict or a score")
+    return (
+        keys[0],
+        key,
+        Judgment(
+            evaluator=evaluator,
+            kind=kind,
+            verdict=verdict,
+            score=None if score is None else float(score),
+            outcome=outcome,
+            evaluator_version=_short(obj.get("evaluator_version"), "evaluator_version", where),
+            rubric=_short(obj.get("rubric"), "rubric", where),
+        ),
+    )
+
+
+def _records(text: str) -> list[tuple[str, Any]]:
+    """``(where, object)`` for a JSON array, an API page (``{"data": [...]}``) or JSON lines."""
+    stripped = text.strip()
+    if stripped.startswith(("[", "{")):
+        try:
+            whole = json.loads(stripped)
+        except ValueError:
+            whole = None  # JSON lines, or broken JSON reported line by line below
+        if isinstance(whole, dict) and isinstance(whole.get("data"), list):
+            whole = whole["data"]
+        if isinstance(whole, list):
+            return [(f"record {i}", obj) for i, obj in enumerate(whole, 1)]
+    out = []
+    for line, raw in enumerate(text.splitlines(), 1):
+        if raw.strip():
+            try:
+                out.append((f"line {line}", json.loads(raw)))
+            except ValueError as exc:
+                raise AnswerJudgmentError(f"line {line}: not JSON") from exc
+    return out
+
+
+@dataclass(frozen=True)
+class JudgmentFile:
+    """The judgments read from a file, its format, and what was skipped and why."""
+
+    rows: list[tuple[str, str, Judgment]]
+    source_format: str
+    skipped: dict[str, dict[str, int]] = field(default_factory=dict)
+
+
+def read_judgment_file(
+    path: str | Path,
+    thresholds: Mapping[str, float] | None = None,
+    *,
+    evaluators: Mapping[str, str | None] | None = None,
+    labels: Mapping[str, str] | None = None,
+) -> JudgmentFile:
+    """Judgments from a judgments file, a Langfuse scores export or LangSmith feedback.
+
+    ``evaluators`` names the vendor scores that judge answers, each with the kind (``human``
+    or ``model``) to use where the export does not say who judged, or ``None``. ``labels``
+    maps categorical values to verdicts. Both apply to vendor exports only.
+    """
+    thresholds = dict(thresholds or {})
+    for name, value in thresholds.items():
+        if not math.isfinite(value):
+            raise AnswerJudgmentError(f"threshold for {name} must be finite")
+    for name, kind in (evaluators or {}).items():
+        if kind is not None and kind not in KINDS:
+            raise AnswerJudgmentError(f"evaluator {name}: kind must be human or model")
+    for label, verdict in (labels or {}).items():
+        if verdict not in VERDICTS:
+            raise AnswerJudgmentError(
+                f"label {label!r}: verdict must be one of {', '.join(VERDICTS)}"
+            )
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise AnswerJudgmentError(f"Cannot read {path}: {exc.strerror or exc}") from exc
+    records = _records(text)
+    if len(records) > MAX_JUDGMENTS:
+        raise AnswerJudgmentError(f"more than {MAX_JUDGMENTS} judgments; split the file")
+    for where, obj in records:
+        if not isinstance(obj, dict):
+            raise AnswerJudgmentError(f"{where}: expected a JSON object")
+    shapes = {judgment_formats.shape_of(obj) or "vectraudit" for _, obj in records}
+    if len(shapes) > 1:
+        raise AnswerJudgmentError(
+            f"{path} mixes formats ({', '.join(sorted(shapes))}); use one per file"
+        )
+    shape = shapes.pop() if shapes else "vectraudit"
+    if shape == "vectraudit" and (evaluators or labels):
+        raise AnswerJudgmentError(
+            "--evaluator and --label apply to Langfuse and LangSmith exports; a judgments "
+            "file names its evaluators and verdicts itself"
+        )
+    if shape != "vectraudit" and not evaluators:
+        names = Counter(
+            judgment_formats.evaluator_of(obj, shape) or "(unnamed)" for _, obj in records
+        )
+        listed = ", ".join(f"{n} ({c})" for n, c in sorted(names.items())[:30])
+        raise AnswerJudgmentError(
+            f"{path} is a {shape} export with scores named {listed}. Pass --evaluator NAME "
+            "for each score that judges answers (NAME=human or NAME=model where the export "
+            "does not say who judged); nothing is read by default."
+        )
+    selection = judgment_formats.Selection(evaluators or {}, labels or {})
+    rows = []
+    skipped: dict[str, Counter[str]] = defaultdict(Counter)
+    for where, obj in records:
+        if shape != "vectraudit":
+            converted = judgment_formats.convert(obj, shape, selection)
+            if isinstance(converted, str):
+                skipped[converted][judgment_formats.evaluator_of(obj, shape) or "(unnamed)"] += 1
+                continue
+            obj = converted
+        rows.append(_judgment(obj, where, thresholds))
+    summary = {reason: dict(sorted(names.items())) for reason, names in sorted(skipped.items())}
+    if not rows:
+        why = "; ".join(
+            f"{judgment_formats.SKIPPED[r]}: {sum(n.values())}" for r, n in summary.items()
+        )
+        raise AnswerJudgmentError(f"{path} contains no judgments" + (f" ({why})" if why else ""))
+    return JudgmentFile(rows=rows, source_format=shape, skipped=summary)
 
 
 def read_judgments(
     path: str | Path, thresholds: Mapping[str, float] | None = None
 ) -> list[tuple[str, str, Judgment]]:
     """``(key kind, key, judgment)`` rows; key kind is ``query_id`` or ``trace_id``."""
-    thresholds = dict(thresholds or {})
-    for name, value in thresholds.items():
-        if not math.isfinite(value):
-            raise AnswerJudgmentError(f"threshold for {name} must be finite")
-    try:
-        text = Path(path).read_text(encoding="utf-8-sig")
-    except OSError as exc:
-        raise AnswerJudgmentError(f"Cannot read {path}: {exc.strerror or exc}") from exc
-    rows = []
-    for line, raw in enumerate(text.splitlines(), 1):
-        if not raw.strip():
-            continue
-        try:
-            obj = json.loads(raw)
-        except ValueError as exc:
-            raise AnswerJudgmentError(f"line {line}: not JSON") from exc
-        if not isinstance(obj, dict):
-            raise AnswerJudgmentError(f"line {line}: expected a JSON object")
-        keys = [k for k in ("query_id", "trace_id") if obj.get(k) is not None]
-        if len(keys) != 1:
-            raise AnswerJudgmentError(f"line {line}: give exactly one of query_id or trace_id")
-        key = _short(obj[keys[0]], keys[0], line, required=True)
-        evaluator = _short(obj.get("evaluator"), "evaluator", line, required=True)
-        assert key is not None
-        assert evaluator is not None
-        kind = obj.get("kind", "model")
-        if kind not in KINDS:
-            raise AnswerJudgmentError(f"line {line}: kind must be human or model")
-        outcome = obj.get("outcome", "answered")
-        if outcome not in OUTCOMES:
-            raise AnswerJudgmentError(f"line {line}: outcome must be one of {', '.join(OUTCOMES)}")
-        score = obj.get("score")
-        if score is not None and (type(score) not in (int, float) or not math.isfinite(score)):
-            raise AnswerJudgmentError(f"line {line}: score must be a finite number")
-        verdict = obj.get("verdict")
-        if verdict is not None and verdict not in VERDICTS:
-            raise AnswerJudgmentError(f"line {line}: verdict must be one of {', '.join(VERDICTS)}")
-        if verdict is None and score is not None and evaluator in thresholds:
-            verdict = "correct" if score >= thresholds[evaluator] else "incorrect"
-        if verdict is None and score is None and outcome == "answered":
-            raise AnswerJudgmentError(f"line {line}: a judgment needs a verdict or a score")
-        rows.append(
-            (
-                keys[0],
-                key,
-                Judgment(
-                    evaluator=evaluator,
-                    kind=kind,
-                    verdict=verdict,
-                    score=None if score is None else float(score),
-                    outcome=outcome,
-                    evaluator_version=_short(
-                        obj.get("evaluator_version"), "evaluator_version", line
-                    ),
-                    rubric=_short(obj.get("rubric"), "rubric", line),
-                ),
-            )
-        )
-        if len(rows) > MAX_JUDGMENTS:
-            raise AnswerJudgmentError(f"more than {MAX_JUDGMENTS} judgments; split the file")
-    if not rows:
-        raise AnswerJudgmentError(f"{path} contains no judgments")
-    return rows
+    return read_judgment_file(path, thresholds).rows
 
 
 def _decide(judgments: Sequence[Judgment]) -> tuple[str | None, str | None, str]:
@@ -259,6 +349,8 @@ def attach_answers(
     rows: Sequence[tuple[str, str, Judgment]],
     *,
     source_sha256: str | None = None,
+    source_format: str = "vectraudit",
+    skipped: Mapping[str, Mapping[str, int]] | None = None,
 ) -> dict[str, Any]:
     """A copy of the run with ``answer`` on each judged question and an ``answers`` summary.
 
@@ -306,6 +398,8 @@ def attach_answers(
     out["answers"] = {
         "format_version": ANSWERS_FORMAT_VERSION,
         "source_sha256": source_sha256,
+        "source_format": source_format,
+        "skipped_judgments": {r: dict(n) for r, n in (skipped or {}).items()},
         "judged_questions": len(grouped),
         "unmatched_judgments": unknown,
         "evaluators": [
@@ -327,12 +421,19 @@ def attach_answers(
 
 
 def attach_file(
-    run: Mapping[str, Any], path: str | Path, thresholds: Mapping[str, float] | None = None
+    run: Mapping[str, Any],
+    path: str | Path,
+    thresholds: Mapping[str, float] | None = None,
+    *,
+    evaluators: Mapping[str, str | None] | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """:func:`attach_answers` from a judgments file, recording the file's digest."""
-    rows = read_judgments(path, thresholds)
+    """:func:`attach_answers` from a judgments file or vendor export, recording its digest."""
+    read = read_judgment_file(path, thresholds, evaluators=evaluators, labels=labels)
     digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-    return attach_answers(run, rows, source_sha256=digest)
+    return attach_answers(
+        run, read.rows, source_sha256=digest, source_format=read.source_format, skipped=read.skipped
+    )
 
 
 def render_summary(run: Mapping[str, Any]) -> str:
@@ -356,8 +457,20 @@ def render_summary(run: Mapping[str, Any]) -> str:
         ]
     for name, stats in answers["agreement_with_human"].items():
         lines.append(
-            f"{name} agrees with human review on {stats['agreed']} of {stats['questions']} "
-            "questions judged by both."
+            f"{name} (model judgments) agrees with human review on {stats['agreed']} of "
+            f"{stats['questions']} questions judged by both."
+        )
+    hints = {
+        "kind_undeclared": "pass --evaluator NAME=human or NAME=model if these are reviews; "
+        "end-user ratings are not",
+        "label_unmapped": "pass --label LABEL=correct|partial|incorrect",
+    }
+    for reason, names in (answers.get("skipped_judgments") or {}).items():
+        lines.append(
+            f"Skipped {sum(names.values())}: {judgment_formats.SKIPPED[reason]} "
+            f"({', '.join(sorted(names)[:10])})"
+            + (f"; {hints[reason]}" if reason in hints else "")
+            + "."
         )
     unjudged = answers["verdicts"].get("unjudged")
     if unjudged:

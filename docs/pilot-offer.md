@@ -25,7 +25,7 @@ retrieval incident, or a planned reranker, embedding or database change.
 |---|---|
 | Your application | A Python callable or an HTTP endpoint that answers a question with ranked document IDs (optionally per-stage evidence and the documents the model received); LangChain and LlamaIndex retrievers through wrappers |
 | Traces you already record | OpenInference exports (OTLP JSON or Phoenix span exports), LangSmith runs and Langfuse observations imported as a run, with a report of what the traces can and cannot show. Other trace formats are not supported yet |
-| Beyond ranking | Which relevant documents reached the model in full, were left out or were cut short (reported by your pipeline, or inferred from recorded prompts); evidence groups ("A and B are both needed"); answer judgments imported from your reviewers or tools such as Ragas, with model-judge agreement against human review |
+| Beyond ranking | Which relevant documents reached the model in full, were left out or were cut short (reported by your pipeline, or inferred from recorded prompts); evidence groups ("A and B are both needed"); answer judgments imported from your reviewers or tools such as Ragas, Langfuse scores or LangSmith feedback, with model-judge agreement against human review |
 | Investigation and repair | Per-question investigation of what was lost and where, fixes your pipeline declares tried on exploratory questions and validated on held-out ones under the policy, and the repaired question protected in the release policy |
 | Vector stores, directly | FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch, OpenSearch |
 | Runtime | Python 3.10–3.13 on Linux and macOS. Windows is not verified |

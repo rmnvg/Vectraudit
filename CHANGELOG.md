@@ -28,6 +28,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench attach-answers` reads Langfuse score exports and LangSmith feedback directly,
+  attaching them by trace to runs imported from the same traces. `--evaluator NAME` names
+  the scores that judge answers (`NAME=human` or `NAME=model` where the export does not say
+  who judged) and `--label` maps categorical values to verdicts. Undeclared, unnamed or
+  unusable scores are skipped and counted; comments and author IDs are not read. The
+  agreement line now says it measures model judgments.
+
 - `workbench import-traces` and `workbench intake` read LangSmith run exports and Langfuse
   observations (an API page or a list) as well as OpenInference. Retrievers are the runs or
   observations the export marks as retrievers, or the span names given with `--stage-kind`;
