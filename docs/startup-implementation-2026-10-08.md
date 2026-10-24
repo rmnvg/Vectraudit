@@ -1964,6 +1964,37 @@ once without evidence, an unconfigured server, the STARTTLS and login conversati
 permanent and temporary failures, settings, the dashboard form). Full suite, ruff and mypy
 pass.
 
+## Step 63: Elasticsearch and OpenSearch connector (Tier 3, chosen by the owner)
+
+The strategy lists Elasticsearch/OpenSearch as "the most likely next backend" for
+support-search customers; the owner chose to build it ahead of customer demand.
+
+- **One dependency-free connector over the REST APIs** for both engines, detected from
+  `GET /`. Connections use `"backend": "elasticsearch"` or `"opensearch"`, `url`, `index`
+  (or alias), `vector_field`, optional `id_field`, and `api_key_env` (Elasticsearch API key)
+  or `basic_auth_env` (`user:password`). Credentials go only over HTTPS or to a local
+  cluster; field names are validated before they reach a script.
+- **Search and exact reference:** Elasticsearch's `knn` option on `dense_vector` fields
+  (`num_candidates`, never below k) and OpenSearch's `knn` query on `knn_vector` fields
+  (`ef_search`). The exact reference is a brute-force `script_score` with the field's own
+  similarity, so ANN recall is measured on the backend's vectors and filters. A field
+  mapped `index: false` supports only exact search. Filters are `term` clauses.
+- **Typed errors** like the other connectors: authentication, missing index, rate limits
+  and outages, timeouts, rejected queries.
+- `vectraudit init --backend elasticsearch|opensearch` scaffolds a connection and workflow;
+  CI provisions Elasticsearch 8.15 and OpenSearch 2.17 service containers.
+
+Not included: hybrid (BM25 plus vector) search through the connector (a hybrid application
+connects through the pipeline adapters), sparse vectors, and a customer cluster.
+
+Validation: 20 tests against a fake cluster that really scores documents (request shapes for
+both engines, exact reference, source-field IDs, a full run measuring recall, unindexed
+fields, typed errors, unsafe configuration, connection files under both names), and 6
+real-cluster tests run locally against Elasticsearch 8.15.3 and OpenSearch 2.17.1 in Docker:
+every similarity on both engines, with the exact reference matching a brute-force answer,
+ANN recall above 0.8 and filters honoured. CI now provisions both clusters. Full suite,
+ruff and mypy on Python 3.12 and 3.10 pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

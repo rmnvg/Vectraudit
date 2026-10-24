@@ -139,6 +139,7 @@ parameters (`--param key=value` overrides them). **Secrets never go in the file:
 | `qdrant` (`vectraudit[qdrant]`) | `url` (or `path` for embedded local mode), `collection`, optional `api_key_env`, `vector_name` (required when the collection has several named vectors), `timeout_s` | `hnsw_ef` | Qdrant's exact search over the same collection. |
 | `pgvector` (`vectraudit[pgvector]`) | `dsn_env`, `table` (`schema.table`), `id_column` (default `id`), `vector_column` (default `embedding`), `distance` (`cosine`, `l2`, `ip`: match your index's operator class), `filter_columns`, `statement_timeout_ms`, `connect_timeout_s` | `hnsw.ef_search`, `ivfflat.probes` | A sequential scan with index scans disabled for that query. |
 | `pinecone` (no extra) | `index`, `api_key_env`, optional `namespace`, `host` (private endpoint), `control_plane_url`, `timeout_s` | none | None: Pinecone is measured as a black box (no exact mode, no snapshot). |
+| `elasticsearch` or `opensearch` (no extra) | `url`, `index` (or alias), `vector_field`, optional `id_field` (default `_id`), `api_key_env` (an Elasticsearch API key) or `basic_auth_env` (a variable holding `user:password`), `timeout_s` | `num_candidates` (Elasticsearch), `ef_search` (OpenSearch 2.16+) | A brute-force `script_score` over the same documents, filters and distance. |
 | `weaviate` (`vectraudit[weaviate]`) | `url`, `collection`, optional `api_key_env` (required for Weaviate Cloud), `id_property` (default: object UUID), `vector_name`, `tenant`, `grpc_url` (self-hosted), `timeout_s` | none (ef is collection configuration) | Only collections with a flat index. |
 
 Qdrant filters map to `must` conditions (`match` for strings, integers and booleans; an equal-bounds `range` for floats). Qdrant has no immutable snapshot id, so reports warn that concurrent updates can't be ruled out: freeze the collection, or point both runs at a versioned collection or alias.
@@ -146,6 +147,21 @@ Qdrant filters map to `must` conditions (`match` for strings, integers and boole
 pgvector sessions are read-only (`default_transaction_read_only`) with a `statement_timeout`; identifiers are validated and quoted and every value is a bound parameter. Filters work only on columns listed in `filter_columns`. The evaluation role needs `SELECT` on the table and `USAGE` on its schema, nothing more; the connector checks this before searching. `describe` lists the vector indexes and whether one matches the configured distance (a mismatch means PostgreSQL scans every row).
 
 Pinecone is reached over its REST API with a pinned API version and portable filters become `$eq` conditions; Weaviate filters become property equality. Both send API keys only over HTTPS.
+
+Elasticsearch 8 and OpenSearch 2 are reached over their REST APIs, so there's no client
+library to install. Which engine you have is detected from the cluster (`GET /`), whichever
+name the connection uses, and recorded in the run.
+
+- **Search:** Elasticsearch uses the `knn` search option on a `dense_vector` field
+  (`num_candidates` is never set below k). OpenSearch uses the `knn` query on a
+  `knn_vector` field.
+- **Filters:** become `term` clauses, so use them on `keyword`, numeric or boolean fields.
+- **Exact reference:** scores every matching document with the field's own similarity
+  (`cosine`, `dot_product`, `max_inner_product`, `l2_norm`; OpenSearch `cosinesimil`,
+  `innerproduct`, `l2`). An Elasticsearch field mapped with `index: false` supports only
+  the exact search.
+- **Credentials:** sent only over HTTPS (or to a local cluster).
+- **No snapshot ID:** freeze the index, or point both runs at a versioned index or alias.
 
 Each connector declares its capabilities (filters, exact reference, configuration,
 tuning parameters). An unsupported request, such as a filter on FAISS, is a per-query error,
