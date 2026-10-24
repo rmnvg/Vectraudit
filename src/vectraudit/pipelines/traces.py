@@ -4,13 +4,15 @@ Applications instrumented with OpenInference (Phoenix, Arize, OpenLLMetry-compat
 exporters) record retriever and reranker spans with ranked document IDs. This module reads
 an exported trace file, matches traces to benchmark questions and turns each into the
 ``PipelineResult`` the runner already scores, so an imported run is judged by the same
-metrics, policy and release check as a live one. Two exports are accepted:
+metrics, policy and release check as a live one. These exports are accepted:
 
 - **OTLP JSON** as written by the OpenTelemetry file exporter: one ``{"resourceSpans": …}``
   object, or one per line;
 - **span records**, one JSON object per line or a JSON array, with ``context.trace_id``,
   ``context.span_id``, ``parent_id``, ``name``, ``start_time``, ``end_time`` and
-  ``attributes`` (flat dotted keys or nested objects), as Phoenix exports them.
+  ``attributes`` (flat dotted keys or nested objects), as Phoenix exports them;
+- **LangSmith runs** and **Langfuse observations**, converted to the same spans by
+  :mod:`vectraudit.pipelines.trace_formats`.
 
 What an import does not do, by design:
 
@@ -34,7 +36,7 @@ import itertools
 import json
 import math
 from collections import Counter, defaultdict
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -113,8 +115,16 @@ class Settings:
 # --- reading -----------------------------------------------------------------------------
 
 
-def read_spans(path: str | Path) -> tuple[list[Span], str]:
-    """Every span in the file and which export shape it was (``otlp-json`` or ``spans``)."""
+def read_spans(path: str | Path, stage_names: Collection[str] = ()) -> tuple[list[Span], str]:
+    """Every span in the file and which export shape it was.
+
+    Shapes: ``otlp-json``, ``spans`` (Phoenix), ``langsmith`` (runs) and ``langfuse``
+    (observations; see :mod:`vectraudit.pipelines.trace_formats`). ``stage_names`` are span
+    names the caller declared as retrieval stages (``--stage-kind``); in LangSmith and
+    Langfuse exports they count as retrievers.
+    """
+    from vectraudit.pipelines.trace_formats import convert, shape_of, unwrap
+
     path = Path(path)
     try:
         size = path.stat().st_size
@@ -126,21 +136,28 @@ def read_spans(path: str | Path) -> tuple[list[Span], str]:
     objects = list(_json_objects(text, path))
     spans: list[Span] = []
     shapes = set()
-    for obj in objects:
-        if isinstance(obj, dict) and "resourceSpans" in obj:
-            shapes.add("otlp-json")
-            spans.extend(_otlp_spans(obj))
-        elif isinstance(obj, dict):
-            shapes.add("spans")
-            spans.append(_record_span(obj))
-        else:
-            raise TraceImportError(f"{path}: expected JSON objects, found {type(obj).__name__}")
-        if len(spans) > MAX_SPANS:
-            raise TraceImportError(f"{path} has more than {MAX_SPANS} spans; split it.")
+    for item in objects:
+        for obj in unwrap(item) or [item]:
+            shape = shape_of(obj)
+            if isinstance(obj, dict) and "resourceSpans" in obj:
+                shapes.add("otlp-json")
+                spans.extend(_otlp_spans(obj))
+            elif shape is not None:
+                shapes.add(shape)
+                spans.append(convert(obj, shape, stage_names))
+            elif isinstance(obj, dict):
+                shapes.add("spans")
+                spans.append(_record_span(obj))
+            else:
+                raise TraceImportError(f"{path}: expected JSON objects, found {type(obj).__name__}")
+            if len(spans) > MAX_SPANS:
+                raise TraceImportError(f"{path} has more than {MAX_SPANS} spans; split it.")
     if not spans:
         raise TraceImportError(f"{path} contains no spans.")
     if len(shapes) > 1:
-        raise TraceImportError(f"{path} mixes OTLP JSON and span records; export one format.")
+        raise TraceImportError(
+            f"{path} mixes export formats ({', '.join(sorted(shapes))}); export one format."
+        )
     return spans, shapes.pop()
 
 
@@ -801,7 +818,7 @@ def import_traces(
     """
     settings = settings or Settings()
     path = Path(path)
-    spans, shape = read_spans(path)
+    spans, shape = read_spans(path, settings.stage_kinds)
     grouped: dict[str, list[Span]] = defaultdict(list)
     for span in spans:
         grouped[span.trace_id].append(span)
@@ -827,6 +844,7 @@ def import_traces(
     config = {
         "adapter": "trace_import",
         "name": FORMAT,
+        "shape": shape,
         "sha256": digest,
         "pipeline_version": f"traces:{digest[:16]}",
         "settings": {
@@ -948,7 +966,7 @@ def capability_report(
         ),
         "filters_and_tenant_context": _capability(
             "partial" if metadata_keys or sessions else "missing",
-            "OpenInference has no standard attribute for retrieval filters. "
+            "None of the supported trace formats has a standard attribute for retrieval filters. "
             + (
                 f"Metadata keys seen: {', '.join(metadata_keys[:20])}"
                 + (" …" if len(metadata_keys) > 20 else "")

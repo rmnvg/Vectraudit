@@ -1,7 +1,7 @@
 # Production intake
 
 Keep the benchmark in step with production. Run the intake on each new trace export, for
-example nightly after your OpenInference exporter writes a file:
+example nightly after your trace exporter writes a file:
 
 ```bash
 vectraudit workbench intake traces-2026-10-18.jsonl questions.jsonl \
@@ -10,7 +10,8 @@ vectraudit workbench intake traces-2026-10-18.jsonl questions.jsonl \
   --workspace workbench-runs --export-review review.jsonl
 ```
 
-Traces are read like `workbench import-traces` (OTLP JSON or Phoenix span records).
+Traces are read like `workbench import-traces` (OpenInference OTLP JSON or Phoenix span
+records, LangSmith runs, Langfuse observations).
 Everything stays local: the state folder holds a cursor and the review queue, including
 question text, and nothing is uploaded.
 

@@ -1995,6 +1995,40 @@ every similarity on both engines, with the exact reference matching a brute-forc
 ANN recall above 0.8 and filters honoured. CI now provisions both clusters. Full suite,
 ruff and mypy on Python 3.12 and 3.10 pass.
 
+## Step 64: LangSmith and Langfuse trace import (strategy 1.1)
+
+The strategy names OpenInference first, "then a Langfuse or LangSmith source if needed";
+both are the competitors whose traces a likely partner already records.
+
+- **Converted, not re-implemented.** `pipelines/trace_formats.py` turns each LangSmith run or
+  Langfuse observation into an OpenInference span (kind, `input.value`, retrieved documents
+  with ID, content, metadata and score, metadata, session and user). The existing reader
+  then matches questions, maps stages, records gaps, infers model context from prompts and
+  writes the capability report, so a LangSmith import is judged exactly like an
+  OpenInference one. The run records the export shape.
+- **LangSmith**: runs as a list, JSON lines or `{"runs": [...]}`; `retriever` runs carry
+  documents (`{"documents": [...]}` from LangChain or a `@traceable` list); `llm` runs carry
+  prompts; `trace_id` is required for child runs. Thread keys `session_id`, `thread_id` or
+  `conversation_id` in `extra.metadata` become the session.
+- **Langfuse**: observations from the Observations API, a list, JSON lines or a
+  `{"data": [...]}` page; `RETRIEVER` and `GENERATION` types; raw-string input and output
+  are parsed.
+- **No inference from names.** A retriever recorded as a plain span, chain or tool counts
+  only when `--stage-kind` names it; otherwise the question fails with
+  `trace_no_retrieval`. Files mixing formats are refused.
+- `workbench intake` reads the same exports, so benchmark upkeep works for these teams too.
+
+Not included: fetching from the LangSmith or Langfuse APIs (exports are read as files, so no
+credentials or dependency are added); Langfuse scores and LangSmith feedback (answer
+judgments already import keyed by trace ID); a real partner's export.
+
+Validation: 7 tests from record shapes in the vendors' documentation: a LangSmith export
+scored with model context inferred from the prompt and no text in the run; a `@traceable`
+list with document IDs; a Langfuse API page with raw-string fields; a plain span counted
+only when named; a retriever without documents as a gap; orphan runs and mixed formats
+refused; the CLI and intake on the same export. Full suite, ruff and mypy on Python 3.12 and
+3.10 pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

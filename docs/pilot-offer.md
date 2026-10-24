@@ -24,7 +24,7 @@ retrieval incident, or a planned reranker, embedding or database change.
 | Area | Supported |
 |---|---|
 | Your application | A Python callable or an HTTP endpoint that answers a question with ranked document IDs (optionally per-stage evidence and the documents the model received); LangChain and LlamaIndex retrievers through wrappers |
-| Traces you already record | OpenInference exports (OTLP JSON or Phoenix span exports) imported as a run, with a report of what the traces can and cannot show. Other trace formats are not supported yet |
+| Traces you already record | OpenInference exports (OTLP JSON or Phoenix span exports), LangSmith runs and Langfuse observations imported as a run, with a report of what the traces can and cannot show. Other trace formats are not supported yet |
 | Beyond ranking | Which relevant documents reached the model in full, were left out or were cut short (reported by your pipeline, or inferred from recorded prompts); evidence groups ("A and B are both needed"); answer judgments imported from your reviewers or tools such as Ragas, with model-judge agreement against human review |
 | Investigation and repair | Per-question investigation of what was lost and where, fixes your pipeline declares tried on exploratory questions and validated on held-out ones under the policy, and the repaired question protected in the release policy |
 | Vector stores, directly | FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch, OpenSearch |
@@ -33,13 +33,13 @@ retrieval incident, or a planned reranker, embedding or database change.
 | Scale | Up to 1,000 questions per benchmark in the workbench; concurrent runs with rate limits and automatic retries |
 | Ingestion and freshness | From your ingestion export (offsets, revisions and index state; no text): where each labelled passage was first lost, from extraction through chunking and indexing to the model; and from your content change log, whether updates, replacements and deletions reached the index, results and model context within their window |
 | Permissions | Tenant/user context and filters per question; forbidden-document and no-answer assertions, including forbidden documents reaching the model context or stages your policy names (such as a reranker); access changes from your identity system's change log checked after their propagation window; a cache-isolation probe between users |
-| Benchmark upkeep | A scheduled intake of your OpenInference exports: production questions matched to the benchmark (likely recurrences linked to regression cases), new questions de-duplicated into a review queue with feedback-based priority, an independent sample and reviewer routing; feedback never becomes labels |
+| Benchmark upkeep | A scheduled intake of your trace exports: production questions matched to the benchmark (likely recurrences linked to regression cases), new questions de-duplicated into a review queue with feedback-based priority, an independent sample and reviewer routing; feedback never becomes labels |
 | Migration assurance | Your current and proposed systems compared on the same benchmark under the release policy, with corpus equivalence and ID mapping from each system's document inventory, filter semantics checked against document metadata, environment differences and measured versus declared costs |
-| Team view (optional) | A hosted project with release timeline, plain-language summaries for the lead, trends, shared cases and notifications (signed webhook or Slack) |
+| Team view (optional) | A hosted project with release timeline, plain-language summaries for the lead, trends, shared cases and notifications (signed webhook, Slack or email) |
 
-**Not part of this pilot:** importing Langfuse or LangSmith traces; evaluating answers
-ourselves (we import your judgments); citation checking; automatic repairs or fixes your
-pipeline does not declare. We decide these with design partners from real inputs; they are
+**Not part of this pilot:** reading traces from a vendor's API (we read the files you
+export); evaluating answers ourselves (we import your judgments); citation checking;
+automatic repairs or fixes your pipeline does not declare. We decide these with design partners from real inputs; they are
 not promised features. Context inferred from recorded prompts and model-judge results are
 checked against your own review before anyone relies on them.
 

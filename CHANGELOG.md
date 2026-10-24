@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench import-traces` and `workbench intake` read LangSmith run exports and Langfuse
+  observations (an API page or a list) as well as OpenInference. Retrievers are the runs or
+  observations the export marks as retrievers, or the span names given with `--stage-kind`;
+  the run, gaps, model context and capability report are those of an OpenInference import.
+
 - Elasticsearch 8 and OpenSearch 2 connector (`"backend": "elasticsearch"` or
   `"opensearch"`, no extra package): approximate kNN search with filters, an exact
   `script_score` reference for ANN recall, `num_candidates` / `ef_search` tuning,

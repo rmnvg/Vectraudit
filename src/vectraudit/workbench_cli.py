@@ -460,7 +460,13 @@ def preview_command(
 @workbench_app.command("import-traces")
 def import_traces_command(
     dataset: Annotated[Path, typer.Argument(help="Benchmark dataset (JSONL) with labels.")],
-    traces: Annotated[Path, typer.Argument(help="OpenInference export: OTLP JSON or spans.")],
+    traces: Annotated[
+        Path,
+        typer.Argument(
+            help="Trace export: OpenInference (OTLP JSON or spans), LangSmith runs or "
+            "Langfuse observations."
+        ),
+    ],
     out: Annotated[Path, typer.Option(help="Run file to write.")] = Path("traces.run.json"),
     report: Annotated[
         Path | None, typer.Option(help="Also write the capability report as JSON.")
@@ -487,7 +493,10 @@ def import_traces_command(
     ] = None,
     stage_kind: Annotated[
         list[str] | None,
-        typer.Option(help="SPAN=KIND for retriever spans (bm25=keyword); default custom."),
+        typer.Option(
+            help="SPAN=KIND for retriever spans (bm25=keyword); default custom. In LangSmith "
+            "and Langfuse exports a named span counts as a retriever."
+        ),
     ] = None,
     latest: Annotated[
         bool,
@@ -1167,7 +1176,10 @@ def migration_command(
 
 @workbench_app.command("intake")
 def intake_command(
-    traces: Annotated[Path, typer.Argument(help="New OpenInference export (OTLP JSON or spans).")],
+    traces: Annotated[
+        Path,
+        typer.Argument(help="New trace export (OpenInference, LangSmith runs or Langfuse)."),
+    ],
     dataset: Annotated[Path, typer.Argument(help="The benchmark, with labels.")],
     state: Annotated[
         Path, typer.Option(help="Folder holding the cursor and review queue (kept local).")
