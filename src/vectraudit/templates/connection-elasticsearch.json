@@ -1,0 +1,8 @@
+{
+  "backend": "elasticsearch",
+  "name": "production index",
+  "url": "https://YOUR-DEPLOYMENT.es.example.com:443",
+  "api_key_env": "ELASTICSEARCH_API_KEY",
+  "index": "docs",
+  "vector_field": "embedding"
+}

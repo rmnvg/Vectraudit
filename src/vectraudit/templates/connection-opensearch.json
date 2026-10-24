@@ -1,0 +1,8 @@
+{
+  "backend": "opensearch",
+  "name": "production index",
+  "url": "https://YOUR-DOMAIN.example.com:443",
+  "basic_auth_env": "OPENSEARCH_BASIC_AUTH",
+  "index": "docs",
+  "vector_field": "embedding"
+}

@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Elasticsearch 8 and OpenSearch 2 connector (`"backend": "elasticsearch"` or
+  `"opensearch"`, no extra package): approximate kNN search with filters, an exact
+  `script_score` reference for ANN recall, `num_candidates` / `ef_search` tuning,
+  `vectraudit init --backend elasticsearch|opensearch`, and CI service containers for both.
+
 - Email notifications (PRD FR13): a project owner can add `mailto:` destinations with
   `style: "email"`. Release decisions and monitor alerts are emailed once per event, with
   the same headline, action and link as Slack and the same retries, through the operator's

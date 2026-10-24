@@ -164,6 +164,15 @@ _OPTION_TYPES: dict[str, dict[str, type]] = {
         "control_plane_url": str,
         "timeout_s": int,
     },
+    "elasticsearch": {
+        "url": str,
+        "index": str,
+        "vector_field": str,
+        "id_field": str,
+        "api_key_env": str,
+        "basic_auth_env": str,
+        "timeout_s": int,
+    },
     "weaviate": {
         "url": str,
         "collection": str,
@@ -181,7 +190,10 @@ _REQUIRED = {
     "pgvector": ("dsn_env", "table"),
     "pinecone": ("api_key_env", "index"),
     "weaviate": ("url", "collection"),
+    "elasticsearch": ("url", "index", "vector_field"),
 }
+_OPTION_TYPES["opensearch"] = _OPTION_TYPES["elasticsearch"]
+_REQUIRED["opensearch"] = _REQUIRED["elasticsearch"]
 
 
 def validate_connection(cfg: ConnectionConfig) -> None:
@@ -309,6 +321,21 @@ def _open_weaviate(cfg: ConnectionConfig) -> Connector:
     )
 
 
+def _open_elasticsearch(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.elasticsearch import ElasticsearchConnector
+
+    _reject_unknown(cfg, set(_OPTION_TYPES["elasticsearch"]))
+    return ElasticsearchConnector(
+        url=require(cfg.options, "url", str),
+        index=require(cfg.options, "index", str),
+        vector_field=require(cfg.options, "vector_field", str),
+        id_field=option(cfg.options, "id_field", str),
+        api_key=secret(cfg.options, "api_key", required=False),
+        basic_auth=secret(cfg.options, "basic_auth", required=False),
+        timeout_s=_positive_int(cfg, "timeout_s", 10),
+    )
+
+
 def _open_pgvector(cfg: ConnectionConfig) -> Connector:
     from vectraudit.connectors.pgvector import PgvectorConnector
 
@@ -365,6 +392,8 @@ BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
     "pgvector": _open_pgvector,
     "pinecone": _open_pinecone,
     "weaviate": _open_weaviate,
+    "elasticsearch": _open_elasticsearch,
+    "opensearch": _open_elasticsearch,
 }
 
 

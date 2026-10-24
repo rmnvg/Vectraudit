@@ -18,7 +18,7 @@ There are three ways to use it:
 | | For | Start with |
 |---|---|---|
 | **[Retrieval workbench](#retrieval-workbench)** | Building a benchmark, evaluating a whole pipeline, comparing a fix in the browser | `vectraudit workbench serve` |
-| **[Release checks](#release-checks)** | Blocking regressions in CI on FAISS, Qdrant, pgvector, Pinecone or Weaviate | `vectraudit init` |
+| **[Release checks](#release-checks)** | Blocking regressions in CI on FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch or OpenSearch | `vectraudit init` |
 | **[FAISS index debugger](#faiss-index-debugger)** | Explaining missed neighbours, quantization loss and recall vs latency inside one index | `vectraudit serve INDEX` |
 
 Results can also go to the [hosted control plane](docs/cloud-operations.md) for pinned
@@ -89,7 +89,7 @@ Measure a baseline and a candidate retrieval setup on the same labelled queries,
 decide: pass, fail, error or not comparable.
 
 ```bash
-vectraudit init --backend qdrant          # or faiss, pgvector, pinecone, weaviate
+vectraudit init --backend qdrant          # or faiss, pgvector, pinecone, weaviate, elasticsearch, opensearch
 vectraudit doctor --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --policy retrieval/policy.json
 vectraudit record --connection main.json --dataset dataset.jsonl --out baseline.json --label main
 vectraudit record --connection pr.json   --dataset dataset.jsonl --out candidate.json --label pr-42
@@ -113,6 +113,7 @@ it. Credentials are referenced by environment variable and never written into co
 | pgvector | table and columns in PostgreSQL | `[pgvector]` |
 | Pinecone | index over HTTPS | none |
 | Weaviate | collection | `[weaviate]` |
+| Elasticsearch 8 / OpenSearch 2 | index with a `dense_vector` / `knn_vector` field | none |
 
 Already have a benchmark? `vectraudit dataset import` reads BEIR, TREC qrels, Ragas test
 sets, DeepEval goldens and LangSmith/Langfuse exports ([formats](docs/release-checks.md#bringing-labels-you-already-have)).

@@ -25,6 +25,8 @@ jobs:
       VECTRAUDIT_TEST_PINECONE_URL: http://localhost:5080
       VECTRAUDIT_TEST_WEAVIATE_URL: http://localhost:8080
       VECTRAUDIT_TEST_WEAVIATE_GRPC: http://localhost:50051
+      VECTRAUDIT_TEST_ELASTICSEARCH_URL: http://localhost:9200
+      VECTRAUDIT_TEST_OPENSEARCH_URL: http://localhost:9201
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -49,6 +51,21 @@ jobs:
           DEFAULT_VECTORIZER_MODULE: none
           CLUSTER_HOSTNAME: node1
         ports: ["8080:8080", "50051:50051"]
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+        ports: ["9200:9200"]
+      opensearch:
+        image: opensearchproject/opensearch:2.17.1
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: "true"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+        ports: ["9201:9200"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -56,11 +73,13 @@ jobs:
           enable-cache: true
       - name: Install
         run: uv sync --all-extras --locked
-      - name: Wait for the Pinecone and Weaviate test servers
+      - name: Wait for the Pinecone, Weaviate, Elasticsearch and OpenSearch test servers
         run: |
-          for i in $(seq 1 60); do
+          for i in $(seq 1 90); do
             curl -sf http://localhost:8080/v1/.well-known/ready > /dev/null &&
-              curl -s -o /dev/null -H "Api-Key: pclocal" http://localhost:5080/indexes && exit 0
+              curl -s -o /dev/null -H "Api-Key: pclocal" http://localhost:5080/indexes &&
+              curl -sf http://localhost:9200 > /dev/null &&
+              curl -sf http://localhost:9201 > /dev/null && exit 0
             sleep 2
           done
           echo "test servers did not become ready" >&2; exit 1
