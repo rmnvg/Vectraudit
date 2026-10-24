@@ -189,7 +189,10 @@ def deliver_webhooks(
                 f"Monitor schedules: {stale['opened']} overdue, {stale['resolved']} resolved."
             )
         counts = webhooks.deliver_due(
-            sessions, public_url=settings.public_url, allow_private=settings.webhook_allow_private
+            sessions,
+            public_url=settings.public_url,
+            allow_private=settings.webhook_allow_private,
+            smtp=settings.smtp,
         )
         if any(counts.values()) or not watch:
             console.print(

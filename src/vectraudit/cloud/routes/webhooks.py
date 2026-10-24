@@ -30,9 +30,10 @@ def _all_events() -> list[Event]:
 
 class WebhookIn(BaseModel):
     url: str = Field(min_length=8, max_length=2048)
-    style: Literal["signed", "slack"] = "signed"
+    style: Literal["signed", "slack", "email"] = "signed"
     """``signed``: Vectraudit JSON with an HMAC signature; ``slack``: a Slack incoming
-    webhook URL, posted a ``text`` message (signature headers are still sent)."""
+    webhook URL, posted a ``text`` message (signature headers are still sent); ``email``:
+    ``mailto:`` one address, sent a plain-text message through the operator's mail server."""
     events: list[Event] = Field(default_factory=lambda: _all_events(), min_length=1, max_length=2)
 
 
@@ -97,7 +98,9 @@ def create(
             409, "too_many_webhooks", f"A project can have at most {MAX_PER_PROJECT} webhooks."
         )
     try:
-        url = webhooks.check_url(body.url.strip(), allow_private=settings.webhook_allow_private)
+        url = webhooks.check_destination(
+            body.url.strip(), body.style, allow_private=settings.webhook_allow_private
+        )
     except webhooks.WebhookError as exc:
         raise CloudError(422, "invalid_webhook_url", str(exc)) from None
     hook = Webhook(

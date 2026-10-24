@@ -68,7 +68,7 @@ def section(session: Session, form: web.Web, access: repo.Access, base: str) -> 
         rows.append(
             [
                 f'<span class="mono">{e(webhooks.preview_url(hook.url))}</span>',
-                e("Slack" if hook.style == "slack" else "Signed JSON"),
+                e({"slack": "Slack", "email": "Email"}.get(hook.style, "Signed JSON")),
                 e(", ".join(EVENT_NAMES[x] for x in hook.events)),
                 _last_delivery(session, hook),
                 actions,
@@ -88,10 +88,12 @@ def section(session: Session, form: web.Web, access: repo.Access, base: str) -> 
         )
         body += (
             f'<form method="post" action="{base}/webhooks">{web._csrf_field(form)}'
-            '<input name="url" type="url" required maxlength="2048" '
-            'placeholder="https://hooks.slack.com/services/…" size="50"> '
+            '<input name="url" type="text" required maxlength="2048" '
+            'placeholder="https://hooks.slack.com/services/… or mailto:team@example.com" '
+            'size="50"> '
             '<select name="style"><option value="signed">Signed JSON</option>'
-            '<option value="slack">Slack incoming webhook</option></select> '
+            '<option value="slack">Slack incoming webhook</option>'
+            '<option value="email">Email (mailto:)</option></select> '
             f"{checks}<button>Add webhook</button></form>"
         )
     return body + _schedule(session, form, access, base)

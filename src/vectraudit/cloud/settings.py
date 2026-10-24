@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 MIN_SECRET_LENGTH = 32
@@ -12,6 +12,20 @@ MIN_SECRET_LENGTH = 32
 
 class SettingsError(ValueError):
     """The environment does not describe a valid configuration."""
+
+
+@dataclass(frozen=True)
+class SmtpSettings:
+    """The mail server email deliveries are sent through (operator configuration)."""
+
+    host: str
+    sender: str
+    """The From address; use one your mail server is allowed to send as."""
+    port: int = 587
+    username: str | None = None
+    password: str | None = None
+    security: str = "starttls"
+    """``starttls`` (default), ``ssl`` (implicit TLS, usually port 465) or ``none``."""
 
 
 @dataclass(frozen=True)
@@ -31,6 +45,8 @@ class Settings:
     """GitHub OAuth app for dashboard sign-in; without it, members sign in with a token."""
     webhook_allow_private: bool = False
     """Development only: allow http webhooks and private/loopback addresses."""
+    smtp: SmtpSettings | None = None
+    """Mail server for email deliveries; without it, email deliveries wait and then fail."""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -65,7 +81,7 @@ class Settings:
             except ValueError as e:
                 raise SettingsError("VECTRAUDIT_CLOUD_SSO_JSON must be a JSON object.") from e
         return cls(
-            sso=sso,
+            smtp=_smtp(get),
             database_url=normalize_database_url(url),
             max_queries_per_run=max_queries,
             secret_key=secret,
@@ -78,6 +94,30 @@ class Settings:
             webhook_allow_private=(get("WEBHOOK_ALLOW_PRIVATE") or "false").lower()
             in ("1", "true", "yes"),
         )
+
+
+def _smtp(read: Callable[[str], str | None]) -> SmtpSettings | None:
+    """``VECTRAUDIT_CLOUD_SMTP_*``: HOST and FROM are required together; the rest optional."""
+    host, sender = read("SMTP_HOST"), read("SMTP_FROM")
+    if not host and not sender:
+        return None
+    if not (host and sender):
+        raise SettingsError("Set both VECTRAUDIT_CLOUD_SMTP_HOST and VECTRAUDIT_CLOUD_SMTP_FROM.")
+    security = (read("SMTP_SECURITY") or "starttls").lower()
+    if security not in ("starttls", "ssl", "none"):
+        raise SettingsError("VECTRAUDIT_CLOUD_SMTP_SECURITY must be starttls, ssl or none.")
+    try:
+        port = int(read("SMTP_PORT") or (465 if security == "ssl" else 587))
+    except ValueError as e:
+        raise SettingsError("VECTRAUDIT_CLOUD_SMTP_PORT must be an integer.") from e
+    return SmtpSettings(
+        host=host,
+        sender=sender,
+        port=port,
+        username=read("SMTP_USERNAME") or None,
+        password=read("SMTP_PASSWORD") or None,
+        security=security,
+    )
 
 
 def normalize_database_url(url: str) -> str:

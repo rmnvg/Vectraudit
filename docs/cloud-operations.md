@@ -58,6 +58,7 @@ the service sends HSTS and marks session cookies `Secure`.
 | `VECTRAUDIT_CLOUD_SHARE_LINKS` | no | `true` enables signed, expiring public report links (off by default). |
 | `VECTRAUDIT_CLOUD_MAX_UPLOAD_BYTES` | no | Request body limit (default 20 MB). |
 | `VECTRAUDIT_CLOUD_MAX_QUERIES_PER_RUN` | no | Hard cap across all plans (default 10,000). |
+| `VECTRAUDIT_CLOUD_SMTP_HOST`, `VECTRAUDIT_CLOUD_SMTP_FROM` | for email | The mail server and From address for email notifications. Set both or neither. Optional: `VECTRAUDIT_CLOUD_SMTP_PORT` (587, or 465 with `ssl`), `VECTRAUDIT_CLOUD_SMTP_USERNAME`, `VECTRAUDIT_CLOUD_SMTP_PASSWORD`, `VECTRAUDIT_CLOUD_SMTP_SECURITY` (`starttls` by default, `ssl` or `none`). |
 | `VECTRAUDIT_CLOUD_WEBHOOK_ALLOW_PRIVATE` | no | Development only: lets webhooks use http and private, loopback or link-local addresses. Leave unset in production. |
 
 ## First workspace
@@ -236,6 +237,12 @@ with `POST .../projects/PROJECT/webhooks` (`url`, `style`, `events`).
     candidate, headline, action, check ID, alert details and a dashboard link.
   - `slack`: the same headline, action and link as a `text` message for a Slack incoming
     webhook.
+  - `email`: the same headline, action and link as a plain-text email to one address,
+    written `mailto:team@example.com`. Lists, display names and extra headers are refused.
+    Mail goes through the operator's server (`VECTRAUDIT_CLOUD_SMTP_*`). Without one,
+    email deliveries retry with "not configured" and then fail. A refused recipient fails
+    at once; a temporary server reply (4xx) or a lost connection retries. The address is
+    shown back as `mailto:t…@example.com`.
 - **What is sent:** no reasons, question IDs, metric details or text. Receivers with
   dashboard access follow the link.
 - **Security:**
