@@ -468,10 +468,11 @@ Nonzero vector weight requires query and corpus vectors from the same embedding 
 Its tenant filter is a reference implementation; use the customer's actual adapter to
 verify their authorization system. The phrase reranker is not a semantic cross-encoder.
 
-### Import OpenInference traces
+### Import traces (OpenInference, LangSmith, Langfuse)
 
-An application already instrumented with OpenInference (for example through Phoenix or an
-OpenTelemetry exporter) can be measured from its traces without writing an adapter:
+An application already traced with OpenInference (for example through Phoenix or an
+OpenTelemetry exporter), LangSmith or Langfuse can be measured from its traces without
+writing an adapter:
 
 ```bash
 vectraudit workbench import-traces benchmark.jsonl traces.jsonl \
@@ -484,6 +485,28 @@ The trace file is either OTLP JSON as the OpenTelemetry file exporter writes it 
 Phoenix exports them (one per line or a JSON array; flattened `attributes.*` columns and
 epoch-millisecond times are accepted). The result is an ordinary run file: `vectraudit check`
 judges two imported runs, or an imported run against a live one, under the same policy.
+
+LangSmith and Langfuse exports are read too, and converted to the same spans, so everything
+below applies to them unchanged:
+
+- **LangSmith runs** (`run_type`, `inputs`, `outputs`, `trace_id`, `parent_run_id`,
+  `start_time`, `end_time`, `extra.metadata`), as a JSON array, one per line or
+  `{"runs": [...]}`. A `retriever` run's documents are its outputs, `{"documents": [...]}` as
+  LangChain records them or a plain list from `@traceable`, each with `page_content`,
+  `metadata` and optionally `id`. `llm` runs carry the prompt. Every run needs its
+  `trace_id`; a root run's own `id` is its trace.
+- **Langfuse observations** as the Observations API returns them (`id`, `traceId`,
+  `parentObservationId`, `type`, `startTime`, `endTime`, `input`, `output`, `metadata`,
+  `sessionId`, `userId`), as a JSON array, one per line or the API's `{"data": [...]}` page.
+  `RETRIEVER` observations are retrievers and `GENERATION` observations are model calls;
+  input and output may be raw JSON strings.
+
+Nothing is inferred from names or nesting. A run or observation is a retriever only when
+the export says so (`run_type: retriever`, `type: RETRIEVER`); a retriever logged as a plain
+span, chain or tool counts only when `--stage-kind NAME=KIND` names it. Use
+`--id-field doc_id` when document IDs live in LangChain document metadata. Session IDs
+come from `sessionId` (Langfuse) or the `session_id`, `thread_id` or `conversation_id`
+metadata key (LangSmith).
 
 How traces become a run:
 
@@ -514,8 +537,8 @@ that cause; the run is then `partial` and cannot pass a release check.
 
 The capability report, printed and optionally saved as JSON, states for the imported traces:
 stable document IDs, the delivered ranking, observed stages, document flow between stages,
-filters and tenant context (OpenInference has no standard attribute for filters; metadata
-key names and session or user IDs are listed), model context (below), replay and latency.
+filters and tenant context (none of these formats has a standard attribute for filters;
+metadata key names and session or user IDs are listed), model context (below), replay and latency.
 It holds counts, span names and attribute names only.
 
 **Model context from traces.** When LLM spans record their input messages, each delivered

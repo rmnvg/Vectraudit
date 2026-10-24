@@ -91,7 +91,8 @@ CALL_FAILURES = {
     ),
     "trace_no_retrieval": (
         "The question's trace has no retriever or reranker span.",
-        "Instrument retrieval with OpenInference so RETRIEVER spans record their documents.",
+        "Record retrieval as a RETRIEVER span (OpenInference, Langfuse) or retriever run "
+        "(LangSmith) with its documents, or name the span with --stage-kind.",
     ),
     "trace_final_ambiguous": (
         "The trace records several retrieval outputs and none is known to be delivered.",

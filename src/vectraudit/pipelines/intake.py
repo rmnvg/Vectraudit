@@ -1,6 +1,7 @@
 """Production-to-benchmark upkeep: a scheduled intake of production traces.
 
-Run on each new OpenInference export (see :mod:`vectraudit.pipelines.traces`). Each run:
+Run on each new trace export (OpenInference, LangSmith runs or Langfuse observations; see
+:mod:`vectraudit.pipelines.traces`). Each run:
 
 - **Continues from a cursor.** The state folder remembers the newest trace already taken
   (and the trace IDs at that instant), so overlapping exports are never counted twice.
@@ -186,7 +187,7 @@ def intake(
     folder = Path(state)
     folder.mkdir(parents=True, exist_ok=True)
     cursor, queue = _load(folder)
-    spans, _ = read_spans(traces)
+    spans, _ = read_spans(traces, settings.stage_kinds)
     grouped: dict[str, list[Span]] = defaultdict(list)
     for span in spans:
         grouped[span.trace_id].append(span)
