@@ -31,7 +31,7 @@ Your application ──(questions, context)──▶ Vectraudit runner (your mac
                                    allowlisted projection (preview first)
                                                      │ HTTPS, project-scoped token
                                                      ▼
-                                     Hosted control plane ──▶ your webhook / Slack
+                                     Hosted control plane ──▶ your webhook / Slack / email
                                      (PostgreSQL)              (headline, verdict, link)
 ```
 
@@ -54,9 +54,11 @@ network call. The service re-validates every upload against the same allowlist a
 anything outside it. IDs, tags and labels can themselves be sensitive; review them before
 uploading.
 
-**Notifications** (webhooks you configure) carry a headline, the verdict, the candidate's
-label, the check ID and a dashboard link. They carry no reasons, question IDs or text, and go
-only to https endpoints on public addresses.
+**Notifications** (webhooks or email addresses you configure) carry a headline, the verdict,
+the candidate's label, the check ID and a dashboard link. They carry no reasons, question IDs
+or text. Webhooks go only to https endpoints on public addresses; email goes to one address
+per destination through the mail server the operator configures, which is then a processor of
+those messages.
 
 ## Retention and deletion (hosted)
 

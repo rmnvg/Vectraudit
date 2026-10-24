@@ -1936,6 +1936,34 @@ each (nothing is executed): the subcommand must exist and every option shown mus
 accepted. All 111 current commands match; a self-check plants a wrong subcommand and a
 misspelled option and confirms both are caught, so the test cannot pass vacuously.
 
+## Step 62: email notifications (PRD FR13, strategy 1.7)
+
+The PRD's FR13 asks for scheduled evaluation with "email/Slack delivery with retries,
+deduplication and alert-resolution state". Slack and signed webhooks existed (Step 18);
+email did not.
+
+- **A third style, `email`,** on the existing webhook outbox: an owner adds
+  `mailto:team@example.com` in the API or the dashboard. Exactly one plain address is
+  accepted; lists, display names, query strings and header injection are refused.
+- **Same events, same guarantees:** release decisions and monitor alerts (opened, resolved,
+  overdue) are emailed once per event key, with the same small content as Slack (headline,
+  action and dashboard link; no reasons, question IDs or text), and the same retries.
+- **Through the operator's mail server** (`VECTRAUDIT_CLOUD_SMTP_HOST`, `_FROM`, optional
+  port, login and `starttls`/`ssl`/`none`), with Python's standard library: no new
+  dependency. A refused recipient or permanent (5xx) reply fails at once; a temporary (4xx)
+  reply, a lost connection, a failed login or a missing configuration retries, so an
+  operator can fix it before the delivery gives up.
+- The operations guide and trust package name email as a destination and the mail server as
+  a processor.
+
+Not included: digests or several addresses per destination (add one destination per
+address), and a live mail-server run.
+
+Validation: 15 new tests (address validation including header injection, a decision emailed
+once without evidence, an unconfigured server, the STARTTLS and login conversation,
+permanent and temporary failures, settings, the dashboard form). Full suite, ruff and mypy
+pass.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

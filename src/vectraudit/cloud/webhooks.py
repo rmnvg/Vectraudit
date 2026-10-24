@@ -18,6 +18,11 @@ dashboard link, built from the decision ledger. No reasons, question IDs or metr
 receivers with access follow the link. Requests go only to https URLs on public addresses
 (checked at registration and before every send), redirects are not followed, and nothing
 from the response is stored beyond its status code.
+
+The ``email`` style sends the same small message as plain-text email to one ``mailto:``
+address, through the operator's mail server (:class:`~vectraudit.cloud.settings.
+SmtpSettings`), with the same outbox, retries and once-per-event keys. A refused recipient
+fails at once; a temporary mail-server error retries on the same schedule.
 """
 
 from __future__ import annotations
@@ -26,13 +31,19 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import re
 import secrets
+import smtplib
 import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
+from email.message import EmailMessage
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from typing import Any
 from urllib.parse import quote, urlsplit
 
@@ -42,8 +53,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vectraudit.cloud import lead, ledger
 from vectraudit.cloud.models import Check, Project, Webhook, WebhookDelivery, Workspace, utcnow
+from vectraudit.cloud.settings import SmtpSettings
 
-STYLES = ("signed", "slack")
+STYLES = ("signed", "slack", "email")
+ADDRESS = re.compile(r"^[^@\s,;:<>()\[\]\\\"]+@[^@\s,;:<>()\[\]\\\"]+\.[^@\s,;:<>()\[\]\\\".]+$")
 EVENTS = ("decision", "monitor")
 FORMAT = "vectraudit.event"
 RETRY_SECONDS = (60, 300, 1800, 7200, 21600)
@@ -106,8 +119,33 @@ def check_url(url: str, *, allow_private: bool = False, resolve: Resolver | None
     return url
 
 
+def check_email(url: str) -> str:
+    """Accept ``mailto:`` with exactly one plain address (no lists, names or headers)."""
+    if not url.startswith("mailto:"):
+        raise WebhookError("Email destinations are written mailto:team@example.com.")
+    address = url[len("mailto:") :]
+    if len(address) > 254 or "?" in address or not ADDRESS.match(address):
+        raise WebhookError("Give one plain email address, such as mailto:team@example.com.")
+    return "mailto:" + address
+
+
+def check_destination(
+    url: str, style: str, *, allow_private: bool = False, resolve: Resolver | None = None
+) -> str:
+    """An email address for the ``email`` style, otherwise a public https URL."""
+    if style == "email":
+        return check_email(url)
+    return check_url(url, allow_private=allow_private, resolve=resolve)
+
+
 def preview_url(url: str) -> str:
-    """``https://hooks.example.com/…abcd``: enough to recognize, without path secrets."""
+    """``https://hooks.example.com/…abcd``: enough to recognize, without path secrets.
+
+    An address previews as ``mailto:t…@example.com``.
+    """
+    if url.startswith("mailto:"):
+        local, _, domain = url[len("mailto:") :].partition("@")
+        return f"mailto:{local[:1]}…@{domain}"
     parts = urlsplit(url)
     tail = (parts.path + ("?" + parts.query if parts.query else ""))[-4:]
     return f"{parts.scheme}://{parts.netloc}/…{tail}" if tail.strip("/") else url
@@ -296,6 +334,39 @@ def _slack_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+PREFIXES = {
+    "monitor.alert_opened": "Monitor alert: ",
+    "monitor.alert_resolved": "Monitor alert resolved: ",
+    "monitor.stale_opened": "Monitor overdue: ",
+    "monitor.stale_resolved": "Monitor overdue resolved: ",
+}
+
+
+def _email(hook: Webhook, payload: Mapping[str, Any], delivery: WebhookDelivery) -> bytes:
+    """A plain-text message: the same small event a Slack message carries, no evidence."""
+    message = EmailMessage()
+    headline = PREFIXES.get(payload["event"], "") + str(payload.get("headline", ""))
+    message["Subject"] = f"[Vectraudit] {payload['workspace']}/{payload['project']}: {headline}"[
+        :200
+    ]
+    message["To"] = hook.url[len("mailto:") :]
+    message["X-Vectraudit-Event"] = delivery.event
+    message["X-Vectraudit-Event-Key"] = delivery.event_key
+    message["X-Vectraudit-Delivery"] = delivery.id
+    lines = [headline]
+    if payload.get("action"):
+        lines += ["", str(payload["action"])]
+    if payload.get("url"):
+        lines += ["", f"Open in Vectraudit: {payload['url']}"]
+    lines += [
+        "",
+        f"Project {payload['workspace']}/{payload['project']}. "
+        "This address was added as a notification destination by a project owner.",
+    ]
+    message.set_content("\n".join(lines))
+    return bytes(message)
+
+
 def render(
     hook: Webhook, delivery: WebhookDelivery, public_url: str, now: float
 ) -> tuple[bytes, dict[str, str]]:
@@ -304,13 +375,10 @@ def render(
     if payload.get("path"):
         payload["url"] = public_url.rstrip("/") + payload.pop("path")
     payload["delivery_id"] = delivery.id
+    if hook.style == "email":
+        return _email(hook, payload, delivery), {"To": hook.url[len("mailto:") :]}
     if hook.style == "slack":
-        prefix = {
-            "monitor.alert_opened": "Monitor alert: ",
-            "monitor.alert_resolved": "Monitor alert resolved: ",
-            "monitor.stale_opened": "Monitor overdue: ",
-            "monitor.stale_resolved": "Monitor overdue resolved: ",
-        }.get(payload["event"], "")
+        prefix = PREFIXES.get(payload["event"], "")
         lines = [f"*{_slack_escape(prefix + payload.get('headline', ''))}*"]
         if payload.get("action"):
             lines.append(_slack_escape(payload["action"]))
@@ -351,6 +419,46 @@ def http_send(url: str, body: bytes, headers: Mapping[str, str]) -> int:
         raise WebhookError(f"Connection failed ({type(exc).__name__}).") from exc
 
 
+def smtp_send(
+    settings: SmtpSettings | None, url: str, body: bytes, headers: Mapping[str, str]
+) -> int:
+    """Send one rendered message; returns 200, or 400 when the recipient is refused.
+
+    A temporary server reply (4xx) returns 503 so the delivery retries. A missing mail
+    server, a failed login or a lost connection raise :class:`WebhookError` and retry too,
+    so an operator can fix the configuration before the delivery gives up.
+    """
+    if settings is None:
+        raise WebhookError("Email delivery is not configured on this service (SMTP settings).")
+    message = BytesParser(policy=email_policy).parsebytes(body)
+    message["From"] = settings.sender
+    try:
+        if settings.security == "ssl":
+            client: smtplib.SMTP = smtplib.SMTP_SSL(
+                settings.host,
+                settings.port,
+                timeout=TIMEOUT_SECONDS,
+                context=ssl.create_default_context(),
+            )
+        else:
+            client = smtplib.SMTP(settings.host, settings.port, timeout=TIMEOUT_SECONDS)
+        with client:
+            if settings.security == "starttls":
+                client.starttls(context=ssl.create_default_context())
+            if settings.username:
+                client.login(settings.username, settings.password or "")
+            client.send_message(message, to_addrs=[headers["To"]])
+    except smtplib.SMTPRecipientsRefused:
+        return 400
+    except smtplib.SMTPAuthenticationError as exc:
+        raise WebhookError("The mail server refused the configured login.") from exc
+    except smtplib.SMTPResponseException as exc:
+        return 503 if 400 <= exc.smtp_code < 500 else 400
+    except (smtplib.SMTPException, OSError) as exc:
+        raise WebhookError(f"Mail server connection failed ({type(exc).__name__}).") from exc
+    return 200
+
+
 def _permanent(status: int) -> bool:
     """Redirects (never followed) and 4xx other than 408/429 (a bad URL, a revoked Slack
     hook) will not change on retry."""
@@ -363,11 +471,16 @@ def deliver_due(
     public_url: str,
     allow_private: bool = False,
     send: Sender = http_send,
+    send_email: Sender | None = None,
+    smtp: SmtpSettings | None = None,
     resolve: Resolver | None = None,
     limit: int = 100,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    """Send due deliveries once each; returns counts of delivered, retrying and failed."""
+    """Send due deliveries once each; returns counts of delivered, retrying and failed.
+
+    Email deliveries go through ``send_email`` (default: :func:`smtp_send` with ``smtp``).
+    """
     from vectraudit.cloud.db import transaction
 
     moment = now or utcnow()
@@ -394,13 +507,18 @@ def deliver_due(
             hook = session.get(Webhook, row.webhook_id) if row is not None else None
             if row is None or hook is None:
                 continue
-            url = hook.url
+            url, style = hook.url, hook.style
             body, headers = render(hook, row, public_url, time.time())
         status: int | None = None
         error: str | None = None
         try:
-            check_url(url, allow_private=allow_private, resolve=resolve)
-            status = send(url, body, headers)
+            if style == "email":
+                check_email(url)
+                mailer = send_email or (lambda u, b, h: smtp_send(smtp, u, b, h))
+                status = mailer(url, body, headers)
+            else:
+                check_url(url, allow_private=allow_private, resolve=resolve)
+                status = send(url, body, headers)
         except WebhookError as exc:
             error = str(exc)[:200]
         with transaction(sessions) as session:

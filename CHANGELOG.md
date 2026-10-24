@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Email notifications (PRD FR13): a project owner can add `mailto:` destinations with
+  `style: "email"`. Release decisions and monitor alerts are emailed once per event, with
+  the same headline, action and link as Slack and the same retries, through the operator's
+  mail server (`VECTRAUDIT_CLOUD_SMTP_*`).
+
 - `examples/reliability_story_demo.py`: a synthetic demonstration of the permission and
   freshness reliability offer: a stale answer, a revocation the assistant never received and
   a cache shared between users, each found and its correction verified; it writes a page for
