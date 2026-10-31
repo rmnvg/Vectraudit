@@ -15,6 +15,34 @@ records, LangSmith runs, Langfuse observations).
 Everything stays local: the state folder holds a cursor and the review queue, including
 question text, and nothing is uploaded.
 
+## Pulling directly from Langfuse
+
+Teams on Langfuse can skip the export step. `workbench langfuse-pull` reads a time window
+from the project's public API and writes the same observation records an export holds, plus
+the project's scores as answer judgments:
+
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_HOST=https://cloud.langfuse.com   # or your region or self-hosted URL
+vectraudit workbench langfuse-pull --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces traces-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+vectraudit workbench intake traces-2026-10-19.jsonl questions.jsonl --state retrieval/intake
+```
+
+- **Read-only.** Nothing is written to Langfuse. Keys go only over https (plain http only
+  to a local server) and are never written to files.
+- **Overlapping windows are safe:** intake's cursor skips traces it has already taken.
+- **Scores:** a boolean score becomes `correct` or `incorrect`; a categorical score only
+  when its category is `correct`, `partial` or `incorrect`; a numeric score stays a score
+  and needs `--threshold` in `attach-answers`. Text and correction scores, other
+  categories, and session or experiment scores are skipped and counted. Annotation scores
+  are human review (change with `--human-source`); API and evaluator scores are model
+  judgments. Comments are never requested.
+- **Freshness:** Langfuse says scores can lag by about ten minutes, so end score windows a
+  little in the past, or pull again.
+- **Bounds:** at most 200,000 records per window; a larger window is refused, so pull a
+  shorter one.
+
 ## What each run does
 
 1. **Continues from the cursor.** Only traces newer than the last run are taken, so

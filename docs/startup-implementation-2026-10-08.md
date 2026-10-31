@@ -1283,7 +1283,7 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64: OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66 (Langfuse API pull): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47: investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
@@ -2050,6 +2050,44 @@ diagnoses, support precedence and disputes, conflicting lists, 8 invalid inputs,
 unmatched rows, CLI output with private text kept out). Ruff and mypy pass; the full suite
 passes except two failures that also occur on clean `main`
 (`test_cloud_email` subject check and `test_github` CLI publishing warnings).
+
+## Step 66: pull traces and scores from Langfuse (1.1, 1.8)
+
+`vectraudit workbench langfuse-pull --since T --until T [--traces F] [--judgments F]` reads
+a time window from a Langfuse project's public API, so a scheduled intake or import no
+longer needs someone to export a file first:
+- **Observations** come from `GET /api/public/v2/observations` (cursor-paged, with the
+  `io` and `metadata` groups) and are written exactly as an export holds them, so
+  `import-traces` and `intake` read them unchanged. Repeated records are kept once.
+- **Scores** come from `GET /api/public/v3/scores` (cursor-paged, with each score's
+  subject) and become `attach-answers` judgments keyed by trace ID. Booleans and the three
+  verdict categories become verdicts and numerics stay scores that need a declared
+  threshold. Other categories, text and correction scores, and session or experiment
+  scores are skipped and counted. Annotation scores count as human review.
+- **Boundary:** read-only; comments are never requested; keys from the standard
+  `LANGFUSE_*` variables, sent only over https (local http excepted); error bodies not
+  echoed; a window over 200,000 records or a repeated cursor is refused.
+- No dependency was added (standard-library HTTP, as in the Elasticsearch connector).
+  Request shapes follow Langfuse's published OpenAPI specification.
+
+Not included: LangSmith's API (still files), writing findings back to Langfuse as scores or
+comments, a stored pull cursor (intake's own cursor skips repeats, so overlapping windows
+are safe), retries on rate limits, and a run against a real Langfuse project.
+
+Validation: 17 new tests:
+- an end-to-end pull from a local HTTP server that pages like Langfuse, through
+  `import-traces` and `attach-answers`, with human annotation deciding over a model score;
+- paging, de-duplication and request parameters for both endpoints;
+- every score mapping and skip reason;
+- wrong keys, rate limits, server errors and malformed responses refused without echoing
+  bodies, a repeated cursor, an oversized window, unsafe hosts, missing keys, times without
+  a zone, and CLI errors.
+
+Results:
+- Full Python suite: 1,969 passed, 29 skipped (live services not configured), 1 deselected,
+  2 failed. The two failures (`test_cloud_email` subject check and `test_github` publishing
+  warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
 
 ## Next increments
 

@@ -1174,6 +1174,89 @@ def migration_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("langfuse-pull")
+def langfuse_pull_command(
+    since: Annotated[str, typer.Option(help="Start of the window (ISO 8601, inclusive).")],
+    until: Annotated[str, typer.Option(help="End of the window (ISO 8601, exclusive).")],
+    traces: Annotated[
+        Path | None,
+        typer.Option(help="Write observations here (JSONL) for import-traces or intake."),
+    ] = None,
+    judgments: Annotated[
+        Path | None,
+        typer.Option(help="Write scores here as answer judgments (JSONL) for attach-answers."),
+    ] = None,
+    score_name: Annotated[
+        list[str] | None, typer.Option(help="Only scores with this name (repeatable).")
+    ] = None,
+    environment: Annotated[
+        list[str] | None, typer.Option(help="Only observations in this environment (repeatable).")
+    ] = None,
+    human_source: Annotated[
+        list[str] | None,
+        typer.Option(help="Score sources counted as human review (default: ANNOTATION)."),
+    ] = None,
+) -> None:
+    """Pull observations and scores from a Langfuse project for the given time window.
+
+    Reads LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and LANGFUSE_HOST (or LANGFUSE_BASE_URL;
+    default https://cloud.langfuse.com). Read-only: nothing is written to Langfuse, and
+    score comments are never requested.
+    """
+    import os
+
+    from vectraudit.pipelines.langfuse_api import (
+        LangfuseSource,
+        fetch_observations,
+        fetch_scores,
+        scores_to_judgments,
+        write_jsonl,
+    )
+
+    if traces is None and judgments is None:
+        typer.echo("Pull error: give --traces, --judgments or both.", err=True)
+        raise typer.Exit(2)
+    try:
+        source = LangfuseSource(
+            host=os.environ.get("LANGFUSE_HOST")
+            or os.environ.get("LANGFUSE_BASE_URL")
+            or "https://cloud.langfuse.com",
+            public_key=os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+            secret_key=os.environ.get("LANGFUSE_SECRET_KEY", ""),
+        )
+        lines = []
+        if traces is not None:
+            observations = fetch_observations(
+                source, start=since, end=until, environments=environment or ()
+            )
+            write_jsonl(traces, observations)
+            n_traces = len({o["traceId"] for o in observations})
+            lines.append(
+                f"Wrote {len(observations)} observations from {n_traces} traces to {traces}."
+            )
+        if judgments is not None:
+            scores = fetch_scores(source, start=since, end=until, names=score_name or ())
+            rows, skipped = scores_to_judgments(
+                scores, human_sources=human_source or ("ANNOTATION",)
+            )
+            write_jsonl(judgments, rows)
+            lines.append(f"Wrote {len(rows)} of {len(scores)} scores as judgments to {judgments}.")
+            if skipped:
+                lines.append(
+                    "Skipped: "
+                    + ", ".join(
+                        f"{n} {why.replace('_', ' ')}" for why, n in sorted(skipped.items())
+                    )
+                )
+            if any("score" in r for r in rows):
+                lines.append("Numeric scores need --threshold EVALUATOR=VALUE when attached.")
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Pull error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo("\n".join(lines))
+    typer.echo(f"({source.calls} API requests.)")
+
+
 @workbench_app.command("intake")
 def intake_command(
     traces: Annotated[
