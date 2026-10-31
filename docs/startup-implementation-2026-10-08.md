@@ -1285,7 +1285,7 @@ as missing merely because their customer validation is pending.
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
 | **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67 (Langfuse and LangSmith API pulls): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
-| **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47: investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
+| **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47 and 68 (diagnosis written back to Langfuse traces): investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. Step 31: optimization runs each candidate at its own concurrency, rate limit and retry policy. Step 32: two evaluations at once in the workbench, one per registered pipeline, with overlap recorded. | Declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
@@ -2135,6 +2135,48 @@ Results:
   1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
   `test_github` publishing warnings) also fail on clean `main`.
 - The 3 window-edge tests were added after that run and pass with their module (20 passed).
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
+
+## Step 68: write the diagnosis back to Langfuse (1.3, strategy "integrate")
+
+`vectraudit workbench langfuse-push RUN [--send]` writes each judged trace's diagnosis onto
+the original Langfuse trace as a categorical score (`vectraudit.diagnosis` by default), so
+engineers see Vectraudit's first-observable-loss class where they already work, and can
+filter traces by it.
+- **Preview first:** without `--send` it shows the counts, values and one score exactly as
+  it would be sent, and makes no connection.
+- **Minimal payload:** trace ID, score name, diagnosis class, optional environment, and
+  metadata (source, format version, run digest). No text, document IDs or facts.
+- **Idempotent by intent:** the score ID is derived from the trace and score name, so a
+  re-push is meant to replace the earlier score (to confirm on a real deployment).
+- **Safe failure:** batches of 100. A 207 partial rejection is counted, exits 3, and is not
+  retried or echoed. Runs not imported from Langfuse, unjudged runs, and invalid names or
+  environments are refused before any request.
+- The Langfuse client gained a POST path (`POST /api/public/scores`, per the published
+  spec), sharing the GET path's key, region, rate-limit and no-echo handling.
+
+Not included: write-back to LangSmith, scores per observation (the diagnosis is per
+question, so per trace), retrieval metrics or citation flags as scores, a Langfuse score
+config for the diagnosis classes, and a run against a real Langfuse project.
+
+Validation: 8 new tests:
+- one categorical score per judged trace, with the exact payload;
+- no question text, passage text, document IDs or evaluator names in what is sent;
+- an end-to-end preview and send against a local server that accepts score batches: the
+  preview makes no connection, the sent score matches the preview, and a re-send uses the
+  same score IDs;
+- a 207 partial rejection counted, exiting 3, not retried and not echoed;
+- batching (205 scores in 100, 100, 5) and a malformed 207 refused;
+- questions without a trace or diagnosis and repeated traces left out and counted;
+- non-Langfuse and unjudged runs, bad names and environments refused;
+- CLI errors.
+
+The existing Langfuse pull tests still pass on the shared client.
+
+Results:
+- Full Python suite: 2,000 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
 - Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
 
 ## Next increments

@@ -66,12 +66,15 @@ class FakeLangfuse(BaseHTTPRequestHandler):
     pages: ClassVar[dict[str, list[list[dict]]]] = {}
     requests: ClassVar[list[tuple[str, dict]]] = []
 
+    @staticmethod
+    def expected() -> str:
+        return "Basic " + base64.b64encode(":".join(KEYS).encode()).decode()
+
     def do_GET(self):
         url = urlsplit(self.path)
         params = {k: v[0] for k, v in parse_qs(url.query).items()}
         type(self).requests.append((url.path, params))
-        expected = "Basic " + base64.b64encode(":".join(KEYS).encode()).decode()
-        if self.headers.get("Authorization") != expected:
+        if self.headers.get("Authorization") != self.expected():
             return self._send(401, {"message": "Invalid credentials"})
         chunks = self.pages.get(url.path)
         if chunks is None:

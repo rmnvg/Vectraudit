@@ -40,6 +40,7 @@ from urllib.parse import urlencode, urlsplit
 from vectraudit import __version__
 
 Send = Callable[[str, Mapping[str, str], float], tuple[int, bytes]]
+PostSend = Callable[[str, Mapping[str, str], bytes, float], tuple[int, bytes]]
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 OBSERVATION_FIELDS = "core,basic,io,metadata"
 OBSERVATION_PAGE = 1000
@@ -54,6 +55,14 @@ class LangfuseAPIError(ValueError):
 
 def _urllib_send(url: str, headers: Mapping[str, str], timeout: float) -> tuple[int, bytes]:
     req = urllib.request.Request(url, method="GET", headers=dict(headers))
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return int(resp.status), resp.read()
+
+
+def _urllib_post(
+    url: str, headers: Mapping[str, str], body: bytes, timeout: float
+) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, data=body, method="POST", headers=dict(headers))
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return int(resp.status), resp.read()
 
@@ -77,6 +86,7 @@ class LangfuseSource:
     secret_key: str
     timeout_s: float = 30.0
     send: Send | None = None
+    post_send: PostSend | None = None
     calls: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
@@ -95,20 +105,18 @@ class LangfuseSource:
             )
         self.host = self.host.rstrip("/")
 
-    def get(self, path: str, params: Mapping[str, Any]) -> dict[str, Any]:
-        """One authenticated GET returning a JSON object."""
-        query = urlencode({k: v for k, v in params.items() if v is not None})
+    def _headers(self) -> dict[str, str]:
         token = base64.b64encode(f"{self.public_key}:{self.secret_key}".encode()).decode()
-        headers = {
+        return {
             "Accept": "application/json",
             "Authorization": f"Basic {token}",
             "User-Agent": f"vectraudit/{__version__}",
         }
+
+    def _checked(self, call: Callable[[], tuple[int, bytes]], path: str) -> tuple[int, bytes]:
         self.calls += 1
         try:
-            status, raw = (self.send or _urllib_send)(
-                f"{self.host}{path}?{query}", headers, self.timeout_s
-            )
+            status, raw = call()
         except urllib.error.HTTPError as exc:
             status, raw = exc.code, b""
         except (TimeoutError, urllib.error.URLError, OSError) as exc:
@@ -121,9 +129,20 @@ class LangfuseSource:
             )
         if status == 429:
             raise LangfuseAPIError(
-                "Langfuse rate limit reached (HTTP 429); pull a shorter window or try later."
+                "Langfuse rate limit reached (HTTP 429); use a shorter window or try later."
             )
-        if status != 200:  # error bodies are not echoed: they can repeat request details
+        if status not in (200, 202, 207):  # error bodies are not echoed
+            raise LangfuseAPIError(f"Langfuse answered HTTP {status} for {path}.")
+        return status, raw
+
+    def get(self, path: str, params: Mapping[str, Any]) -> dict[str, Any]:
+        """One authenticated GET returning a JSON object."""
+        query = urlencode({k: v for k, v in params.items() if v is not None})
+        url, headers = f"{self.host}{path}?{query}", self._headers()
+        status, raw = self._checked(
+            lambda: (self.send or _urllib_send)(url, headers, self.timeout_s), path
+        )
+        if status != 200:
             raise LangfuseAPIError(f"Langfuse answered HTTP {status} for {path}.")
         try:
             body = json.loads(raw)
@@ -132,6 +151,19 @@ class LangfuseSource:
         if not isinstance(body, dict) or not isinstance(body.get("data"), list):
             raise LangfuseAPIError(f"Unexpected Langfuse response shape for {path}.")
         return body
+
+    def post(self, path: str, payload: Any) -> tuple[int, Any]:
+        """One authenticated POST of JSON; ``(status, parsed body or None)``."""
+        url, headers = f"{self.host}{path}", self._headers()
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(payload).encode()
+        status, raw = self._checked(
+            lambda: (self.post_send or _urllib_post)(url, headers, data, self.timeout_s), path
+        )
+        try:
+            return status, json.loads(raw) if raw else None
+        except ValueError:
+            return status, None
 
 
 def _pages(
