@@ -258,3 +258,140 @@ def test_cli_attaches_into_a_new_file(tmp_path):
         app, ["workbench", "attach-answers", str(run_path), str(path), "--out", str(run_path)]
     )
     assert same.exit_code == 2
+
+
+def cited(doc_ids: dict[str, list[str]], **extra) -> str:
+    return "\n".join(
+        json.dumps(
+            {
+                "query_id": q,
+                "evaluator": "review",
+                "kind": "human",
+                "verdict": "incorrect",
+                "citations": ids,
+                **extra,
+            }
+        )
+        for q, ids in doc_ids.items()
+    )
+
+
+def test_citations_are_placed_against_delivery_and_model_context(tmp_path):
+    path = write(
+        tmp_path,
+        cited(
+            {
+                "packed": ["policy", "exception", "invented"],  # exception was packed out
+                "right": ["policy"],
+                "unknown": ["policy"],  # context not recorded
+            }
+        ),
+    )
+    out = attach_file(run(), path)
+    by = {q["query_id"]: q["answer"]["citations"] for q in out["queries"] if "answer" in q}
+    assert by["packed"]["classes"] == {
+        "exception": "not_in_context",
+        "invented": "not_delivered",
+        "policy": "in_context",
+    }
+    assert by["right"]["classes"] == {"policy": "in_context"}
+    assert by["unknown"]["classes"] == {"policy": "delivered_context_unknown"}
+    assert out["answers"]["citations"] == {
+        "questions_with_citations": 3,
+        "questions_citing_undelivered": 1,
+        "questions_citing_outside_context": 1,
+        "questions_with_unsupported_citation": 0,
+        "questions_with_conflicting_citations": 0,
+    }
+
+
+def test_citations_do_not_change_verdicts_or_diagnoses(tmp_path):
+    plain = attach_file(run(), write(tmp_path, judged(ALL_WRONG)))
+    with_cites = attach_file(
+        run(), write(tmp_path, cited({q: ["policy", "ghost"] for q in ALL_WRONG}), "c.jsonl")
+    )
+    assert with_cites["answers"]["verdicts"] == plain["answers"]["verdicts"]
+    assert with_cites["answers"]["diagnoses"] == plain["answers"]["diagnoses"]
+
+
+def test_citation_support_follows_human_over_model_and_disputes(tmp_path):
+    rows = [
+        {"query_id": "right", "evaluator": "tool", "kind": "model", "verdict": "correct",
+         "citations": ["policy", "exception"],
+         "citation_support": {"policy": "supported", "exception": "supported"}},
+        {"query_id": "right", "evaluator": "review", "kind": "human", "verdict": "correct",
+         "citations": ["policy", "exception"],
+         "citation_support": {"policy": "unsupported"}},
+        {"query_id": "wrong", "evaluator": "a", "kind": "human", "verdict": "incorrect",
+         "citations": ["policy"], "citation_support": {"policy": "supported"}},
+        {"query_id": "wrong", "evaluator": "b", "kind": "human", "verdict": "incorrect",
+         "citations": ["policy"], "citation_support": {"policy": "unsupported"}},
+    ]  # fmt: skip
+    out = attach_file(run(), write(tmp_path, "\n".join(map(json.dumps, rows))))
+    by = {q["query_id"]: q["answer"]["citations"] for q in out["queries"] if "answer" in q}
+    assert by["right"]["support"] == {
+        "policy": {"verdict": "unsupported", "decided_by": "human"},
+        "exception": {"verdict": "supported", "decided_by": "model"},
+    }
+    assert by["wrong"]["support"]["policy"]["verdict"] == "disputed"
+    assert out["answers"]["citations"]["questions_with_unsupported_citation"] == 1
+
+
+def test_conflicting_citation_lists_are_not_analysed(tmp_path):
+    rows = [
+        {"query_id": "right", "evaluator": "a", "kind": "human", "verdict": "correct",
+         "citations": ["policy"]},
+        {"query_id": "right", "evaluator": "b", "kind": "model", "verdict": "correct",
+         "citations": ["summary"]},
+    ]  # fmt: skip
+    out = attach_file(run(), write(tmp_path, "\n".join(map(json.dumps, rows))))
+    got = next(q for q in out["queries"] if q["query_id"] == "right")["answer"]["citations"]
+    assert got == {"status": "conflicting", "cited": ["policy", "summary"]}
+    assert "classes" not in got
+    assert out["answers"]["citations"]["questions_with_conflicting_citations"] == 1
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"citations": "policy"},
+        {"citations": [""]},
+        {"citations": [7]},
+        {"citations": [f"d{i}" for i in range(101)]},
+        {"citation_support": {"policy": "supported"}},
+        {"citations": ["policy"], "citation_support": {"other": "supported"}},
+        {"citations": ["policy"], "citation_support": {"policy": "maybe"}},
+        {"citations": ["policy"], "citation_support": {}},
+    ],
+)
+def test_invalid_citation_input_is_refused(tmp_path, extra):
+    row = {"query_id": "right", "evaluator": "r", "kind": "human", "verdict": "correct", **extra}
+    with pytest.raises(AnswerJudgmentError):
+        read_judgments(write(tmp_path, json.dumps(row)))
+
+
+def test_citations_on_failed_questions_and_unmatched_rows_are_not_analysed(tmp_path):
+    bad = run()
+    bad["queries"][0]["error"] = {"code": "pipeline_error"}
+    row = cited({bad["queries"][0]["query_id"]: ["policy"], "nope": ["policy"]})
+    out = attach_answers(bad, read_judgments(write(tmp_path, row)))
+    assert "citations" not in out["queries"][0]["answer"]
+    assert out["answers"]["citations"]["questions_with_citations"] == 0
+    assert out["answers"]["unmatched_judgments"] == 1
+
+
+def test_cli_reports_citations_and_keeps_private_text_out(tmp_path):
+    base = tmp_path / "run.json"
+    base.write_text(json.dumps(run()))
+    path = write(
+        tmp_path,
+        cited({"packed": ["policy", "ghost"]}, explanation=SECRET),
+    )
+    out = tmp_path / "out.json"
+    result = CliRunner().invoke(
+        app, ["workbench", "attach-answers", str(base), str(path), "--out", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Citations on 1 questions: 1 cite a document retrieval never delivered" in result.output
+    assert SECRET not in out.read_text()
+    check_run(json.loads(out.read_text()))

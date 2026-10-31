@@ -623,6 +623,14 @@ from traces, so Phoenix or Langfuse evaluations keyed by trace attach directly):
 {"query_id": "refund-annual", "evaluator": "ragas.answer_correctness", "evaluator_version": "0.2", "kind": "model", "score": 0.41}
 ```
 
+- Optional `citations` (document IDs the answer cited, at most 100) and `citation_support`
+  (`{"doc-id": "supported" | "unsupported"}`, only for cited IDs). Each cited document is
+  placed against the run: `in_context`, `not_in_context` (delivered but absent from an
+  observed model context), `delivered_context_unknown`, or `not_delivered` (retrieval never
+  returned it). Support verdicts follow the answer rule: humans over models, disagreement is
+  `disputed`. Different citation lists for one question are reported as conflicting and not
+  analysed. Citations are reported beside the answer; they never change a verdict or
+  diagnosis, and relevance to the benchmark's labels is not judged.
 - `verdict` is `correct`, `partial` or `incorrect`. A judgment with only a `score` needs a
   `--threshold` for its evaluator; there is no default, and without one the question is
   reported as unjudged.

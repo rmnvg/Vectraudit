@@ -16,6 +16,13 @@ a default. ``outcome`` (``answered``, ``abstained`` or ``handoff``) separates an
 generated abstention or an appropriate human handoff. Explanations and answer text are not
 read, so nothing private is copied into the run.
 
+A judgment may also carry the answer's ``citations`` (document IDs the answer cited) and
+``citation_support`` (``{"doc-id": "supported" | "unsupported"}`` from review or a tool).
+Each cited document is placed against what the run recorded: in the model context, absent
+from an observed context, delivered with context unknown, or never delivered at all. Support
+verdicts follow the same rule as answer verdicts (humans over models, disagreement is
+``disputed``). Citations never change the answer verdict or the diagnosis.
+
 Human judgments decide a question's verdict when present; otherwise model judgments do.
 Disagreement among the deciding judgments makes the verdict ``disputed`` instead of picking
 one. Each model evaluator's agreement with human review is reported where both judged.
@@ -40,7 +47,9 @@ ANSWERS_FORMAT_VERSION = 1
 VERDICTS = ("correct", "partial", "incorrect")
 OUTCOMES = ("answered", "abstained", "handoff")
 KINDS = ("human", "model")
+SUPPORT = ("supported", "unsupported")
 MAX_JUDGMENTS = 200_000
+MAX_CITATIONS = 100
 _TEXT_LIMIT = 200
 DIAGNOSES = {
     "answered_correctly": "Answered correctly.",
@@ -92,6 +101,8 @@ class Judgment:
     outcome: str
     evaluator_version: str | None
     rubric: str | None
+    citations: tuple[str, ...] | None = None
+    support: tuple[tuple[str, str], ...] = ()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -102,6 +113,8 @@ class Judgment:
             "outcome": self.outcome,
             **({"evaluator_version": self.evaluator_version} if self.evaluator_version else {}),
             **({"rubric": self.rubric} if self.rubric else {}),
+            **({"citations": list(self.citations)} if self.citations is not None else {}),
+            **({"citation_support": dict(self.support)} if self.support else {}),
         }
 
 
@@ -113,6 +126,34 @@ def _short(value: Any, what: str, line: int, *, required: bool = False) -> str |
             f"line {line}: {what} must be a non-empty string of at most {_TEXT_LIMIT} characters"
         )
     return value
+
+
+def _citations(
+    obj: Mapping[str, Any], line: int
+) -> tuple[tuple[str, ...] | None, tuple[tuple[str, str], ...]]:
+    raw, support = obj.get("citations"), obj.get("citation_support")
+    cited: tuple[str, ...] | None = None
+    if raw is not None:
+        if not isinstance(raw, list) or len(raw) > MAX_CITATIONS:
+            raise AnswerJudgmentError(
+                f"line {line}: citations must be a list of at most {MAX_CITATIONS} document IDs"
+            )
+        cited = tuple(sorted({_short(c, "a citation", line, required=True) or "" for c in raw}))
+    pairs: tuple[tuple[str, str], ...] = ()
+    if support is not None:
+        if not isinstance(support, dict) or not support:
+            raise AnswerJudgmentError(f"line {line}: citation_support must be an object")
+        if cited is None:
+            raise AnswerJudgmentError(f"line {line}: citation_support needs citations")
+        for doc, verdict in support.items():
+            if doc not in cited:
+                raise AnswerJudgmentError(f"line {line}: citation_support names uncited {doc!r}")
+            if verdict not in SUPPORT:
+                raise AnswerJudgmentError(
+                    f"line {line}: citation support must be {' or '.join(SUPPORT)}"
+                )
+        pairs = tuple(sorted(support.items()))
+    return cited, pairs
 
 
 def read_judgments(
@@ -160,6 +201,7 @@ def read_judgments(
             verdict = "correct" if score >= thresholds[evaluator] else "incorrect"
         if verdict is None and score is None and outcome == "answered":
             raise AnswerJudgmentError(f"line {line}: a judgment needs a verdict or a score")
+        cited, support = _citations(obj, line)
         rows.append(
             (
                 keys[0],
@@ -174,6 +216,8 @@ def read_judgments(
                         obj.get("evaluator_version"), "evaluator_version", line
                     ),
                     rubric=_short(obj.get("rubric"), "rubric", line),
+                    citations=cited,
+                    support=support,
                 ),
             )
         )
@@ -254,6 +298,52 @@ def diagnose(query: Mapping[str, Any], verdict: str | None, outcome: str) -> dic
     return {"class": "not_observed", "facts": facts}
 
 
+CITATION_CLASSES = {
+    "in_context": "in the model context",
+    "not_in_context": "delivered, but absent from the observed model context",
+    "delivered_context_unknown": "delivered; whether it reached the model is unknown",
+    "not_delivered": "never delivered by retrieval (memory, another source, or an invalid ID)",
+}
+
+
+def analyze_citations(
+    query: Mapping[str, Any], judgments: Sequence[Judgment]
+) -> dict[str, Any] | None:
+    """Place each cited document against the run's recorded evidence; ``None`` if none given."""
+    reported = {j.citations for j in judgments if j.citations is not None}
+    if not reported:
+        return None
+    if len(reported) > 1:
+        return {"status": "conflicting", "cited": sorted({c for r in reported for c in r or ()})}
+    cited = next(iter(reported)) or ()
+    delivered = set(query.get("ids") or [])
+    context = query.get("model_context")
+    observed = isinstance(context, Mapping) and context.get("coverage") == "observed"
+    in_context = {i.get("id") for i in (context or {}).get("items", [])} if context else set()
+    classes = {}
+    for doc in cited:
+        if observed:
+            classes[doc] = (
+                "in_context"
+                if doc in in_context
+                else ("not_in_context" if doc in delivered else "not_delivered")
+            )
+        else:
+            classes[doc] = "delivered_context_unknown" if doc in delivered else "not_delivered"
+    support: dict[str, dict[str, Any]] = {}
+    for doc in cited:
+        votes = [(j.kind, v) for j in judgments for d, v in j.support if d == doc]
+        for kind in KINDS:
+            verdicts = {v for k, v in votes if k == kind}
+            if len(verdicts) > 1:
+                support[doc] = {"verdict": "disputed", "decided_by": kind}
+                break
+            if verdicts:
+                support[doc] = {"verdict": verdicts.pop(), "decided_by": kind}
+                break
+    return {"status": "consistent", "cited": list(cited), "classes": classes, "support": support}
+
+
 def attach_answers(
     run: Mapping[str, Any],
     rows: Sequence[tuple[str, str, Judgment]],
@@ -278,6 +368,8 @@ def attach_answers(
         grouped[q["query_id"]].append(judgment)
     verdicts: Counter[str] = Counter()
     diagnoses: Counter[str] = Counter()
+    citation_flags: Counter[str] = Counter()
+    cited_questions = 0
     pairs: dict[str, list[tuple[str, bool]]] = defaultdict(list)
     for qid, judgments in grouped.items():
         q = by_query[qid]
@@ -291,6 +383,18 @@ def attach_answers(
         if q.get("error") is None:
             answer["diagnosis"] = diagnose(q, verdict, outcome)
             diagnoses[answer["diagnosis"]["class"]] += 1
+        if q.get("error") is None:
+            citations = analyze_citations(q, judgments)
+            if citations is not None:
+                answer["citations"] = citations
+                cited_questions += 1
+                classes = set(citations.get("classes", {}).values())
+                for name in ("not_delivered", "not_in_context"):
+                    citation_flags[name] += name in classes
+                citation_flags["unsupported"] += any(
+                    s["verdict"] == "unsupported" for s in citations.get("support", {}).values()
+                )
+                citation_flags["conflicting"] += citations["status"] == "conflicting"
         q["answer"] = answer
         verdicts[verdict or "unjudged"] += 1
         human = {j.verdict for j in judgments if j.kind == "human" and j.verdict}
@@ -314,6 +418,13 @@ def attach_answers(
         ],
         "verdicts": dict(sorted(verdicts.items())),
         "diagnoses": dict(sorted(diagnoses.items())),
+        "citations": {
+            "questions_with_citations": cited_questions,
+            "questions_citing_undelivered": citation_flags["not_delivered"],
+            "questions_citing_outside_context": citation_flags["not_in_context"],
+            "questions_with_unsupported_citation": citation_flags["unsupported"],
+            "questions_with_conflicting_citations": citation_flags["conflicting"],
+        },
         "agreement_with_human": {
             name: {
                 "questions": len(results),
@@ -358,6 +469,16 @@ def render_summary(run: Mapping[str, Any]) -> str:
         lines.append(
             f"{name} agrees with human review on {stats['agreed']} of {stats['questions']} "
             "questions judged by both."
+        )
+    cites = answers.get("citations") or {}
+    if cites.get("questions_with_citations"):
+        lines.append(
+            f"Citations on {cites['questions_with_citations']} questions: "
+            f"{cites['questions_citing_undelivered']} cite a document retrieval never delivered, "
+            f"{cites['questions_citing_outside_context']} cite one absent from the model "
+            f"context, {cites['questions_with_unsupported_citation']} have a citation judged "
+            f"unsupported, {cites['questions_with_conflicting_citations']} have conflicting "
+            "citation lists."
         )
     unjudged = answers["verdicts"].get("unjudged")
     if unjudged:

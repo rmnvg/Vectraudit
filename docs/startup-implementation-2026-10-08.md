@@ -1284,7 +1284,7 @@ as missing merely because their customer validation is pending.
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
 | **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64: OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
-| **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citations and citation support, evidence groups, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41: model-context evidence, required evidence and imported answer judgments exist, kept apart from retrieval quality.* |
+| **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47: investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. Step 31: optimization runs each candidate at its own concurrency, rate limit and retry policy. Step 32: two evaluations at once in the workbench, one per registered pipeline, with overlap recorded. | Declared customer 1,000-question CI-window acceptance. |
@@ -2028,6 +2028,28 @@ list with document IDs; a Langfuse API page with raw-string fields; a plain span
 only when named; a retriever without documents as a gap; orphan runs and mixed formats
 refused; the CLI and intake on the same export. Full suite, ruff and mypy on Python 3.12 and
 3.10 pass.
+
+## Step 65: citations beside answer judgments (1.2)
+
+`attach-answers` judgments may carry `citations` (document IDs the answer cited) and
+`citation_support` (`supported` or `unsupported` per cited document, from review or a tool).
+- **Placement:** each cited document is `in_context`, `not_in_context` (delivered but absent
+  from an observed model context), `delivered_context_unknown`, or `not_delivered`.
+- **Support:** humans decide over models; disagreement is `disputed`, as for answers.
+- **Conflicts:** different citation lists for one question are reported as conflicting and
+  not analysed.
+- **Summary:** run-level counts and a terminal line. Failed questions are not analysed.
+- **Boundary:** verdicts, diagnoses, release policies and uploads are unchanged; only
+  document IDs already in the run are stored.
+
+Not included: judging a citation against the benchmark's relevance labels, citation spans or
+text, citations in policies or uploads, the workbench panel, and calibration on real judgments.
+
+Validation: 8 new tests (placement against delivery and context, unchanged verdicts and
+diagnoses, support precedence and disputes, conflicting lists, 8 invalid inputs, failed and
+unmatched rows, CLI output with private text kept out). Ruff and mypy pass; the full suite
+passes except two failures that also occur on clean `main`
+(`test_cloud_email` subject check and `test_github` CLI publishing warnings).
 
 ## Next increments
 
