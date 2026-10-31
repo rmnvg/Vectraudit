@@ -1283,7 +1283,7 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66 (Langfuse API pull): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67 (Langfuse and LangSmith API pulls): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47: investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
@@ -2087,6 +2087,54 @@ Results:
 - Full Python suite: 1,969 passed, 29 skipped (live services not configured), 1 deselected,
   2 failed. The two failures (`test_cloud_email` subject check and `test_github` publishing
   warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
+
+## Step 67: pull runs and feedback from LangSmith (1.1, 1.8)
+
+`vectraudit workbench langsmith-pull --project NAME --since T --until T [--traces F]
+[--judgments F]` is the LangSmith counterpart of Step 66:
+- **Runs** come from `POST /runs/query`, cursor-paged. The window is a `trace_filter` on
+  each trace's root run, so a trace that started in the window comes back whole, including
+  runs that end after it. They are written as an export holds them, so `import-traces` and
+  `intake` read them unchanged.
+- **Feedback** on the pulled runs comes from `GET /feedback`, batched by run and
+  offset-paged, and becomes `attach-answers` judgments keyed by trace (feedback on a child
+  run counts for its trace). An explicit `correct`/`partial`/`incorrect` value or a boolean
+  score is a verdict, and a numeric score stays a score needing a threshold. Other values,
+  feedback without a score, and feedback on runs outside the pull are skipped and counted.
+  `app` feedback (the LangSmith interface and annotation queues) is human review by default.
+- **Boundary:** read-only; the key comes from `LANGSMITH_API_KEY` and is sent only over https
+  (local http excepted); comments and corrections are never written out; error bodies are
+  not echoed; a repeated cursor or more than 200,000 runs is refused. No dependency.
+- **Request shapes** are copied from the official LangSmith SDK source, because LangSmith's
+  published API specification could not be reached from the build environment.
+- **Langfuse window edges:** checked while writing this step. A Langfuse trace cut at a
+  window edge imports as a gap (missing trace, no retrieval, or unknown model context),
+  never as a result. A test now pins that.
+
+Not included: writing findings back to LangSmith or Langfuse, retries on rate limits, a
+stored pull cursor, and a run against a real LangSmith workspace. `app` as the human source
+type needs confirming on one.
+
+Validation: 20 new tests:
+- 17 for LangSmith:
+  - an end-to-end pull from a local server that pages like LangSmith, through
+    `import-traces` and `attach-answers`, with app feedback deciding over a model score
+    and feedback on a child run counting for its trace;
+  - the root-run window filter, cursor paging and repeated runs;
+  - feedback batched by run and paged by offset;
+  - every feedback mapping and skip reason;
+  - an unknown project, a wrong key, rate limits, server errors and malformed responses
+    refused without echoing bodies;
+  - a repeated cursor, an oversized window, unsafe endpoints, a missing key, times
+    without a zone, and CLI errors.
+- 3 for Langfuse traces cut at a window edge.
+
+Results:
+- Full Python suite: 1,988 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- The 3 window-edge tests were added after that run and pass with their module (20 passed).
 - Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
 
 ## Next increments

@@ -281,3 +281,19 @@ def test_cli_needs_an_output_and_reports_errors(tmp_path):
     assert result.exit_code == 2
     assert "keys are missing" in result.output
     assert not (tmp_path / "o.jsonl").exists()
+
+
+@pytest.mark.parametrize(
+    ("part", "code"),
+    [(slice(0, 2), None), (slice(2, 3), "trace_missing"), (slice(0, 1), "trace_no_retrieval")],
+)
+def test_a_trace_cut_at_the_window_edge_is_a_gap_never_a_result(tmp_path, part, code):
+    cut = observations()[part]  # tf1 only: root, retriever, generation
+    path = tmp_path / "cut.jsonl"
+    path.write_text("\n".join(json.dumps(o) for o in cut))
+    run, _ = import_traces(dataset(), path, Settings(id_field="doc_id"))
+    q1 = next(q for q in run["queries"] if q["query_id"] == "q1")
+    assert (q1.get("error") or {}).get("code") == code
+    if code is None:  # retrieval was recorded; what reached the model is not claimed
+        assert q1["ids"] == ["d1", "d4"]
+        assert q1.get("model_context") is None

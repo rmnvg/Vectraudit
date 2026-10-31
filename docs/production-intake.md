@@ -17,7 +17,7 @@ question text, and nothing is uploaded.
 
 ## Pulling directly from Langfuse
 
-Teams on Langfuse can skip the export step. `workbench langfuse-pull` reads a time window
+Teams on Langfuse or LangSmith can skip the export step. `workbench langfuse-pull` reads a time window
 from the project's public API and writes the same observation records an export holds, plus
 the project's scores as answer judgments:
 
@@ -42,6 +42,32 @@ vectraudit workbench intake traces-2026-10-19.jsonl questions.jsonl --state retr
   little in the past, or pull again.
 - **Bounds:** at most 200,000 records per window; a larger window is refused, so pull a
   shorter one.
+- **Window edges:** Langfuse filters observations by their own start time, so a trace
+  that begins just before `--until` can lose its later observations to the next window.
+  It then imports as a gap (no retriever, or context unknown), never as a wrong result.
+  End windows at a quiet time, or overlap them; intake skips traces it has already taken.
+
+## Pulling directly from LangSmith
+
+```bash
+export LANGSMITH_API_KEY=lsv2_...   # LANGSMITH_ENDPOINT for the EU region or self-hosted
+vectraudit workbench langsmith-pull --project support-bot \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces runs-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+```
+
+- **Whole traces:** the window applies to each trace's root run, so a trace that started
+  in the window comes back with all of its runs, even those that ended after it.
+- **Feedback:** a `value` of `correct`, `partial` or `incorrect` is that verdict; otherwise
+  a boolean `score` is a verdict and a numeric `score` stays a score that needs
+  `--threshold`. Other values, feedback without a score, and feedback on runs outside the
+  pulled traces are skipped and counted. Feedback from the LangSmith app (UI and
+  annotation queues, source type `app`) is human review (change with `--human-source`);
+  `api` and `model` feedback are model judgments. Feedback on a child run counts for its
+  trace.
+- **Read-only.** Nothing is written to LangSmith. The key goes only over https (plain http
+  only to a local server). LangSmith returns comments and corrections with feedback; they
+  are never written to the output files.
 
 ## What each run does
 

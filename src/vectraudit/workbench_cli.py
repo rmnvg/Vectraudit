@@ -1257,6 +1257,85 @@ def langfuse_pull_command(
     typer.echo(f"({source.calls} API requests.)")
 
 
+@workbench_app.command("langsmith-pull")
+def langsmith_pull_command(
+    project: Annotated[str, typer.Option(help="LangSmith tracing project name.")],
+    since: Annotated[str, typer.Option(help="Start of the window (ISO 8601, inclusive).")],
+    until: Annotated[str, typer.Option(help="End of the window (ISO 8601, exclusive).")],
+    traces: Annotated[
+        Path | None,
+        typer.Option(help="Write runs here (JSONL) for import-traces or intake."),
+    ] = None,
+    judgments: Annotated[
+        Path | None,
+        typer.Option(help="Write feedback here as answer judgments (JSONL) for attach-answers."),
+    ] = None,
+    human_source: Annotated[
+        list[str] | None,
+        typer.Option(help="Feedback source types counted as human review (default: app)."),
+    ] = None,
+) -> None:
+    """Pull runs and feedback from a LangSmith project for the given time window.
+
+    The window applies to each trace's root run, so traces are never split. Reads
+    LANGSMITH_API_KEY (or LANGCHAIN_API_KEY) and LANGSMITH_ENDPOINT (default
+    https://api.smith.langchain.com). Read-only: nothing is written to LangSmith, and
+    feedback comments are never written to the output files.
+    """
+    import os
+
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+    from vectraudit.pipelines.langsmith_api import (
+        LangSmithSource,
+        feedback_to_judgments,
+        fetch_feedback,
+        fetch_runs,
+    )
+
+    if traces is None and judgments is None:
+        typer.echo("Pull error: give --traces, --judgments or both.", err=True)
+        raise typer.Exit(2)
+    try:
+        source = LangSmithSource(
+            api_url=os.environ.get("LANGSMITH_ENDPOINT")
+            or os.environ.get("LANGCHAIN_ENDPOINT")
+            or "https://api.smith.langchain.com",
+            api_key=os.environ.get("LANGSMITH_API_KEY")
+            or os.environ.get("LANGCHAIN_API_KEY")
+            or "",
+        )
+        runs = fetch_runs(source, project, start=since, end=until)
+        n_traces = len({r["trace_id"] for r in runs})
+        lines = []
+        if traces is not None:
+            write_jsonl(traces, runs)
+            lines.append(f"Wrote {len(runs)} runs from {n_traces} traces to {traces}.")
+        if judgments is not None:
+            feedback = fetch_feedback(source, [str(r["id"]) for r in runs])
+            rows, skipped = feedback_to_judgments(
+                feedback, runs, human_sources=human_source or ("app",)
+            )
+            write_jsonl(judgments, rows)
+            lines.append(
+                f"Wrote {len(rows)} of {len(feedback)} feedback records as judgments to "
+                f"{judgments}."
+            )
+            if skipped:
+                lines.append(
+                    "Skipped: "
+                    + ", ".join(
+                        f"{n} {why.replace('_', ' ')}" for why, n in sorted(skipped.items())
+                    )
+                )
+            if any("score" in r for r in rows):
+                lines.append("Numeric scores need --threshold EVALUATOR=VALUE when attached.")
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Pull error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo("\n".join(lines))
+    typer.echo(f"({source.calls} API requests.)")
+
+
 @workbench_app.command("intake")
 def intake_command(
     traces: Annotated[
