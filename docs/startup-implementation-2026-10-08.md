@@ -2983,6 +2983,56 @@ Validation: 11 new tests on the real files:
 - other files refused;
 - the CLI.
 
+## Step 87: Phoenix pull and push (1.2)
+
+The owner asked what Arize Phoenix offers. It is an LLM tracing and evaluation platform
+built on OpenInference (Elastic License 2.0; it is not a dependency, only its REST API is
+used). Its traces were already importable from exports (the `spans` and OTLP shapes) and
+its evaluations through judgment files. What was missing, compared with Langfuse (Steps
+66, 68), LangSmith (67) and Opik (69), was reading a Phoenix server directly and showing
+the diagnosis there.
+
+- `vectraudit workbench phoenix-pull --since --until [--project] [--traces F]
+  [--judgments F] [--annotation NAME]`:
+  - root spans that started in the window, then every span of those traces by trace ID,
+    written unchanged (Phoenix's `/spans` records are the `spans` shape);
+  - trace and span annotations as judgments: verdict labels with their score, unlabelled
+    scores for `--threshold`, `HUMAN` as human review, other labels and notes skipped.
+- `vectraudit workbench phoenix-push RUN [--send] [--name]`: one `CODE` trace annotation
+  per judged trace, labelled with the diagnosis class. Previews by default. The diagnosis
+  loop is shared with `langfuse-push` (`judged_diagnoses`).
+
+**Built against a running Phoenix 21.0.0 server**, following Steps 83–86: the offline
+LangChain pipeline's OpenInference traces were sent to it, annotations were added through
+its API, and every response the pull received was recorded (`tests/fixtures/phoenix`, once
+with tiny page sizes so cursor paging is real). What the server showed:
+- `/spans` flattens document metadata (`document.metadata.doc_id`) where the OTLP export
+  keeps a JSON string; both import to the same rankings and model context.
+- Notes are stored as `HUMAN` annotations named `note`. Read as annotations, they would
+  have become unlabelled human judgments; they are skipped and their text never copied.
+- Writing annotations without `sync=true` answers 200 and silently drops those for
+  unknown traces. With it, the whole batch is refused (404), so the push resends that
+  batch one trace at a time and reports the unknown traces.
+- An annotation with the same trace, name and identifier replaces the earlier one, so a
+  re-push does not pile up annotations.
+
+Not included: Phoenix datasets and experiments (Vectraudit's benchmarks and runs cover
+them), its prompt management (prompt versions are read from traces, Step 70), and its
+evaluators.
+
+Validation: 27 new tests (17 pull, replayed from the real recordings; 10 push, against a
+fake server that behaves as the real one did):
+- the window and per-trace span reads;
+- paged and unpaged recordings giving the same pull;
+- pulled spans importing like the direct OpenInference export;
+- annotations to judgments, notes skipped, name filtering;
+- attached judgments with a disputed verdict;
+- the auth header and HTTP failures without echoing bodies;
+- cursor loops and record limits;
+- unsafe settings;
+- push contents with nothing private, re-push replacing, unknown traces found one by
+  one, batching, preview, and both CLIs.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

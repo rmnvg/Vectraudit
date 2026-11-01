@@ -1545,6 +1545,137 @@ def opik_pull_command(
     typer.echo(f"({source.calls} API requests.)")
 
 
+@workbench_app.command("phoenix-pull")
+def phoenix_pull_command(
+    since: Annotated[str, typer.Option(help="Start of the window (ISO 8601, inclusive).")],
+    until: Annotated[str, typer.Option(help="End of the window (ISO 8601).")],
+    project: Annotated[
+        str | None,
+        typer.Option(help="Phoenix project (default: PHOENIX_PROJECT_NAME, else 'default')."),
+    ] = None,
+    traces: Annotated[
+        Path | None,
+        typer.Option(help="Write spans here (JSONL) for import-traces or intake."),
+    ] = None,
+    judgments: Annotated[
+        Path | None,
+        typer.Option(help="Write annotations as answer judgments (JSONL) for attach-answers."),
+    ] = None,
+    annotation: Annotated[
+        list[str] | None,
+        typer.Option(help="Annotation name to keep (repeatable; default: all but notes)."),
+    ] = None,
+) -> None:
+    """Pull the traces whose root span started in a window, and their annotations, from Phoenix.
+
+    Reads PHOENIX_COLLECTOR_ENDPOINT (default http://localhost:6006), PHOENIX_API_KEY and
+    PHOENIX_PROJECT_NAME. Spans are written as Phoenix returns them (import with --shape
+    spans). HUMAN annotations are human review; others are model judgments. Read-only;
+    explanations and notes are never written out.
+    """
+    import os
+
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+    from vectraudit.pipelines.phoenix_api import (
+        PhoenixSource,
+        annotations_to_judgments,
+        fetch_annotations,
+        fetch_spans,
+    )
+
+    if traces is None and judgments is None:
+        typer.echo("Pull error: give --traces, --judgments or both.", err=True)
+        raise typer.Exit(2)
+    name = project or os.environ.get("PHOENIX_PROJECT_NAME") or "default"
+    try:
+        source = PhoenixSource(
+            url=os.environ.get("PHOENIX_COLLECTOR_ENDPOINT") or "http://localhost:6006",
+            api_key=os.environ.get("PHOENIX_API_KEY") or None,
+        )
+        spans = fetch_spans(source, name, start=since, end=until)
+        n_traces = len({s["context"]["trace_id"] for s in spans})
+        lines = []
+        if traces is not None:
+            write_jsonl(traces, spans)
+            lines.append(f"Wrote {len(spans)} spans of {n_traces} traces to {traces}.")
+        if judgments is not None:
+            on_traces, on_spans = fetch_annotations(source, name, spans)
+            rows, skipped = annotations_to_judgments(
+                on_traces, on_spans, spans, names=annotation or ()
+            )
+            write_jsonl(judgments, rows)
+            lines.append(f"Wrote {len(rows)} annotations as judgments to {judgments}.")
+            if skipped:
+                lines.append(
+                    "Skipped: "
+                    + ", ".join(
+                        f"{n} {why.replace('_', ' ')}" for why, n in sorted(skipped.items())
+                    )
+                )
+            if any("score" in r and "verdict" not in r for r in rows):
+                lines.append("Numeric scores need --threshold EVALUATOR=VALUE when attached.")
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Pull error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo("\n".join(lines))
+    typer.echo(f"({source.calls} API requests.)")
+
+
+@workbench_app.command("phoenix-push")
+def phoenix_push_command(
+    run: Annotated[
+        Path, typer.Argument(help="Run imported from Phoenix, with attach-answers applied.")
+    ],
+    send: Annotated[
+        bool, typer.Option("--send", help="Write the annotations. Without it, only preview.")
+    ] = False,
+    name: Annotated[str, typer.Option(help="Annotation name in Phoenix.")] = "vectraudit.diagnosis",
+) -> None:
+    """Write each judged trace's diagnosis back to Phoenix as a trace annotation.
+
+    Previews by default; --send writes. Only the diagnosis class (as the label) and a run
+    digest are sent: no text, document IDs or facts. Re-sending replaces a trace's earlier
+    annotation of the same name. Reads the same PHOENIX_* variables as phoenix-pull.
+    """
+    import os
+
+    from vectraudit.pipelines.phoenix_api import PhoenixSource
+    from vectraudit.pipelines.phoenix_push import (
+        diagnosis_annotations,
+        preview,
+        push_annotations,
+    )
+
+    try:
+        annotations, skipped = diagnosis_annotations(load_run(run), name=name)
+        typer.echo(preview(annotations, skipped))
+        if not send:
+            typer.echo("\nPreview only: nothing was sent. Add --send to write these annotations.")
+            return
+        if not annotations:
+            typer.echo("\nNothing to send.")
+            return
+        source = PhoenixSource(
+            url=os.environ.get("PHOENIX_COLLECTOR_ENDPOINT") or "http://localhost:6006",
+            api_key=os.environ.get("PHOENIX_API_KEY") or None,
+        )
+        totals = push_annotations(source, annotations)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Push error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(
+        f"\nWrote {totals['written']} of {totals['sent']} annotations in "
+        f"{totals['requests']} requests."
+    )
+    if totals["unknown_trace"]:
+        typer.echo(
+            f"{totals['unknown_trace']} traces are not in this Phoenix server; check "
+            "PHOENIX_COLLECTOR_ENDPOINT and that the traces were sent to it.",
+            err=True,
+        )
+        raise typer.Exit(3)
+
+
 @workbench_app.command("openobserve-pull")
 def openobserve_pull_command(
     since: Annotated[str, typer.Option(help="Start of the window (ISO 8601, inclusive).")],

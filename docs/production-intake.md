@@ -100,6 +100,34 @@ vectraudit workbench intake spans-2026-10-19.jsonl questions.jsonl --state retri
 - **Read-only.** An API key goes only over https (plain http only to a local server). A
   keyless self-hosted Opik can be read over http, since no secret is sent.
 
+## Pulling directly from Phoenix
+
+```bash
+export PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006   # or https://app.phoenix.arize.com/s/SPACE
+export PHOENIX_API_KEY=...                                # Phoenix Cloud or a secured server
+vectraudit workbench phoenix-pull --project support-bot \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces spans-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+vectraudit workbench intake spans-2026-10-19.jsonl questions.jsonl --state retrieval/intake \
+  --id-field doc_id
+```
+
+- **Spans are written as Phoenix returns them** (`/v1/projects/{project}/spans`), which is
+  the `spans` shape import-traces already reads, with OpenInference span kinds.
+- **Window:** traces whose root span started in the window are taken, and every span of
+  those traces is read by trace ID, so a trace is never cut at the window's end.
+- **Document IDs:** LangChain retrievers usually record the ID only in document metadata;
+  name the field with `--id-field` (Phoenix flattens metadata, and both forms are read).
+- **Annotations** on traces and spans become judgments; a span's annotation counts for its
+  trace. A label of `correct`, `partial` or `incorrect` is that verdict, with the score
+  kept. Other labels (such as `hallucinated` or `factual`) are skipped, never read from
+  their score, whose direction differs between evaluators. A score without a label needs
+  `--threshold`. `HUMAN` annotations are human review; `LLM`, `CODE` and other kinds are
+  model judgments. Notes are skipped. `--annotation NAME` keeps only the named ones.
+  Explanations and notes are never written out.
+- **Read-only.** The project defaults to `PHOENIX_PROJECT_NAME`, else `default`. An API
+  key goes only over https (plain http only to a local server).
+
 ## What each run does
 
 1. **Continues from the cursor.** Only traces newer than the last run are taken, so

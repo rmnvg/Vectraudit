@@ -1,0 +1,901 @@
+{
+ "/v1/projects/rag-demo/span_annotations?span_ids=0f087f39d823d22f&span_ids=341f44cb9a1cead1&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=12655049e5353e65&span_ids=ea23e7983ef63f0a&limit=2": {
+  "data": [
+   {
+    "annotator_kind": "LLM",
+    "created_at": "2026-11-01T18:12:18+00:00",
+    "id": "U3BhbkFubm90YXRpb246Mg==",
+    "identifier": "",
+    "metadata": {},
+    "name": "qa_correctness",
+    "result": {
+     "explanation": null,
+     "label": "correct",
+     "score": 1.0
+    },
+    "source": "API",
+    "span_id": "ea23e7983ef63f0a",
+    "updated_at": "2026-11-01T18:12:18+00:00",
+    "user_id": null
+   }
+  ],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=1bd5e562234113ee&span_ids=766209b2ba642d4c&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=21d90280f9e0ea9b&span_ids=fe5c2afb7a6a32c8&limit=2": {
+  "data": [
+   {
+    "annotator_kind": "LLM",
+    "created_at": "2026-11-01T18:12:18+00:00",
+    "id": "U3BhbkFubm90YXRpb246MQ==",
+    "identifier": "",
+    "metadata": {
+     "model": "gpt-4o-mini"
+    },
+    "name": "qa_correctness",
+    "result": {
+     "explanation": "The answer does not mention Billing.",
+     "label": "incorrect",
+     "score": 0.0
+    },
+    "source": "API",
+    "span_id": "21d90280f9e0ea9b",
+    "updated_at": "2026-11-01T18:12:18+00:00",
+    "user_id": null
+   }
+  ],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=367dbe79c7fe106c&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=376408523babbe3a&span_ids=ed33f2ac5533e711&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=493c5d08e194478f&span_ids=75e3f2a1d66bf33a&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=52da0e915e443dc3&span_ids=67932b4de4d2bd06&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=5e59e68a46cf92af&span_ids=f720866a7c5d0144&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=7c06038bb1c2e7f7&span_ids=d9bf5389e63433e5&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=b8c0c6f35a009f1f&span_ids=1d58c80f1a226cf5&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=eb12eb94c40ed740&span_ids=2cb6c921e044749f&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=ec5e278be12b7775&span_ids=bd8432c9b72b60ed&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/span_annotations?span_ids=f5f0c2f9e6d19f7f&span_ids=5409c91fe309c530&limit=2": {
+  "data": [],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/spans?start_time=2026-11-01T00%3A00%3A00Z&end_time=2026-11-02T00%3A00%3A00Z&parent_id=null&limit=4": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "Cancel my plan",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "ea23e7983ef63f0a",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.973381+00:00",
+    "events": [],
+    "id": "U3BhbjoyNw==",
+    "name": "RunnableSequence",
+    "parent_id": null,
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.918326+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "Where is the invoice?",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "21d90280f9e0ea9b",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.911559+00:00",
+    "events": [],
+    "id": "U3BhbjoxOA==",
+    "name": "RunnableSequence",
+    "parent_id": null,
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.854507+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "How do I reset my password?",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "b8c0c6f35a009f1f",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.849044+00:00",
+    "events": [],
+    "id": "U3Bhbjo5",
+    "name": "RunnableSequence",
+    "parent_id": null,
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.783545+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/spans?trace_id=42e568da14943d772ea8038b410e77fa&trace_id=2d21338f346651d99980c31523ef78d8&limit=4": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "Cancel my plan",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "ea23e7983ef63f0a",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.973381+00:00",
+    "events": [],
+    "id": "U3BhbjoyNw==",
+    "name": "RunnableSequence",
+    "parent_id": null,
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.918326+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"type\": \"ai\", \"data\": {\"content\": \"An answer.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--01a1984f-72a5-7171-b120-fc72e847269b-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "bd8432c9b72b60ed",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.965025+00:00",
+    "events": [],
+    "id": "U3BhbjoyNg==",
+    "name": "StrOutputParser",
+    "parent_id": "ea23e7983ef63f0a",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.964609+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"messages\": [[{\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"HumanMessage\"], \"kwargs\": {\"content\": \"Answer using:\\nOur support team answers within one business day.\\n\\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nQuestion: Cancel my plan\", \"type\": \"human\"}}]]}",
+     "llm.input_messages.0.message.content": "Answer using:\nOur support team answers within one business day.\n\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nQuestion: Cancel my plan",
+     "llm.input_messages.0.message.role": "user",
+     "llm.invocation_parameters": "{\"responses\": [\"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\"], \"_type\": \"fake-list-chat-model\", \"stop\": null}",
+     "llm.output_messages.0.message.content": "An answer.",
+     "llm.output_messages.0.message.role": "assistant",
+     "llm.provider": "fakelistchatmodel",
+     "metadata.lc_versions.langchain-core": "1.7.3",
+     "metadata.ls_integration": "langchain_chat_model",
+     "metadata.ls_model_type": "chat",
+     "metadata.ls_provider": "fakelistchatmodel",
+     "output.mime_type": "application/json",
+     "output.value": "{\"generations\": [[{\"text\": \"An answer.\", \"generation_info\": null, \"type\": \"ChatGeneration\", \"message\": {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"An answer.\", \"type\": \"ai\", \"id\": \"lc_run--01a1984f-72a5-7171-b120-fc72e847269b-0\", \"tool_calls\": [], \"invalid_tool_calls\": []}}}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}"
+    },
+    "context": {
+     "span_id": "ec5e278be12b7775",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.957739+00:00",
+    "events": [],
+    "id": "U3BhbjoyNQ==",
+    "name": "FakeListChatModel",
+    "parent_id": "ea23e7983ef63f0a",
+    "span_kind": "LLM",
+    "start_time": "2026-11-01T18:11:45.957189+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"context\": \"Our support team answers within one business day.\\n\\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\", \"question\": \"Cancel my plan\"}",
+     "llm.prompt_template.template": "Answer using:\n{context}\n\nQuestion: {question}",
+     "llm.prompt_template.variables.context": "Our support team answers within one business day.\n\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\n\nTo reset your password, open Settings and choose Security, then Reset password.",
+     "llm.prompt_template.variables.question": "Cancel my plan",
+     "output.mime_type": "application/json",
+     "output.value": "{\"messages\": [{\"content\": \"Answer using:\\nOur support team answers within one business day.\\n\\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nQuestion: Cancel my plan\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+    },
+    "context": {
+     "span_id": "75e3f2a1d66bf33a",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.951452+00:00",
+    "events": [],
+    "id": "U3BhbjoyNA==",
+    "name": "ChatPromptTemplate",
+    "parent_id": "ea23e7983ef63f0a",
+    "span_kind": "PROMPT",
+    "start_time": "2026-11-01T18:11:45.950997+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": "U3BhbjoyMw=="
+ },
+ "/v1/projects/rag-demo/spans?trace_id=42e568da14943d772ea8038b410e77fa&trace_id=2d21338f346651d99980c31523ef78d8&limit=4&cursor=U3BhbjoxMQ%3D%3D": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "Where is the invoice?",
+     "metadata.ls_embedding_provider": "DeterministicFakeEmbedding",
+     "metadata.ls_retriever_name": "vectorstore",
+     "metadata.ls_vector_store_provider": "Chroma",
+     "output.mime_type": "application/json",
+     "output.value": "{\"documents\": [{\"id\": \"d4\", \"metadata\": {\"doc_id\": \"d4\"}, \"page_content\": \"Our support team answers within one business day.\", \"type\": \"Document\"}, {\"id\": \"d1\", \"metadata\": {\"doc_id\": \"d1\"}, \"page_content\": \"To reset your password, open Settings and choose Security, then Reset password.\", \"type\": \"Document\"}, {\"id\": \"d5\", \"metadata\": {\"doc_id\": \"d5\"}, \"page_content\": \"Two-factor authentication can be enabled in Security settings.\", \"type\": \"Document\"}]}",
+     "retrieval.documents.0.document.content": "Our support team answers within one business day.",
+     "retrieval.documents.0.document.metadata.doc_id": "d4",
+     "retrieval.documents.1.document.content": "To reset your password, open Settings and choose Security, then Reset password.",
+     "retrieval.documents.1.document.metadata.doc_id": "d1",
+     "retrieval.documents.2.document.content": "Two-factor authentication can be enabled in Security settings.",
+     "retrieval.documents.2.document.metadata.doc_id": "d5"
+    },
+    "context": {
+     "span_id": "67932b4de4d2bd06",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.859635+00:00",
+    "events": [],
+    "id": "U3BhbjoxMQ==",
+    "name": "VectorStoreRetriever",
+    "parent_id": "52da0e915e443dc3",
+    "span_kind": "RETRIEVER",
+    "start_time": "2026-11-01T18:11:45.856047+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "Where is the invoice?",
+     "output.value": "Where is the invoice?"
+    },
+    "context": {
+     "span_id": "1bd5e562234113ee",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.857664+00:00",
+    "events": [],
+    "id": "U3BhbjoxMA==",
+    "name": "RunnablePassthrough",
+    "parent_id": "fe5c2afb7a6a32c8",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.857341+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/spans?trace_id=42e568da14943d772ea8038b410e77fa&trace_id=2d21338f346651d99980c31523ef78d8&limit=4&cursor=U3BhbjoxNQ%3D%3D": {
+  "data": [
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"context\": \"Our support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTwo-factor authentication can be enabled in Security settings.\", \"question\": \"Where is the invoice?\"}",
+     "llm.prompt_template.template": "Answer using:\n{context}\n\nQuestion: {question}",
+     "llm.prompt_template.variables.context": "Our support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTwo-factor authentication can be enabled in Security settings.",
+     "llm.prompt_template.variables.question": "Where is the invoice?",
+     "output.mime_type": "application/json",
+     "output.value": "{\"messages\": [{\"content\": \"Answer using:\\nOur support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTwo-factor authentication can be enabled in Security settings.\\n\\nQuestion: Where is the invoice?\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+    },
+    "context": {
+     "span_id": "7c06038bb1c2e7f7",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.893752+00:00",
+    "events": [],
+    "id": "U3BhbjoxNQ==",
+    "name": "ChatPromptTemplate",
+    "parent_id": "21d90280f9e0ea9b",
+    "span_kind": "PROMPT",
+    "start_time": "2026-11-01T18:11:45.893323+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "Where is the invoice?",
+     "output.mime_type": "application/json",
+     "output.value": "{\"context\": \"Our support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTwo-factor authentication can be enabled in Security settings.\", \"question\": \"Where is the invoice?\"}"
+    },
+    "context": {
+     "span_id": "fe5c2afb7a6a32c8",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.887282+00:00",
+    "events": [],
+    "id": "U3BhbjoxNA==",
+    "name": "RunnableParallel<context,question>",
+    "parent_id": "21d90280f9e0ea9b",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.854802+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "Where is the invoice?",
+     "output.value": "Our support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTwo-factor authentication can be enabled in Security settings."
+    },
+    "context": {
+     "span_id": "52da0e915e443dc3",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.880844+00:00",
+    "events": [],
+    "id": "U3BhbjoxMw==",
+    "name": "RunnableSequence",
+    "parent_id": "fe5c2afb7a6a32c8",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.855483+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "[{\"id\": \"d4\", \"metadata\": {\"doc_id\": \"d4\"}, \"page_content\": \"Our support team answers within one business day.\", \"type\": \"Document\"}, {\"id\": \"d1\", \"metadata\": {\"doc_id\": \"d1\"}, \"page_content\": \"To reset your password, open Settings and choose Security, then Reset password.\", \"type\": \"Document\"}, {\"id\": \"d5\", \"metadata\": {\"doc_id\": \"d5\"}, \"page_content\": \"Two-factor authentication can be enabled in Security settings.\", \"type\": \"Document\"}]",
+     "output.value": "Our support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTwo-factor authentication can be enabled in Security settings."
+    },
+    "context": {
+     "span_id": "766209b2ba642d4c",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.867188+00:00",
+    "events": [],
+    "id": "U3BhbjoxMg==",
+    "name": "_join",
+    "parent_id": "52da0e915e443dc3",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.866772+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": "U3BhbjoxMQ=="
+ },
+ "/v1/projects/rag-demo/spans?trace_id=42e568da14943d772ea8038b410e77fa&trace_id=2d21338f346651d99980c31523ef78d8&limit=4&cursor=U3BhbjoxOQ%3D%3D": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "Cancel my plan",
+     "output.value": "Cancel my plan"
+    },
+    "context": {
+     "span_id": "ed33f2ac5533e711",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.921011+00:00",
+    "events": [],
+    "id": "U3BhbjoxOQ==",
+    "name": "RunnablePassthrough",
+    "parent_id": "5e59e68a46cf92af",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.920601+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "Where is the invoice?",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "21d90280f9e0ea9b",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.911559+00:00",
+    "events": [],
+    "id": "U3BhbjoxOA==",
+    "name": "RunnableSequence",
+    "parent_id": null,
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.854507+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"type\": \"ai\", \"data\": {\"content\": \"An answer.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--01a1984f-726b-775f-a68e-8527b3b89c06-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "12655049e5353e65",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.906624+00:00",
+    "events": [],
+    "id": "U3BhbjoxNw==",
+    "name": "StrOutputParser",
+    "parent_id": "21d90280f9e0ea9b",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.906279+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"messages\": [[{\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"HumanMessage\"], \"kwargs\": {\"content\": \"Answer using:\\nOur support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTwo-factor authentication can be enabled in Security settings.\\n\\nQuestion: Where is the invoice?\", \"type\": \"human\"}}]]}",
+     "llm.input_messages.0.message.content": "Answer using:\nOur support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTwo-factor authentication can be enabled in Security settings.\n\nQuestion: Where is the invoice?",
+     "llm.input_messages.0.message.role": "user",
+     "llm.invocation_parameters": "{\"responses\": [\"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\"], \"_type\": \"fake-list-chat-model\", \"stop\": null}",
+     "llm.output_messages.0.message.content": "An answer.",
+     "llm.output_messages.0.message.role": "assistant",
+     "llm.provider": "fakelistchatmodel",
+     "metadata.lc_versions.langchain-core": "1.7.3",
+     "metadata.ls_integration": "langchain_chat_model",
+     "metadata.ls_model_type": "chat",
+     "metadata.ls_provider": "fakelistchatmodel",
+     "output.mime_type": "application/json",
+     "output.value": "{\"generations\": [[{\"text\": \"An answer.\", \"generation_info\": null, \"type\": \"ChatGeneration\", \"message\": {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"An answer.\", \"type\": \"ai\", \"id\": \"lc_run--01a1984f-726b-775f-a68e-8527b3b89c06-0\", \"tool_calls\": [], \"invalid_tool_calls\": []}}}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}"
+    },
+    "context": {
+     "span_id": "d9bf5389e63433e5",
+     "trace_id": "2d21338f346651d99980c31523ef78d8"
+    },
+    "end_time": "2026-11-01T18:11:45.900157+00:00",
+    "events": [],
+    "id": "U3BhbjoxNg==",
+    "name": "FakeListChatModel",
+    "parent_id": "21d90280f9e0ea9b",
+    "span_kind": "LLM",
+    "start_time": "2026-11-01T18:11:45.899550+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": "U3BhbjoxNQ=="
+ },
+ "/v1/projects/rag-demo/spans?trace_id=42e568da14943d772ea8038b410e77fa&trace_id=2d21338f346651d99980c31523ef78d8&limit=4&cursor=U3BhbjoyMw%3D%3D": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "Cancel my plan",
+     "output.mime_type": "application/json",
+     "output.value": "{\"context\": \"Our support team answers within one business day.\\n\\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\", \"question\": \"Cancel my plan\"}"
+    },
+    "context": {
+     "span_id": "5e59e68a46cf92af",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.945244+00:00",
+    "events": [],
+    "id": "U3BhbjoyMw==",
+    "name": "RunnableParallel<context,question>",
+    "parent_id": "ea23e7983ef63f0a",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.918701+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "Cancel my plan",
+     "output.value": "Our support team answers within one business day.\n\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\n\nTo reset your password, open Settings and choose Security, then Reset password."
+    },
+    "context": {
+     "span_id": "f720866a7c5d0144",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.938758+00:00",
+    "events": [],
+    "id": "U3BhbjoyMg==",
+    "name": "RunnableSequence",
+    "parent_id": "5e59e68a46cf92af",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.919354+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "[{\"id\": \"d4\", \"metadata\": {\"doc_id\": \"d4\"}, \"page_content\": \"Our support team answers within one business day.\", \"type\": \"Document\"}, {\"id\": \"d2\", \"metadata\": {\"doc_id\": \"d2\"}, \"page_content\": \"Invoices are listed under Billing; each invoice can be downloaded as a PDF.\", \"type\": \"Document\"}, {\"id\": \"d1\", \"metadata\": {\"doc_id\": \"d1\"}, \"page_content\": \"To reset your password, open Settings and choose Security, then Reset password.\", \"type\": \"Document\"}]",
+     "output.value": "Our support team answers within one business day.\n\nInvoices are listed under Billing; each invoice can be downloaded as a PDF.\n\nTo reset your password, open Settings and choose Security, then Reset password."
+    },
+    "context": {
+     "span_id": "493c5d08e194478f",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.932007+00:00",
+    "events": [],
+    "id": "U3BhbjoyMQ==",
+    "name": "_join",
+    "parent_id": "f720866a7c5d0144",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.931575+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "Cancel my plan",
+     "metadata.ls_embedding_provider": "DeterministicFakeEmbedding",
+     "metadata.ls_retriever_name": "vectorstore",
+     "metadata.ls_vector_store_provider": "Chroma",
+     "output.mime_type": "application/json",
+     "output.value": "{\"documents\": [{\"id\": \"d4\", \"metadata\": {\"doc_id\": \"d4\"}, \"page_content\": \"Our support team answers within one business day.\", \"type\": \"Document\"}, {\"id\": \"d2\", \"metadata\": {\"doc_id\": \"d2\"}, \"page_content\": \"Invoices are listed under Billing; each invoice can be downloaded as a PDF.\", \"type\": \"Document\"}, {\"id\": \"d1\", \"metadata\": {\"doc_id\": \"d1\"}, \"page_content\": \"To reset your password, open Settings and choose Security, then Reset password.\", \"type\": \"Document\"}]}",
+     "retrieval.documents.0.document.content": "Our support team answers within one business day.",
+     "retrieval.documents.0.document.metadata.doc_id": "d4",
+     "retrieval.documents.1.document.content": "Invoices are listed under Billing; each invoice can be downloaded as a PDF.",
+     "retrieval.documents.1.document.metadata.doc_id": "d2",
+     "retrieval.documents.2.document.content": "To reset your password, open Settings and choose Security, then Reset password.",
+     "retrieval.documents.2.document.metadata.doc_id": "d1"
+    },
+    "context": {
+     "span_id": "376408523babbe3a",
+     "trace_id": "42e568da14943d772ea8038b410e77fa"
+    },
+    "end_time": "2026-11-01T18:11:45.923519+00:00",
+    "events": [],
+    "id": "U3BhbjoyMA==",
+    "name": "VectorStoreRetriever",
+    "parent_id": "f720866a7c5d0144",
+    "span_kind": "RETRIEVER",
+    "start_time": "2026-11-01T18:11:45.919689+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": "U3BhbjoxOQ=="
+ },
+ "/v1/projects/rag-demo/spans?trace_id=749ef00b3f93e29be06db44f3be4fc3d&limit=4": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "How do I reset my password?",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "b8c0c6f35a009f1f",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.849044+00:00",
+    "events": [],
+    "id": "U3Bhbjo5",
+    "name": "RunnableSequence",
+    "parent_id": null,
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.783545+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"type\": \"ai\", \"data\": {\"content\": \"An answer.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--01a1984f-7228-7494-8906-07fe0b61750b-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}",
+     "output.value": "An answer."
+    },
+    "context": {
+     "span_id": "367dbe79c7fe106c",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.842427+00:00",
+    "events": [],
+    "id": "U3Bhbjo4",
+    "name": "StrOutputParser",
+    "parent_id": "b8c0c6f35a009f1f",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.842109+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"messages\": [[{\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"HumanMessage\"], \"kwargs\": {\"content\": \"Answer using:\\nOur support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTo cancel your plan, go to Billing and choose Cancel subscription.\\n\\nQuestion: How do I reset my password?\", \"type\": \"human\"}}]]}",
+     "llm.input_messages.0.message.content": "Answer using:\nOur support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTo cancel your plan, go to Billing and choose Cancel subscription.\n\nQuestion: How do I reset my password?",
+     "llm.input_messages.0.message.role": "user",
+     "llm.invocation_parameters": "{\"responses\": [\"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\", \"An answer.\"], \"_type\": \"fake-list-chat-model\", \"stop\": null}",
+     "llm.output_messages.0.message.content": "An answer.",
+     "llm.output_messages.0.message.role": "assistant",
+     "llm.provider": "fakelistchatmodel",
+     "metadata.lc_versions.langchain-core": "1.7.3",
+     "metadata.ls_integration": "langchain_chat_model",
+     "metadata.ls_model_type": "chat",
+     "metadata.ls_provider": "fakelistchatmodel",
+     "output.mime_type": "application/json",
+     "output.value": "{\"generations\": [[{\"text\": \"An answer.\", \"generation_info\": null, \"type\": \"ChatGeneration\", \"message\": {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"An answer.\", \"type\": \"ai\", \"id\": \"lc_run--01a1984f-7228-7494-8906-07fe0b61750b-0\", \"tool_calls\": [], \"invalid_tool_calls\": []}}}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}"
+    },
+    "context": {
+     "span_id": "5409c91fe309c530",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.834075+00:00",
+    "events": [],
+    "id": "U3Bhbjo3",
+    "name": "FakeListChatModel",
+    "parent_id": "b8c0c6f35a009f1f",
+    "span_kind": "LLM",
+    "start_time": "2026-11-01T18:11:45.832575+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "{\"context\": \"Our support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTo cancel your plan, go to Billing and choose Cancel subscription.\", \"question\": \"How do I reset my password?\"}",
+     "llm.prompt_template.template": "Answer using:\n{context}\n\nQuestion: {question}",
+     "llm.prompt_template.variables.context": "Our support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTo cancel your plan, go to Billing and choose Cancel subscription.",
+     "llm.prompt_template.variables.question": "How do I reset my password?",
+     "output.mime_type": "application/json",
+     "output.value": "{\"messages\": [{\"content\": \"Answer using:\\nOur support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTo cancel your plan, go to Billing and choose Cancel subscription.\\n\\nQuestion: How do I reset my password?\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+    },
+    "context": {
+     "span_id": "f5f0c2f9e6d19f7f",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.826689+00:00",
+    "events": [],
+    "id": "U3Bhbjo2",
+    "name": "ChatPromptTemplate",
+    "parent_id": "b8c0c6f35a009f1f",
+    "span_kind": "PROMPT",
+    "start_time": "2026-11-01T18:11:45.826248+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": "U3Bhbjo1"
+ },
+ "/v1/projects/rag-demo/spans?trace_id=749ef00b3f93e29be06db44f3be4fc3d&limit=4&cursor=U3Bhbjo1": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "How do I reset my password?",
+     "output.mime_type": "application/json",
+     "output.value": "{\"context\": \"Our support team answers within one business day.\\n\\nTo reset your password, open Settings and choose Security, then Reset password.\\n\\nTo cancel your plan, go to Billing and choose Cancel subscription.\", \"question\": \"How do I reset my password?\"}"
+    },
+    "context": {
+     "span_id": "1d58c80f1a226cf5",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.818649+00:00",
+    "events": [],
+    "id": "U3Bhbjo1",
+    "name": "RunnableParallel<context,question>",
+    "parent_id": "b8c0c6f35a009f1f",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.784297+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "How do I reset my password?",
+     "output.value": "Our support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTo cancel your plan, go to Billing and choose Cancel subscription."
+    },
+    "context": {
+     "span_id": "eb12eb94c40ed740",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.811333+00:00",
+    "events": [],
+    "id": "U3Bhbjo0",
+    "name": "RunnableSequence",
+    "parent_id": "1d58c80f1a226cf5",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.785478+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.mime_type": "application/json",
+     "input.value": "[{\"id\": \"d4\", \"metadata\": {\"doc_id\": \"d4\"}, \"page_content\": \"Our support team answers within one business day.\", \"type\": \"Document\"}, {\"id\": \"d1\", \"metadata\": {\"doc_id\": \"d1\"}, \"page_content\": \"To reset your password, open Settings and choose Security, then Reset password.\", \"type\": \"Document\"}, {\"id\": \"d3\", \"metadata\": {\"doc_id\": \"d3\"}, \"page_content\": \"To cancel your plan, go to Billing and choose Cancel subscription.\", \"type\": \"Document\"}]",
+     "output.value": "Our support team answers within one business day.\n\nTo reset your password, open Settings and choose Security, then Reset password.\n\nTo cancel your plan, go to Billing and choose Cancel subscription."
+    },
+    "context": {
+     "span_id": "341f44cb9a1cead1",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.807477+00:00",
+    "events": [],
+    "id": "U3Bhbjoz",
+    "name": "_join",
+    "parent_id": "eb12eb94c40ed740",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.807035+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   },
+   {
+    "attributes": {
+     "input.value": "How do I reset my password?",
+     "metadata.ls_embedding_provider": "DeterministicFakeEmbedding",
+     "metadata.ls_retriever_name": "vectorstore",
+     "metadata.ls_vector_store_provider": "Chroma",
+     "output.mime_type": "application/json",
+     "output.value": "{\"documents\": [{\"id\": \"d4\", \"metadata\": {\"doc_id\": \"d4\"}, \"page_content\": \"Our support team answers within one business day.\", \"type\": \"Document\"}, {\"id\": \"d1\", \"metadata\": {\"doc_id\": \"d1\"}, \"page_content\": \"To reset your password, open Settings and choose Security, then Reset password.\", \"type\": \"Document\"}, {\"id\": \"d3\", \"metadata\": {\"doc_id\": \"d3\"}, \"page_content\": \"To cancel your plan, go to Billing and choose Cancel subscription.\", \"type\": \"Document\"}]}",
+     "retrieval.documents.0.document.content": "Our support team answers within one business day.",
+     "retrieval.documents.0.document.metadata.doc_id": "d4",
+     "retrieval.documents.1.document.content": "To reset your password, open Settings and choose Security, then Reset password.",
+     "retrieval.documents.1.document.metadata.doc_id": "d1",
+     "retrieval.documents.2.document.content": "To cancel your plan, go to Billing and choose Cancel subscription.",
+     "retrieval.documents.2.document.metadata.doc_id": "d3"
+    },
+    "context": {
+     "span_id": "2cb6c921e044749f",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.797469+00:00",
+    "events": [],
+    "id": "U3Bhbjoy",
+    "name": "VectorStoreRetriever",
+    "parent_id": "eb12eb94c40ed740",
+    "span_kind": "RETRIEVER",
+    "start_time": "2026-11-01T18:11:45.785859+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": "U3Bhbjox"
+ },
+ "/v1/projects/rag-demo/spans?trace_id=749ef00b3f93e29be06db44f3be4fc3d&limit=4&cursor=U3Bhbjox": {
+  "data": [
+   {
+    "attributes": {
+     "input.value": "How do I reset my password?",
+     "output.value": "How do I reset my password?"
+    },
+    "context": {
+     "span_id": "0f087f39d823d22f",
+     "trace_id": "749ef00b3f93e29be06db44f3be4fc3d"
+    },
+    "end_time": "2026-11-01T18:11:45.788560+00:00",
+    "events": [],
+    "id": "U3Bhbjox",
+    "name": "RunnablePassthrough",
+    "parent_id": "1d58c80f1a226cf5",
+    "span_kind": "CHAIN",
+    "start_time": "2026-11-01T18:11:45.787790+00:00",
+    "status_code": "OK",
+    "status_message": ""
+   }
+  ],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/trace_annotations?trace_ids=2d21338f346651d99980c31523ef78d8&trace_ids=42e568da14943d772ea8038b410e77fa&limit=2": {
+  "data": [
+   {
+    "annotator_kind": "HUMAN",
+    "created_at": "2026-11-01T18:12:18+00:00",
+    "id": "VHJhY2VBbm5vdGF0aW9uOjQ=",
+    "identifier": "",
+    "metadata": {},
+    "name": "tone",
+    "result": {
+     "explanation": null,
+     "label": "friendly",
+     "score": null
+    },
+    "source": "API",
+    "trace_id": "42e568da14943d772ea8038b410e77fa",
+    "updated_at": "2026-11-01T18:12:18+00:00",
+    "user_id": null
+   },
+   {
+    "annotator_kind": "CODE",
+    "created_at": "2026-11-01T18:12:18+00:00",
+    "id": "VHJhY2VBbm5vdGF0aW9uOjM=",
+    "identifier": "",
+    "metadata": {},
+    "name": "relevance",
+    "result": {
+     "explanation": null,
+     "label": null,
+     "score": 0.4
+    },
+    "source": "API",
+    "trace_id": "42e568da14943d772ea8038b410e77fa",
+    "updated_at": "2026-11-01T18:12:18+00:00",
+    "user_id": null
+   }
+  ],
+  "next_cursor": "VHJhY2VBbm5vdGF0aW9uOjI="
+ },
+ "/v1/projects/rag-demo/trace_annotations?trace_ids=2d21338f346651d99980c31523ef78d8&trace_ids=42e568da14943d772ea8038b410e77fa&limit=2&cursor=VHJhY2VBbm5vdGF0aW9uOjI%3D": {
+  "data": [
+   {
+    "annotator_kind": "HUMAN",
+    "created_at": "2026-11-01T18:12:18+00:00",
+    "id": "VHJhY2VBbm5vdGF0aW9uOjI=",
+    "identifier": "",
+    "metadata": {},
+    "name": "correctness",
+    "result": {
+     "explanation": "wrong place",
+     "label": "Incorrect",
+     "score": null
+    },
+    "source": "API",
+    "trace_id": "2d21338f346651d99980c31523ef78d8",
+    "updated_at": "2026-11-01T18:12:18+00:00",
+    "user_id": null
+   }
+  ],
+  "next_cursor": null
+ },
+ "/v1/projects/rag-demo/trace_annotations?trace_ids=749ef00b3f93e29be06db44f3be4fc3d&limit=2": {
+  "data": [
+   {
+    "annotator_kind": "HUMAN",
+    "created_at": "2026-11-01T18:12:34+00:00",
+    "id": "VHJhY2VBbm5vdGF0aW9uOjU=",
+    "identifier": "px-trace-note:0165b048-9bcf-43c6-ba66-b5180f5b0f0f",
+    "metadata": {},
+    "name": "note",
+    "result": {
+     "explanation": "customer was on the legacy plan",
+     "label": null,
+     "score": null
+    },
+    "source": "API",
+    "trace_id": "749ef00b3f93e29be06db44f3be4fc3d",
+    "updated_at": "2026-11-01T18:12:34+00:00",
+    "user_id": null
+   },
+   {
+    "annotator_kind": "HUMAN",
+    "created_at": "2026-11-01T18:12:18+00:00",
+    "id": "VHJhY2VBbm5vdGF0aW9uOjE=",
+    "identifier": "",
+    "metadata": {},
+    "name": "correctness",
+    "result": {
+     "explanation": "matches the help page",
+     "label": "correct",
+     "score": 1.0
+    },
+    "source": "API",
+    "trace_id": "749ef00b3f93e29be06db44f3be4fc3d",
+    "updated_at": "2026-11-01T18:12:18+00:00",
+    "user_id": null
+   }
+  ],
+  "next_cursor": null
+ }
+}

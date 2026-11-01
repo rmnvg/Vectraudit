@@ -45,6 +45,31 @@ def score_id(trace_id: str, name: str) -> str:
     return hashlib.sha256(f"vectraudit|{name}|{trace_id}".encode()).hexdigest()[:32]
 
 
+def judged_diagnoses(run: Mapping[str, Any]) -> tuple[dict[str, str], Counter[str], str]:
+    """``(trace ID -> diagnosis class, why other questions were left out, run digest)``.
+
+    Shared by the pushes to trace tools; the caller checks the run came from that tool.
+    """
+    digest = hashlib.sha256(json.dumps(run, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    found: dict[str, str] = {}
+    skipped: Counter[str] = Counter()
+    for query in run.get("queries") or []:
+        trace = query.get("trace_id")
+        answer = query.get("answer")
+        diagnosis = answer.get("diagnosis") if isinstance(answer, Mapping) else None
+        if not isinstance(trace, str) or not trace:
+            skipped["no_trace"] += 1
+            continue
+        if not isinstance(diagnosis, Mapping) or not isinstance(diagnosis.get("class"), str):
+            skipped["no_diagnosis"] += 1
+            continue
+        if trace in found:
+            skipped["duplicate_trace"] += 1
+            continue
+        found[trace] = diagnosis["class"]
+    return found, skipped, digest
+
+
 def diagnosis_scores(
     run: Mapping[str, Any], *, name: str = SCORE_NAME, environment: str | None = None
 ) -> tuple[list[dict[str, Any]], Counter[str]]:
@@ -68,27 +93,14 @@ def diagnosis_scores(
             "The environment must be lowercase letters, digits, - or _, not starting with "
             "'langfuse'."
         )
-    digest = hashlib.sha256(json.dumps(run, sort_keys=True, default=str).encode()).hexdigest()[:16]
-    scores: dict[str, dict[str, Any]] = {}
-    skipped: Counter[str] = Counter()
-    for query in run.get("queries") or []:
-        trace = query.get("trace_id")
-        answer = query.get("answer")
-        diagnosis = answer.get("diagnosis") if isinstance(answer, Mapping) else None
-        if not isinstance(trace, str) or not trace:
-            skipped["no_trace"] += 1
-            continue
-        if not isinstance(diagnosis, Mapping) or not isinstance(diagnosis.get("class"), str):
-            skipped["no_diagnosis"] += 1
-            continue
-        if trace in scores:
-            skipped["duplicate_trace"] += 1
-            continue
+    found, skipped, digest = judged_diagnoses(run)
+    scores: list[dict[str, Any]] = []
+    for trace, diagnosis_class in found.items():
         score: dict[str, Any] = {
             "id": score_id(trace, name),
             "traceId": trace,
             "name": name,
-            "value": diagnosis["class"],
+            "value": diagnosis_class,
             "dataType": "CATEGORICAL",
             "metadata": {
                 "source": "vectraudit",
@@ -98,8 +110,8 @@ def diagnosis_scores(
         }
         if environment is not None:
             score["environment"] = environment
-        scores[trace] = score
-    return list(scores.values()), skipped
+        scores.append(score)
+    return scores, skipped
 
 
 def push_scores(source: LangfuseSource, scores: Sequence[Mapping[str, Any]]) -> dict[str, int]:
