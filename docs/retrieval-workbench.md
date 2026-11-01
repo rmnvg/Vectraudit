@@ -512,6 +512,23 @@ OpenLLMetry's conventions instead of OpenInference's are translated on the way i
 - Spans that already carry OpenInference attributes are read exactly as recorded, and a
   translated value never replaces a recorded one.
 
+**OpenTelemetry GenAI conventions (OpenLIT and others)** are read from the same OTLP JSON:
+
+- **Retrievals** (`gen_ai.operation.name` `retrieval`) take their documents from
+  `gen_ai.retrieval.documents` (the specification's `id` and `score`, plus `content` and
+  `metadata` when recorded) and the question from `gen_ai.retrieval.query.text`.
+- **A list shorter than its count is a gap.** OpenLIT's LangChain instrumentation keeps
+  only the first three documents and records the total in
+  `gen_ai.retrieval.document_count`. When the count is larger, the recorded documents are
+  not the ranking, so the question is a gap rather than a shorter top k. Retrievers that
+  return three documents or fewer import in full.
+- **Vector database spans** from OpenLIT record counts but no document IDs, so they are
+  retrievers without documents. When a trace has both, name the delivered retrieval, for
+  example `--final-span "retrieval VectorStoreRetriever"`. Otherwise the question is
+  reported as ambiguous instead of guessed.
+- **Model calls** (`chat`, `text_completion`, `generate_content`) contribute
+  `gen_ai.input.messages`, so model context is located.
+
 LangSmith and Langfuse exports are read too, and converted to the same spans, so everything
 below applies to them unchanged:
 
