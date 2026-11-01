@@ -120,7 +120,9 @@ def _query(
         out["repeat_ids"] = query["repeat_ids"]  # validated by check_run, including attempts
     if "repeat_metrics" in query:
         out["repeat_metrics"] = [
-            _scalars(sample, "recall precision mrr ndcg") if sample is not None else None
+            _scalars(sample, "recall precision mrr ndcg map hit_rate")
+            if sample is not None
+            else None
             for sample in query["repeat_metrics"]
         ]
     if "repeat_ann_recall" in query:
@@ -134,7 +136,7 @@ def _query(
     out.setdefault("ann_recall", None)
     out.setdefault("nondeterministic", False)
     out["metrics"] = (
-        _scalars(query["metrics"], "recall precision mrr ndcg")
+        _scalars(query["metrics"], "recall precision mrr ndcg map hit_rate")
         if query.get("metrics") is not None
         else None
     )

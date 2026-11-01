@@ -3,7 +3,9 @@
 Two kinds of quality are kept apart and never substituted for each other:
 
 - **Semantic** metrics (recall, precision, MRR, nDCG@k) compare results with labelled
-  relevant documents. They need labels.
+  relevant documents. They need labels. MAP@k and Hit Rate@k are recorded beside them by
+  runs made since they were added; older runs simply lack them, and every comparison
+  treats them as unmeasured there (a policy that requires one is then not comparable).
 - **ANN recall@k** is the overlap with an exact nearest-neighbour search over the same
   corpus, vectors and distance. It measures approximation loss, not whether the documents
   answer the query, and needs an exact reference.
@@ -21,7 +23,10 @@ from vectraudit.core.relevance import relevance_metrics
 
 METRIC_CONTRACT_VERSION = 2
 SEMANTIC_METRICS = ("recall", "precision", "mrr", "ndcg")
-QUALITY_METRICS = (*SEMANTIC_METRICS, "ann_recall")
+RANK_METRICS = ("map", "hit_rate")
+"""Optional semantic metrics: present in runs recorded since they were added, absent before."""
+LABEL_METRICS = (*SEMANTIC_METRICS, *RANK_METRICS)
+QUALITY_METRICS = (*LABEL_METRICS, "ann_recall")
 
 
 def metric_contract(k: int) -> dict[str, Any]:
@@ -36,6 +41,11 @@ def metric_contract(k: int) -> dict[str, Any]:
         "duplicates": "no extra credit",
         "ties": "backend order",
         "precision": "relevant hits / k",
+        "map": (
+            "sum of precision@i at each rank i <= k holding a new relevant document, divided by "
+            "the number of relevant documents (trec_eval map_cut_k); optional"
+        ),
+        "hit_rate": "1 if any relevant document is in the top k, else 0; optional",
         "ann_recall": "|top-k ∩ exact top-k| / |exact top-k|",
     }
 
@@ -55,7 +65,7 @@ def repeat_quality(
         "repeat_metrics": metrics,
         "metrics": {
             name: statistics.fmean(m[name] for m in metrics if m is not None)
-            for name in SEMANTIC_METRICS
+            for name in LABEL_METRICS
         }
         if labels
         else None,
@@ -67,11 +77,37 @@ def repeat_quality(
 
 
 def semantic_metrics(found: Sequence[str], labels: Mapping[str, float], k: int) -> dict[str, float]:
-    """Recall, precision, MRR and nDCG at ``k`` for one labelled query."""
+    """Recall, precision, MRR, nDCG, MAP and Hit Rate at ``k`` for one labelled query."""
     m = relevance_metrics(found, labels, k)
     relevant = {doc for doc, grade in labels.items() if grade > 0}
     hits = len(set(found[:k]) & relevant)
-    return {"recall": m.recall, "precision": hits / k, "mrr": m.mrr, "ndcg": m.ndcg}
+    return {
+        "recall": m.recall,
+        "precision": hits / k,
+        "mrr": m.mrr,
+        "ndcg": m.ndcg,
+        "map": average_precision(found, relevant, k),
+        "hit_rate": 1.0 if hits else 0.0,
+    }
+
+
+def average_precision(found: Sequence[str], relevant: set[str], k: int) -> float:
+    """AP@k as trec_eval's ``map_cut_k``: precision at each new relevant hit, over all relevant.
+
+    A document repeated in the ranking earns no extra credit. Dividing by every relevant
+    document (not only those retrieved) means losing a relevant document lowers the score.
+    """
+    if not relevant:
+        return 0.0
+    seen: set[str] = set()
+    hits = 0
+    total = 0.0
+    for rank, doc in enumerate(found[:k], start=1):
+        if doc in relevant and doc not in seen:
+            hits += 1
+            total += hits / rank
+        seen.add(doc)
+    return total / len(relevant)
 
 
 def ann_recall(found: Sequence[str], exact: Sequence[str]) -> float | None:

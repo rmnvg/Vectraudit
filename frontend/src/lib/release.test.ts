@@ -78,3 +78,17 @@ it('keeps context assertions through an edit instead of dropping them', () => {
   const onlyContext = policyFromForm({ ...formFromPolicy({ critical_context: [{ query_id: 'q' }] }) })
   expect(onlyContext.errors).toEqual([])
 })
+
+it('keeps MAP and hit rate rules through an edit instead of dropping them', () => {
+  const raw = {
+    metrics: { ndcg: { max_drop: 0.01 }, map: { max_drop: 0.02 }, hit_rate: { min: 0.9 } },
+    cohorts: { min_queries: 10, metrics: { map: { max_drop: 0.05 } } },
+    primary_metric: 'map',
+  }
+  const { policy, errors } = policyFromForm(formFromPolicy(raw))
+  expect(errors).toEqual([])
+  if (!policy) throw new Error('expected a policy')
+  expect(policy.metrics).toEqual(raw.metrics)
+  expect(policy.primary_metric).toBe('map')
+  expect((policy.cohorts as { metrics: unknown }).metrics).toEqual(raw.cohorts.metrics)
+})

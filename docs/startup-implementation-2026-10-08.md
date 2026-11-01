@@ -2454,6 +2454,59 @@ Results:
   `test_github` publishing warnings) also fail on clean `main`.
 - Ruff, and mypy on Python 3.12 and 3.10, passed.
 
+## Step 74: MAP and Hit Rate (after Evidently)
+
+The last Evidently item: two standard ranking metrics Evidently reports and Vectraudit did
+not.
+- **Definitions:** MAP@k as trec_eval's `map_cut_k` (precision at each new relevant hit,
+  over all relevant documents; duplicates earn nothing) and Hit Rate@k (any relevant
+  document in the top k). Evidently's MAP divides by the relevant documents retrieved,
+  which does not penalise losing one, so it was not copied. Both are in the metric
+  contract.
+- **Optional, so nothing recorded breaks:** they are recorded beside the four semantic
+  metrics on every new run (questions, repeats and summary) but are not added to the
+  required set, and the contract stays at version 2. Older runs validate and compare
+  exactly as before. A policy that requires `map` or `hit_rate` against an older run is
+  not comparable, never a pass.
+- **Validated:** when present they must be fractions, on every repeat, and equal to the
+  repeat mean.
+- **Everywhere a metric goes:** policy rules, `primary_metric`, cohort rules, comparisons,
+  hosted uploads (older projections unchanged), lead-summary wording, and the workbench
+  policy editor.
+- **Found while adding them:** the policy editor rebuilds `metrics` from a fixed list, so a
+  MAP rule written by hand or by another tool would have been dropped on the next save. The
+  editor now lists both, and a frontend test pins the round trip.
+
+Not included: other Evidently ranking and recommender metrics (novelty, diversity,
+serendipity, popularity bias), MAP or Hit Rate in the FAISS index debugger's own evaluation
+view, and re-scoring stored runs (re-record to get the new metrics).
+
+Validation: 13 new Python tests:
+- MAP against hand computation, including duplicates, the cutoff and no labels;
+- MAP falling when a relevant document is lost;
+- Hit Rate with graded labels;
+- repeat averaging;
+- the contract;
+- new runs summarising both while older runs validate unchanged;
+- old against new comparing as before;
+- a policy needing MAP not comparable against an older run;
+- a MAP regression failing, with MAP as the primary metric;
+- invalid values refused;
+- incomplete repeat coverage refused;
+- uploads carrying both, with older projections unchanged.
+
+One frontend test pins MAP and Hit Rate rules (including cohort and primary metric) through
+an edit. One existing test that pinned the exact metric set was updated, and now also checks
+MAP and Hit Rate with a duplicate in the ranking.
+
+Results:
+- Full Python suite: 2,102 passed, 29 skipped (live services not configured),
+  1 deselected, 3 failed. Two failures (`test_cloud_email`, `test_github`) also fail on
+  clean `main`. The third was that pinned metric-set test, since updated (45 related tests
+  pass).
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+- Frontend: TypeScript, Oxlint, 116 frontend tests and the production build passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

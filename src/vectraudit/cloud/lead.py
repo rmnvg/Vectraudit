@@ -26,6 +26,8 @@ METRICS = {
     "recall": "Recall (relevant documents found)",
     "mrr": "MRR (rank of the first relevant document)",
     "precision": "Precision (share of results that are relevant)",
+    "map": "MAP (precision at every relevant document, over all relevant)",
+    "hit_rate": "Hit rate (questions with any relevant document)",
     "ann_recall": "ANN recall (agreement with exact search)",
 }
 HEADLINES = {

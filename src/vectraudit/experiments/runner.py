@@ -24,7 +24,7 @@ from vectraudit.core._faiss import import_faiss
 from vectraudit.evaluation.dataset import Dataset, load_dataset
 from vectraudit.evaluation.families import family_mean
 from vectraudit.evaluation.metrics import (
-    SEMANTIC_METRICS,
+    LABEL_METRICS,
     metric_contract,
     repeat_quality,
     semantic_metrics,
@@ -269,7 +269,7 @@ def run_candidate(
             "n": len(span_rows),
             "n_families": len({key for key, _ in span_rows}),
             "metrics": {
-                m: family_mean((key, row[m]) for key, row in span_rows) for m in SEMANTIC_METRICS
+                m: family_mean((key, row[m]) for key, row in span_rows) for m in LABEL_METRICS
             },
         }
     return CandidateResult(spec, run, stats, span_summary)

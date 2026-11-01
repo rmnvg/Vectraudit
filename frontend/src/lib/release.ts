@@ -14,13 +14,15 @@ export interface ReleaseRecord extends ReleaseSummary {
   files: Record<string, string>
 }
 
-export const METRICS = ['ndcg', 'recall', 'mrr', 'precision', 'ann_recall'] as const
+export const METRICS = ['ndcg', 'recall', 'mrr', 'precision', 'map', 'hit_rate', 'ann_recall'] as const
 export type Metric = typeof METRICS[number]
 export const METRIC_HELP: Record<Metric, string> = {
   ndcg: 'nDCG: are the most relevant documents near the top?',
   recall: 'Recall: how many of the relevant documents were returned at all?',
   mrr: 'MRR: how high is the first relevant document?',
   precision: 'Precision: how many returned documents are relevant?',
+  map: 'MAP: precision at every relevant document, over all relevant ones (runs recorded before MAP was added lack it).',
+  hit_rate: 'Hit rate: did any relevant document come back at all (runs recorded before it was added lack it)?',
   ann_recall: 'ANN recall: how closely approximate search matches exact search?',
 }
 
