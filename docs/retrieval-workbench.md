@@ -832,6 +832,27 @@ vectraudit workbench langfuse-push current.judged.run.json --send     # write th
 - Only runs imported from Langfuse are accepted, because other runs' trace IDs are not
   Langfuse's. Questions without a trace or a diagnosis are left out and counted.
 
+### Show the diagnosis in Phoenix
+
+For a run imported from Phoenix (a `phoenix-pull`, a Phoenix span export, or OpenInference
+traces that were also sent to Phoenix), `workbench phoenix-push` writes each judged trace's
+diagnosis back as a trace annotation:
+
+```bash
+vectraudit workbench phoenix-push current.judged.run.json            # preview: sends nothing
+vectraudit workbench phoenix-push current.judged.run.json --send     # write the annotations
+```
+
+- **Sent per trace:** the trace ID, the annotation name (`--name`, default
+  `vectraudit.diagnosis`), `annotator_kind` `CODE`, the diagnosis class as the label, the
+  identifier `vectraudit`, and metadata with Vectraudit's name, a format version and a run
+  digest. No explanation, text, document IDs or facts. Previews by default.
+- **Re-sending replaces:** Phoenix keys annotations by trace, name and identifier.
+- **Unknown traces are reported, not silently lost.** Phoenix's default asynchronous write
+  answers 200 and drops annotations for traces it does not have, so requests use
+  `sync=true`. A batch naming an unknown trace is refused whole; it is resent one trace at
+  a time, the known traces are written, and the unknown ones are counted (exit 3).
+
 ## Investigate a failure and try a fix
 
 From a failed question to a verified repair, without leaving the benchmark:
