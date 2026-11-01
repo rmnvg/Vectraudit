@@ -1283,7 +1283,7 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69, 75, 77 (Langfuse, LangSmith, Opik and OpenObserve pulls; OpenLLMetry OTLP): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69, 75, 77, 81 (Langfuse, LangSmith, Opik and OpenObserve pulls; OpenLLMetry and OTel GenAI OTLP): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47 and 68 (diagnosis written back to Langfuse traces): investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
@@ -2717,6 +2717,43 @@ Validation: 6 new tests:
 
 Results:
 - Full Python suite: **2,160 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 81: OpenTelemetry GenAI retrieval conventions (OpenLIT) (1.1)
+
+The owner asked what OpenLIT offers. It is OpenTelemetry instrumentation for LLM apps and
+vector databases plus an observability platform; the platform is general tracing, ruled out.
+Its source showed two things:
+- Its **vector-database spans** record only counts and query text, never document IDs.
+- Its **LangChain retriever spans** use the official **OpenTelemetry GenAI semantic
+  conventions** (`gen_ai.operation.name = retrieval`, `gen_ai.retrieval.documents`,
+  `gen_ai.retrieval.query.text`), checked against the specification and its JSON schema.
+
+So the support targets the specification, not OpenLIT, and covers any instrumentation that
+follows it. The Step 75 translation now also reads:
+- **retrieval spans:** documents (`id`, `score`, `content`, `metadata`) and the question;
+- **chat and completion spans:** `gen_ai.input.messages`, so model context is located.
+
+**Found in OpenLIT's source:** its LangChain retriever records only the first three
+documents, with the total in `gen_ai.retrieval.document_count`. Taking those three as the
+ranking would understate recall and misattribute losses, so a list shorter than its count is
+a gap. A trace holding both a retrieval span and an ID-less vector-database span is reported
+as ambiguous until `--final-span` names the delivered one.
+
+Not included: other OpenLIT platform features (dashboards, guardrails, evaluations, prompt
+hub), an OpenLIT API pull, and a real OpenLIT export.
+
+Validation: 9 new tests:
+- an OpenLIT LangChain trace (question, IDs, model context);
+- a three-of-five list as a gap, with a complete list importing;
+- the specification's `id`/`score` shape;
+- four unusable document lists as gaps;
+- a nested vector-database span reported as ambiguous, then resolved with `--final-span`;
+- chat spans as LLM spans, and OpenInference spans untouched.
+
+Results:
+- Full Python suite: **2,171 passed, 0 failed**, 29 skipped (live services not
   configured), 1 deselected.
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 

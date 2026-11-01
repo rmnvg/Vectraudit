@@ -1,4 +1,10 @@
-"""OpenLLMetry (Traceloop) spans in an OTLP export, as the OpenInference attributes we read.
+"""OpenLLMetry and OpenTelemetry GenAI spans in an OTLP export, as OpenInference attributes.
+
+Also covers the OpenTelemetry GenAI semantic conventions for retrieval and model calls
+(``gen_ai.operation.name`` ``retrieval``/``chat``, ``gen_ai.retrieval.documents``,
+``gen_ai.retrieval.query.text``, ``gen_ai.input.messages``), which OpenLIT and other
+instrumentations emit; see :func:`_genai_documents` for the document list's rules.
+
 
 OpenLLMetry instruments LLM applications with OpenTelemetry using its own conventions
 (``opentelemetry-semantic-conventions-ai``) instead of OpenInference's. Its OTLP exports
@@ -48,6 +54,7 @@ MULTI_QUERY_COUNTS = (
     "db.chroma.query.embeddings_count",
     "db.chroma.query.texts_count",
 )
+LLM_OPERATIONS = {"chat", "text_completion", "generate_content"}
 SPAN_KINDS = {"workflow": "CHAIN", "task": "CHAIN", "agent": "AGENT", "tool": "TOOL"}
 _QUESTION_KEYS = ("question", "query", "input", "text")
 _METADATA_LIMIT = 100_000
@@ -70,11 +77,22 @@ def translate(attributes: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
     """OpenInference attributes for one OpenLLMetry span (recorded attributes kept as they are)."""
     out: dict[str, Any] = {}
     results = [e for e in events if e.get("name") in RESULT_EVENTS]
+    operation = str(attributes.get("gen_ai.operation.name", "")).lower()
     if results or any(k in attributes for k in VECTOR_QUERY_MARKERS):
         out["openinference.span.kind"] = "RETRIEVER"
         if results and not _several_queries(attributes, results):
             out.update(_documents(results))
-    elif "gen_ai.system" in attributes or "llm.request.type" in attributes:
+    elif operation == "retrieval":  # OpenTelemetry GenAI semantic conventions (OpenLIT)
+        out["openinference.span.kind"] = "RETRIEVER"
+        out.update(_genai_documents(attributes))
+        query = attributes.get("gen_ai.retrieval.query.text")
+        if isinstance(query, str) and query.strip():
+            out["input.value"] = query
+    elif (
+        "gen_ai.system" in attributes
+        or "llm.request.type" in attributes
+        or operation in LLM_OPERATIONS
+    ):
         out["openinference.span.kind"] = "LLM"
         out.update(_messages(attributes))
     elif str(attributes.get("traceloop.span.kind", "")).lower() in SPAN_KINDS:
@@ -135,6 +153,44 @@ def _documents(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         metadata = _metadata(found.get(f"{prefix}.metadata"))
         if metadata is not None:
             out[f"{base}.metadata"] = json.dumps(metadata, default=str)
+    return out
+
+
+def _genai_documents(attributes: Mapping[str, Any]) -> dict[str, Any]:
+    """Documents from ``gen_ai.retrieval.documents`` (OpenTelemetry GenAI conventions).
+
+    The specification's schema requires ``id`` and ``score`` and allows more (OpenLIT adds
+    ``content``). A list shorter than the recorded ``gen_ai.retrieval.document_count``
+    (OpenLIT keeps only the first three) is not the ranking: no documents are taken, so the
+    question is a gap instead of a silently shorter top k.
+    """
+    raw = attributes.get("gen_ai.retrieval.documents")
+    try:
+        documents = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return {}
+    if not isinstance(documents, list) or not all(isinstance(d, dict) for d in documents):
+        return {}
+    count = attributes.get("gen_ai.retrieval.document_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count > len(documents):
+        return {}
+    out: dict[str, Any] = {}
+    for i, doc in enumerate(documents):
+        base = f"retrieval.documents.{i}.document"
+        doc_id = doc.get("id")
+        if isinstance(doc_id, (str, int)) and not isinstance(doc_id, bool) and str(doc_id):
+            out[f"{base}.id"] = str(doc_id)
+        score = doc.get("score")
+        if isinstance(score, (int, float)) and not isinstance(score, bool):
+            out[f"{base}.score"] = float(score)
+        content = doc.get("content")
+        if isinstance(content, str) and content:
+            out[f"{base}.content"] = content
+        metadata = doc.get("metadata")
+        if isinstance(metadata, dict):
+            out[f"{base}.metadata"] = json.dumps(metadata, default=str)
+    if not out and documents:
+        return {}
     return out
 
 
