@@ -216,7 +216,7 @@ def calibrate(
     real = sorted(
         rule
         for rule in current_alarms["by_rule"]
-        if rule_kind(rule) in ("critical", "safety")
+        if rule_kind(rule) in ("critical", "safety", "prompt")  # a prompt change is never noise
         or rule.endswith(".min")
         or rule == "latency.p95_max_ms"
     )

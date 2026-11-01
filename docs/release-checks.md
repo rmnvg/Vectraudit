@@ -262,6 +262,14 @@ It is a diagnostic: it never changes a release verdict.
   p95 rise is also larger than this in absolute terms, so scheduler jitter on shared CI
   runners (about 0.1 ms on local indexes, 1.5 ms against networked backends) is not a
   regression. Lower it, or set 0 to judge every rise, on dedicated hardware.
+- `prompt_changes: "fail"` gates on prompt versions recorded from traces (see the prompt
+  versions table in the workbench docs). Each prompt whose version differs between the runs,
+  including one added, removed or only partly rolled out, fails as rule `prompt:<name>`. A
+  reviewed change is accepted through an audited exception (`allow` it with the `prompt`
+  kind). If either run records no prompt versions the check is not comparable, because a
+  change cannot be ruled out. The default, `"report"`, only lists prompt changes with the
+  changed settings. Hosted checks see fingerprinted prompt names, so their rule keys are
+  `prompt:sha256:…`. Policies without the option keep their hashes.
 - `require_significance: true` fails a `max_drop` rule only when the whole 95% interval of
   the change is beyond the limit; useful for small or noisy query sets. Not detecting harm
   this way is not evidence that the change is within tolerance.
@@ -376,7 +384,7 @@ The policy decides what can be accepted. Without an `exceptions` block, nothing 
 ```
 
 - `allow`: rule kinds open to exceptions (`metric`, `cohort`, `regressed_queries`,
-  `latency`, `critical`).
+  `latency`, `critical`, `prompt`).
 - `approver`: least role that may accept them (`engineer` or `owner`; default `owner`).
 - `safety`: `never` (default) or `owner`, for forbidden-document and no-answer failures.
   An engineer can never accept a safety failure.

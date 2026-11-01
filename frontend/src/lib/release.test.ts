@@ -92,3 +92,12 @@ it('keeps MAP and hit rate rules through an edit instead of dropping them', () =
   expect(policy.primary_metric).toBe('map')
   expect((policy.cohorts as { metrics: unknown }).metrics).toEqual(raw.cohorts.metrics)
 })
+
+it('keeps the prompt change rule through an edit instead of dropping it', () => {
+  const raw = { metrics: { ndcg: { max_drop: 0.01 } }, prompt_changes: 'fail', exceptions: { allow: ['prompt'] } }
+  const { policy, errors } = policyFromForm(formFromPolicy(raw))
+  expect(errors).toEqual([])
+  if (!policy) throw new Error('expected a policy')
+  expect(policy.prompt_changes).toBe('fail')
+  expect(policy.exceptions).toEqual({ allow: ['prompt'] })
+})

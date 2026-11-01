@@ -122,6 +122,7 @@ class _Check:
             self._quality(pairs)
             self._cohorts(pairs)
             self._latency()
+            self._prompt_rule()
         verdicts = {Verdict(r["verdict"]) for r in self.reasons}
         verdict = next((v for v in _PRECEDENCE if v in verdicts), Verdict.PASS)
         self.out["verdict"] = verdict.value
@@ -488,6 +489,33 @@ class _Check:
             self.warnings.append(
                 f"{nondeterministic} candidate queries returned different results across repeats."
             )
+
+    def _prompt_rule(self) -> None:
+        """Under ``prompt_changes: fail``, every changed prompt fails as ``prompt:<name>``."""
+        if self.policy.prompt_changes != "fail":
+            return
+        recorded = {}
+        for side, run in (("baseline", self.base), ("candidate", self.cand)):
+            prompts = ((run.get("backend") or {}).get("config") or {}).get("prompts")
+            if not isinstance(prompts, Mapping) or not prompts:
+                self.flag(
+                    Verdict.NOT_COMPARABLE,
+                    f"The policy fails prompt changes, but the {side} run records no prompt "
+                    "versions, so a change cannot be ruled out. Record prompt versions in the "
+                    "traces (see the prompt versions table in the workbench docs).",
+                )
+                return
+            recorded[side] = prompts
+        before, after = recorded["baseline"], recorded["candidate"]
+        for name in sorted(set(before) | set(after)):
+            old, new = _versions(before.get(name)), _versions(after.get(name))
+            if old != new:
+                self.flag(
+                    Verdict.FAIL,
+                    f"Prompt {name} changed ({_shown_versions(old)} → {_shown_versions(new)}); "
+                    "the policy fails prompt changes until they are accepted by exception.",
+                    f"prompt:{name}",
+                )
 
     def _prompt_warnings(self) -> None:
         """Prompt versions recorded from traces: mixed within a run, or on one side only."""
@@ -961,6 +989,19 @@ class _Check:
                     f"the policy allows {limit:.1f}%.",
                     f"latency.{p}_increase",
                 )
+
+
+def _versions(value: Any) -> tuple[str, ...]:
+    """A prompt's recorded versions (one, several when a run mixed them, none when absent)."""
+    if value is None:
+        return ()
+    if isinstance(value, list):
+        return tuple(sorted(str(v) for v in value))
+    return (str(value),)
+
+
+def _shown_versions(versions: tuple[str, ...]) -> str:
+    return "absent" if not versions else " + ".join(versions)
 
 
 def _value(q: Mapping[str, Any], name: str) -> float | None:

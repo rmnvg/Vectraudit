@@ -20,10 +20,11 @@ ACCEPTED = "accepted"
 
 
 def rule_kind(rule: str) -> str:
-    """``metric``, ``cohort``, ``regressed_queries``, ``latency``, ``critical`` or ``safety``."""
+    """``metric``, ``cohort``, ``regressed_queries``, ``latency``, ``critical``, ``prompt`` or
+    ``safety``."""
     if rule.startswith("critical_context:"):
         return "critical"
-    for kind in ("metric", "cohort", "critical"):
+    for kind in ("metric", "cohort", "critical", "prompt"):
         if rule.startswith(kind + ":"):
             return kind
     if rule.startswith("safety."):
