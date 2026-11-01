@@ -1283,7 +1283,7 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69 (Langfuse, LangSmith and Opik API pulls): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69, 75 (Langfuse, LangSmith and Opik API pulls; OpenLLMetry OTLP): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47 and 68 (diagnosis written back to Langfuse traces): investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
@@ -2453,6 +2453,55 @@ Results:
   1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
   `test_github` publishing warnings) also fail on clean `main`.
 - Ruff, and mypy on Python 3.12 and 3.10, passed.
+
+## Step 75: OpenLLMetry traces (1.1)
+
+The owner asked what OpenLLMetry (Traceloop) offers that Vectraudit could use. It is
+OpenTelemetry instrumentation for LLM applications. Instrumenting applications is general
+tracing, which the strategy rules out; but its exports are traces that teams already
+record, and Vectraudit's OTLP import read only OpenInference's conventions, so an
+OpenLLMetry export imported with no retrieval at all. Reading them is the strategy's
+"integrate rather than replace".
+
+The OTLP reader now keeps span events and translates OpenLLMetry spans into OpenInference
+attributes. Every convention was checked against the OpenLLMetry source (the
+semantic-conventions package, the Pinecone, Chroma and Qdrant instrumentations, and the
+SDK's decorators and tracing):
+- **Vector database results** come from `db.query.result`/`db.search.result` events: id,
+  score, text, and metadata (JSON, or Pinecone's Python `repr`, read as literals only).
+  `distance` is never used as a score.
+- **Retrievers are never inferred from names:** only result events or vector-query markers
+  count. A query without result events (Qdrant) is a gap, and so is a span holding several
+  queries' results (Chroma with several texts, Milvus with several query IDs), never a
+  merged ranking.
+- **Question** from the workflow's `traceloop.entity.input` (`{"args", "kwargs"}`).
+  **Prompts** come from `gen_ai.prompt.N` for model context. **Association properties**
+  become metadata, session and user, so `--context-field` works in intake and drift.
+- **Managed prompt versions** (`traceloop.prompt.key`/`version`) feed Step 70's prompt
+  evidence.
+- OpenInference spans are untouched; recorded attributes always win over translated ones.
+
+Not included: OpenLLMetry's newer `gen_ai.input.messages` beyond using it as the input
+value, rerankers (OpenLLMetry has no reranker convention), a Traceloop API pull, and a
+real OpenLLMetry export (fixtures follow the instrumentation source).
+
+Validation: 15 new tests:
+- a Pinecone trace (ids from repr metadata, scores, question, prompt version);
+- a Chroma trace locating model context, with distance never a score;
+- multi-query Chroma and Milvus spans as gaps;
+- a Qdrant query without results as a gap;
+- no retriever inferred from a name;
+- OpenInference spans and recorded attributes untouched;
+- association properties as context and session;
+- six question-extraction cases;
+- literal-only metadata parsing, refusing code and oversized input;
+- the prompt version-hash fallback.
+
+Results:
+- Full Python suite: 2,105 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email`, `test_github`) also fail on
+  clean `main`.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
 ## Next increments
 

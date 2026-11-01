@@ -10,8 +10,8 @@ vectraudit workbench intake traces-2026-10-18.jsonl questions.jsonl \
   --workspace workbench-runs --export-review review.jsonl
 ```
 
-Traces are read like `workbench import-traces` (OpenInference OTLP JSON or Phoenix span
-records, LangSmith runs, Langfuse observations).
+Traces are read like `workbench import-traces` (OpenInference or OpenLLMetry OTLP JSON,
+Phoenix span records, LangSmith runs, Langfuse observations, Opik pulls).
 Everything stays local: the state folder holds a cursor and the review queue, including
 question text, and nothing is uploaded.
 
