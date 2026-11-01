@@ -124,7 +124,7 @@ def test_observations_are_paged_deduplicated_and_requested_with_their_content(la
     paths = [(p, q.get("cursor")) for p, q in FakeLangfuse.requests]
     assert paths == [("/api/public/v2/observations", c) for c in (None, "1", "2")]
     params = FakeLangfuse.requests[0][1]
-    assert params["fields"] == "core,basic,io,metadata"
+    assert params["fields"] == "core,basic,io,metadata,prompt"
     assert (params["fromStartTime"], params["toStartTime"]) == (
         "2026-10-20T00:00:00Z",
         "2026-10-21T00:00:00Z",

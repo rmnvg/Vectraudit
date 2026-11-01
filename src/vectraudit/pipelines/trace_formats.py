@@ -173,15 +173,32 @@ def langfuse_span(observation: Mapping[str, Any], stage_names: Collection[str] =
         name,
         _epoch(observation.get("startTime")),
         _epoch(observation.get("endTime") or observation.get("startTime")),
-        _attributes(
-            kind,
-            observation.get("input"),
-            observation.get("output"),
-            observation.get("metadata"),
-            session=observation.get("sessionId"),
-            user=observation.get("userId"),
-        ),
+        {
+            **_attributes(
+                kind,
+                observation.get("input"),
+                observation.get("output"),
+                observation.get("metadata"),
+                session=observation.get("sessionId"),
+                user=observation.get("userId"),
+            ),
+            **_langfuse_prompt(observation),
+        },
     )
+
+
+def _langfuse_prompt(observation: Mapping[str, Any]) -> dict[str, Any]:
+    """A linked Langfuse prompt as OpenInference prompt attributes (name and version only)."""
+    name, version = observation.get("promptName"), observation.get("promptVersion")
+    if not isinstance(name, str) or not name or isinstance(version, bool):
+        return {}
+    if not isinstance(version, (int, str)) or not str(version):
+        return {}
+    return {
+        "prompt.vendor": "langfuse",
+        "prompt.id": name,
+        "llm.prompt_template.version": str(version),
+    }
 
 
 def opik_span(span: Mapping[str, Any], stage_names: Collection[str] = ()) -> Span:

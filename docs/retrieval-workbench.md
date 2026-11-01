@@ -538,8 +538,32 @@ that cause; the run is then `partial` and cannot pass a release check.
 The capability report, printed and optionally saved as JSON, states for the imported traces:
 stable document IDs, the delivered ranking, observed stages, document flow between stages,
 filters and tenant context (none of these formats has a standard attribute for filters;
-metadata key names and session or user IDs are listed), model context (below), replay and latency.
-It holds counts, span names and attribute names only.
+metadata key names and session or user IDs are listed), model context (below), prompt
+versions (below), replay and latency. It holds counts, span names and attribute names only.
+
+**Prompt versions from traces.** When the traces record which managed prompt produced each
+answer, the run records its name and version per question, and the run's
+`backend.config.prompts` holds each prompt's version:
+
+| Source | Recorded as |
+|---|---|
+| OpenInference | `prompt.id` and `llm.prompt_template.version` |
+| Langfuse | the observation's linked prompt (`promptName`, `promptVersion`) |
+| LangSmith | LangChain hub prompts: `lc_hub_owner`/`lc_hub_repo` and `lc_hub_commit_hash` in run metadata |
+| Opik | `opik_prompts` in span or trace metadata (`name`, with `version.commit` or `version_number`) |
+
+- **Release checks** list a prompt change with the other changed settings
+  (`backend.config.prompts.support-answer: 12 → 13`). They warn when a run mixes versions
+  of one prompt, since its answers then came from different prompts, and when only one run
+  recorded prompt versions.
+- **Answer judgments** (`attach-answers`) break diagnoses down by prompt version when a run
+  holds several, so "answered wrong despite evidence rose with v13" is visible.
+- **Only names and versions are kept,** never template text. Hosted uploads carry them as
+  fingerprints, like other text settings: a hosted check shows that a prompt changed, but
+  not its name or version.
+- Vectraudit does not store, edit or serve prompts. Keep managing them in Langfuse,
+  LangSmith or Opik; Vectraudit reads which version answered.
+- A question that matched several traces and was refused records no prompt.
 
 **Model context from traces.** When LLM spans record their input messages, each delivered
 document's recorded text (`document.content`) is looked for in the prompt, ignoring case and
