@@ -1400,6 +1400,57 @@ def opik_pull_command(
     typer.echo(f"({source.calls} API requests.)")
 
 
+@workbench_app.command("openobserve-pull")
+def openobserve_pull_command(
+    since: Annotated[str, typer.Option(help="Start of the window (ISO 8601, inclusive).")],
+    until: Annotated[str, typer.Option(help="End of the window (ISO 8601).")],
+    traces: Annotated[
+        Path, typer.Option(help="Write the traces here (OTLP JSON) for import-traces or intake.")
+    ],
+    org: Annotated[
+        str | None, typer.Option(help="Organisation (default: OPENOBSERVE_ORG).")
+    ] = None,
+    stream: Annotated[str, typer.Option(help="Trace stream name.")] = "default",
+    grace_minutes: Annotated[
+        int, typer.Option(help="Also read spans up to this long after the window.")
+    ] = 60,
+) -> None:
+    """Pull the traces that started in a window from OpenObserve, as OTLP JSON.
+
+    Reads OPENOBSERVE_URL, OPENOBSERVE_ORG, and OPENOBSERVE_TOKEN or OPENOBSERVE_USER and
+    OPENOBSERVE_PASSWORD. OpenObserve flattens attribute keys on ingest; the keys Vectraudit
+    reads (OpenInference and OpenLLMetry) are restored. Read-only.
+    """
+    import os
+
+    from vectraudit.labelling.task import atomic_write
+    from vectraudit.pipelines.openobserve_api import OpenObserveSource, fetch, to_otlp
+
+    name = org or os.environ.get("OPENOBSERVE_ORG")
+    url = os.environ.get("OPENOBSERVE_URL")
+    if not name or not url:
+        typer.echo("Pull error: set OPENOBSERVE_URL, and --org or OPENOBSERVE_ORG.", err=True)
+        raise typer.Exit(2)
+    try:
+        source = OpenObserveSource(
+            url=url,
+            org=name,
+            stream=stream,
+            user=os.environ.get("OPENOBSERVE_USER") or None,
+            password=os.environ.get("OPENOBSERVE_PASSWORD") or None,
+            token=os.environ.get("OPENOBSERVE_TOKEN") or None,
+        )
+        trace_ids, rows = fetch(source, start=since, end=until, grace_minutes=grace_minutes)
+        atomic_write(traces, json.dumps(to_otlp(rows)) + "\n")
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Pull error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(f"Wrote {len(trace_ids)} traces and {len(rows)} spans to {traces}.")
+    if trace_ids and not rows:
+        typer.echo("No spans were returned for these traces; check the stream name.")
+    typer.echo(f"({source.calls} API requests.)")
+
+
 @workbench_app.command("langsmith-pull")
 def langsmith_pull_command(
     project: Annotated[str, typer.Option(help="LangSmith tracing project name.")],
@@ -1587,6 +1638,56 @@ def score_drift_command(
     if json_out is not None:
         _write(json_out, report)
     if fail_on_drift and report["status"] == "retriever_shift_likely":
+        raise typer.Exit(3)
+
+
+@workbench_app.command("hubs")
+def hubs_command(
+    run: Annotated[Path, typer.Argument(help="Run file to inspect (the candidate).")],
+    baseline: Annotated[
+        Path | None, typer.Option(help="Earlier run, to list hubs that are new.")
+    ] = None,
+    dataset: Annotated[
+        Path | None,
+        typer.Option(help="Benchmark, to say whether each hub is relevant where retrieved."),
+    ] = None,
+    hub_share: Annotated[
+        float,
+        typer.Option(min=0.01, max=1.0, help="Share of questions that makes a document a hub."),
+    ] = 0.1,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_new_hubs: Annotated[
+        bool, typer.Option("--fail-on-new-hubs", help="Exit 3 when the candidate has new hubs.")
+    ] = False,
+) -> None:
+    """Documents the retriever returns for many unrelated questions (hubs).
+
+    Reports k-occurrence, Gini and coverage (after Evidently's popularity bias), skewness,
+    and each hub with how often it is labelled relevant where it is retrieved. Never
+    changes a release verdict.
+    """
+    from vectraudit.evaluation.hubness import compare, hubness, render
+
+    try:
+        labels = (
+            {q.query_id: dict(q.relevant) for q in load_dataset(dataset).queries}
+            if dataset is not None
+            else None
+        )
+        report = hubness(load_run(run), labels=labels, hub_share=hub_share)
+        comparison = None
+        if baseline is not None:
+            comparison = compare(
+                hubness(load_run(baseline), labels=labels, hub_share=hub_share), report
+            )
+            report["comparison"] = comparison
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Hubs error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report, comparison))
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_new_hubs and comparison is not None and comparison["new_hubs"]:
         raise typer.Exit(3)
 
 

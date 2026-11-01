@@ -10,14 +10,14 @@ vectraudit workbench intake traces-2026-10-18.jsonl questions.jsonl \
   --workspace workbench-runs --export-review review.jsonl
 ```
 
-Traces are read like `workbench import-traces` (OpenInference OTLP JSON or Phoenix span
-records, LangSmith runs, Langfuse observations).
+Traces are read like `workbench import-traces` (OpenInference or OpenLLMetry OTLP JSON,
+Phoenix span records, LangSmith runs, Langfuse observations, Opik pulls).
 Everything stays local: the state folder holds a cursor and the review queue, including
 question text, and nothing is uploaded.
 
 ## Pulling directly from Langfuse
 
-Teams on Langfuse, LangSmith or Opik can skip the export step. `workbench langfuse-pull` reads a time window
+Teams on Langfuse, LangSmith, Opik or OpenObserve can skip the export step. `workbench langfuse-pull` reads a time window
 from the project's public API and writes the same observation records an export holds, plus
 the project's scores as answer judgments:
 
@@ -138,6 +138,34 @@ questions.
 passage review → it joins the benchmark (`promoted`) → a failing release creates a
 regression case → a fix is verified → `intake` reports a *likely recurrence* if production
 misses its labelled documents again, and asks to reopen the verified case.
+
+## Pulling directly from OpenObserve
+
+Teams that send their application's OpenTelemetry traces (OpenInference or OpenLLMetry) to
+OpenObserve can pull them as OTLP JSON:
+
+```bash
+export OPENOBSERVE_URL=https://o2.example.com OPENOBSERVE_ORG=acme
+export OPENOBSERVE_USER=dev@example.com OPENOBSERVE_PASSWORD=...   # or OPENOBSERVE_TOKEN
+vectraudit workbench openobserve-pull --stream default \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z --traces otlp-2026-10-19.json
+vectraudit workbench intake otlp-2026-10-19.json questions.jsonl --state retrieval/intake
+```
+
+- **Whole traces:** traces are taken by start time from OpenObserve's latest-traces
+  listing, then every span of each is read up to `--grace-minutes` (default 60) after the
+  window.
+- **Restored keys:** OpenObserve stores attribute keys flattened (lower case, dots as
+  underscores, `attr_` before a key that collides with a span column). That cannot be
+  undone in general, so the keys Vectraudit reads (OpenInference retrieval, reranker,
+  message, prompt and session keys, and the OpenLLMetry keys) are restored by explicit
+  patterns. Other attributes keep their stored names, where nothing reads them. Span
+  events are stored with their original keys and come back as recorded.
+- **Read-only.** Credentials go only over https (plain http only to a local server); trace
+  IDs are checked to be 32 hex characters before they appear in a query; error bodies are
+  not echoed.
+- OpenObserve is AGPL-3.0. Vectraudit only calls its HTTP API, as any client does, and
+  contains none of its code.
 
 ## Is the benchmark still representative?
 

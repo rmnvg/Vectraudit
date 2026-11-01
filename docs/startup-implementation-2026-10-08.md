@@ -1283,7 +1283,7 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69 (Langfuse, LangSmith and Opik API pulls): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69, 75, 77 (Langfuse, LangSmith, Opik and OpenObserve pulls; OpenLLMetry OTLP): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47 and 68 (diagnosis written back to Langfuse traces): investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
@@ -2506,6 +2506,161 @@ Results:
   pass).
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 - Frontend: TypeScript, Oxlint, 116 frontend tests and the production build passed.
+## Step 75: OpenLLMetry traces (1.1)
+
+The owner asked what OpenLLMetry (Traceloop) offers that Vectraudit could use. It is
+OpenTelemetry instrumentation for LLM applications. Instrumenting applications is general
+tracing, which the strategy rules out; but its exports are traces that teams already
+record, and Vectraudit's OTLP import read only OpenInference's conventions, so an
+OpenLLMetry export imported with no retrieval at all. Reading them is the strategy's
+"integrate rather than replace".
+
+The OTLP reader now keeps span events and translates OpenLLMetry spans into OpenInference
+attributes. Every convention was checked against the OpenLLMetry source (the
+semantic-conventions package, the Pinecone, Chroma and Qdrant instrumentations, and the
+SDK's decorators and tracing):
+- **Vector database results** come from `db.query.result`/`db.search.result` events: id,
+  score, text, and metadata (JSON, or Pinecone's Python `repr`, read as literals only).
+  `distance` is never used as a score.
+- **Retrievers are never inferred from names:** only result events or vector-query markers
+  count. A query without result events (Qdrant) is a gap, and so is a span holding several
+  queries' results (Chroma with several texts, Milvus with several query IDs), never a
+  merged ranking.
+- **Question** from the workflow's `traceloop.entity.input` (`{"args", "kwargs"}`).
+  **Prompts** come from `gen_ai.prompt.N` for model context. **Association properties**
+  become metadata, session and user, so `--context-field` works in intake and drift.
+- **Managed prompt versions** (`traceloop.prompt.key`/`version`) feed Step 70's prompt
+  evidence.
+- OpenInference spans are untouched; recorded attributes always win over translated ones.
+
+Not included: OpenLLMetry's newer `gen_ai.input.messages` beyond using it as the input
+value, rerankers (OpenLLMetry has no reranker convention), a Traceloop API pull, and a
+real OpenLLMetry export (fixtures follow the instrumentation source).
+
+Validation: 15 new tests:
+- a Pinecone trace (ids from repr metadata, scores, question, prompt version);
+- a Chroma trace locating model context, with distance never a score;
+- multi-query Chroma and Milvus spans as gaps;
+- a Qdrant query without results as a gap;
+- no retriever inferred from a name;
+- OpenInference spans and recorded attributes untouched;
+- association properties as context and session;
+- six question-extraction cases;
+- literal-only metadata parsing, refusing code and oversized input;
+- the prompt version-hash fallback.
+
+Results:
+- Full Python suite: 2,105 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email`, `test_github`) also fail on
+  clean `main`.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 76: the two tests that always failed
+
+Since Step 65 every full run reported the same two failures, noted each time as "also fail
+on clean `main`" but never explained. A suite that always reports two failures hides the
+next real one. Both had real causes:
+- **`test_cloud_email`, a product defect.** Python's email header folding (reproduced on
+  3.10.20 and 3.12.3) moved the decision email's 89-character subject whole onto a
+  continuation line, so recipients got a subject starting with a space. Emails are now
+  serialised without folding (`max_line_length=998`; subjects are capped at 200 characters,
+  within RFC 5322's limit). A new test calls the message builder directly and fails on the
+  old code.
+- **`test_github`, a test-isolation defect.** The code also reads the gh CLI's `GH_TOKEN`.
+  The test removed only `GITHUB_TOKEN`, so wherever `GH_TOKEN` is set (this environment, and
+  any developer machine logged in to `gh`) it took the publishing path against the test's
+  mock server. The fixture now removes `GH_TOKEN` too, for every GitHub test.
+
+CI runs Python 3.10 to 3.13, so the email failure probably showed there as well; the earlier
+step reports that called it environment-specific were wrong to assume so.
+
+Validation:
+- Full Python suite: **2,109 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected. This is the first full run without failures since Step 65.
+- The email and GitHub test modules also pass on Python 3.10 (23 passed), and the GitHub
+  tests pass with and without `GH_TOKEN` set.
+- Ruff, and mypy on Python 3.12 and 3.10, passed.
+
+## Step 77: pull traces from OpenObserve (1.1, 1.8)
+
+The owner asked what OpenObserve could add. It is a general observability backend (logs,
+metrics, traces, RUM), which is the general tracing the strategy rules out. But teams send
+their LLM traces there, so it fits the same "integrate" pattern as Langfuse, LangSmith and
+Opik.
+
+`vectraudit workbench openobserve-pull --since T --until T --traces F [--stream S]`:
+- **Whole traces:** traces are taken by start time (`GET .../traces/latest`), then all their
+  spans are read by SQL (`POST .../_search?type=traces`, by trace ID, over the window plus
+  `--grace-minutes`), so traces are not cut at the window's end.
+- **Rebuilt as OTLP JSON,** so the existing reader, including Step 75's OpenLLMetry
+  translation, imports it unchanged. Taken from OpenObserve's source: spans are flat rows
+  with attribute keys rewritten (lower case, other characters to `_`, `attr_` on collision)
+  and events kept as JSON with their original keys. The rewrite is not invertible, so the
+  keys the importer reads are restored by explicit patterns (a test round-trips every
+  one), and other keys keep their stored names.
+- **Boundary:** read-only; Basic auth over https only (local http excepted); trace IDs
+  validated as 32 hex characters before entering SQL, and organisation and stream names
+  restricted; error bodies not echoed.
+- **Licence:** OpenObserve is AGPL-3.0. Its source was read only to learn the stored
+  format; nothing was copied or added as a dependency, and the client only calls its HTTP
+  API.
+
+Not included: OpenObserve's own LLM evaluation scores as judgments, writing back, SQL
+filters beyond the time window, and a real OpenObserve instance. The fake server stores
+spans by the documented flattening rules.
+
+Validation: 21 new tests:
+- every key the importer reads surviving storage and restoration, collisions, and unknown
+  keys left alone;
+- an OpenInference trace end to end through the CLI (ids, model context, prompt version);
+- an OpenLLMetry Pinecone trace end to end (event results with repr metadata, prompt
+  version, tenant context);
+- the grace window and exact request shapes (times in microseconds, `type=traces`, the SQL);
+- paging, with a malformed trace ID never reaching SQL;
+- seven refused responses without echoing bodies;
+- seven unsafe or incomplete settings;
+- a token sent as given;
+- the CLI without a URL or organisation.
+
+Results:
+- Full Python suite: **2,130 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 78: hubs, after Evidently's popularity bias
+
+Asked again about Evidently: its drift detection and MAP/Hit Rate were already taken
+(Steps 72-74). The remaining fit was its recommender **popularity-bias** metrics, adapted
+to retrieval as **hubness**: documents an embedding retriever returns for many unrelated
+questions. A new embedding model or index can create a hub without moving average quality
+much, and no existing check showed it.
+
+`vectraudit workbench hubs RUN [--baseline RUN] [--dataset BENCHMARK] [--fail-on-new-hubs]`:
+- **Measures:** k-occurrence per document; Gini (Evidently's formula) and coverage (when the
+  run records the corpus size); k-occurrence skewness, the standard hubness measure.
+- **Hubs:** documents in the top k of at least 10% (and at least three) of the questions.
+  With the benchmark, each hub's labelled relevance where it was retrieved, flagging hubs
+  that are relevant for fewer than half of their questions.
+- **Comparison:** hubs new to the candidate; `--fail-on-new-hubs` exits 3.
+- Diagnostic only. It works on any recorded run and adds no dependency.
+
+Not included: average-recommendation popularity (retrieval has no interaction history), hub
+causes (vector norms, index structure), and hubness in hosted checks or the workbench UI.
+
+Validation: 8 new tests:
+- Gini against Evidently's formula by hand;
+- skewness against SciPy;
+- a spread retriever with no hubs (coverage, Gini 0, zeros counted);
+- a planted irrelevant hub found with its relevance and flagged;
+- new hubs in a comparison;
+- failed questions and repeats within one ranking not counted;
+- unknown corpus size, the three-question minimum and refusals;
+- the CLI (report, JSON, `--fail-on-new-hubs`, no new hubs, a missing file).
+
+Results:
+- Full Python suite: **2,140 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
 ## Next increments
 

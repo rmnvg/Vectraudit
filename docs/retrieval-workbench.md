@@ -486,6 +486,32 @@ Phoenix exports them (one per line or a JSON array; flattened `attributes.*` col
 epoch-millisecond times are accepted). The result is an ordinary run file: `vectraudit check`
 judges two imported runs, or an imported run against a live one, under the same policy.
 
+**OpenLLMetry (Traceloop) OTLP exports** are read from the same OTLP JSON: spans that use
+OpenLLMetry's conventions instead of OpenInference's are translated on the way in.
+
+- **Vector database queries** (Pinecone, Chroma, Milvus and the others it instruments) record
+  each result as a `db.query.result` (or `db.search.result`) span event. Those become the
+  retriever's documents: id, score, text and metadata, so `--id-field` reads a metadata field
+  as usual, including Pinecone's metadata, which it writes as a Python `repr`. Only `score`
+  counts as a score; `distance` runs the other way and is not used in its place.
+- **Retrievers are never guessed:** a span is one only when it has result events or is marked
+  as a vector query (`db.vector.query.top_k`, `db.chroma.query.n_results`). A vector query
+  without result events (Qdrant records none) is a gap, not an empty result. So is a span
+  that ran several queries at once (Chroma with several texts, Milvus with several query
+  IDs): its results carry nothing saying which query each belongs to, so they are not
+  merged into one ranking.
+- **The question** comes from the workflow's `traceloop.entity.input`, which the SDK writes
+  as `{"args": [...], "kwargs": {...}}`: a `question`, `query`, `input` or `text` keyword,
+  else the first string argument.
+- **LLM calls** (`gen_ai.system`, `llm.request.type`) contribute their `gen_ai.prompt.N`
+  messages, so model context is located as for OpenInference.
+- **Association properties** (`traceloop.association.properties.*`) are metadata, so
+  `--context-field tenant` works, and `session_id`/`user_id` are the session and user.
+- **Managed prompts** (`traceloop.prompt.key`, with `traceloop.prompt.version` or its hash)
+  are recorded as prompt versions (below).
+- Spans that already carry OpenInference attributes are read exactly as recorded, and a
+  translated value never replaces a recorded one.
+
 LangSmith and Langfuse exports are read too, and converted to the same spans, so everything
 below applies to them unchanged:
 
@@ -551,6 +577,7 @@ answer, the run records its name and version per question, and the run's
 | Langfuse | the observation's linked prompt (`promptName`, `promptVersion`) |
 | LangSmith | LangChain hub prompts: `lc_hub_owner`/`lc_hub_repo` and `lc_hub_commit_hash` in run metadata |
 | Opik | `opik_prompts` in span or trace metadata (`name`, with `version.commit` or `version_number`) |
+| OpenLLMetry | `traceloop.prompt.key` with `traceloop.prompt.version` (or `version_hash`) |
 
 - **Release checks** list a prompt change with the other changed settings
   (`backend.config.prompts.support-answer: 12 → 13`). They warn when a run mixes versions

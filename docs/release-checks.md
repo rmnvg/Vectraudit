@@ -221,6 +221,26 @@ weight across families. Seeded 95% bootstrap intervals resample these family mea
 than 30 families the report warns about limited evidence. One family's interval cannot estimate
 between-family uncertainty, even if it has many scenario rows.
 
+### Hubs
+
+`vectraudit workbench hubs RUN [--baseline RUN] [--dataset BENCHMARK]` finds documents the
+retriever returns for many unrelated questions. Embeddings produce such *hubs*, and a new
+embedding model or index can create one without moving average quality much, while it
+crowds answers out of the top k.
+
+- **k-occurrence:** how many questions' top k hold each document.
+- **Gini and coverage**, after Evidently's popularity-bias metrics: Gini of the
+  k-occurrences (0 even, near 1 a few documents dominate), and the share of the corpus
+  ever retrieved (when the run records the corpus size).
+- **Skewness:** the standard hubness measure.
+- **Hubs:** documents in the top k of at least `--hub-share` (default 10%, and at least
+  three) questions. With `--dataset`, each hub shows for how many of those questions it is
+  labelled relevant. A hub that is rarely relevant is crowding out answers.
+- **Comparison:** with `--baseline`, hubs new to the candidate are listed, and
+  `--fail-on-new-hubs` exits 3.
+
+It is a diagnostic: it never changes a release verdict.
+
 ## Policy (JSON)
 
 ```json
