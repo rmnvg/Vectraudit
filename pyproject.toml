@@ -59,6 +59,9 @@ dev = [
 vectraudit = "vectraudit.cli:app"
 vectraudit-cloud = "vectraudit.cloud.cli:app"
 
+[project.entry-points.pytest11]
+vectraudit = "vectraudit.pytest_plugin"
+
 [project.urls]
 Homepage = "https://github.com/rmnvg/Vectraudit"
 Repository = "https://github.com/rmnvg/Vectraudit"
