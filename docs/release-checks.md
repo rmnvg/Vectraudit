@@ -42,6 +42,34 @@ Publishing never changes the exit code. Pull requests from forks get a read-only
 publishing is skipped with a warning and the job summary still carries the result. Never
 use `pull_request_target` to work around this: it would expose your secrets to fork code.
 
+### From a pytest suite
+
+Teams that already gate merges on `pytest` can make the check one more test. It gives the
+same verdict as `vectraudit check` on the same files and policy:
+
+```python
+from vectraudit.testing import assert_release
+
+def test_retrieval_release():
+    assert_release("baseline.json", "candidate.json", policy="retrieval/policy.json")
+```
+
+- `assert_release` raises `ReleaseCheckFailed`, an `AssertionError`, unless the verdict is
+  `pass`. Fail, error and not comparable all fail the test. The message gives the verdict,
+  the failing rules and the changed settings (including prompt versions).
+  `check_release` returns the same result without asserting (`.verdict`, `.passed`,
+  `.reasons`, `.changed_settings`, `.markdown()`).
+- Runs can be file paths or run records. The policy can be a path, a policy record, a
+  parsed policy, or omitted for the built-in policy. Invalid files raise the errors the CLI
+  reports.
+- **The pytest plugin** registers itself when Vectraudit is installed. When a test made a
+  check, the terminal summary lists each one with its test and verdict, and
+  `--vectraudit-report release.md` writes them all as one Markdown report for the job
+  summary. Sessions without checks are untouched; `-p no:vectraudit` disables it. Under
+  `pytest-xdist` each worker keeps its own list.
+- This runs the comparison only. Recording the runs (`vectraudit record`, a pipeline run, or
+  a trace import) stays a separate step, so the test is fast and repeatable.
+
 ## Dataset (JSONL)
 
 One query per line:

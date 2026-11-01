@@ -2295,6 +2295,49 @@ Results:
   `test_github` publishing warnings) also fail on clean `main`.
 - Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted server code changed.
 
+## Step 71: release checks from a pytest suite (after Opik)
+
+The owner asked for something else from Opik. Its PyTest integration (an `@llm_unit`
+decorator and a plugin registered through `pytest11`) was the remaining candidate from the
+Step 69 comparison. The Vectraudit equivalent makes a retrieval release check one more test
+in a team's existing suite, a way in for teams that will not add a separate CI step.
+- **`vectraudit.testing`:** `assert_release(baseline, candidate, policy)` raises
+  `ReleaseCheckFailed` (an `AssertionError`) unless the check passes, with the verdict,
+  failing rules and changed settings in the message. `check_release` returns the result.
+  Both call the same comparison as `vectraudit check`. A test asserts the same verdict and
+  reasons as the CLI for pass, fail, not comparable and error, and another pins the passing
+  verdicts to the CLI's exit-zero codes. Runs and policies can be paths or records. No test
+  framework is imported.
+- **pytest plugin** (`pytest11` entry point): lists the session's checks with test and
+  verdict in the terminal summary; `--vectraudit-report PATH` writes them as one Markdown
+  report. Silent without checks; `-p no:vectraudit` disables it.
+- **Load cost:** about 0.2 s per pytest run where Vectraudit is installed, from importing
+  the package (numpy). Accepted and documented.
+- No dependency added.
+
+Not included: recording runs inside a test, a decorator like Opik's `llm_unit`, combining
+reports across `pytest-xdist` workers, and hosted (`cloud:`) baselines from tests.
+
+Validation: 12 new tests:
+- a steady candidate passing and recorded under its test ID;
+- a regression failing as an `AssertionError` with reasons and changed settings;
+- verdict and reasons identical to `vectraudit check` for pass, fail, not comparable and
+  error, with matching exit codes;
+- passing verdicts pinned to the CLI's exit-zero codes;
+- paths, records, parsed and built-in policies giving the same result;
+- invalid policies and runs raising the CLI's errors;
+- records not mutated;
+- through a real pytest subprocess with the installed entry point: the summary section, a
+  failing release test failing the run, the Markdown report, a silent session without
+  checks, `-p no:vectraudit`, and the option disappearing with it.
+
+Results:
+- Full Python suite: 2,051 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10 (`--locked` sync, so the lock file is unchanged),
+  passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
