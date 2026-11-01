@@ -1283,7 +1283,7 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67 (Langfuse and LangSmith API pulls): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69 (Langfuse, LangSmith and Opik API pulls): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47 and 68 (diagnosis written back to Langfuse traces): investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
@@ -2177,6 +2177,65 @@ Results:
 - Full Python suite: 2,000 passed, 29 skipped (live services not configured),
   1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
   `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
+
+## Step 69: pull traces and feedback scores from Opik (1.1, 1.8)
+
+The owner asked for something from Opik (Comet) that Vectraudit lacked. Opik's README
+lists tracing, LLM-as-a-judge metrics, a prompt playground, an agent optimizer,
+dashboards, online evaluation rules, guardrails and a PyTest integration. Tracing, the
+playground and the optimizer are on the strategy's "Do not build" list, and judge metrics
+fall under "import evaluator results before building another suite". The strongest fit
+was Opik as a source, so Opik users' data becomes Vectraudit's input as Langfuse's and
+LangSmith's already is. A PyTest integration is the other candidate, not built here.
+
+`vectraudit workbench opik-pull --project NAME --since T --until T [--traces F]
+[--judgments F]`:
+- **Traces and spans** from `GET /v1/private/traces` and `/v1/private/spans`. Traces are
+  taken by creation time; spans over the window plus `--grace-minutes` (default 60), kept
+  only for the traces taken. Each trace is written as its root span, so the question on
+  the trace is found, and the file imports through the shared reader (`opik` shape).
+- **Retrievers must be named** with `--stage-kind`, because Opik has no retriever span type.
+- **Feedback scores** inline on traces and spans become judgments: verdict categories
+  become verdicts, uncategorised values stay scores that need a threshold, other
+  categories are skipped, and `ui` is human review. Averaged `span_feedback_scores` and
+  reasons are never used.
+- **Boundary:** read-only; key and workspace from the SDK's `OPIK_*` variables; a key is
+  sent only over https (local http excepted); a keyless self-hosted Opik may use http;
+  error bodies not echoed; windows over 200,000 records refused. No dependency.
+- **Found while testing:** stopping at a page shorter than the requested size could
+  silently drop records if Opik caps page size (the spec sets no maximum). Paging now
+  follows the reported total.
+- **Also found:** `intake` had no `--stage-kind` option (only `import-traces` did), so a
+  source without a retriever span type could not show retrieval in production intake. Both
+  commands now share the option.
+
+Not included: writing the diagnosis back to Opik (its feedback-score endpoints exist), Opik
+threads as multi-turn history, Opik datasets and experiments, the PyTest integration, and
+a run against a real Opik deployment.
+
+Validation: 24 new tests:
+- an end-to-end pull from a local server behind Opik Cloud's headers, through
+  `import-traces` and `attach-answers`, with a `ui` score deciding over an online one and a
+  span's score counting for its trace;
+- production intake on a pull with a named retriever, finding the likely recurrence;
+- a retriever never guessed without `--stage-kind`;
+- traces as root spans and spans of other traces left out;
+- the grace window, paging that follows the total when the server returns smaller pages,
+  and a short page ending a listing without a total;
+- every score mapping and skip reason, reasons dropped;
+- wrong keys, wrong URL, rate limits, server errors and malformed responses refused
+  without echoing bodies, an oversized window;
+- unsafe settings, a keyless self-hosted Opik over http;
+- times, grace, CLI errors and mixed formats.
+
+Results:
+- Full Python suite: 2,026 passed, 29 skipped (live services not configured),
+  1 deselected, 4 failed.
+  - Two failures (`test_cloud_email`, `test_github`) also fail on clean `main`.
+  - The other two (`test_optimize_concurrency`, `test_pipeline_retries[http_unavailable]`)
+    are timing-sensitive, cover code this step does not touch, and passed three runs in a
+    row on their own (25 of 25 each).
 - Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
 
 ## Next increments
