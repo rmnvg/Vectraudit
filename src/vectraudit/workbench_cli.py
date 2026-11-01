@@ -1641,6 +1641,56 @@ def score_drift_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("hubs")
+def hubs_command(
+    run: Annotated[Path, typer.Argument(help="Run file to inspect (the candidate).")],
+    baseline: Annotated[
+        Path | None, typer.Option(help="Earlier run, to list hubs that are new.")
+    ] = None,
+    dataset: Annotated[
+        Path | None,
+        typer.Option(help="Benchmark, to say whether each hub is relevant where retrieved."),
+    ] = None,
+    hub_share: Annotated[
+        float,
+        typer.Option(min=0.01, max=1.0, help="Share of questions that makes a document a hub."),
+    ] = 0.1,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_new_hubs: Annotated[
+        bool, typer.Option("--fail-on-new-hubs", help="Exit 3 when the candidate has new hubs.")
+    ] = False,
+) -> None:
+    """Documents the retriever returns for many unrelated questions (hubs).
+
+    Reports k-occurrence, Gini and coverage (after Evidently's popularity bias), skewness,
+    and each hub with how often it is labelled relevant where it is retrieved. Never
+    changes a release verdict.
+    """
+    from vectraudit.evaluation.hubness import compare, hubness, render
+
+    try:
+        labels = (
+            {q.query_id: dict(q.relevant) for q in load_dataset(dataset).queries}
+            if dataset is not None
+            else None
+        )
+        report = hubness(load_run(run), labels=labels, hub_share=hub_share)
+        comparison = None
+        if baseline is not None:
+            comparison = compare(
+                hubness(load_run(baseline), labels=labels, hub_share=hub_share), report
+            )
+            report["comparison"] = comparison
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Hubs error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report, comparison))
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_new_hubs and comparison is not None and comparison["new_hubs"]:
+        raise typer.Exit(3)
+
+
 @workbench_app.command("intake")
 def intake_command(
     traces: Annotated[

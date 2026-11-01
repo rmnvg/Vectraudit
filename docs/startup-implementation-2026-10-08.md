@@ -2575,6 +2575,41 @@ Results:
   configured), 1 deselected.
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
+## Step 78: hubs, after Evidently's popularity bias
+
+Asked again about Evidently: its drift detection and MAP/Hit Rate were already taken
+(Steps 72-74). The remaining fit was its recommender **popularity-bias** metrics, adapted
+to retrieval as **hubness**: documents an embedding retriever returns for many unrelated
+questions. A new embedding model or index can create a hub without moving average quality
+much, and no existing check showed it.
+
+`vectraudit workbench hubs RUN [--baseline RUN] [--dataset BENCHMARK] [--fail-on-new-hubs]`:
+- **Measures:** k-occurrence per document; Gini (Evidently's formula) and coverage (when the
+  run records the corpus size); k-occurrence skewness, the standard hubness measure.
+- **Hubs:** documents in the top k of at least 10% (and at least three) of the questions.
+  With the benchmark, each hub's labelled relevance where it was retrieved, flagging hubs
+  that are relevant for fewer than half of their questions.
+- **Comparison:** hubs new to the candidate; `--fail-on-new-hubs` exits 3.
+- Diagnostic only. It works on any recorded run and adds no dependency.
+
+Not included: average-recommendation popularity (retrieval has no interaction history), hub
+causes (vector norms, index structure), and hubness in hosted checks or the workbench UI.
+
+Validation: 8 new tests:
+- Gini against Evidently's formula by hand;
+- skewness against SciPy;
+- a spread retriever with no hubs (coverage, Gini 0, zeros counted);
+- a planted irrelevant hub found with its relevance and flagged;
+- new hubs in a comparison;
+- failed questions and repeats within one ranking not counted;
+- unknown corpus size, the three-question minimum and refusals;
+- the CLI (report, JSON, `--fail-on-new-hubs`, no new hubs, a missing file).
+
+Results:
+- Full Python suite: **2,140 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
