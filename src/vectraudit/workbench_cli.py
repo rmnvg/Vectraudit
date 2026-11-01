@@ -1400,6 +1400,57 @@ def opik_pull_command(
     typer.echo(f"({source.calls} API requests.)")
 
 
+@workbench_app.command("openobserve-pull")
+def openobserve_pull_command(
+    since: Annotated[str, typer.Option(help="Start of the window (ISO 8601, inclusive).")],
+    until: Annotated[str, typer.Option(help="End of the window (ISO 8601).")],
+    traces: Annotated[
+        Path, typer.Option(help="Write the traces here (OTLP JSON) for import-traces or intake.")
+    ],
+    org: Annotated[
+        str | None, typer.Option(help="Organisation (default: OPENOBSERVE_ORG).")
+    ] = None,
+    stream: Annotated[str, typer.Option(help="Trace stream name.")] = "default",
+    grace_minutes: Annotated[
+        int, typer.Option(help="Also read spans up to this long after the window.")
+    ] = 60,
+) -> None:
+    """Pull the traces that started in a window from OpenObserve, as OTLP JSON.
+
+    Reads OPENOBSERVE_URL, OPENOBSERVE_ORG, and OPENOBSERVE_TOKEN or OPENOBSERVE_USER and
+    OPENOBSERVE_PASSWORD. OpenObserve flattens attribute keys on ingest; the keys Vectraudit
+    reads (OpenInference and OpenLLMetry) are restored. Read-only.
+    """
+    import os
+
+    from vectraudit.labelling.task import atomic_write
+    from vectraudit.pipelines.openobserve_api import OpenObserveSource, fetch, to_otlp
+
+    name = org or os.environ.get("OPENOBSERVE_ORG")
+    url = os.environ.get("OPENOBSERVE_URL")
+    if not name or not url:
+        typer.echo("Pull error: set OPENOBSERVE_URL, and --org or OPENOBSERVE_ORG.", err=True)
+        raise typer.Exit(2)
+    try:
+        source = OpenObserveSource(
+            url=url,
+            org=name,
+            stream=stream,
+            user=os.environ.get("OPENOBSERVE_USER") or None,
+            password=os.environ.get("OPENOBSERVE_PASSWORD") or None,
+            token=os.environ.get("OPENOBSERVE_TOKEN") or None,
+        )
+        trace_ids, rows = fetch(source, start=since, end=until, grace_minutes=grace_minutes)
+        atomic_write(traces, json.dumps(to_otlp(rows)) + "\n")
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Pull error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(f"Wrote {len(trace_ids)} traces and {len(rows)} spans to {traces}.")
+    if trace_ids and not rows:
+        typer.echo("No spans were returned for these traces; check the stream name.")
+    typer.echo(f"({source.calls} API requests.)")
+
+
 @workbench_app.command("langsmith-pull")
 def langsmith_pull_command(
     project: Annotated[str, typer.Option(help="LangSmith tracing project name.")],
