@@ -2685,6 +2685,41 @@ Validation: the merged branch passes the full suite with **2,154 passed, 0 faile
 - the API type generation check;
 - TypeScript, Oxlint and 116 frontend tests (MAP touched the policy editor).
 
+## Step 80: DeepEval results as answer judgments (1.2)
+
+The owner asked what DeepEval offers. Its ~50 metrics are mostly LLM judges (the strategy
+says to import evaluator results, not build another suite), and its pytest integration
+already has a Vectraudit equivalent (Step 71). The fit was reading its results: Step 41's
+`attach-answers` needed its own JSONL, so DeepEval users had to convert by hand.
+
+`vectraudit workbench deepeval-judgments TEST_RUN BENCHMARK --metric NAME --out F` reads
+`.deepeval/.latest_test_run.json` (DeepEval's `LLMApiTestCase`/`MetricData` models, checked in
+its source) and writes judgment lines:
+- **Explicit metric choice:** without `--metric`, the metrics in the file are listed. The
+  contextual metrics are refused because they judge retrieval, not answers.
+- **Verdicts:** DeepEval's own `success` decision becomes the verdict; the score and judge
+  model are kept; errored or unevaluated metrics are counted and skipped.
+- **Matching:** `metadata.query_id`, `metadata.trace_id`, or an unambiguous exact question
+  text; ambiguous and unmatched cases are counted.
+- Reasons, inputs, outputs and contexts are never written.
+
+Not included: DeepEval's conversational test cases, its Confident AI platform API, its
+synthesizer (LLM-generated benchmarks), and red-teaming.
+
+Validation: 6 new tests:
+- verdicts matched by ID, trace and text, with errored and unevaluated metrics counted and
+  no private text written;
+- only chosen metrics, the three contextual metrics refused, and metric listing;
+- ambiguous text not guessed;
+- the judgments attaching and diagnosing a planted wrong answer;
+- both file layouts, plus non-runs and invalid JSON refused;
+- the CLI (listing without `--metric`, writing, refusing a contextual metric).
+
+Results:
+- Full Python suite: **2,160 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

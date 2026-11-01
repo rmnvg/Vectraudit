@@ -692,6 +692,28 @@ from traces, so Phoenix or Langfuse evaluations keyed by trace attach directly):
   human review is reported on the questions both judged.
 - Explanations and answer text are not read. Evaluator names, versions and rubrics are kept.
 
+**From DeepEval.** Teams that grade answers with DeepEval can use its saved results
+(`.deepeval/.latest_test_run.json`) directly:
+
+```bash
+vectraudit workbench deepeval-judgments .deepeval/.latest_test_run.json benchmark.jsonl \
+  --metric "Correctness [GEval]" --out judgments.jsonl
+vectraudit workbench attach-answers current.run.json judgments.jsonl --out current.judged.run.json
+```
+
+- **You choose which metrics judge answers** (`--metric`, repeatable). Without it the
+  command lists the metrics in the file. A faithful or relevant answer can still be wrong,
+  so no metric is assumed to mean "correct". Contextual Precision, Recall and Relevancy
+  judge the retrieved context, not the answer, and are refused; Vectraudit measures
+  retrieval against the benchmark's labels itself.
+- **Verdicts are DeepEval's own decisions:** a metric's `success` (its score against its
+  threshold) becomes `correct` or `incorrect`, with the score and the judge model kept.
+  Errored or unevaluated metrics are skipped and counted.
+- **Matching:** each test case is matched by `metadata.query_id`, else
+  `metadata.trace_id`, else its input when that is exactly one benchmark question's text
+  (case and spacing ignored). Ambiguous and unmatched test cases are counted, not guessed.
+- Reasons, inputs, outputs and contexts are never written.
+
 Each judged question then gets a **diagnosis**: the first observable loss on the path from
 retrieval to answer, with the facts behind it. It is not a root cause.
 
