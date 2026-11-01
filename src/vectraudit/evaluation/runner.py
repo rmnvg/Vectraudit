@@ -35,6 +35,7 @@ from vectraudit.connectors.base import (
 from vectraudit.evaluation.dataset import Dataset, DatasetQuery
 from vectraudit.evaluation.families import family_count, family_id, family_mean
 from vectraudit.evaluation.metrics import (
+    RANK_METRICS,
     SEMANTIC_METRICS,
     latency_summary,
     metric_contract,
@@ -333,6 +334,7 @@ def summarize(queries: Sequence[Mapping[str, Any]], n_queries: int) -> dict[str,
             {
                 m: family_mean((family_id(q), q["metrics"][m]) for q in labelled)
                 for m in SEMANTIC_METRICS
+                + tuple(r for r in RANK_METRICS if all(r in q["metrics"] for q in labelled))
             }
             if labelled
             else None

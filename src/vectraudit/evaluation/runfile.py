@@ -12,7 +12,7 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-from vectraudit.evaluation.metrics import SEMANTIC_METRICS, ann_recall
+from vectraudit.evaluation.metrics import RANK_METRICS, SEMANTIC_METRICS, ann_recall
 from vectraudit.evaluation.runner import RUN_FORMAT, RUN_FORMAT_VERSION
 
 RUN_STATUSES = frozenset({"complete", "partial", "failed", "cancelled"})
@@ -124,6 +124,7 @@ def _check_repeat_quality(q: dict[str, Any], repeats: int) -> None:
             or (
                 isinstance(sample, dict)
                 and all(_fraction(sample.get(name)) for name in SEMANTIC_METRICS)
+                and all(_fraction(sample[name]) for name in RANK_METRICS if name in sample)
             ),
             "repeat metrics must be finite fractions or null",
         )
@@ -135,7 +136,14 @@ def _check_repeat_quality(q: dict[str, Any], repeats: int) -> None:
         _expect(
             all(sample is not None for sample in samples), "repeat quality coverage is incomplete"
         )
-        for name in SEMANTIC_METRICS:
+        # Optional metrics (MAP, Hit Rate) are recorded on every repeat and in the mean, or
+        # nowhere: a mean must never rest on a subset of the executions.
+        optional = [n for n in RANK_METRICS if n in q["metrics"]]
+        _expect(
+            all(set(optional) == {n for n in RANK_METRICS if n in s} for s in samples),
+            "optional metrics must be recorded on every repeat and in the mean",
+        )
+        for name in (*SEMANTIC_METRICS, *optional):
             _expect(
                 math.isclose(
                     q["metrics"][name],
@@ -301,6 +309,9 @@ def _check_query(q: Any, k: int) -> None:
         _expect(isinstance(metrics, dict), "metrics must be an object")
         for name in SEMANTIC_METRICS:
             _expect(_fraction(metrics.get(name)), f"metrics.{name} must be in [0, 1]")
+        for name in RANK_METRICS:
+            if name in metrics:
+                _expect(_fraction(metrics[name]), f"metrics.{name} must be in [0, 1]")
     evidence = q.get("evidence")
     _expect(evidence is None or isinstance(evidence, dict), "evidence must be an object or null")
     no_answer = q.get("no_answer_correct")

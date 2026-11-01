@@ -201,6 +201,13 @@ never an empty result.
 - **Semantic** (needs `relevant` labels): recall@k, precision@k, MRR@k, nDCG@k with linear
   gains (grade / max grade of the query). Unjudged results count as non-relevant; duplicate
   results get no extra credit.
+- **MAP@k and Hit Rate@k** (also from labels): MAP is trec_eval's `map_cut_k`, the precision
+  at each rank holding a new relevant document, divided by the number of relevant documents,
+  so losing a relevant document lowers it. (Evidently divides by the relevant documents
+  retrieved, which would not.) Hit Rate is 1 when any relevant document is in the top k.
+  Runs recorded before these were added lack them. A policy rule on `map` or `hit_rate`
+  against such a run makes the check not comparable rather than letting it pass, so
+  re-record the baseline to use them. Both work as `primary_metric` and in cohort rules.
 - **ANN recall@k** (needs an exact reference): overlap with an exact search over the same
   corpus and distance. It measures approximation loss, **not** whether the results answer the
   query, so it can't choose between embedding models.
