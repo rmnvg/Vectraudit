@@ -103,6 +103,9 @@ def github(tmp_path, monkeypatch) -> Iterator[type[MockGitHub]]:
     }.items():
         monkeypatch.setenv(key, value)
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    # The code also accepts the gh CLI's GH_TOKEN; a developer's or runner's own must not
+    # leak into tests that remove GITHUB_TOKEN to check the "not set" path.
+    monkeypatch.delenv("GH_TOKEN", raising=False)
     yield MockGitHub
     server.shutdown()
 
