@@ -739,6 +739,30 @@ vectraudit workbench attach-answers current.run.json judgments.jsonl --out curre
   (case and spacing ignored). Ambiguous and unmatched test cases are counted, not guessed.
 - Reasons, inputs, outputs and contexts are never written.
 
+**From promptfoo.** Teams that grade answers with promptfoo can use its results file
+(`promptfoo eval -o results.json`) directly:
+
+```bash
+vectraudit workbench promptfoo-judgments results.json benchmark.jsonl \
+  --assertion Correctness --prompt concise --out judgments.jsonl
+```
+
+- **One variant.** A promptfoo eval usually compares prompts or models, and judgments of
+  different systems must not be attached to one run. When the file holds several
+  provider/prompt pairs, choose one with `--provider` and `--prompt`. Without
+  `--assertion`, the command lists the assertions and variants in the file.
+- **Chosen assertions** (`--assertion`, repeatable): an assertion's `metric` label, else
+  its type, or `overall` for the test's own pass/fail. `context-recall` and
+  `context-relevance` judge retrieval and are refused; `overall` is not used for a test
+  that includes them.
+- **Verdicts are promptfoo's** `pass`, with the score. Only results that errored
+  (`failureReason` 2) are skipped. promptfoo also fills `error` with the message of an
+  ordinary assertion failure, so that field alone is not read as an error. Each repeat is
+  its own judgment, so repeats that disagree show as disputed.
+- **Matching:** `query_id` or `trace_id` in the test's metadata or vars, else the
+  `question` (or `--question-var`) variable when it matches exactly one benchmark question.
+- Reasons, prompts and outputs are never written.
+
 Each judged question then gets a **diagnosis**: the first observable loss on the path from
 retrieval to answer, with the facts behind it. It is not a root cause.
 

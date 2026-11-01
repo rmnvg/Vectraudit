@@ -1,0 +1,2151 @@
+{
+ "evalId": "eval-fxU-2026-11-01T15:43:52",
+ "results": {
+  "version": 3,
+  "timestamp": "2026-11-01T15:43:52.900Z",
+  "prompts": [
+   {
+    "id": "e7fbe4df65775d0a6e97bf1362a855614bf219b522cadc8caeb592952d778727",
+    "raw": "Answer briefly: {{question}} (password reset is in Settings > Security)",
+    "label": "concise",
+    "provider": "echo-model",
+    "metrics": {
+     "score": 2,
+     "testPassCount": 2,
+     "testFailCount": 4,
+     "testErrorCount": 0,
+     "testCacheHitCount": 0,
+     "assertPassCount": 4,
+     "assertFailCount": 4,
+     "totalLatencyMs": 28,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 6,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "namedScores": {
+      "Correctness": 2,
+      "Brevity": 2
+     },
+     "namedScoresCount": {
+      "Correctness": 6,
+      "Brevity": 2
+     },
+     "namedScoreWeights": {
+      "Correctness": 6,
+      "Brevity": 2
+     },
+     "cost": 0
+    }
+   },
+   {
+    "id": "f7fcf8b59972ef7bb16e1c7c50023c79d79b68461334511387e12f38d5739a56",
+    "raw": "Answer in detail: {{question}}",
+    "label": "detailed",
+    "provider": "echo-model",
+    "metrics": {
+     "score": 1,
+     "testPassCount": 0,
+     "testFailCount": 6,
+     "testErrorCount": 0,
+     "testCacheHitCount": 0,
+     "assertPassCount": 2,
+     "assertFailCount": 6,
+     "totalLatencyMs": 25,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 6,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "namedScores": {
+      "Correctness": 0,
+      "Brevity": 2
+     },
+     "namedScoresCount": {
+      "Correctness": 6,
+      "Brevity": 2
+     },
+     "namedScoreWeights": {
+      "Correctness": 6,
+      "Brevity": 2
+     },
+     "cost": 0
+    }
+   }
+  ],
+  "results": [
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"settings\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0.5,
+     "reason": "Expected output to contain \"settings\"",
+     "namedScores": {
+      "Correctness": 0,
+      "Brevity": 1
+     },
+     "namedScoreWeights": {
+      "Correctness": 1,
+      "Brevity": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"settings\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "settings",
+        "metric": "Correctness"
+       }
+      },
+      {
+       "pass": true,
+       "score": 1,
+       "reason": "Assertion passed",
+       "assertion": {
+        "type": "javascript",
+        "value": "output.length < 200",
+        "metric": "Brevity"
+       }
+      }
+     ]
+    },
+    "id": "1e37a816-5998-4b6a-bd3a-e56c7c1bf158",
+    "latencyMs": 4,
+    "namedScores": {
+     "Correctness": 0,
+     "Brevity": 1
+    },
+    "prompt": {
+     "raw": "Answer in detail: How do I reset my password?",
+     "label": "detailed",
+     "config": {}
+    },
+    "promptId": "f7fcf8b59972ef7bb16e1c7c50023c79d79b68461334511387e12f38d5739a56",
+    "promptIdx": 1,
+    "repeatGroupId": "test-0-vars-0",
+    "repeatIndex": 0,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer in detail: How do I reset my password?",
+     "raw": "Answer in detail: How do I reset my password?",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0.5,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "How do I reset my password?"
+     },
+     "metadata": {
+      "query_id": "q1"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "settings",
+       "metric": "Correctness"
+      },
+      {
+       "type": "javascript",
+       "value": "output.length < 200",
+       "metric": "Brevity"
+      }
+     ],
+     "options": {}
+    },
+    "testIdx": 0,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "How do I reset my password?"
+    },
+    "metadata": {
+     "query_id": "q1",
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "gradingResult": {
+     "pass": true,
+     "score": 1,
+     "reason": "All assertions passed",
+     "namedScores": {
+      "Correctness": 1,
+      "Brevity": 1
+     },
+     "namedScoreWeights": {
+      "Correctness": 1,
+      "Brevity": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": true,
+       "score": 1,
+       "reason": "Assertion passed",
+       "assertion": {
+        "type": "icontains",
+        "value": "settings",
+        "metric": "Correctness"
+       }
+      },
+      {
+       "pass": true,
+       "score": 1,
+       "reason": "Assertion passed",
+       "assertion": {
+        "type": "javascript",
+        "value": "output.length < 200",
+        "metric": "Brevity"
+       }
+      }
+     ]
+    },
+    "id": "21562996-e302-49a6-b67e-831934ad258d",
+    "latencyMs": 6,
+    "namedScores": {
+     "Correctness": 1,
+     "Brevity": 1
+    },
+    "prompt": {
+     "raw": "Answer briefly: How do I reset my password? (password reset is in Settings > Security)",
+     "label": "concise",
+     "config": {}
+    },
+    "promptId": "e7fbe4df65775d0a6e97bf1362a855614bf219b522cadc8caeb592952d778727",
+    "promptIdx": 0,
+    "repeatGroupId": "test-0-vars-0",
+    "repeatIndex": 0,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer briefly: How do I reset my password? (password reset is in Settings > Security)",
+     "raw": "Answer briefly: How do I reset my password? (password reset is in Settings > Security)",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 1,
+    "success": true,
+    "testCase": {
+     "vars": {
+      "question": "How do I reset my password?"
+     },
+     "metadata": {
+      "query_id": "q1"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "settings",
+       "metric": "Correctness"
+      },
+      {
+       "type": "javascript",
+       "value": "output.length < 200",
+       "metric": "Brevity"
+      }
+     ],
+     "options": {}
+    },
+    "testIdx": 0,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "How do I reset my password?"
+    },
+    "metadata": {
+     "query_id": "q1",
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 0
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"settings\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0.5,
+     "reason": "Expected output to contain \"settings\"",
+     "namedScores": {
+      "Correctness": 0,
+      "Brevity": 1
+     },
+     "namedScoreWeights": {
+      "Correctness": 1,
+      "Brevity": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"settings\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "settings",
+        "metric": "Correctness"
+       }
+      },
+      {
+       "pass": true,
+       "score": 1,
+       "reason": "Assertion passed",
+       "assertion": {
+        "type": "javascript",
+        "value": "output.length < 200",
+        "metric": "Brevity"
+       }
+      }
+     ]
+    },
+    "id": "e0cae4c7-afb7-47d6-859d-34f26199693c",
+    "latencyMs": 3,
+    "namedScores": {
+     "Correctness": 0,
+     "Brevity": 1
+    },
+    "prompt": {
+     "raw": "Answer in detail: How do I reset my password?",
+     "label": "detailed",
+     "config": {}
+    },
+    "promptId": "f7fcf8b59972ef7bb16e1c7c50023c79d79b68461334511387e12f38d5739a56",
+    "promptIdx": 1,
+    "repeatGroupId": "test-0-vars-0",
+    "repeatIndex": 1,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer in detail: How do I reset my password?",
+     "raw": "Answer in detail: How do I reset my password?",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0.5,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "How do I reset my password?"
+     },
+     "metadata": {
+      "query_id": "q1"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "settings",
+       "metric": "Correctness"
+      },
+      {
+       "type": "javascript",
+       "value": "output.length < 200",
+       "metric": "Brevity"
+      }
+     ],
+     "options": {}
+    },
+    "testIdx": 1,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "How do I reset my password?"
+    },
+    "metadata": {
+     "query_id": "q1",
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "gradingResult": {
+     "pass": true,
+     "score": 1,
+     "reason": "All assertions passed",
+     "namedScores": {
+      "Correctness": 1,
+      "Brevity": 1
+     },
+     "namedScoreWeights": {
+      "Correctness": 1,
+      "Brevity": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": true,
+       "score": 1,
+       "reason": "Assertion passed",
+       "assertion": {
+        "type": "icontains",
+        "value": "settings",
+        "metric": "Correctness"
+       }
+      },
+      {
+       "pass": true,
+       "score": 1,
+       "reason": "Assertion passed",
+       "assertion": {
+        "type": "javascript",
+        "value": "output.length < 200",
+        "metric": "Brevity"
+       }
+      }
+     ]
+    },
+    "id": "3a83530b-1638-4604-939a-a3edbdce5949",
+    "latencyMs": 3,
+    "namedScores": {
+     "Correctness": 1,
+     "Brevity": 1
+    },
+    "prompt": {
+     "raw": "Answer briefly: How do I reset my password? (password reset is in Settings > Security)",
+     "label": "concise",
+     "config": {}
+    },
+    "promptId": "e7fbe4df65775d0a6e97bf1362a855614bf219b522cadc8caeb592952d778727",
+    "promptIdx": 0,
+    "repeatGroupId": "test-0-vars-0",
+    "repeatIndex": 1,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer briefly: How do I reset my password? (password reset is in Settings > Security)",
+     "raw": "Answer briefly: How do I reset my password? (password reset is in Settings > Security)",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 1,
+    "success": true,
+    "testCase": {
+     "vars": {
+      "question": "How do I reset my password?"
+     },
+     "metadata": {
+      "query_id": "q1"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "settings",
+       "metric": "Correctness"
+      },
+      {
+       "type": "javascript",
+       "value": "output.length < 200",
+       "metric": "Brevity"
+      }
+     ],
+     "options": {}
+    },
+    "testIdx": 1,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "How do I reset my password?"
+    },
+    "metadata": {
+     "query_id": "q1",
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 0
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"billing\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"billing\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"billing\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "billing",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "ae2ff545-ede0-4347-b156-b75acef5da12",
+    "latencyMs": 5,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer briefly: Where is the invoice? (password reset is in Settings > Security)",
+     "label": "concise",
+     "config": {}
+    },
+    "promptId": "e7fbe4df65775d0a6e97bf1362a855614bf219b522cadc8caeb592952d778727",
+    "promptIdx": 0,
+    "repeatGroupId": "test-1-vars-0",
+    "repeatIndex": 0,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer briefly: Where is the invoice? (password reset is in Settings > Security)",
+     "raw": "Answer briefly: Where is the invoice? (password reset is in Settings > Security)",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "Where is the invoice?"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "billing",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 2,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "Where is the invoice?"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"billing\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"billing\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"billing\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "billing",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "64eca08d-ea14-4b17-84ff-674af65f941a",
+    "latencyMs": 4,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer in detail: Where is the invoice?",
+     "label": "detailed",
+     "config": {}
+    },
+    "promptId": "f7fcf8b59972ef7bb16e1c7c50023c79d79b68461334511387e12f38d5739a56",
+    "promptIdx": 1,
+    "repeatGroupId": "test-1-vars-0",
+    "repeatIndex": 0,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer in detail: Where is the invoice?",
+     "raw": "Answer in detail: Where is the invoice?",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "Where is the invoice?"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "billing",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 2,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "Where is the invoice?"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"billing\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"billing\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"billing\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "billing",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "e82a25ca-8091-4424-82e2-d21bc6503a1c",
+    "latencyMs": 4,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer briefly: Where is the invoice? (password reset is in Settings > Security)",
+     "label": "concise",
+     "config": {}
+    },
+    "promptId": "e7fbe4df65775d0a6e97bf1362a855614bf219b522cadc8caeb592952d778727",
+    "promptIdx": 0,
+    "repeatGroupId": "test-1-vars-0",
+    "repeatIndex": 1,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer briefly: Where is the invoice? (password reset is in Settings > Security)",
+     "raw": "Answer briefly: Where is the invoice? (password reset is in Settings > Security)",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "Where is the invoice?"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "billing",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 3,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "Where is the invoice?"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"billing\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"billing\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"billing\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "billing",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "3df195dc-cf7e-463e-a239-fab54f01cef0",
+    "latencyMs": 6,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer in detail: Where is the invoice?",
+     "label": "detailed",
+     "config": {}
+    },
+    "promptId": "f7fcf8b59972ef7bb16e1c7c50023c79d79b68461334511387e12f38d5739a56",
+    "promptIdx": 1,
+    "repeatGroupId": "test-1-vars-0",
+    "repeatIndex": 1,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer in detail: Where is the invoice?",
+     "raw": "Answer in detail: Where is the invoice?",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "Where is the invoice?"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "billing",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 3,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "Where is the invoice?"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"x\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"x\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"x\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "x",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "a7e46157-4a54-4486-86c9-789bb98aa1ae",
+    "latencyMs": 6,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer briefly: A question that is not in the benchmark (password reset is in Settings > Security)",
+     "label": "concise",
+     "config": {}
+    },
+    "promptId": "e7fbe4df65775d0a6e97bf1362a855614bf219b522cadc8caeb592952d778727",
+    "promptIdx": 0,
+    "repeatGroupId": "test-2-vars-0",
+    "repeatIndex": 0,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer briefly: A question that is not in the benchmark (password reset is in Settings > Security)",
+     "raw": "Answer briefly: A question that is not in the benchmark (password reset is in Settings > Security)",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "A question that is not in the benchmark"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "x",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 4,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "A question that is not in the benchmark"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"x\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"x\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"x\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "x",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "86edceff-08bc-4486-9f43-1c9ac753677d",
+    "latencyMs": 5,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer in detail: A question that is not in the benchmark",
+     "label": "detailed",
+     "config": {}
+    },
+    "promptId": "f7fcf8b59972ef7bb16e1c7c50023c79d79b68461334511387e12f38d5739a56",
+    "promptIdx": 1,
+    "repeatGroupId": "test-2-vars-0",
+    "repeatIndex": 0,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer in detail: A question that is not in the benchmark",
+     "raw": "Answer in detail: A question that is not in the benchmark",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "A question that is not in the benchmark"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "x",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 4,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "A question that is not in the benchmark"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"x\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"x\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"x\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "x",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "87856f3f-b1a6-4595-b507-8654a2519b24",
+    "latencyMs": 4,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer briefly: A question that is not in the benchmark (password reset is in Settings > Security)",
+     "label": "concise",
+     "config": {}
+    },
+    "promptId": "e7fbe4df65775d0a6e97bf1362a855614bf219b522cadc8caeb592952d778727",
+    "promptIdx": 0,
+    "repeatGroupId": "test-2-vars-0",
+    "repeatIndex": 1,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer briefly: A question that is not in the benchmark (password reset is in Settings > Security)",
+     "raw": "Answer briefly: A question that is not in the benchmark (password reset is in Settings > Security)",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "A question that is not in the benchmark"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "x",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 5,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "A question that is not in the benchmark"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   },
+   {
+    "cost": 0,
+    "error": "Expected output to contain \"x\"",
+    "gradingResult": {
+     "pass": false,
+     "score": 0,
+     "reason": "Expected output to contain \"x\"",
+     "namedScores": {
+      "Correctness": 0
+     },
+     "namedScoreWeights": {
+      "Correctness": 1
+     },
+     "tokensUsed": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0
+     },
+     "componentResults": [
+      {
+       "pass": false,
+       "score": 0,
+       "reason": "Expected output to contain \"x\"",
+       "assertion": {
+        "type": "icontains",
+        "value": "x",
+        "metric": "Correctness"
+       }
+      }
+     ]
+    },
+    "id": "60cc9a1e-ea74-41b9-88d7-2e5dc9b7dc65",
+    "latencyMs": 3,
+    "namedScores": {
+     "Correctness": 0
+    },
+    "prompt": {
+     "raw": "Answer in detail: A question that is not in the benchmark",
+     "label": "detailed",
+     "config": {}
+    },
+    "promptId": "f7fcf8b59972ef7bb16e1c7c50023c79d79b68461334511387e12f38d5739a56",
+    "promptIdx": 1,
+    "repeatGroupId": "test-2-vars-0",
+    "repeatIndex": 1,
+    "provider": {
+     "id": "echo",
+     "label": "echo-model"
+    },
+    "response": {
+     "output": "Answer in detail: A question that is not in the benchmark",
+     "raw": "Answer in detail: A question that is not in the benchmark",
+     "cost": 0,
+     "cached": false,
+     "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "total": 0,
+      "numRequests": 1,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      },
+      "assertions": {
+       "total": 0,
+       "prompt": 0,
+       "completion": 0,
+       "cached": 0,
+       "numRequests": 0,
+       "completionDetails": {
+        "reasoning": 0,
+        "acceptedPrediction": 0,
+        "rejectedPrediction": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0
+       }
+      }
+     },
+     "isRefusal": false,
+     "metadata": {}
+    },
+    "score": 0,
+    "success": false,
+    "testCase": {
+     "vars": {
+      "question": "A question that is not in the benchmark"
+     },
+     "assert": [
+      {
+       "type": "icontains",
+       "value": "x",
+       "metric": "Correctness"
+      }
+     ],
+     "options": {},
+     "metadata": {}
+    },
+    "testIdx": 5,
+    "tokenUsage": {
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "total": 0,
+     "numRequests": 1,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     },
+     "assertions": {
+      "total": 0,
+      "prompt": 0,
+      "completion": 0,
+      "cached": 0,
+      "numRequests": 0,
+      "completionDetails": {
+       "reasoning": 0,
+       "acceptedPrediction": 0,
+       "rejectedPrediction": 0,
+       "cacheReadInputTokens": 0,
+       "cacheCreationInputTokens": 0
+      }
+     }
+    },
+    "vars": {
+     "question": "A question that is not in the benchmark"
+    },
+    "metadata": {
+     "_promptfooFileMetadata": {}
+    },
+    "failureReason": 1
+   }
+  ],
+  "stats": {
+   "successes": 2,
+   "failures": 10,
+   "errors": 0,
+   "tokenUsage": {
+    "prompt": 0,
+    "completion": 0,
+    "cached": 0,
+    "total": 0,
+    "numRequests": 12,
+    "completionDetails": {
+     "reasoning": 0,
+     "acceptedPrediction": 0,
+     "rejectedPrediction": 0,
+     "cacheReadInputTokens": 0,
+     "cacheCreationInputTokens": 0
+    },
+    "assertions": {
+     "total": 0,
+     "prompt": 0,
+     "completion": 0,
+     "cached": 0,
+     "numRequests": 0,
+     "completionDetails": {
+      "reasoning": 0,
+      "acceptedPrediction": 0,
+      "rejectedPrediction": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0
+     }
+    }
+   },
+   "durationMs": 113,
+   "evaluationDurationMs": 113
+  },
+  "repeatStability": {
+   "totalGroups": 6,
+   "unstableGroups": 0,
+   "groupsWithErrors": 0,
+   "cachedResults": 0,
+   "groups": [
+    {
+     "repeatGroupId": "test-0-vars-0",
+     "promptIdx": 0,
+     "provider": {
+      "id": "echo",
+      "label": "echo-model"
+     },
+     "promptLabel": "concise",
+     "repetitions": 2,
+     "passed": 2,
+     "failed": 0,
+     "errors": 0,
+     "cached": 0,
+     "unstable": false,
+     "passRate": 1,
+     "passRateConfidenceInterval": {
+      "confidenceLevel": 0.95,
+      "lower": 0.34238022750665303,
+      "upper": 1
+     }
+    },
+    {
+     "repeatGroupId": "test-0-vars-0",
+     "promptIdx": 1,
+     "provider": {
+      "id": "echo",
+      "label": "echo-model"
+     },
+     "promptLabel": "detailed",
+     "repetitions": 2,
+     "passed": 0,
+     "failed": 2,
+     "errors": 0,
+     "cached": 0,
+     "unstable": false,
+     "passRate": 0,
+     "passRateConfidenceInterval": {
+      "confidenceLevel": 0.95,
+      "lower": 0,
+      "upper": 0.6576197724933469
+     }
+    },
+    {
+     "repeatGroupId": "test-1-vars-0",
+     "promptIdx": 0,
+     "provider": {
+      "id": "echo",
+      "label": "echo-model"
+     },
+     "promptLabel": "concise",
+     "repetitions": 2,
+     "passed": 0,
+     "failed": 2,
+     "errors": 0,
+     "cached": 0,
+     "unstable": false,
+     "passRate": 0,
+     "passRateConfidenceInterval": {
+      "confidenceLevel": 0.95,
+      "lower": 0,
+      "upper": 0.6576197724933469
+     }
+    },
+    {
+     "repeatGroupId": "test-1-vars-0",
+     "promptIdx": 1,
+     "provider": {
+      "id": "echo",
+      "label": "echo-model"
+     },
+     "promptLabel": "detailed",
+     "repetitions": 2,
+     "passed": 0,
+     "failed": 2,
+     "errors": 0,
+     "cached": 0,
+     "unstable": false,
+     "passRate": 0,
+     "passRateConfidenceInterval": {
+      "confidenceLevel": 0.95,
+      "lower": 0,
+      "upper": 0.6576197724933469
+     }
+    },
+    {
+     "repeatGroupId": "test-2-vars-0",
+     "promptIdx": 0,
+     "provider": {
+      "id": "echo",
+      "label": "echo-model"
+     },
+     "promptLabel": "concise",
+     "repetitions": 2,
+     "passed": 0,
+     "failed": 2,
+     "errors": 0,
+     "cached": 0,
+     "unstable": false,
+     "passRate": 0,
+     "passRateConfidenceInterval": {
+      "confidenceLevel": 0.95,
+      "lower": 0,
+      "upper": 0.6576197724933469
+     }
+    },
+    {
+     "repeatGroupId": "test-2-vars-0",
+     "promptIdx": 1,
+     "provider": {
+      "id": "echo",
+      "label": "echo-model"
+     },
+     "promptLabel": "detailed",
+     "repetitions": 2,
+     "passed": 0,
+     "failed": 2,
+     "errors": 0,
+     "cached": 0,
+     "unstable": false,
+     "passRate": 0,
+     "passRateConfidenceInterval": {
+      "confidenceLevel": 0.95,
+      "lower": 0,
+      "upper": 0.6576197724933469
+     }
+    }
+   ]
+  }
+ },
+ "config": {
+  "tags": {},
+  "description": "Vectraudit import fixture (offline; echo provider)",
+  "prompts": [
+   {
+    "id": "concise",
+    "label": "concise",
+    "raw": "Answer briefly: {{question}} (password reset is in Settings > Security)"
+   },
+   {
+    "id": "detailed",
+    "label": "detailed",
+    "raw": "Answer in detail: {{question}}"
+   }
+  ],
+  "providers": [
+   {
+    "id": "echo",
+    "label": "echo-model"
+   }
+  ],
+  "tests": [
+   {
+    "vars": {
+     "question": "How do I reset my password?"
+    },
+    "metadata": {
+     "query_id": "q1"
+    },
+    "assert": [
+     {
+      "type": "icontains",
+      "value": "settings",
+      "metric": "Correctness"
+     },
+     {
+      "type": "javascript",
+      "value": "output.length < 200",
+      "metric": "Brevity"
+     }
+    ]
+   },
+   {
+    "vars": {
+     "question": "Where is the invoice?"
+    },
+    "assert": [
+     {
+      "type": "icontains",
+      "value": "billing",
+      "metric": "Correctness"
+     }
+    ]
+   },
+   {
+    "vars": {
+     "question": "A question that is not in the benchmark"
+    },
+    "assert": [
+     {
+      "type": "icontains",
+      "value": "x",
+      "metric": "Correctness"
+     }
+    ]
+   }
+  ],
+  "env": {},
+  "outputPath": [
+   "results.json"
+  ],
+  "extensions": [],
+  "metadata": {},
+  "evaluateOptions": {},
+  "basePath": "."
+ },
+ "shareableUrl": null,
+ "metadata": {
+  "promptfooVersion": "0.125.1",
+  "nodeVersion": "v22.23.4",
+  "platform": "linux",
+  "arch": "x64",
+  "exportedAt": "2026-11-01T15:43:53.093Z",
+  "evaluationCreatedAt": "2026-11-01T15:43:52.900Z"
+ },
+ "vars": [
+  "question"
+ ],
+ "runtimeOptions": {
+  "eventSource": "cli",
+  "showProgressBar": true,
+  "repeat": 2,
+  "maxConcurrency": 4,
+  "cache": false
+ }
+}

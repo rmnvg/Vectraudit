@@ -2842,6 +2842,50 @@ Results:
   configured), 1 deselected.
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
+## Step 84: promptfoo results as answer judgments (1.2)
+
+The owner asked what promptfoo offers. It is an LLM evaluation CLI (YAML tests, about 60
+assertion types, prompt and model comparison, red-teaming, CI). Assertions and judges
+are a suite of their own (the strategy says to import results), and CI integration exists
+(Steps 27, 71). The fit is the same as DeepEval's (Step 80): its results become
+`attach-answers` judgments.
+
+`vectraudit workbench promptfoo-judgments RESULTS BENCHMARK --assertion NAME [--provider P]
+[--prompt Q] --out F`:
+- **One variant:** an eval comparing several provider/prompt pairs needs one chosen;
+  judgments of different systems are never mixed.
+- **Chosen assertions:** by metric label or type, or `overall`. `context-recall` and
+  `context-relevance` are refused, and `overall` is skipped for tests that include them.
+- **Verdicts:** promptfoo's `pass`, with the score. Each repeat is its own judgment.
+- **Matching:** metadata or vars IDs, else an unambiguous question variable.
+
+**Tested on a real promptfoo file**, following Step 83. promptfoo 0.125.1 ran offline (echo
+provider, deterministic assertions; 2 prompts × 3 tests × 2 repeats). It caught a defect in
+the first draft, written from promptfoo's types: promptfoo sets `error` to the assertion
+message on every ordinary failure. The draft skipped those as errors, which would have
+dropped every failing answer and imported only passes. Errors are now read from
+`failureReason` 2 only. The fixture, its config and the command are in
+`tests/fixtures/promptfoo`, with the local base path removed.
+
+Not included: promptfoo's red-teaming, its LLM-graded RAG assertions as retrieval evidence,
+and its cloud sharing.
+
+Validation: 9 new tests on the real file:
+- variants, assertions and repeats as recorded;
+- several variants refused;
+- failures imported as failures (5 of the 9 fail with the draft's `error` check);
+- matching by metadata and question;
+- `overall` and the retrieval refusals;
+- real errors skipped;
+- disagreeing repeats attaching as disputed;
+- non-promptfoo files refused;
+- the CLI.
+
+Results:
+- Full Python suite: **2,199 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
