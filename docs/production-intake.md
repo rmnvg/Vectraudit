@@ -139,6 +139,35 @@ passage review → it joins the benchmark (`promoted`) → a failing release cre
 regression case → a fix is verified → `intake` reports a *likely recurrence* if production
 misses its labelled documents again, and asks to reopen the verified case.
 
+## Is the benchmark still representative?
+
+`workbench drift` compares production questions from traces with the benchmark's, in the
+manner of Evidently's data drift reports, so you learn when a passing release check has
+started to say less about production:
+
+```bash
+vectraudit workbench drift traces-2026-10-19.jsonl questions.jsonl \
+  --context-field tenant --context-field language --json drift.json
+```
+
+- **Descriptors** per question: word count, script (Latin, Cyrillic, CJK, ...), digits,
+  question form, whether it uses a term the benchmark never uses, and each
+  `--context-field`. For the benchmark, an unseen term is one no *other* benchmark
+  question uses, so both sides are measured the same way.
+- **Statistic:** the population stability index, computed as Evidently computes it:
+  numbers with more than 20 distinct benchmark values are binned with the Sturges rule
+  over both samples, everything else compares category shares, and empty bins get a small
+  floor. PSI of 0.1 or more is drift (Evidently's default).
+- **What moved:** new values (a script or tenant the benchmark lacks), the most frequent
+  unseen terms, and the share of production questions that are benchmark questions word
+  for word.
+- `--fail-on-drift` exits 3, for a scheduled job. Below about 30 questions on either side,
+  the report warns that PSI is unstable.
+- **Local only:** the report holds production terms and context values and is never
+  uploaded.
+- **Next step after drift:** run intake and review its queue, then add or relabel
+  questions before trusting a pass.
+
 ## Limits
 
 - **Matching:** by question text, not by meaning. Paraphrases are new questions until a

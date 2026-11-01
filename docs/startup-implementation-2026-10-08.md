@@ -2338,6 +2338,53 @@ Results:
 - Ruff, and mypy on Python 3.12 and 3.10 (`--locked` sync, so the lock file is unchanged),
   passed.
 
+## Step 72: query drift, after Evidently (1.8)
+
+The owner asked for something from Evidently. Most of it (tabular drift and quality,
+classification and regression metrics, text descriptors, LLM judges, a monitoring UI) is
+outside a retrieval release check, or already covered (ranking metrics, reports, CI
+tests). The fit was its **data drift** method applied to Vectraudit's open benchmark-upkeep
+question (1.8): is the benchmark still representative of production?
+
+`vectraudit workbench drift TRACES DATASET [--context-field F] [--json] [--fail-on-drift]`:
+- **Production questions** are read from traces in any supported format, the same way
+  intake reads them.
+- **Descriptors:** word count, script, digits, question form, unseen terms (leave-one-out
+  on the benchmark) and declared context fields.
+- **Each descriptor is compared by PSI** exactly as Evidently computes it (Sturges binning
+  for numbers with more than 20 distinct reference values, category shares otherwise, the
+  same empty-bin floor, drift at 0.1). Tests check it against hand computation.
+- **What moved:** new values, the most frequent unseen terms, and the share of production
+  questions that are benchmark questions word for word. A small-sample warning appears
+  below about 30 questions.
+- Local only. It never changes a release verdict. No dependency (numpy).
+
+Not included: embedding drift, retrieval-score drift, drift tracking over time in the
+hosted service, other statistical tests, and a run on a customer's production traces.
+
+Validation: 18 new tests:
+- categorical PSI against the textbook sum;
+- Evidently's empty-bin floor in both forms;
+- Sturges binning against a direct numpy computation, and few-valued numbers compared as
+  categories;
+- script detection across six scripts and none;
+- descriptors, including the fullwidth question mark;
+- no drift on identical samples;
+- a new language, tenant and vocabulary flagged and named;
+- longer questions drifting on word count;
+- leave-one-out unseen terms;
+- missing context as its own value;
+- refusals;
+- production questions read from traces with context;
+- the CLI (report, JSON, `--fail-on-drift`, a calm run, a missing file).
+
+Results:
+- Full Python suite: 2,069 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff and mypy on Python 3.12 passed. mypy on Python 3.10 caught a bare `np.ndarray`
+  annotation that its older numpy stubs reject; after the fix (annotation only) it passes.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
