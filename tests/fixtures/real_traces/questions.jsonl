@@ -1,0 +1,3 @@
+{"query_id": "q1", "text": "How do I reset my password?", "relevant": {"d1": 1}}
+{"query_id": "q2", "text": "Where is the invoice?", "relevant": {"d2": 1}}
+{"query_id": "q3", "text": "Cancel my plan", "relevant": {"d3": 1}}

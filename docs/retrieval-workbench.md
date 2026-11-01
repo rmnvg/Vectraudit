@@ -500,9 +500,11 @@ OpenLLMetry's conventions instead of OpenInference's are translated on the way i
   that ran several queries at once (Chroma with several texts, Milvus with several query
   IDs): its results carry nothing saying which query each belongs to, so they are not
   merged into one ranking.
-- **The question** comes from the workflow's `traceloop.entity.input`, which the SDK writes
-  as `{"args": [...], "kwargs": {...}}`: a `question`, `query`, `input` or `text` keyword,
-  else the first string argument.
+- **The question** comes from `traceloop.entity.input`, in either form OpenLLMetry writes:
+  the SDK decorators' `{"args": [...], "kwargs": {...}}` (a `question`, `query`, `input` or
+  `text` keyword, else the first string argument), or its LangChain instrumentation's
+  `{"inputs": ..., "tags", "metadata", "kwargs"}` (the `inputs` string, or the question in
+  an `inputs` object) and `{"query": ...}` on retriever spans.
 - **LLM calls** (`gen_ai.system`, `llm.request.type`) contribute their `gen_ai.prompt.N`
   messages, so model context is located as for OpenInference.
 - **Association properties** (`traceloop.association.properties.*`) are metadata, so
@@ -527,7 +529,11 @@ OpenLLMetry's conventions instead of OpenInference's are translated on the way i
   example `--final-span "retrieval VectorStoreRetriever"`. Otherwise the question is
   reported as ambiguous instead of guessed.
 - **Model calls** (`chat`, `text_completion`, `generate_content`) contribute
-  `gen_ai.input.messages`, so model context is located.
+  `gen_ai.input.messages`, so model context is located when the call is in the same trace.
+- **What real OpenLIT output showed** (OpenLIT 1.45 with LangChain and Chroma): OpenLIT
+  recorded the retriever, vector-store and chat spans of one question as separate traces,
+  so rankings import but model context is unknown. Document IDs come only from metadata
+  `id` or `source`; documents with neither import as `document_id_missing`.
 
 LangSmith and Langfuse exports are read too, and converted to the same spans, so everything
 below applies to them unchanged:
