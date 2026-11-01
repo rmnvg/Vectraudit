@@ -1283,7 +1283,7 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69, 75 (Langfuse, LangSmith and Opik API pulls; OpenLLMetry OTLP): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69, 75, 77 (Langfuse, LangSmith, Opik and OpenObserve pulls; OpenLLMetry OTLP): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
 | **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
 | **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47 and 68 (diagnosis written back to Langfuse traces): investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
@@ -2528,6 +2528,52 @@ Validation:
 - The email and GitHub test modules also pass on Python 3.10 (23 passed), and the GitHub
   tests pass with and without `GH_TOKEN` set.
 - Ruff, and mypy on Python 3.12 and 3.10, passed.
+
+## Step 77: pull traces from OpenObserve (1.1, 1.8)
+
+The owner asked what OpenObserve could add. It is a general observability backend (logs,
+metrics, traces, RUM), which is the general tracing the strategy rules out. But teams send
+their LLM traces there, so it fits the same "integrate" pattern as Langfuse, LangSmith and
+Opik.
+
+`vectraudit workbench openobserve-pull --since T --until T --traces F [--stream S]`:
+- **Whole traces:** traces are taken by start time (`GET .../traces/latest`), then all their
+  spans are read by SQL (`POST .../_search?type=traces`, by trace ID, over the window plus
+  `--grace-minutes`), so traces are not cut at the window's end.
+- **Rebuilt as OTLP JSON,** so the existing reader, including Step 75's OpenLLMetry
+  translation, imports it unchanged. Taken from OpenObserve's source: spans are flat rows
+  with attribute keys rewritten (lower case, other characters to `_`, `attr_` on collision)
+  and events kept as JSON with their original keys. The rewrite is not invertible, so the
+  keys the importer reads are restored by explicit patterns (a test round-trips every
+  one), and other keys keep their stored names.
+- **Boundary:** read-only; Basic auth over https only (local http excepted); trace IDs
+  validated as 32 hex characters before entering SQL, and organisation and stream names
+  restricted; error bodies not echoed.
+- **Licence:** OpenObserve is AGPL-3.0. Its source was read only to learn the stored
+  format; nothing was copied or added as a dependency, and the client only calls its HTTP
+  API.
+
+Not included: OpenObserve's own LLM evaluation scores as judgments, writing back, SQL
+filters beyond the time window, and a real OpenObserve instance. The fake server stores
+spans by the documented flattening rules.
+
+Validation: 21 new tests:
+- every key the importer reads surviving storage and restoration, collisions, and unknown
+  keys left alone;
+- an OpenInference trace end to end through the CLI (ids, model context, prompt version);
+- an OpenLLMetry Pinecone trace end to end (event results with repr metadata, prompt
+  version, tenant context);
+- the grace window and exact request shapes (times in microseconds, `type=traces`, the SQL);
+- paging, with a malformed trace ID never reaching SQL;
+- seven refused responses without echoing bodies;
+- seven unsafe or incomplete settings;
+- a token sent as given;
+- the CLI without a URL or organisation.
+
+Results:
+- Full Python suite: **2,130 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
 ## Next increments
 
