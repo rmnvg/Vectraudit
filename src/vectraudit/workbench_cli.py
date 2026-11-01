@@ -31,6 +31,17 @@ workbench_app = typer.Typer(
 )
 
 
+def _stage_kinds(items: list[str] | None) -> dict[str, str]:
+    """``--stage-kind SPAN=KIND`` options as a mapping."""
+    kinds = {}
+    for item in items or []:
+        name, sep, kind = item.partition("=")
+        if not sep or not name:
+            raise ValueError(f"--stage-kind expects SPAN=KIND, got {item!r}")
+        kinds[name] = kind
+    return kinds
+
+
 def _write(path: Path, data: dict[str, Any]) -> None:
     atomic_write(path, json.dumps(data, indent=2, allow_nan=False, ensure_ascii=False) + "\n")
 
@@ -494,8 +505,8 @@ def import_traces_command(
     stage_kind: Annotated[
         list[str] | None,
         typer.Option(
-            help="SPAN=KIND for retriever spans (bm25=keyword); default custom. In LangSmith "
-            "and Langfuse exports a named span counts as a retriever."
+            help="SPAN=KIND for retriever spans (bm25=keyword); default custom. In LangSmith, "
+            "Langfuse and Opik exports a named span counts as a retriever (Opik needs it)."
         ),
     ] = None,
     latest: Annotated[
@@ -513,12 +524,7 @@ def import_traces_command(
     from vectraudit.pipelines.traces import Settings, import_traces, render_report
 
     try:
-        kinds = {}
-        for item in stage_kind or []:
-            name, sep, kind = item.partition("=")
-            if not sep or not name:
-                raise ValueError(f"--stage-kind expects SPAN=KIND, got {item!r}")
-            kinds[name] = kind
+        kinds = _stage_kinds(stage_kind)
         settings = Settings(
             query_attribute=query_attribute,
             id_field=id_field,
@@ -1314,6 +1320,86 @@ def langfuse_push_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("opik-pull")
+def opik_pull_command(
+    since: Annotated[str, typer.Option(help="Start of the window (ISO 8601, inclusive).")],
+    until: Annotated[str, typer.Option(help="End of the window (ISO 8601).")],
+    project: Annotated[
+        str | None, typer.Option(help="Opik project (default: OPIK_PROJECT_NAME).")
+    ] = None,
+    traces: Annotated[
+        Path | None,
+        typer.Option(help="Write spans here (JSONL) for import-traces or intake."),
+    ] = None,
+    judgments: Annotated[
+        Path | None,
+        typer.Option(help="Write feedback scores as answer judgments (JSONL) for attach-answers."),
+    ] = None,
+    grace_minutes: Annotated[
+        int, typer.Option(help="Also read spans created this long after the window.")
+    ] = 60,
+    human_source: Annotated[
+        list[str] | None,
+        typer.Option(help="Score sources counted as human review (default: ui)."),
+    ] = None,
+) -> None:
+    """Pull traces, spans and feedback scores from an Opik project for the given window.
+
+    Reads OPIK_URL_OVERRIDE (default Opik Cloud), OPIK_API_KEY, OPIK_WORKSPACE and
+    OPIK_PROJECT_NAME. Opik has no retriever span type: name retriever spans with
+    --stage-kind when importing. Read-only; score reasons are never written out.
+    """
+    import os
+
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+    from vectraudit.pipelines.opik_api import (
+        OPIK_CLOUD,
+        OpikSource,
+        fetch,
+        records,
+        scores_to_judgments,
+    )
+
+    if traces is None and judgments is None:
+        typer.echo("Pull error: give --traces, --judgments or both.", err=True)
+        raise typer.Exit(2)
+    name = project or os.environ.get("OPIK_PROJECT_NAME")
+    if not name:
+        typer.echo("Pull error: give --project or set OPIK_PROJECT_NAME.", err=True)
+        raise typer.Exit(2)
+    try:
+        source = OpikSource(
+            url=os.environ.get("OPIK_URL_OVERRIDE") or OPIK_CLOUD,
+            api_key=os.environ.get("OPIK_API_KEY") or None,
+            workspace=os.environ.get("OPIK_WORKSPACE") or None,
+        )
+        found, spans = fetch(source, name, start=since, end=until, grace_minutes=grace_minutes)
+        lines = []
+        if traces is not None:
+            write_jsonl(traces, records(found, spans))
+            lines.append(f"Wrote {len(found)} traces and {len(spans)} spans to {traces}.")
+            if found and not spans:
+                lines.append("No spans were found for these traces; retrieval will be missing.")
+        if judgments is not None:
+            rows, skipped = scores_to_judgments(found, spans, human_sources=human_source or ("ui",))
+            write_jsonl(judgments, rows)
+            lines.append(f"Wrote {len(rows)} feedback scores as judgments to {judgments}.")
+            if skipped:
+                lines.append(
+                    "Skipped: "
+                    + ", ".join(
+                        f"{n} {why.replace('_', ' ')}" for why, n in sorted(skipped.items())
+                    )
+                )
+            if any("score" in r for r in rows):
+                lines.append("Numeric scores need --threshold EVALUATOR=VALUE when attached.")
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Pull error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo("\n".join(lines))
+    typer.echo(f"({source.calls} API requests.)")
+
+
 @workbench_app.command("langsmith-pull")
 def langsmith_pull_command(
     project: Annotated[str, typer.Option(help="LangSmith tracing project name.")],
@@ -1434,6 +1520,13 @@ def intake_command(
     final_span: Annotated[
         str | None, typer.Option(help="Span name whose documents are delivered.")
     ] = None,
+    stage_kind: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="SPAN=KIND for retriever spans, as in import-traces (needed for Opik, which "
+            "has no retriever span type)."
+        ),
+    ] = None,
     json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
     fail_on_recurrence: Annotated[
         bool,
@@ -1460,7 +1553,9 @@ def intake_command(
             traces,
             load_dataset(dataset),
             state,
-            settings=Settings(id_field=id_field, final_span=final_span),
+            settings=Settings(
+                id_field=id_field, final_span=final_span, stage_kinds=_stage_kinds(stage_kind)
+            ),
             context_fields=context_field or (),
             feedback=read_feedback(feedback) if feedback else None,
             routes=read_routes(routes) if routes else (),

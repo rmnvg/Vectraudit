@@ -17,7 +17,7 @@ question text, and nothing is uploaded.
 
 ## Pulling directly from Langfuse
 
-Teams on Langfuse or LangSmith can skip the export step. `workbench langfuse-pull` reads a time window
+Teams on Langfuse, LangSmith or Opik can skip the export step. `workbench langfuse-pull` reads a time window
 from the project's public API and writes the same observation records an export holds, plus
 the project's scores as answer judgments:
 
@@ -68,6 +68,37 @@ vectraudit workbench langsmith-pull --project support-bot \
 - **Read-only.** Nothing is written to LangSmith. The key goes only over https (plain http
   only to a local server). LangSmith returns comments and corrections with feedback; they
   are never written to the output files.
+
+## Pulling directly from Opik
+
+```bash
+export OPIK_API_KEY=... OPIK_WORKSPACE=acme   # Opik Cloud; a self-hosted Opik may need neither
+export OPIK_URL_OVERRIDE=http://localhost:5173/api   # only for a self-hosted Opik
+vectraudit workbench opik-pull --project support-bot \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces spans-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+vectraudit workbench intake spans-2026-10-19.jsonl questions.jsonl --state retrieval/intake \
+  --stage-kind search_kb=vector
+```
+
+- **Name the retriever.** Opik's span types are `general`, `tool`, `llm` and `guardrail`,
+  with no retriever type, so pass `--stage-kind SPAN_NAME=KIND` for the span that returns
+  documents. It is never guessed from a name.
+- **The question is on the trace.** Each Opik trace is written as its trace's root span,
+  with top-level spans under it, so the trace's input is where the question is found.
+- **Window:** Opik filters by creation time. Traces created in the window are taken, and
+  their spans are read up to `--grace-minutes` (default 60) after it, because spans can be
+  created after their trace. Spans later than that leave the trace incomplete, which
+  imports as a gap, never as a result.
+- **Scores** come inline on traces and spans; a span's score counts for its trace. A
+  `category_name` of `correct`, `partial` or `incorrect` is that verdict, and other
+  categories are skipped, never read from their numeric value. Uncategorised values stay
+  scores that need `--threshold`. `ui` scores (the Opik interface and annotation queues)
+  are human review (change with `--human-source`); `sdk` and `online_scoring` are model
+  judgments. Opik's averaged `span_feedback_scores` are not used. Reasons are never
+  written out.
+- **Read-only.** An API key goes only over https (plain http only to a local server). A
+  keyless self-hosted Opik can be read over http, since no secret is sent.
 
 ## What each run does
 
