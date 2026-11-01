@@ -2941,6 +2941,48 @@ Results:
 - An intermediate run showed 8 CLI failures because the scratch Chroma server had been
   started on port 8765, `vectraudit serve`'s default; with it stopped they pass.
 
+## Step 86: Ragas scores as answer judgments (1.2)
+
+The owner asked what Ragas offers. It is an Apache-2.0 RAG evaluation library: LLM-judged
+and non-LLM metrics, test-set generation, and experiments. Its test sets were already
+imported (`dataset import --format ragas`). Its metrics are a judge suite of their own, so
+following the strategy (import results; Steps 80, 84) its evaluation results become
+`attach-answers` judgments.
+
+`vectraudit workbench ragas-judgments RESULTS BENCHMARK --metric NAME --out F` reads
+`evaluate(...).to_pandas()` saved as CSV, JSON Lines or JSON (records or pandas' column
+layout):
+- **Scores only:** Ragas gives no pass/fail, so judgments carry the score as
+  `ragas.METRIC` and the threshold is declared in `attach-answers --threshold`. Nothing is
+  assumed.
+- **Chosen metrics,** with every `context` metric refused (they judge retrieval).
+- **Failed metrics** (empty or `null`) skipped and counted.
+- **Matching:** `query_id`/`trace_id` columns, else an unambiguous `user_input`; multi-turn
+  samples only by ID.
+
+**Built against real Ragas output**, following Steps 83 and 84. Ragas 0.4.3 ran offline
+with its non-LLM metrics, plus a run with an unreachable LLM judge to record what a failure
+looks like. What it showed:
+- the ROUGE column is `rouge_score(mode=fmeasure)`, a name with `=` in it (attach-answers
+  already splits `--threshold` on the last `=`);
+- BLEU can exceed 1 by rounding, so scores are not range-checked;
+- failures are empty CSV cells and JSON `null`, not `NaN` text.
+
+The fixtures and the scripts that made them are in `tests/fixtures/ragas`.
+
+Not included: Ragas test-set generation (needs an LLM; its output is already importable),
+its experiment framework, and its context metrics as retrieval evidence.
+
+Validation: 11 new tests on the real files:
+- all three saved layouts read identically;
+- judgments hold only the score;
+- failed metrics skipped in CSV and JSONL;
+- context metrics refused and unknown metrics listed;
+- ID columns, multi-turn and ambiguous matching;
+- scores turning into verdicts only with a declared threshold;
+- other files refused;
+- the CLI.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

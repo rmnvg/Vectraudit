@@ -1,0 +1,3 @@
+user_input,retrieved_contexts,response,reference,exact_match,faithfulness
+How do I reset my password?,['Reset your password from Settings.'],Open Settings and choose Reset password.,Open Settings and choose Reset password.,1.0,
+Where is the invoice?,['Invoices are emailed monthly.'],Invoices are emailed monthly.,Invoices are under Billing > Invoices.,0.0,
