@@ -1257,6 +1257,63 @@ def langfuse_pull_command(
     typer.echo(f"({source.calls} API requests.)")
 
 
+@workbench_app.command("langfuse-push")
+def langfuse_push_command(
+    run: Annotated[
+        Path, typer.Argument(help="Run imported from Langfuse, with attach-answers applied.")
+    ],
+    send: Annotated[
+        bool, typer.Option("--send", help="Write the scores. Without it, only preview.")
+    ] = False,
+    name: Annotated[str, typer.Option(help="Score name in Langfuse.")] = "vectraudit.diagnosis",
+    environment: Annotated[
+        str | None, typer.Option(help="Langfuse environment for the scores.")
+    ] = None,
+) -> None:
+    """Write each judged trace's diagnosis back to Langfuse as a categorical score.
+
+    Previews by default; --send writes. Only the diagnosis class, a stable score ID and a run
+    digest are sent: no text, document IDs or facts. Re-sending replaces a trace's earlier
+    score of the same name. Reads the same LANGFUSE_* variables as langfuse-pull.
+    """
+    import os
+
+    from vectraudit.pipelines.langfuse_api import LangfuseSource
+    from vectraudit.pipelines.langfuse_push import diagnosis_scores, preview, push_scores
+
+    try:
+        scores, skipped = diagnosis_scores(load_run(run), name=name, environment=environment)
+        typer.echo(preview(scores, skipped))
+        if not send:
+            typer.echo("\nPreview only: nothing was sent. Add --send to write these scores.")
+            return
+        if not scores:
+            typer.echo("\nNothing to send.")
+            return
+        source = LangfuseSource(
+            host=os.environ.get("LANGFUSE_HOST")
+            or os.environ.get("LANGFUSE_BASE_URL")
+            or "https://cloud.langfuse.com",
+            public_key=os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+            secret_key=os.environ.get("LANGFUSE_SECRET_KEY", ""),
+        )
+        totals = push_scores(source, scores)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Push error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(
+        f"\nSent {totals['sent']} scores in {totals['requests']} requests: "
+        f"{totals['accepted']} accepted, {totals['rejected']} rejected."
+    )
+    if totals["rejected"]:
+        typer.echo(
+            "Langfuse rejected some scores; check the score name against any score config "
+            "with that name. Rejected batches are not retried.",
+            err=True,
+        )
+        raise typer.Exit(3)
+
+
 @workbench_app.command("langsmith-pull")
 def langsmith_pull_command(
     project: Annotated[str, typer.Option(help="LangSmith tracing project name.")],

@@ -660,6 +660,33 @@ The command writes a new run file and leaves the original unchanged. Comparisons
 incorrect in the candidate, with the candidate's diagnosis. Answers do not change release
 verdicts yet, and none of this is uploaded.
 
+### Show the diagnosis in Langfuse
+
+For a run imported from Langfuse (a `langfuse-pull` or export), `workbench langfuse-push`
+writes each judged trace's diagnosis back to Langfuse as a categorical score, so engineers
+can filter and chart traces by it where they already work:
+
+```bash
+vectraudit workbench langfuse-push current.judged.run.json            # preview: sends nothing
+vectraudit workbench langfuse-push current.judged.run.json --send     # write the scores
+```
+
+- **Previews by default.** The preview shows how many traces get a score, the values, and
+  one score exactly as it would be sent. Nothing is sent and no connection is made
+  without `--send`.
+- **Sent per trace:** the trace ID, the score name (`--name`, default
+  `vectraudit.diagnosis`), the diagnosis class, an optional `--environment`, and metadata
+  with Vectraudit's name, a format version and a run digest. No question or document
+  text, no document IDs, no facts, no comment.
+- **Re-sending replaces.** Each score's ID is derived from the trace and score name, so a
+  newer diagnosis is meant to replace the earlier one rather than add a second. Langfuse
+  keys scores by ID; confirm this on your deployment.
+- **Partial rejection** (Langfuse's HTTP 207) is reported as counts and exits 3. It is not
+  retried, as Langfuse asks, and rejection messages are not echoed. A score config with
+  the same name that doesn't list the diagnosis classes as categories is the likely cause.
+- Only runs imported from Langfuse are accepted, because other runs' trace IDs are not
+  Langfuse's. Questions without a trace or a diagnosis are left out and counted.
+
 ## Investigate a failure and try a fix
 
 From a failed question to a verified repair, without leaving the benchmark:
