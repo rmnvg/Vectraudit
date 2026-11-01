@@ -43,10 +43,12 @@ _TOP_KEYS = {
     "critical_context",
     "exceptions",
     "forbidden_stages",
+    "prompt_changes",
 }
 STAGE_KINDS = ("keyword", "vector", "filter", "fusion", "rerank", "truncate", "custom")
 """Pipeline stage kinds, as recorded in stage traces."""
-EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical")
+EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical", "prompt")
+PROMPT_CHANGES = ("report", "fail")
 """Rule kinds a policy may open to audited exceptions. Safety rules are governed separately."""
 COHORT_CONTROLS = ("none", "bonferroni")
 _LATENCY_KEYS = {
@@ -158,6 +160,10 @@ class Policy:
     """Stage kinds a forbidden document must never reach, as input or output (for example
     ``rerank``: a third-party reranker must not see it). Forbidden documents in the results
     or the model context always fail; this extends the boundary upstream."""
+    prompt_changes: str = "report"
+    """``report``: prompt version changes are listed with the changed settings. ``fail``: each
+    changed prompt fails as rule ``prompt:<name>`` (acceptable only through an audited
+    exception), and runs that do not both record prompt versions are not comparable."""
 
     def as_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -175,6 +181,8 @@ class Policy:
             result.pop("critical_queries")
         else:
             result["critical_queries"] = [asdict(rule) for rule in self.critical_queries]
+        if self.prompt_changes == "report":
+            result.pop("prompt_changes")
         if not self.forbidden_stages:
             result.pop("forbidden_stages")
         else:
@@ -271,6 +279,7 @@ def parse_policy(raw: Any) -> Policy:
         critical_context=_context_rules(raw.get("critical_context", [])),
         exceptions=_exception_rules(raw["exceptions"]) if "exceptions" in raw else None,
         forbidden_stages=_stage_kinds(raw.get("forbidden_stages", [])),
+        prompt_changes=_prompt_changes(raw.get("prompt_changes", "report")),
     )
     has_quality_rule = (
         bool(metrics)
@@ -286,6 +295,11 @@ def parse_policy(raw: Any) -> Policy:
         "shown within tolerance) are opposite rules; choose one",
     )
     return policy
+
+
+def _prompt_changes(raw: Any) -> str:
+    _expect(raw in PROMPT_CHANGES, f"prompt_changes must be one of {list(PROMPT_CHANGES)}")
+    return str(raw)
 
 
 def _exception_rules(raw: Any) -> ExceptionRule:

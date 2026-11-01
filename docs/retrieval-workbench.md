@@ -599,7 +599,9 @@ answer, the run records its name and version per question, and the run's
 - **Release checks** list a prompt change with the other changed settings
   (`backend.config.prompts.support-answer: 12 → 13`). They warn when a run mixes versions
   of one prompt, since its answers then came from different prompts, and when only one run
-  recorded prompt versions.
+  recorded prompt versions. With `"prompt_changes": "fail"` in the policy, a changed
+  prompt fails the check until an audited exception accepts it (see the release-check
+  policy docs).
 - **Answer judgments** (`attach-answers`) break diagnoses down by prompt version when a run
   holds several, so "answered wrong despite evidence rose with v13" is visible.
 - **Only names and versions are kept,** never template text. Hosted uploads carry them as

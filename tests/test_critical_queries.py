@@ -118,6 +118,7 @@ def test_existing_policy_identity_is_unchanged_and_new_rules_are_hashed():
     legacy.pop("non_inferiority")  # and while it is false
     legacy.pop("critical_context")  # and while it lists no questions
     legacy.pop("forbidden_stages")  # and while it names no stage kinds
+    legacy.pop("prompt_changes")  # and while prompt changes are only reported
     digest = hashlib.sha256(json.dumps(legacy, sort_keys=True, separators=(",", ":")).encode())
     assert policy_sha256(old) == digest.hexdigest()
     assert policy_sha256(policy()) != policy_sha256(policy(max_rank=2))

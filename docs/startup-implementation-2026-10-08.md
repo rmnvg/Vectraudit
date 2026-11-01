@@ -2757,6 +2757,47 @@ Results:
   configured), 1 deselected.
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
+## Step 82: a policy rule for prompt changes (1.4, after Step 70)
+
+Step 70 recorded which prompt version produced each answer and reported changes, but no
+policy could gate on them. `"prompt_changes": "fail"` (default `"report"`) now:
+- **Fails each changed prompt** as its own rule `prompt:<name>`, including one added,
+  removed or only partly rolled out (a run mixing versions).
+- **Allows audited acceptance:** a new exception kind, `prompt`, lets a policy open these
+  rules to audited exceptions, so a reviewed change is accepted deliberately.
+- **Refuses unverifiable runs:** a check where either run records no prompt versions is
+  not comparable, never a pass.
+- **Calibration:** reports prompt failures between supposedly unchanged runs as not noise.
+- **Hosted checks:** gate on fingerprinted names (`prompt:sha256:…`).
+- **Workbench policy editor:** keeps the option through edits (a frontend test fails
+  without the fix, the same class of bug as Steps 20 and 74).
+- **Hashes:** policies without the option keep their hashes. Checked by hashing two
+  policies with `main` and with this change; the existing hash-pinning test gained the
+  field, as for each earlier optional field.
+
+Not included: a workbench control to switch the rule on (it is kept, not edited), per-prompt
+rules (for example, gate one prompt and not another), and requiring a minimum time between
+prompt changes.
+
+Validation:
+- 9 new Python tests:
+  - the default reporting without failing;
+  - a change failing with its rule key and message, and steady versions passing;
+  - a mixed rollout;
+  - added and removed prompts;
+  - one-sided and missing recording as not comparable;
+  - an audited exception accepting the change only when the policy opens `prompt`;
+  - hashes and value validation;
+  - calibration;
+  - hosted projections.
+- 1 new frontend test.
+
+Results:
+- Full Python suite: **2,180 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, the API type generation check, TypeScript, Oxlint and
+  117 frontend tests passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
