@@ -27,6 +27,7 @@ jobs:
       VECTRAUDIT_TEST_WEAVIATE_GRPC: http://localhost:50051
       VECTRAUDIT_TEST_ELASTICSEARCH_URL: http://localhost:9200
       VECTRAUDIT_TEST_OPENSEARCH_URL: http://localhost:9201
+      VECTRAUDIT_TEST_CHROMA_URL: http://localhost:8000
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -66,6 +67,9 @@ jobs:
           DISABLE_INSTALL_DEMO_CONFIG: "true"
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
         ports: ["9201:9200"]
+      chroma:
+        image: chromadb/chroma:1.5.9
+        ports: ["8000:8000"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

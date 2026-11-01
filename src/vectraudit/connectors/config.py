@@ -173,6 +173,16 @@ _OPTION_TYPES: dict[str, dict[str, type]] = {
         "basic_auth_env": str,
         "timeout_s": int,
     },
+    "chroma": {
+        "url": str,
+        "collection": str,
+        "tenant": str,
+        "database": str,
+        "id_field": str,
+        "token_env": str,
+        "timeout_s": int,
+        "exact_limit": int,
+    },
     "weaviate": {
         "url": str,
         "collection": str,
@@ -191,6 +201,7 @@ _REQUIRED = {
     "pinecone": ("api_key_env", "index"),
     "weaviate": ("url", "collection"),
     "elasticsearch": ("url", "index", "vector_field"),
+    "chroma": ("url", "collection"),
 }
 _OPTION_TYPES["opensearch"] = _OPTION_TYPES["elasticsearch"]
 _REQUIRED["opensearch"] = _REQUIRED["elasticsearch"]
@@ -336,6 +347,22 @@ def _open_elasticsearch(cfg: ConnectionConfig) -> Connector:
     )
 
 
+def _open_chroma(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.chroma import EXACT_LIMIT, ChromaConnector
+
+    _reject_unknown(cfg, set(_OPTION_TYPES["chroma"]))
+    return ChromaConnector(
+        url=require(cfg.options, "url", str),
+        collection=require(cfg.options, "collection", str),
+        tenant=option(cfg.options, "tenant", str) or "default_tenant",
+        database=option(cfg.options, "database", str) or "default_database",
+        id_field=option(cfg.options, "id_field", str),
+        token=secret(cfg.options, "token", required=False),
+        timeout_s=_positive_int(cfg, "timeout_s", 10),
+        exact_limit=_positive_int(cfg, "exact_limit", EXACT_LIMIT),
+    )
+
+
 def _open_pgvector(cfg: ConnectionConfig) -> Connector:
     from vectraudit.connectors.pgvector import PgvectorConnector
 
@@ -393,6 +420,7 @@ BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
     "pinecone": _open_pinecone,
     "weaviate": _open_weaviate,
     "elasticsearch": _open_elasticsearch,
+    "chroma": _open_chroma,
     "opensearch": _open_elasticsearch,
 }
 

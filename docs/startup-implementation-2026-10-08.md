@@ -1294,7 +1294,7 @@ as missing merely because their customer validation is pending.
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. Step 26 drafts the trust package and support/compatibility policy. Step 27: one reusable CI step (install, record, check, report) called by both generated workflows. | Provision and verify channel/credentials, a first run of the CI step on GitHub-hosted runners, owner decisions in the drafts, a DPA template with counsel. |
 | **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. Step 25: calibration in the workbench, with configuration differences called out. Step 28: the workbench shows who may accept each failure and the connected project's exceptions against it. | Customer-runner calibration evidence. |
 | **Tier 2** | Chunking experiments, permission scenarios and CLI optimization foundations exist. | Customer-selected lineage/freshness or permission lifecycle proof on real exports and change logs. *Updated after Steps 49–59: lineage, freshness, permission paths, access changes, cache isolation, migration report, browser Checks tab and a demo exist, validated on fixtures only.* |
-| **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Elasticsearch/OpenSearch connector exists (Step 63, owner-chosen, fake-cluster tests). Defer further breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
+| **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Elasticsearch/OpenSearch connector exists (Step 63, owner-chosen, fake-cluster tests); Chroma connector (Step 85, owner-chosen, tested against a real server). Defer further breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
 
 ## Step 38: adversarial verdict audit (§9 correctness gate)
 
@@ -2885,6 +2885,61 @@ Results:
 - Full Python suite: **2,199 passed, 0 failed**, 29 skipped (live services not
   configured), 1 deselected.
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 85: Chroma connector (Tier 3, chosen by the owner)
+
+The owner asked what VectorDBZ (an MIT desktop GUI for browsing vector databases) offers.
+Browsing and embedding views overlap the existing workbench, and a database GUI is not the
+product. Its list of supported databases showed the gap: Chroma, the most common store in
+RAG prototypes, had no connector. The strategy defers new backends until a customer is
+blocked (Tier 3), and the owner chose to build it anyway, as with Elasticsearch (Step 63).
+
+`{"backend": "chroma", "url": …, "collection": …}` (also `tenant`, `database`, `id_field`,
+`token_env`, `timeout_s`, `exact_limit`):
+- **Search:** over the v2 REST API, with no dependency. Equality filters become a Chroma
+  `where` clause (`$and` for several).
+- **Distance and settings:** distance comes from the collection's `hnsw` or `spann`
+  `space`; `ef_search` and the other index settings are recorded.
+- **Exact reference:** ranks the collection's stored vectors, fetched with the same filter
+  and cached, using Chroma's distance definitions. It is capped at `exact_limit`.
+- **No tuning parameters:** Chroma sets `ef_search` per collection.
+- **No snapshot:** `log_position` stayed 0 across writes on a real server.
+- **Scaffolding:** `vectraudit init --backend chroma` writes a connection template.
+
+**Built against a real server**, not a fake: Chroma 1.5.9 ran locally, and its OpenAPI
+document gave the endpoints and shapes. Against it:
+- the exact reference matched an independent brute-force ranking in all three spaces;
+- filters (single and `$and`) and `id_field` behaved as specified;
+- `vectraudit record` then `check` ran end to end (ANN recall measured, MAP and Hit Rate
+  recorded).
+
+CI now runs `chromadb/chroma:1.5.9` beside the other backends so the live tests keep running.
+
+Not included: Chroma Cloud specifics beyond token headers, Chroma's hybrid `search`
+endpoint, sparse vectors, and a customer collection.
+
+Validation:
+- 18 unit tests against a fake shaped like the real server's responses:
+  - describe;
+  - query body and `where`;
+  - `id_field`;
+  - exact ranking per space against numpy;
+  - paging and caching of the exact reference;
+  - the exact limit;
+  - seven HTTP failures typed;
+  - token headers and https-only;
+  - empty or unsupported collections;
+  - connection-file validation.
+- 3 live tests (one per space) that seed their own collections through the REST API. They
+  passed against the real server.
+
+Results:
+- Full Python suite: **2,219 passed, 0 failed**, 32 skipped (live services not configured,
+  including the three Chroma live tests, which run in CI and passed locally against the
+  server), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+- An intermediate run showed 8 CLI failures because the scratch Chroma server had been
+  started on port 8765, `vectraudit serve`'s default; with it stopped they pass.
 
 ## Next increments
 
