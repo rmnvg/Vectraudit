@@ -50,6 +50,7 @@ same verdict as `vectraudit check` on the same files and policy:
 ```python
 from vectraudit.testing import assert_release
 
+
 def test_retrieval_release():
     assert_release("baseline.json", "candidate.json", policy="retrieval/policy.json")
 ```
