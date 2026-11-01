@@ -200,15 +200,28 @@ def _otlp_value(value: Any) -> Any:
     return None
 
 
+def _otlp_attributes(raw: Any) -> dict[str, Any]:
+    return {
+        a["key"]: _otlp_value(a.get("value"))
+        for a in raw or []
+        if isinstance(a, dict) and isinstance(a.get("key"), str)
+    }
+
+
 def _otlp_spans(obj: Mapping[str, Any]) -> Iterator[Span]:
+    from vectraudit.pipelines.openllmetry import is_openllmetry, translate
+
     for resource in obj.get("resourceSpans") or []:
         for scope in (resource or {}).get("scopeSpans") or []:
             for raw in (scope or {}).get("spans") or []:
-                attributes = {
-                    a["key"]: _otlp_value(a.get("value"))
-                    for a in raw.get("attributes") or []
-                    if isinstance(a, dict) and isinstance(a.get("key"), str)
-                }
+                attributes = _otlp_attributes(raw.get("attributes"))
+                events = [
+                    {"name": e.get("name"), "attributes": _otlp_attributes(e.get("attributes"))}
+                    for e in raw.get("events") or []
+                    if isinstance(e, dict)
+                ]
+                if is_openllmetry(attributes, events):  # OpenLLMetry (Traceloop) conventions
+                    attributes = translate(attributes, events)
                 yield _span(
                     raw.get("traceId"),
                     raw.get("spanId"),
