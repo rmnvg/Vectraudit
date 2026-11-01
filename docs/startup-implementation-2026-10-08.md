@@ -2429,7 +2429,7 @@ SciPy's exact small-sample result.
 Not included: embedding drift, per-document score calibration, drift history in the
 hosted service, and a run on a customer's traces.
 
-Validation: 27 new tests (8 score drift, 19 for the default tests and their selection), plus 2 query
+Validation: 19 new tests (8 score drift, 11 for the default tests and their selection), plus 2 query
 drift tests updated for the version-2 report fields.
 - **Score drift:**
   - a steady retriever not flagged;
