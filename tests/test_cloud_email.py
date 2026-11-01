@@ -202,3 +202,20 @@ def test_the_dashboard_adds_an_email_destination(world, cloud_app) -> None:
     )
     assert created.status_code == 201
     assert "Email" in owner.get("/app/acme/search").text
+
+
+@pytest.mark.parametrize("extra", ["", " because of a long headline" * 4])
+def test_a_long_subject_is_never_folded_into_a_leading_space(extra) -> None:
+    from types import SimpleNamespace
+
+    from vectraudit.cloud.webhooks import _email
+
+    headline = "nightly @ abc123 is blocked: 3 release rules fail." + extra
+    raw = _email(
+        SimpleNamespace(url="mailto:team@example.com"),
+        {"event": "decision", "workspace": "acme", "project": "search", "headline": headline},
+        SimpleNamespace(event="decision", event_key="decision:c1", id="d1"),
+    )
+    subject = message_from_bytes(raw, policy=email_policy)["Subject"]
+    assert subject == f"[Vectraudit] acme/search: {headline}"[:200]
+    assert b"Subject: [Vectraudit]" in raw  # on the header line itself, not a continuation

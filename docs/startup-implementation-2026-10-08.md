@@ -2503,6 +2503,32 @@ Results:
   clean `main`.
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
+## Step 76: the two tests that always failed
+
+Since Step 65 every full run reported the same two failures, noted each time as "also fail
+on clean `main`" but never explained. A suite that always reports two failures hides the
+next real one. Both had real causes:
+- **`test_cloud_email`, a product defect.** Python's email header folding (reproduced on
+  3.10.20 and 3.12.3) moved the decision email's 89-character subject whole onto a
+  continuation line, so recipients got a subject starting with a space. Emails are now
+  serialised without folding (`max_line_length=998`; subjects are capped at 200 characters,
+  within RFC 5322's limit). A new test calls the message builder directly and fails on the
+  old code.
+- **`test_github`, a test-isolation defect.** The code also reads the gh CLI's `GH_TOKEN`.
+  The test removed only `GITHUB_TOKEN`, so wherever `GH_TOKEN` is set (this environment, and
+  any developer machine logged in to `gh`) it took the publishing path against the test's
+  mock server. The fixture now removes `GH_TOKEN` too, for every GitHub test.
+
+CI runs Python 3.10 to 3.13, so the email failure probably showed there as well; the earlier
+step reports that called it environment-specific were wrong to assume so.
+
+Validation:
+- Full Python suite: **2,109 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected. This is the first full run without failures since Step 65.
+- The email and GitHub test modules also pass on Python 3.10 (23 passed), and the GitHub
+  tests pass with and without `GH_TOKEN` set.
+- Ruff, and mypy on Python 3.12 and 3.10, passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
