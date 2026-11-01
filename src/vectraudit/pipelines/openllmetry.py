@@ -226,13 +226,21 @@ def _messages(attributes: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _question(raw: Any) -> str | None:
+    """The question in ``traceloop.entity.input``, in either form OpenLLMetry writes.
+
+    - The Traceloop SDK's decorators: ``{"args": [...], "kwargs": {...}}``, a question
+      keyword, else the first string argument.
+    - OpenLLMetry's LangChain instrumentation: ``{"inputs": ..., "tags", "metadata",
+      "kwargs"}``, where ``inputs`` is the question or a dict holding it, and retriever
+      spans write ``{"query": ...}``. Its ``kwargs`` are run options, not arguments.
+    """
     if not isinstance(raw, str) or not raw:
         return None
     try:
         value = json.loads(raw)
     except ValueError:
         return None
-    if not isinstance(value, dict) or not ({"args", "kwargs"} & set(value)):
+    if not isinstance(value, dict):
         return None
     kwargs = value.get("kwargs") if isinstance(value.get("kwargs"), dict) else {}
     assert isinstance(kwargs, dict)
@@ -241,7 +249,18 @@ def _question(raw: Any) -> str | None:
             return str(kwargs[key])
     args = value.get("args") if isinstance(value.get("args"), list) else []
     assert isinstance(args, list)
-    return next((a for a in args if isinstance(a, str) and a.strip()), None)
+    first = next((a for a in args if isinstance(a, str) and a.strip()), None)
+    if first is not None:
+        return first
+    inputs = value.get("inputs")
+    if isinstance(inputs, str) and inputs.strip():
+        return inputs
+    if isinstance(inputs, dict):
+        for key in _QUESTION_KEYS:
+            if isinstance(inputs.get(key), str) and inputs[key].strip():
+                return str(inputs[key])
+    query = value.get("query")
+    return query if isinstance(query, str) and query.strip() else None
 
 
 def _association(attributes: Mapping[str, Any]) -> dict[str, Any]:

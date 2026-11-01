@@ -2798,6 +2798,50 @@ Results:
 - Ruff, mypy on Python 3.12 and 3.10, the API type generation check, TypeScript, Oxlint and
   117 frontend tests passed.
 
+## Step 83: importers tested against real instrumentation output
+
+Every trace importer had been tested only against fixtures written from specifications. The
+real libraries were installed in a throwaway environment (not as dependencies) and run on
+one offline LangChain + Chroma pipeline (deterministic fake embeddings, fake chat model),
+exporting OTLP JSON as the Collector's file exporter does:
+- **OpenInference** (`openinference-instrumentation-langchain` 0.1.81): imported fully.
+  Questions, document IDs and model context all as expected.
+- **OpenLLMetry** (`opentelemetry-instrumentation-langchain`/`-chromadb` 0.62.4): documents
+  imported, but **no question matched**. A real bug from Step 75: the LangChain
+  instrumentation writes `traceloop.entity.input` as `{"inputs", "tags", "metadata",
+  "kwargs"}` (and `{"query"}` on retrievers), not the SDK decorator form the fixtures
+  assumed. Fixed; it now imports identically to OpenInference.
+- **OpenLIT** (1.45.0): two facts the Step 81 fixtures did not show:
+  - it records each span of one request as a **separate trace**, so model context cannot
+    be tied to retrieval;
+  - it takes document IDs only from metadata `id`/`source`.
+
+  Both are reported as gaps (unknown context, `document_id_missing`), not reconstructed.
+  With `metadata.id` set, its rankings import.
+
+All three give the same rankings for the same run. The real exports (synthetic text only,
+checked for machine details) and the scripts and versions that produced them are in
+`tests/fixtures/real_traces`, so the importers stay pinned to what these libraries emit.
+
+Not included: LangSmith, Langfuse, Opik and OpenObserve. Their data comes from hosted
+services, so a real check needs a workspace. DeepEval also needs a real results file, and
+LlamaIndex and other frameworks need instrumenting. This is still not a customer
+application.
+
+Validation: 10 new tests:
+- the two full imports with model context;
+- OpenLIT rankings without context;
+- OpenLIT without IDs as a gap;
+- fixtures free of machine details;
+- five question-extraction cases.
+
+Without the fix, 5 of them fail.
+
+Results:
+- Full Python suite: **2,190 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
