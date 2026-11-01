@@ -543,6 +543,49 @@ def import_traces_command(
     typer.echo(f"\nWrote {out} ({run['status']}).")
 
 
+@workbench_app.command("deepeval-judgments")
+def deepeval_judgments_command(
+    test_run: Annotated[
+        Path, typer.Argument(help="DeepEval results (.deepeval/.latest_test_run.json).")
+    ],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark the test cases asked.")],
+    out: Annotated[Path, typer.Option(help="Judgments to write (JSONL) for attach-answers.")],
+    metric: Annotated[
+        list[str] | None,
+        typer.Option(help="DeepEval metric that judges answers (repeatable; required)."),
+    ] = None,
+) -> None:
+    """Turn DeepEval test results into answer judgments for attach-answers.
+
+    DeepEval's own pass/fail decision per metric becomes the verdict. Name the metrics that
+    judge answers; without --metric, the metrics in the file are listed. Contextual metrics
+    judge retrieval and are refused. Reasons, inputs and outputs are never copied.
+    """
+    from vectraudit.evaluation.deepeval_import import (
+        load_test_run,
+        metric_names,
+        render,
+        to_judgments,
+    )
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+
+    try:
+        run = load_test_run(test_run)
+        if not metric:
+            found = metric_names(run)
+            listing = ", ".join(f"{name} ({n})" for name, n in found.most_common()) or "none"
+            raise ValueError(
+                f"Choose the metrics that judge answers with --metric. In this file: {listing}."
+            )
+        questions = {q.query_id: q.text for q in load_dataset(dataset).queries}
+        rows, counts = to_judgments(run, metric, questions)
+        write_jsonl(out, rows)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, len(rows), str(out)))
+
+
 @workbench_app.command("attach-answers")
 def attach_answers_command(
     run: Annotated[Path, typer.Argument(help="Run file whose answers were judged.")],
