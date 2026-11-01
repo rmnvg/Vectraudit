@@ -7,6 +7,7 @@ import time
 
 import pytest
 
+from tests.fake_time import patch_time
 from vectraudit.core.jobs import JobCancelledError
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import parse_dataset
@@ -183,10 +184,11 @@ def test_changing_concurrency_cannot_resume_a_checkpoint(tmp_path):
 def test_cancel_during_backoff_leaves_the_query_interrupted_not_failed(tmp_path, monkeypatch):
     path = tmp_path / "run.sqlite"
     clock = {"now": 0.0}
-    monkeypatch.setattr("vectraudit.pipelines.runner.time.monotonic", lambda: clock["now"])
-    monkeypatch.setattr(
-        "vectraudit.pipelines.runner.time.sleep",
-        lambda s: clock.__setitem__("now", clock["now"] + s),
+    patch_time(
+        monkeypatch,
+        "vectraudit.pipelines.runner",
+        monotonic=lambda: clock["now"],
+        sleep=lambda s: clock.__setitem__("now", clock["now"] + s),
     )
 
     def down(request):

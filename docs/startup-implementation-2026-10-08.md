@@ -2662,6 +2662,29 @@ Results:
   configured), 1 deselected.
 - Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
 
+## Step 79: merge MAP and Hit Rate with main, and fix the flaky clock tests
+
+`feat/map-hit-rate` (Step 74) had fallen behind Steps 75-78 and no longer merged: both sides
+had appended to `DECISIONS.md` and this log. Merged `main` into it, keeping both sides with
+Step 74 in order. No code conflicted.
+
+The re-run after the merge failed once in `test_pipeline_retries` (it passed five times
+alone), the same family as the Step 69 "timing" failures that were waved through then.
+- **Cause:** the retry, concurrency and job tests faked time by patching `time.sleep` and
+  `time.monotonic` on the `time` module itself, which is process-wide. Any other thread
+  sleeping during the test added its sleeps to the fake clock.
+- **Fix:** a small helper (`tests/fake_time.py`) replaces only the module-under-test's
+  `time` reference, so other threads keep real time. Applied to all three files.
+- **Regression test:** runs a busy sleeping thread beside a retried run. Against the old
+  patch it recorded 1,742 seconds of sleep instead of 3 and failed; it passes now.
+
+Validation: the merged branch passes the full suite with **2,154 passed, 0 failed**,
+29 skipped (live services not configured), 1 deselected. Also passing:
+- the 47 retry, concurrency and job tests, and the 21 retry tests on repeated runs;
+- Ruff, and mypy on Python 3.12 and 3.10;
+- the API type generation check;
+- TypeScript, Oxlint and 116 frontend tests (MAP touched the policy editor).
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner
