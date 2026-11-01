@@ -178,7 +178,7 @@ def init(
     backend: Annotated[
         str,
         typer.Option(
-            help="faiss, qdrant, pgvector, pinecone, weaviate, elasticsearch or opensearch."
+            help="faiss, qdrant, pgvector, pinecone, weaviate, elasticsearch, opensearch or chroma."
         ),
     ] = "faiss",
     directory: Annotated[
