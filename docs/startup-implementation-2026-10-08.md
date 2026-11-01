@@ -2362,6 +2362,10 @@ question (1.8): is the benchmark still representative of production?
 Not included: embedding drift, retrieval-score drift, drift tracking over time in the
 hosted service, other statistical tests, and a run on a customer's production traces.
 
+**Corrected in Step 73:** PSI was the wrong default. It came from Evidently's documented
+example, not its automatic test selection, and it raises false alarms on stable data at
+realistic sample sizes. Step 73 measures this and switches to Evidently's default tests.
+
 Validation: 18 new tests:
 - categorical PSI against the textbook sum;
 - Evidently's empty-bin floor in both forms;
@@ -2384,6 +2388,71 @@ Results:
   `test_github` publishing warnings) also fail on clean `main`.
 - Ruff and mypy on Python 3.12 passed. mypy on Python 3.10 caught a bare `np.ndarray`
   annotation that its older numpy stubs reject; after the fix (annotation only) it passes.
+
+## Step 73: retrieval score drift, and Evidently's default drift tests (1.7, 1.8)
+
+The next Evidently item: did the **retriever** change? `vectraudit workbench score-drift
+EARLIER LATER [--stage NAME] [--fail-on-drift]` compares two windows of production traces
+on the retriever's first-document score, mean score, spread and number of documents
+returned. It also compares the windows' questions, and reads the result:
+- **retriever shift likely:** scores moved, questions did not (embedding model, index,
+  similarity or score-scale change);
+- **drift with question drift:** both moved; compare recorded runs to isolate the
+  retriever;
+- **no drift.**
+
+Traces without recorded scores are counted and left out; `--fail-on-drift` exits 3 only for
+a likely retriever shift.
+
+**Found while testing: Step 72's PSI default was wrong.** Two windows from the same
+retriever (60 traces each) gave PSI 0.63. Measured on samples drawn from one distribution,
+PSI at its 0.1 threshold raised false alarms:
+
+| Values per side | 30 | 60 | 200 | 1,000 |
+|---|---|---|---|---|
+| Scores | 96% | 89% | 36% | 0% |
+| Question word counts | 100% | 100% | 94% | 0% |
+
+Evidently's automatic selection (read from its source) does not use PSI. Both drift
+commands now use it:
+- up to 1,000 reference values: Kolmogorov-Smirnov for numbers with more than five distinct
+  values, otherwise chi-square (Z-test for two values), drift at p < 0.05;
+- above that: normed Wasserstein for numbers, Jensen-Shannon otherwise, drift at 0.1.
+
+False alarms fell to 1-7% at every size. PSI remains as `--method psi`. The query-drift
+report format is now version 2: each descriptor names its test with a `p_value` or
+`score` and a threshold, instead of `psi`. No dependency was added. The statistics are
+numpy implementations, tested against SciPy (a dev dependency already installed):
+chi-square, Z, Wasserstein and Jensen-Shannon agree to rounding, and K-S is within 0.03 of
+SciPy's exact small-sample result.
+
+Not included: embedding drift, per-document score calibration, drift history in the
+hosted service, and a run on a customer's traces.
+
+Validation: 27 new tests (8 score drift, 19 for the default tests and their selection), plus 2 query
+drift tests updated for the version-2 report fields.
+- **Score drift:**
+  - a steady retriever not flagged;
+  - rescaled scores with steady questions flagged as a likely retriever shift;
+  - a smaller result set flagged on `returned`;
+  - drift with changed questions not blamed on the retriever;
+  - unscored traces counted and refused when none have scores;
+  - a named stage;
+  - small windows flagged;
+  - the CLI exit codes.
+- **Default tests:**
+  - every statistic against SciPy;
+  - a new category as chi-square drift;
+  - the selection rule for seven cases;
+  - false alarms under 10% with the defaults against over 50% with PSI on the same stable
+    data;
+  - PSI as an explicit choice.
+
+Results:
+- Full Python suite: 2,090 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed.
 
 ## Next increments
 

@@ -12,7 +12,6 @@ from typer.testing import CliRunner
 from tests.test_trace_formats import docs, langfuse_page
 from vectraudit.cli import app
 from vectraudit.pipelines.drift import (
-    PSI_THRESHOLD,
     describe,
     production_questions,
     psi,
@@ -102,7 +101,7 @@ def test_production_like_the_benchmark_shows_no_drift():
     report = query_drift(bench(ENGLISH), bench(ENGLISH), context_fields=["tenant"])
     assert report["status"] == "no_drift"
     assert report["drifted"] == []
-    assert all(d["psi"] == 0 for d in report["descriptors"])
+    assert not any(d["drift"] for d in report["descriptors"])
     assert report["benchmark_coverage"] == {"questions_in_benchmark": 60, "share": 1.0}
     assert report["unseen_terms"] == []
     assert report["warnings"] == []
@@ -124,7 +123,8 @@ def test_a_new_language_tenant_and_vocabulary_are_drift_and_named():
     assert {"script", "unseen_term", "context.tenant"} <= set(report["drifted"])
     assert by["script"]["new_values"] == [{"value": "cyrillic", "questions": 20}]
     assert by["context.tenant"]["new_values"] == [{"value": "globex", "questions": 30}]
-    assert by["script"]["psi"] >= PSI_THRESHOLD
+    assert by["script"]["test"] == "z_test"  # two values (latin, cyrillic): Evidently's choice
+    assert by["script"]["p_value"] < 0.05
     terms = {t["term"]: t["questions"] for t in report["unseen_terms"]}
     assert terms["siem"] == 10
     assert "password" not in terms
@@ -208,3 +208,96 @@ def test_cli_reports_drift_writes_json_and_can_fail(tmp_path):
     assert "No descriptor moved past the threshold." in calm.output
     missing = runner.invoke(app, ["workbench", "drift", str(tmp_path / "none.jsonl"), str(data)])
     assert missing.exit_code == 2
+
+
+# --- the tests Evidently selects by default ------------------------------------------------
+
+scipy = pytest.importorskip  # resolved per test so the module runs without SciPy
+
+
+def test_p_values_and_distances_match_scipy():
+    stats = scipy("scipy.stats")
+    distance = scipy("scipy.spatial.distance")
+    from vectraudit.pipelines import drift
+
+    rng = np.random.default_rng(3)
+    for _ in range(50):
+        n, m = (int(x) for x in rng.integers(40, 400, 2))
+        a, b = rng.normal(0, 1, n), rng.normal(rng.uniform(-0.4, 0.4), 1, m)
+        # Asymptotic with Stephens' correction; SciPy's default (what Evidently calls) is
+        # exact for small samples. Measured to stay within 0.03 of it at these sizes.
+        assert drift.ks_p_value(a, b) == pytest.approx(stats.ks_2samp(a, b).pvalue, abs=0.03)
+        assert drift.wasserstein_normed(a, b) == pytest.approx(
+            stats.wasserstein_distance(a, b) / np.std(a), rel=1e-9
+        )
+        ca = list(rng.choice(list("abcd"), n, p=[0.4, 0.3, 0.2, 0.1]))
+        cb = list(rng.choice(list("abcd"), m, p=[0.35, 0.3, 0.2, 0.15]))
+        keys = sorted(set(ca) | set(cb))
+        expected = [ca.count(k) * m / n for k in keys]
+        observed = [cb.count(k) for k in keys]
+        assert drift.chi_square_p_value(ca, cb) == pytest.approx(
+            stats.chisquare(observed, expected).pvalue, rel=1e-9, abs=1e-12
+        )
+        ref_share, cur_share = drift._binned(ca, cb, numeric=False)
+        assert drift.jensen_shannon(ca, cb, numeric=False) == pytest.approx(
+            distance.jensenshannon(ref_share, cur_share), rel=1e-9
+        )
+        ya, yb = ["yes"] * 30 + ["no"] * (n - 30), ["yes"] * 60 + ["no"] * (m - 60)
+        p1, p2 = 30 / n, 60 / m
+        pooled = (30 + 60) / (n + m)
+        z = (p1 - p2) / np.sqrt(pooled * (1 - pooled) * (1 / n + 1 / m))
+        assert drift.z_test_p_value(ya, yb) == pytest.approx(2 * stats.norm.sf(abs(z)), rel=1e-9)
+
+
+def test_a_value_the_reference_never_has_is_drift_under_chi_square():
+    from vectraudit.pipelines.drift import chi_square_p_value
+
+    assert chi_square_p_value(["a", "b", "c"] * 20, ["a", "b", "d"] * 20) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("n", "numeric", "values", "expected"),
+    [
+        (200, True, "many", "ks"),
+        (200, True, "few", "chi_square"),
+        (200, False, "few", "chi_square"),
+        (200, False, "two", "z_test"),
+        (1500, True, "many", "wasserstein"),
+        (1500, True, "few", "jensen_shannon"),
+        (1500, False, "few", "jensen_shannon"),
+    ],
+)
+def test_the_test_is_chosen_as_evidently_chooses_it(n, numeric, values, expected):
+    from vectraudit.pipelines.drift import drift_test
+
+    rng = np.random.default_rng(0)
+    sample = {
+        "many": lambda: rng.normal(0, 1, n).tolist(),
+        "few": lambda: rng.integers(0, 4, n).tolist(),
+        "two": lambda: rng.choice(["yes", "no"], n).tolist(),
+    }[values]
+    result = drift_test(sample(), sample(), numeric=numeric)
+    assert result["test"] == expected
+    assert ("p_value" in result) == (expected in ("ks", "chi_square", "z_test"))
+
+
+def test_default_tests_keep_false_alarms_near_five_percent_where_psi_does_not():
+    from vectraudit.pipelines.drift import drift_test
+
+    rng = np.random.default_rng(11)
+    trials, n = 200, 200
+    auto = psi_alarms = 0
+    for _ in range(trials):
+        a, b = rng.poisson(8, n).tolist(), rng.poisson(8, n).tolist()  # same distribution
+        auto += drift_test(a, b, numeric=True)["drift"]
+        psi_alarms += drift_test(a, b, numeric=True, method="psi")["drift"]
+    assert auto / trials < 0.1
+    assert psi_alarms / trials > 0.5  # why PSI is not the default at these sizes
+
+
+def test_psi_can_still_be_chosen_explicitly():
+    report = query_drift(bench(ENGLISH), bench(ENGLISH), method="psi")
+    assert {d["test"] for d in report["descriptors"]} == {"psi"}
+    assert report["method"]["name"] == "psi"
+    with pytest.raises(ValueError, match="method must be one of"):
+        query_drift(bench(ENGLISH), bench(ENGLISH), method="magic")
