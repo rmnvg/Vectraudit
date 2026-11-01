@@ -368,6 +368,7 @@ def attach_answers(
         grouped[q["query_id"]].append(judgment)
     verdicts: Counter[str] = Counter()
     diagnoses: Counter[str] = Counter()
+    by_prompt: dict[str, Counter[str]] = defaultdict(Counter)
     citation_flags: Counter[str] = Counter()
     cited_questions = 0
     pairs: dict[str, list[tuple[str, bool]]] = defaultdict(list)
@@ -383,6 +384,9 @@ def attach_answers(
         if q.get("error") is None:
             answer["diagnosis"] = diagnose(q, verdict, outcome)
             diagnoses[answer["diagnosis"]["class"]] += 1
+            for prompt in q.get("prompts") or []:
+                key = f"{prompt['name']}@{prompt['version']}"
+                by_prompt[key][answer["diagnosis"]["class"]] += 1
         if q.get("error") is None:
             citations = analyze_citations(q, judgments)
             if citations is not None:
@@ -418,6 +422,9 @@ def attach_answers(
         ],
         "verdicts": dict(sorted(verdicts.items())),
         "diagnoses": dict(sorted(diagnoses.items())),
+        "diagnoses_by_prompt": {
+            key: dict(sorted(counts.items())) for key, counts in sorted(by_prompt.items())
+        },
         "citations": {
             "questions_with_citations": cited_questions,
             "questions_citing_undelivered": citation_flags["not_delivered"],
@@ -464,6 +471,13 @@ def render_summary(run: Mapping[str, Any]) -> str:
         lines += [
             f"  {n}: {name.replace('_', ' ')}. {DIAGNOSES[name]}"
             for name, n in sorted(answers["diagnoses"].items(), key=lambda kv: -kv[1])
+        ]
+    by_prompt = answers.get("diagnoses_by_prompt") or {}
+    if len(by_prompt) > 1:  # one version explains nothing on its own
+        lines += ["", "Diagnosis by prompt version (questions whose traces recorded one):"]
+        lines += [
+            f"  {key}: " + ", ".join(f"{n} {c.replace('_', ' ')}" for c, n in counts.items())
+            for key, counts in by_prompt.items()
         ]
     for name, stats in answers["agreement_with_human"].items():
         lines.append(

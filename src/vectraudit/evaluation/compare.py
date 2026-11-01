@@ -482,10 +482,31 @@ class _Check:
                 f"Distance differs ({b['backend'].get('distance')} vs "
                 f"{c['backend'].get('distance')}); compare rankings, not scores."
             )
+        self._prompt_warnings()
         nondeterministic = sum(bool(q.get("nondeterministic")) for q in c["queries"])
         if nondeterministic:
             self.warnings.append(
                 f"{nondeterministic} candidate queries returned different results across repeats."
+            )
+
+    def _prompt_warnings(self) -> None:
+        """Prompt versions recorded from traces: mixed within a run, or on one side only."""
+        recorded = {}
+        for side, run in (("baseline", self.base), ("candidate", self.cand)):
+            prompts = ((run.get("backend") or {}).get("config") or {}).get("prompts")
+            recorded[side] = isinstance(prompts, Mapping) and bool(prompts)
+            for name, versions in sorted((prompts or {}).items()):
+                if isinstance(versions, list):
+                    self.warnings.append(
+                        f"The {side} run mixes versions of prompt {name} "
+                        f"({', '.join(map(str, versions))}): its answers came from different "
+                        "prompts, so a change cannot be attributed to one version."
+                    )
+        if recorded["baseline"] != recorded["candidate"]:
+            only = "baseline" if recorded["baseline"] else "candidate"
+            self.warnings.append(
+                f"Only the {only} run records prompt versions, so whether a prompt changed "
+                "between the runs is unknown."
             )
 
     # --- quality ---------------------------------------------------------------------

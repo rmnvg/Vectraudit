@@ -2238,6 +2238,63 @@ Results:
     row on their own (25 of 25 each).
 - Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
 
+## Step 70: prompt versions as release evidence (1.1, 1.4)
+
+The owner asked whether Vectraudit has prompt management and versioning like Langfuse. It
+did not. A Langfuse-style registry (store, edit, label and serve prompts at runtime) was
+not built: it sits on the customer's runtime path, competes with tools teams already use,
+and is most of the "broad prompt playground" the strategy rules out. What a release
+decision needs is which prompt version produced each answer, so that is what this step
+reads.
+- **Recorded from traces** in all four supported formats: OpenInference `prompt.id` and
+  `llm.prompt_template.version`; Langfuse linked prompts (the pull now requests the
+  `prompt` field group; `promptName`/`promptVersion` become the OpenInference attributes);
+  LangChain hub metadata in LangSmith runs (`lc_hub_*`); Opik `opik_prompts` in span or
+  trace metadata. Each convention was checked against the vendor's spec or SDK source.
+- **Per question and per run:** questions record `prompts` (name and version), and
+  `backend.config.prompts` holds each prompt's version, or a sorted list when a run mixed
+  several. Without prompt data the config is unchanged.
+- **In release checks:** a prompt change appears as a changed setting through the existing
+  path, so checks, the decision ledger's changed-setting names, lead summaries and
+  calibration's configuration differences all show it. New warnings cover a run mixing
+  versions of one prompt and only one run recording prompt versions.
+- **In diagnosis:** `attach-answers` reports diagnoses by prompt version when a run holds
+  several.
+- **Capability report:** a `prompt_versions` line says how many traces recorded one, names
+  mixed versions, and says plainly when prompt changes cannot be seen.
+- **Boundary:** names and versions only, never template text. Hosted projections
+  fingerprint them like text parameters, so a hosted check shows that a prompt changed but
+  not its name or version.
+- **Correctness:** a question refused because it matched several traces records no prompt,
+  and its traces do not count towards the run's versions.
+
+Not included: prompt versions reported by live Python/HTTP pipelines (they can be put in
+`pipeline_version` for now), a release-policy rule on prompt changes, per-prompt-version
+quality metrics in checks, and a prompt registry.
+
+Validation: 11 new tests:
+- each convention yielding a name and version and never the template (OpenInference,
+  LangChain hub with and without an owner, Opik commit and version-number forms, malformed
+  input);
+- a Langfuse import recording per-question and run-level versions that still validate;
+- mixed versions named in the run and capability report;
+- an unchanged config and a named gap without prompt data;
+- a release check listing `backend.config.prompts.support-answer: 12 → 13`;
+- warnings for mixed versions and one-sided recording, none for steady runs;
+- an ambiguous question claiming no prompt (and `--latest` using the later trace);
+- LangSmith hub prompts end to end, and Opik prompts end to end without template text;
+- diagnoses by prompt version;
+- hosted projections fingerprinting names and versions, stable on re-projection, still
+  showing the change, and refusing raw names.
+
+One existing test was updated for the Langfuse pull's added `prompt` field group.
+
+Results:
+- Full Python suite: 2,039 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted server code changed.
+
 ## Next increments
 
 The code-only work the strategy names is done (Steps 1–47). What remains needs owner

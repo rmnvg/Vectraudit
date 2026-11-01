@@ -9,7 +9,8 @@ Endpoints (from Langfuse's published OpenAPI specification):
 
 - ``GET /api/public/v2/observations``: cursor pagination, at most 1,000 per page, filtered by
   ``fromStartTime`` (inclusive) and ``toStartTime``. The ``io`` and ``metadata`` field groups
-  are requested because retriever documents and prompts live in input and output.
+  are requested because retriever documents and prompts live in input and output, and the
+  ``prompt`` group for the linked prompt's name and version.
 - ``GET /api/public/v3/scores``: cursor pagination, at most 100 per page, filtered by
   ``fromTimestamp`` (inclusive) and ``toTimestamp`` (exclusive), with the ``subject`` group so
   each score names its trace.
@@ -42,7 +43,7 @@ from vectraudit import __version__
 Send = Callable[[str, Mapping[str, str], float], tuple[int, bytes]]
 PostSend = Callable[[str, Mapping[str, str], bytes, float], tuple[int, bytes]]
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-OBSERVATION_FIELDS = "core,basic,io,metadata"
+OBSERVATION_FIELDS = "core,basic,io,metadata,prompt"
 OBSERVATION_PAGE = 1000
 SCORE_PAGE = 100
 MAX_RECORDS = 200_000

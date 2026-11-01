@@ -59,6 +59,22 @@ def _param(value: str | int | float | bool, projected: bool) -> str | int | floa
     return "sha256:" + hashlib.sha256(value.encode()).hexdigest()[:16]
 
 
+def _prompts(value: Any, projected: bool) -> dict[str, str | list[str]]:
+    """Prompt names and versions as fingerprints: a hosted check can see that a prompt
+    changed, as it can for a text parameter, without learning its name or version."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, str | list[str]] = {}
+    for name, versions in value.items():
+        if not isinstance(name, str):
+            continue
+        if isinstance(versions, str):
+            out[str(_param(name, projected))] = str(_param(versions, projected))
+        elif isinstance(versions, list) and all(isinstance(v, str) for v in versions):
+            out[str(_param(name, projected))] = sorted(str(_param(v, projected)) for v in versions)
+    return out
+
+
 def _error(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -196,6 +212,9 @@ def _payload(
         out["backend"]["config"] = _scalars(
             record["backend"]["config"], "adapter name sha256 pipeline_version corpus_sha256"
         )
+        prompts = _prompts(record["backend"]["config"].get("prompts"), projected)
+        if prompts:
+            out["backend"]["config"]["prompts"] = prompts
     out["connection"] = {}
     out["capabilities"] = _scalars(record.get("capabilities"), "exact_reference filters search")
     search = record["search"]
