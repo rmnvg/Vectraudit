@@ -586,6 +586,63 @@ def deepeval_judgments_command(
     typer.echo(render(counts, len(rows), str(out)))
 
 
+@workbench_app.command("promptfoo-judgments")
+def promptfoo_judgments_command(
+    results: Annotated[Path, typer.Argument(help="promptfoo eval output (promptfoo eval -o).")],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark the tests asked.")],
+    out: Annotated[Path, typer.Option(help="Judgments to write (JSONL) for attach-answers.")],
+    assertion: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Assertion that judges answers: its metric label or type, or 'overall' "
+            "(repeatable; required)."
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None, typer.Option(help="Provider ID or label, when the eval compared several.")
+    ] = None,
+    prompt: Annotated[
+        str | None, typer.Option(help="Prompt label or ID, when the eval compared several.")
+    ] = None,
+    question_var: Annotated[
+        str | None, typer.Option(help="Test variable holding the question (default: question).")
+    ] = None,
+) -> None:
+    """Turn promptfoo eval results into answer judgments for attach-answers.
+
+    promptfoo's own pass/fail per chosen assertion becomes the verdict. One provider/prompt
+    variant is used; without --assertion, the assertions and variants in the file are
+    listed. Retrieval assertions are refused. Reasons, prompts and outputs are never copied.
+    """
+    from vectraudit.evaluation.promptfoo_import import (
+        assertion_names,
+        load_results,
+        render,
+        to_judgments,
+        variants,
+    )
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+
+    try:
+        found = load_results(results)
+        if not assertion:
+            names = ", ".join(f"{n} ({c})" for n, c in assertion_names(found).most_common())
+            pairs = "; ".join(f"{p} / {q} ({c})" for (p, q), c in variants(found).items())
+            raise ValueError(
+                "Choose the assertions that judge answers with --assertion (or 'overall'). "
+                f"Assertions: {names or 'none'}. Variants (provider / prompt): {pairs or 'none'}."
+            )
+        questions = {q.query_id: q.text for q in load_dataset(dataset).queries}
+        rows, counts = to_judgments(
+            found, assertion, questions, provider=provider, prompt=prompt, question_var=question_var
+        )
+        write_jsonl(out, rows)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, len(rows), str(out)))
+
+
 @workbench_app.command("attach-answers")
 def attach_answers_command(
     run: Annotated[Path, typer.Argument(help="Run file whose answers were judged.")],
