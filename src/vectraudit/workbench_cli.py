@@ -474,8 +474,8 @@ def import_traces_command(
     traces: Annotated[
         Path,
         typer.Argument(
-            help="Trace export: OpenInference (OTLP JSON or spans), LangSmith runs or "
-            "Langfuse observations."
+            help="Trace export: OTLP JSON (OpenInference, OpenLLMetry, OTel GenAI), Phoenix "
+            "spans, LangSmith runs, Langfuse observations or an Opik pull."
         ),
     ],
     out: Annotated[Path, typer.Option(help="Run file to write.")] = Path("traces.run.json"),
@@ -1971,7 +1971,7 @@ def hubs_command(
 def intake_command(
     traces: Annotated[
         Path,
-        typer.Argument(help="New trace export (OpenInference, LangSmith runs or Langfuse)."),
+        typer.Argument(help="New trace export (any format import-traces reads)."),
     ],
     dataset: Annotated[Path, typer.Argument(help="The benchmark, with labels.")],
     state: Annotated[

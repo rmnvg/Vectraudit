@@ -83,7 +83,7 @@ def test_one_annotation_per_judged_trace_with_nothing_private(tmp_path):
     by = {a["trace_id"]: a["result"]["label"] for a in annotations}
     assert by[Q3] == "disputed"
     text = json.dumps(annotations)
-    for private in ("password", "Billing", "d1", "d4"):
+    for private in ("password", "Billing", '"d1"', '"d4"'):  # IDs quoted: the digest is hex
         assert private not in text
 
 

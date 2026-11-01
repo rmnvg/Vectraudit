@@ -17,7 +17,7 @@ There are three ways to use it:
 
 | | For | Start with |
 |---|---|---|
-| **[Retrieval workbench](#retrieval-workbench)** | Building a benchmark, evaluating a whole pipeline, comparing a fix in the browser | `vectraudit workbench serve` |
+| **[Retrieval workbench](#retrieval-workbench)** | Building a benchmark, evaluating a whole pipeline or its production traces, comparing a fix in the browser | `vectraudit workbench serve` |
 | **[Release checks](#release-checks)** | Blocking regressions in CI on FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch, OpenSearch or Chroma | `vectraudit init` |
 | **[FAISS index debugger](#faiss-index-debugger)** | Explaining missed neighbours, quantization loss and recall vs latency inside one index | `vectraudit serve INDEX` |
 
@@ -83,6 +83,56 @@ See [recovery details](docs/retrieval-workbench.md#resume-an-evaluation).
 See the [workbench guide](docs/retrieval-workbench.md) for adapter manifests, stage
 evidence, no-answer and permission assertions, and data-handling boundaries.
 
+### From production traces and the tools you already use
+
+An application that is already traced can be measured without writing an adapter, and
+answer grades from your existing evaluation tools can be attached to the same questions.
+
+```bash
+vectraudit workbench phoenix-pull --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces spans.jsonl --judgments judgments.jsonl          # or langfuse-, langsmith-, opik-pull
+vectraudit workbench import-traces benchmark.jsonl spans.jsonl --id-field doc_id --out current.run.json
+vectraudit workbench attach-answers current.run.json judgments.jsonl --out current.judged.run.json
+vectraudit workbench phoenix-push current.judged.run.json --send   # or langfuse-push
+```
+
+- **Trace formats** ([import guide](docs/retrieval-workbench.md#import-traces-openinference-langsmith-langfuse)):
+  OpenInference, OpenLLMetry and OpenTelemetry GenAI spans as OTLP JSON, Phoenix span
+  records, LangSmith runs, Langfuse observations and Opik pulls. Each trace import reports
+  what the traces can and cannot show (document IDs, stages, model context, prompt
+  versions), and a missing fact is a gap, never a guess. The importers are tested on
+  exports written by the real instrumentation libraries and servers.
+- **Direct pulls** ([production intake](docs/production-intake.md)): `langfuse-pull`,
+  `langsmith-pull`, `opik-pull`, `phoenix-pull` and `openobserve-pull` read a time window
+  over each tool's API, with its scores, feedback or annotations as answer judgments.
+  Read-only; reasons and explanations are never written out.
+- **Answer judgments** from human review or tools: `deepeval-judgments`,
+  `promptfoo-judgments` and `ragas-judgments` convert those tools' results. You choose
+  which metrics judge answers, retrieval metrics are refused (Vectraudit measures retrieval
+  itself), and scores without a verdict need a declared `--threshold`.
+- **Diagnosis** ([answer judgments](docs/retrieval-workbench.md#required-evidence-and-answer-judgments)):
+  each judged question gets the first observable loss between retrieval and answer
+  (`lost_downstream`, `lost_in_context`, `answered_wrong_despite_evidence`, ...). Cited
+  documents are placed against what reached the model, and disagreeing judges show as
+  disputed. `langfuse-push` and `phoenix-push` write the diagnosis back onto each trace,
+  previewing by default.
+- **Prompt versions** recorded in traces (OpenInference, Langfuse, LangChain hub, Opik) are
+  compared between runs, and a release policy can fail on a changed prompt.
+- **Keeping the benchmark current:** `intake` turns each new trace export into a
+  de-duplicated review queue and flags likely recurrences. `drift` checks whether
+  production questions still look like the benchmark's, and `score-drift` whether the
+  retriever's scores moved between two windows
+  ([drift reports](docs/production-intake.md#is-the-benchmark-still-representative)).
+
+### Investigate deeper
+
+| Command | Answers | Guide |
+|---|---|---|
+| `investigate`, `try-fix` | What did one question lose and where, and does a declared fix recover it? | [Investigate a failure](docs/retrieval-workbench.md#investigate-a-failure-and-try-a-fix) |
+| `lineage`, `freshness` | Where was each required passage first lost between source and model context? Did a content change reach the index, results and context? | [Lineage](docs/lineage.md) |
+| `access`, `cache-probe` | Do permission changes hold in a later run? Does one context's question warm another's cached answer? | [Permission lifecycle](docs/permission-lifecycle.md) |
+| `migration` | Is a new system as good as the old one on the same benchmark, under the release policy? | [Migration report](docs/migration-report.md) |
+
 ## Release checks
 
 Measure a baseline and a candidate retrieval setup on the same labelled queries, and let CI
@@ -101,10 +151,24 @@ the setup offline without loading a model or opening a database connection. `che
 (pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job summary, and the
 HTML report lists the regressed queries with the ids they lost.
 
-Semantic metrics (recall, precision, MRR, nDCG) need relevance labels; ANN recall needs an
-exact reference; neither is ever substituted for the other. Failing checks explain
-themselves: each finding is marked verified, supported or hypothesis, with the facts behind
-it. Credentials are referenced by environment variable and never written into config files.
+Semantic metrics (recall, precision, MRR, nDCG, MAP and hit rate) need relevance labels;
+ANN recall needs an exact reference; neither is ever substituted for the other. Failing
+checks explain themselves: each finding is marked verified, supported or hypothesis, with
+the facts behind it. A policy can also fail on a changed prompt version, and
+`vectraudit workbench hubs` reports documents returned for many unrelated questions
+([metrics](docs/release-checks.md#metrics), [hubs](docs/release-checks.md#hubs)).
+Credentials are referenced by environment variable and never written into config files.
+
+Teams that gate merges on pytest can make the check one more test
+([details](docs/release-checks.md#from-a-pytest-suite)):
+
+```python
+from vectraudit.testing import assert_release
+
+
+def test_retrieval_release():
+    assert_release("baseline.json", "candidate.json", policy="retrieval/policy.json")
+```
 
 | Backend | Connector | Extra |
 |---|---|---|
