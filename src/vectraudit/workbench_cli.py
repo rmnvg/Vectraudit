@@ -1479,6 +1479,61 @@ def langsmith_pull_command(
     typer.echo(f"({source.calls} API requests.)")
 
 
+@workbench_app.command("drift")
+def drift_command(
+    traces: Annotated[
+        Path, typer.Argument(help="Production traces (any format import-traces reads).")
+    ],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark to compare against.")],
+    context_field: Annotated[
+        list[str] | None,
+        typer.Option(help="Context field to compare, e.g. tenant or language (repeatable)."),
+    ] = None,
+    stage_kind: Annotated[
+        list[str] | None, typer.Option(help="SPAN=KIND, as in import-traces.")
+    ] = None,
+    top: Annotated[
+        int, typer.Option(min=1, max=200, help="How many values and terms to list.")
+    ] = 20,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_drift: Annotated[
+        bool, typer.Option("--fail-on-drift", help="Exit 3 when any descriptor drifted.")
+    ] = False,
+) -> None:
+    """Is the benchmark still representative of production questions?
+
+    Compares production questions from traces with the benchmark's on word count, script,
+    digits, question form, unseen terms and declared context fields, using the population
+    stability index as Evidently computes it (0.1 or more is drift). Local only.
+    """
+    from vectraudit.pipelines.drift import production_questions, query_drift, render
+    from vectraudit.pipelines.traces import Settings
+
+    fields = context_field or []
+    try:
+        bench = load_dataset(dataset)
+        current, unreadable = production_questions(
+            traces, Settings(stage_kinds=_stage_kinds(stage_kind)), fields
+        )
+        report = query_drift(
+            [(q.text or "", dict(q.context)) for q in bench.queries],
+            current,
+            context_fields=fields,
+            top=top,
+        )
+        report["unreadable_traces"] = unreadable
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Drift error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    if unreadable:
+        typer.echo(f"{unreadable} traces had no readable question and were not counted.")
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_drift and report["status"] == "drift":
+        raise typer.Exit(3)
+
+
 @workbench_app.command("intake")
 def intake_command(
     traces: Annotated[
