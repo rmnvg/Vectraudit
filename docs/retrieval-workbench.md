@@ -763,6 +763,29 @@ vectraudit workbench promptfoo-judgments results.json benchmark.jsonl \
   `question` (or `--question-var`) variable when it matches exactly one benchmark question.
 - Reasons, prompts and outputs are never written.
 
+**From Ragas.** Teams that score answers with Ragas can save the result table
+(`evaluate(...).to_pandas()` as CSV, JSON Lines or JSON) and import it:
+
+```bash
+vectraudit workbench ragas-judgments results.csv benchmark.jsonl \
+  --metric factual_correctness --out judgments.jsonl
+vectraudit workbench attach-answers run.json judgments.jsonl \
+  --threshold ragas.factual_correctness=0.7 --out judged.json
+```
+
+- **Scores, not verdicts.** Ragas decides nothing; each judgment is named
+  `ragas.METRIC` and keeps only the score, and the pass mark is declared with
+  `--threshold` when attaching. There is no default threshold.
+- **Chosen metrics** (`--metric`, repeatable): the metric columns as Ragas names them.
+  Without `--metric`, the command lists them. Metrics with `context` in their name (context
+  precision, recall, entity recall, utilization, relevance) judge retrieval and are
+  refused.
+- **Failed metrics** (an empty cell or `null`, written when the judge errored) are skipped
+  and counted.
+- **Matching:** a `query_id` or `trace_id` column added before saving, else `user_input`
+  when it matches exactly one benchmark question. Multi-turn samples need a `query_id`.
+- Inputs, responses, references and contexts are never written.
+
 Each judged question then gets a **diagnosis**: the first observable loss on the path from
 retrieval to answer, with the facts behind it. It is not a root cause.
 

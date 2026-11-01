@@ -1,0 +1,5 @@
+user_input,retrieved_contexts,reference_contexts,response,reference,exact_match,string_present,non_llm_string_similarity,bleu_score,rouge_score(mode=fmeasure),non_llm_context_recall
+How do I reset my password?,['Reset your password from Settings.'],['Reset your password from Settings.'],Open Settings and choose Reset password.,Open Settings and choose Reset password.,1.0,1.0,1.0,1.0000000000000004,1.0,1.0
+Where is the invoice?,['Invoices are emailed monthly.'],['Invoices are under Billing.'],Invoices are emailed monthly.,Invoices are under Billing > Invoices.,0.0,0.0,0.5,0.1584873897212071,0.4444444444444445,1.0
+Cancel my plan,['Plans can be cancelled from Billing.'],['Plans can be cancelled from Billing.'],Go to Billing and press Cancel plan.,Billing > Cancel plan.,0.0,0.0,0.5833333333333333,0.2208959113415788,0.6,1.0
+What is the refund window?,['Refunds within 30 days.'],['Refunds within 30 days.'],30 days.,Refunds are accepted within 30 days.,0.0,0.0,0.2222222222222222,0.0,0.5,1.0

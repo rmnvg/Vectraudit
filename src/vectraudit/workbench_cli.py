@@ -586,6 +586,51 @@ def deepeval_judgments_command(
     typer.echo(render(counts, len(rows), str(out)))
 
 
+@workbench_app.command("ragas-judgments")
+def ragas_judgments_command(
+    results: Annotated[
+        Path,
+        typer.Argument(help="Ragas results: evaluate(...).to_pandas() saved as CSV/JSONL/JSON."),
+    ],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark the samples asked.")],
+    out: Annotated[Path, typer.Option(help="Judgments to write (JSONL) for attach-answers.")],
+    metric: Annotated[
+        list[str] | None,
+        typer.Option(help="Ragas metric column that judges answers (repeatable; required)."),
+    ] = None,
+) -> None:
+    """Turn Ragas evaluation scores into answer judgments for attach-answers.
+
+    Ragas gives scores, not verdicts: each judgment keeps the score, and attach-answers
+    --threshold ragas.METRIC=VALUE declares the pass mark. Without --metric, the metric
+    columns in the file are listed. Context metrics judge retrieval and are refused.
+    Inputs, responses and contexts are never copied.
+    """
+    from vectraudit.evaluation.ragas_import import (
+        load_results,
+        metric_names,
+        render,
+        to_judgments,
+    )
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+
+    try:
+        rows = load_results(results)
+        if not metric:
+            found = metric_names(rows)
+            listing = ", ".join(f"{name} ({n})" for name, n in found.items()) or "none"
+            raise ValueError(
+                f"Choose the metrics that judge answers with --metric. In this file: {listing}."
+            )
+        questions = {q.query_id: q.text for q in load_dataset(dataset).queries}
+        judgments, counts = to_judgments(rows, metric, questions)
+        write_jsonl(out, judgments)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, len(judgments), str(out), metric))
+
+
 @workbench_app.command("promptfoo-judgments")
 def promptfoo_judgments_command(
     results: Annotated[Path, typer.Argument(help="promptfoo eval output (promptfoo eval -o).")],
