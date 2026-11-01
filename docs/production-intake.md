@@ -154,15 +154,37 @@ vectraudit workbench drift traces-2026-10-19.jsonl questions.jsonl \
   question form, whether it uses a term the benchmark never uses, and each
   `--context-field`. For the benchmark, an unseen term is one no *other* benchmark
   question uses, so both sides are measured the same way.
-- **Statistic:** the population stability index, computed as Evidently computes it:
-  numbers with more than 20 distinct benchmark values are binned with the Sturges rule
-  over both samples, everything else compares category shares, and empty bins get a small
-  floor. PSI of 0.1 or more is drift (Evidently's default).
+- **Tests:** the ones Evidently selects by default. With up to 1,000 benchmark questions,
+  the Kolmogorov-Smirnov test for numbers with more than five distinct values and
+  otherwise chi-square (a Z-test for two values), drift at p < 0.05. With more, the normed
+  Wasserstein distance for numbers and the Jensen-Shannon distance otherwise, drift at
+  0.1. `--method psi` uses the population stability index instead. At its usual 0.1
+  threshold it raises false alarms on samples of a few hundred (about 90% of the time on
+  stable data at 200 questions), so it is not the default.
 - **What moved:** new values (a script or tenant the benchmark lacks), the most frequent
   unseen terms, and the share of production questions that are benchmark questions word
   for word.
 - `--fail-on-drift` exits 3, for a scheduled job. Below about 30 questions on either side,
-  the report warns that PSI is unstable.
+  the report warns that the tests have little power.
+
+### Did the retriever change?
+
+`workbench score-drift EARLIER LATER` compares two windows of production traces: the
+retriever's first-document score, mean score, spread from first to last, and how many
+documents came back, with the same tests. It compares the questions of the two windows
+too, so it can tell the causes apart:
+
+```bash
+vectraudit workbench score-drift traces-2026-10-12.jsonl traces-2026-10-19.jsonl --fail-on-drift
+```
+
+- **Retriever shift likely:** scores moved while the questions did not. A new embedding
+  model, a re-index, or a similarity or score-scale change are the usual causes. Recheck
+  older baselines before trusting them. `--fail-on-drift` exits 3 only in this case.
+- **Drift with question drift:** both moved, so the questions may explain the shift.
+  Compare recorded runs on the fixed benchmark to isolate the retriever.
+- **Which stage:** the first retriever span is used; `--stage NAME` picks another. Traces
+  whose retriever recorded no scores are counted and left out, never filled in.
 - **Local only:** the report holds production terms and context values and is never
   uploaded.
 - **Next step after drift:** run intake and review its queue, then add or relabel

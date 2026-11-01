@@ -1495,6 +1495,13 @@ def drift_command(
     top: Annotated[
         int, typer.Option(min=1, max=200, help="How many values and terms to list.")
     ] = 20,
+    method: Annotated[
+        str,
+        typer.Option(
+            help="auto: Evidently's default tests (K-S, chi-square, Z, Wasserstein, "
+            "Jensen-Shannon); psi: population stability index (noisy below ~1,000 values)."
+        ),
+    ] = "auto",
     json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
     fail_on_drift: Annotated[
         bool, typer.Option("--fail-on-drift", help="Exit 3 when any descriptor drifted.")
@@ -1503,8 +1510,9 @@ def drift_command(
     """Is the benchmark still representative of production questions?
 
     Compares production questions from traces with the benchmark's on word count, script,
-    digits, question form, unseen terms and declared context fields, using the population
-    stability index as Evidently computes it (0.1 or more is drift). Local only.
+    digits, question form, unseen terms and declared context fields, with the tests
+    Evidently selects by default (--method psi for the population stability index).
+    Local only.
     """
     from vectraudit.pipelines.drift import production_questions, query_drift, render
     from vectraudit.pipelines.traces import Settings
@@ -1520,6 +1528,7 @@ def drift_command(
             current,
             context_fields=fields,
             top=top,
+            method=method,
         )
         report["unreadable_traces"] = unreadable
     except (OSError, ValueError) as exc:
@@ -1531,6 +1540,53 @@ def drift_command(
     if json_out is not None:
         _write(json_out, report)
     if fail_on_drift and report["status"] == "drift":
+        raise typer.Exit(3)
+
+
+@workbench_app.command("score-drift")
+def score_drift_command(
+    earlier: Annotated[Path, typer.Argument(help="Traces from an earlier window (reference).")],
+    later: Annotated[Path, typer.Argument(help="Traces from a later window (current).")],
+    stage: Annotated[
+        str | None, typer.Option(help="Span name of the retriever (default: the first one).")
+    ] = None,
+    stage_kind: Annotated[
+        list[str] | None, typer.Option(help="SPAN=KIND, as in import-traces.")
+    ] = None,
+    id_field: Annotated[
+        str | None, typer.Option(help="Document metadata field to use as the document ID.")
+    ] = None,
+    method: Annotated[
+        str,
+        typer.Option(
+            help="auto: Evidently's default tests (K-S, chi-square, Z, Wasserstein, "
+            "Jensen-Shannon); psi: population stability index (noisy below ~1,000 values)."
+        ),
+    ] = "auto",
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    fail_on_drift: Annotated[
+        bool, typer.Option("--fail-on-drift", help="Exit 3 when the retriever likely changed.")
+    ] = False,
+) -> None:
+    """Did the retriever's scores move between two windows of production traces?
+
+    Compares the first document's score, the mean, the spread and how many documents came
+    back, with the tests Evidently selects by default, and checks the questions too, so a
+    retriever change (scores move, questions do not) is told apart from changed questions.
+    """
+    from vectraudit.pipelines.drift import render_scores, score_drift
+    from vectraudit.pipelines.traces import Settings
+
+    try:
+        settings = Settings(id_field=id_field, stage_kinds=_stage_kinds(stage_kind))
+        report = score_drift(earlier, later, settings, stage=stage, method=method)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Drift error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render_scores(report))
+    if json_out is not None:
+        _write(json_out, report)
+    if fail_on_drift and report["status"] == "retriever_shift_likely":
         raise typer.Exit(3)
 
 
