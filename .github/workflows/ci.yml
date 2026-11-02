@@ -51,6 +51,9 @@ jobs:
           PERSISTENCE_DATA_PATH: /var/lib/weaviate
           DEFAULT_VECTORIZER_MODULE: none
           CLUSTER_HOSTNAME: node1
+          # CI runners can be ~90% full; don't let the disk guard make shards read-only.
+          DISK_USE_WARNING_PERCENTAGE: "100"
+          DISK_USE_READONLY_PERCENTAGE: "100"
         ports: ["8080:8080", "50051:50051"]
       elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
@@ -58,6 +61,8 @@ jobs:
           discovery.type: single-node
           xpack.security.enabled: "false"
           ES_JAVA_OPTS: -Xms512m -Xmx512m
+          # Disk watermarks on a nearly full runner blocked index creation (timeouts).
+          cluster.routing.allocation.disk.threshold_enabled: "false"
         ports: ["9200:9200"]
       opensearch:
         image: opensearchproject/opensearch:2.17.1
@@ -66,24 +71,36 @@ jobs:
           DISABLE_SECURITY_PLUGIN: "true"
           DISABLE_INSTALL_DEMO_CONFIG: "true"
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+          # Disk watermarks on a nearly full runner blocked index creation (HTTP 403).
+          cluster.routing.allocation.disk.threshold_enabled: "false"
         ports: ["9201:9200"]
       chroma:
         image: chromadb/chroma:1.5.9
         ports: ["8000:8000"]
     steps:
+      - name: Free disk space
+        # Six service containers and four Python environments left the runner ~90% full,
+        # which tripped the search engines' disk guards. These toolchains are unused here.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - name: Install
         run: uv sync --all-extras --locked
-      - name: Wait for the Pinecone, Weaviate, Elasticsearch and OpenSearch test servers
+      - name: Wait for the Pinecone, Weaviate, Elasticsearch, OpenSearch and Chroma test servers
         run: |
+          health="_cluster/health?wait_for_status=yellow&timeout=1s"
           for i in $(seq 1 90); do
             curl -sf http://localhost:8080/v1/.well-known/ready > /dev/null &&
               curl -s -o /dev/null -H "Api-Key: pclocal" http://localhost:5080/indexes &&
-              curl -sf http://localhost:9200 > /dev/null &&
-              curl -sf http://localhost:9201 > /dev/null && exit 0
+              curl -sf "http://localhost:9200/$health" > /dev/null &&
+              curl -sf "http://localhost:9201/$health" > /dev/null &&
+              curl -sf http://localhost:8000/api/v2/heartbeat > /dev/null && exit 0
             sleep 2
           done
           echo "test servers did not become ready" >&2; exit 1
