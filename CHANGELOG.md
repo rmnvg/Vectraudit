@@ -38,6 +38,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   model-judged (`supported`), marked disputed when human review disagrees, and never change a
   verdict or the diagnosis. No claim, answer or chunk text is read into any file
   (`docs/claim-evidence.md`).
+- The benchmark audit turns claim evidence into review suggestions: documents that entail
+  reference claims but are unjudged, labels that may be stale or wrong, and proposed
+  required-evidence groups. `workbench accept-evidence` writes a new dataset version for the
+  questions you name. Held-out questions never get any.
 - Check reports (HTML, job summary and terminal) show a paired-randomization p-value beside
   each metric change, and `p_value` is in the check JSON. It is information only: verdicts
   and intervals are unchanged.

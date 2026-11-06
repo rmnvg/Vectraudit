@@ -80,6 +80,7 @@ CLAIM_OPTIONAL = (
 )
 SUPPORT_REQUIRED = ("reference", "response", "contradicts_reference")
 SUPPORT_OPTIONAL = ("response_incorrect",)
+MAX_REFERENCE_CLAIMS = 1_000
 _TEXT_LIMIT = 200
 DIAGNOSES = {
     "answered_correctly": "Answered correctly.",
@@ -134,7 +135,7 @@ class Judgment:
     citations: tuple[str, ...] | None = None
     support: tuple[tuple[str, str], ...] = ()
     claims: tuple[tuple[str, int], ...] | None = None
-    claim_support: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
+    claim_support: tuple[tuple[str, dict[str, Any]], ...] = ()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -208,9 +209,24 @@ def _counts(
     return tuple(sorted(value.items()))
 
 
+def _claim_positions(value: Any, reference: int, doc: str, line: int) -> tuple[int, ...]:
+    """Positions of the reference claims a document entails: distinct, below ``reference``."""
+    if (
+        not isinstance(value, list)
+        or len(value) > MAX_REFERENCE_CLAIMS
+        or any(type(i) is not int or not 0 <= i < reference for i in value)
+        or len(set(value)) != len(value)
+    ):
+        raise AnswerJudgmentError(
+            f"line {line}: claim_support {doc!r} reference_claims must be distinct positions "
+            f"below the {reference} reference claims"
+        )
+    return tuple(sorted(value))
+
+
 def _claims(
     obj: Mapping[str, Any], line: int
-) -> tuple[tuple[tuple[str, int], ...] | None, tuple[tuple[str, tuple[tuple[str, int], ...]], ...]]:
+) -> tuple[tuple[tuple[str, int], ...] | None, tuple[tuple[str, dict[str, Any]], ...]]:
     """Claim counts and per-document support; counts must be consistent with each other."""
     raw, support = obj.get("claims"), obj.get("claim_support")
     if raw is None:
@@ -244,20 +260,28 @@ def _claims(
     for bad, message in problems:
         if bad:
             raise AnswerJudgmentError(f"line {line}: claims inconsistent: {message}")
-    pairs: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
+    pairs: tuple[tuple[str, dict[str, Any]], ...] = ()
     if support is not None:
         if not isinstance(support, dict) or len(support) > MAX_CLAIM_DOCUMENTS:
             raise AnswerJudgmentError(
                 f"line {line}: claim_support must map at most {MAX_CLAIM_DOCUMENTS} document "
                 "IDs to counts"
             )
-        rows = []
+        rows: list[tuple[str, dict[str, Any]]] = []
         for doc, counts in support.items():
             _short(doc, "a claim_support document ID", line, required=True)
-            row = _counts(
-                counts, SUPPORT_REQUIRED, SUPPORT_OPTIONAL, f"claim_support {doc!r}", line
+            positions: tuple[int, ...] | None = None
+            if isinstance(counts, dict) and "reference_claims" in counts:
+                positions = _claim_positions(counts["reference_claims"], c["reference"], doc, line)
+                counts = {k: v for k, v in counts.items() if k != "reference_claims"}
+            d = dict(
+                _counts(counts, SUPPORT_REQUIRED, SUPPORT_OPTIONAL, f"claim_support {doc!r}", line)
             )
-            d = dict(row)
+            if positions is not None and len(positions) != d["reference"]:
+                raise AnswerJudgmentError(
+                    f"line {line}: claim_support {doc!r} lists {len(positions)} reference "
+                    f"claims but counts {d['reference']}"
+                )
             if (
                 d["reference"] > c["reference"]
                 or d["contradicts_reference"] > c["reference"]
@@ -267,8 +291,8 @@ def _claims(
                 raise AnswerJudgmentError(
                     f"line {line}: claim_support {doc!r} counts more claims than were extracted"
                 )
-            rows.append((doc, row))
-        pairs = tuple(sorted(rows))
+            rows.append((doc, d if positions is None else {**d, "reference_claims": positions}))
+        pairs = tuple(sorted(rows, key=lambda r: r[0]))
     return claims, pairs
 
 
@@ -596,7 +620,10 @@ def _claim_evidence(qid: str, judgments: Sequence[Judgment]) -> dict[str, Any] |
         "kind": j.kind,
         **({"evaluator_version": j.evaluator_version} if j.evaluator_version else {}),
         "claims": dict(j.claims or ()),
-        "claim_support": {doc: dict(counts) for doc, counts in j.claim_support},
+        "claim_support": {
+            doc: {k: list(v) if isinstance(v, tuple) else v for k, v in counts.items()}
+            for doc, counts in j.claim_support
+        },
     }
 
 

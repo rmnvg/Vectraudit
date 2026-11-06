@@ -43,8 +43,10 @@ vectraudit workbench attach-answers current.run.json judgments.jsonl --out answe
   | `context_documents`, `useful_documents` | Chunks, and chunks that entail a reference claim |
 
   and `claim_support`, per delivered document: `reference` and `response` (claims it
-  entails), `response_incorrect` (incorrect response claims it entails) and
-  `contradicts_reference` (reference claims it contradicts). RAGChecker counts a
+  entails), `response_incorrect` (incorrect response claims it entails),
+  `contradicts_reference` (reference claims it contradicts) and `reference_claims` (the
+  positions, never the text, of the reference claims it entails; up to 1,000 claims per
+  answer). RAGChecker counts a
   contradiction like a neutral label; a delivered document that contradicts the reference
   answer often means a stale document, so it is kept on its own.
 
@@ -100,6 +102,46 @@ listed as `unmatched_documents` on the evidence (the file was probably made agai
 run). Documents are listed in the investigation view with a link to passage review. Where
 the claim support has no per-document `response_incorrect` count, a finding keeps its count
 but names no documents.
+
+## Review queue
+
+Claim evidence also says something about the benchmark's labels. Run the benchmark audit with
+runs that went through `attach-answers`:
+
+```bash
+vectraudit workbench benchmark benchmark.jsonl --runs workbench-runs --out audit.json
+```
+
+- **Documents to judge.** A delivered document that entails at least one reference claim but
+  has no judgment for the question joins the judgment queue as *possibly relevant,
+  unjudged*, most claims first (priority 3). Documents already judged, forbidden for the
+  question or marked irrelevant in a draft are not queued, and a document the pool had
+  already queued becomes one item with the higher priority.
+- **Labels to recheck.** A document labelled relevant that entails none of the reference
+  claims, while another delivered document entails some, is queued as *label may be stale or
+  wrong* (priority 4, above new suggestions).
+- **Proposed required evidence.** `required_evidence_proposals` lists, per question, the
+  documents that together entail the most reference claims (a greedy cover over claim
+  positions, never including a forbidden or irrelevant-marked document), the fraction of
+  claims covered, which documents are already labelled relevant and which still need
+  judgment, and the `required_evidence` group ready to paste. Status `proposed`.
+
+Items are suggestions for a human: model output never becomes a relevance label. Reviewing a
+queued document in the workbench's passage review, and saving, creates a new benchmark version
+as for any judgment. To accept a proposed group by name:
+
+```bash
+vectraudit workbench accept-evidence benchmark.jsonl audit.json --question q1 --out next.jsonl
+```
+
+This writes a new dataset version, adding the group beside any the question already has, and
+records it in the header's `provenance`. It accepts nothing you do not name, refuses a group
+until every document in it is labelled relevant (a required document must be a relevant
+one), refuses another version's proposals, and leaves the original file alone.
+
+**Held-out questions never get items or proposals,** and `accept-evidence` refuses one even if
+a proposal file is edited by hand. Judging documents for held-out questions would let their
+labels be tuned to what the pipeline returns, which is what held-out questions are for.
 
 ## Evidence level
 

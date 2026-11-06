@@ -21,7 +21,9 @@ own, because it often means a stale document.
 - **Scores and claim facts, never decisions.** One score-only judgment is written per chosen
   metric (``ragchecker.f1``), with a verdict only from a threshold the user declares. Another
   line per question (``ragchecker.claims``) carries the claim counts and, per document, how
-  many reference and response claims it entails. It has no verdict.
+  many reference and response claims it entails, and which reference claims by position
+  (so the smallest set of documents covering the reference answer can be proposed). It has
+  no verdict.
 - **Retrieval metrics are refused.** ``claim_recall`` and ``context_precision`` measure
   retrieval, which Vectraudit measures against the benchmark's labels itself.
 - **Chunk evidence needs matching documents.** Each ``retrieved_context[j].doc_id`` must be a
@@ -69,7 +71,7 @@ NO_VERDICT = frozenset({"self_knowledge"})
 """Correct answers from the model's own knowledge are neither good nor bad on their own."""
 MAX_BYTES = 200 * 2**20
 MAX_CHUNKS = 500
-MAX_CLAIMS = 5_000
+MAX_CLAIMS = 1_000
 
 
 class RagCheckerImportError(ValueError):
@@ -81,8 +83,9 @@ class Facts:
     """Claim counts and per-chunk support derived from one question's labels."""
 
     claims: dict[str, int]
-    support: list[dict[str, int]]
-    """Per chunk, in ``retrieved_context`` order."""
+    support: list[dict[str, Any]]
+    """Per chunk, in ``retrieved_context`` order. ``reference_claims`` lists the indices
+    (never the text) of the reference claims the chunk entails."""
     metrics: dict[str, float]
     """RAGChecker's metrics, re-derived from the labels with its formulas."""
 
@@ -205,6 +208,7 @@ def derive(row: Mapping[str, Any]) -> tuple[Facts, list[str | None]]:
             "response": sum(ret2resp[s][j] for s in range(responses)),
             "response_incorrect": sum(ret2resp[s][j] and incorrect[s] for s in range(responses)),
             "contradicts_reference": sum(contradicts[i][j] for i in range(references)),
+            "reference_claims": [i for i in range(references) if ret2ans[i][j]],
         }
         for j in range(chunks)
     ]

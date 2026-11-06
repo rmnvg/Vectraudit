@@ -2265,6 +2265,48 @@ def benchmark_command(
         raise typer.Exit(2) from exc
 
 
+@workbench_app.command("accept-evidence")
+def accept_evidence_command(
+    dataset: Annotated[Path, typer.Argument(help="The benchmark the proposals were made for.")],
+    audit: Annotated[
+        Path, typer.Argument(help="Benchmark audit (workbench benchmark) with proposals.")
+    ],
+    out: Annotated[Path, typer.Option(help="New dataset version to write.")],
+    question: Annotated[
+        list[str] | None, typer.Option(help="Question whose proposed evidence to accept.")
+    ] = None,
+) -> None:
+    """Accept proposed required evidence for named questions, as a new dataset version.
+
+    Proposals come from claim-level evidence (RAGChecker) and are suggestions: nothing is
+    accepted unless you name the question, every document in the group must already be
+    labelled relevant, and held-out questions never get one. The original file is untouched.
+    """
+    from vectraudit.evaluation.dataset_tools import diff_datasets
+    from vectraudit.pipelines.claim_review import accept_evidence
+
+    try:
+        if out.resolve() == dataset.resolve():
+            raise ValueError("--out must differ from the dataset; the original stays unchanged")
+        current = load_dataset(dataset)
+        report = json.loads(audit.read_text(encoding="utf-8"))
+        text, accepted = accept_evidence(current, report, question or [])
+        atomic_write(out, text)
+        diff = diff_datasets(current, load_dataset(out))
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Accept error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    for proposal in accepted:
+        typer.echo(
+            f"{proposal['query_id']}: required evidence {', '.join(proposal['docs'])} "
+            f"(covers {proposal['claims_covered']} of {proposal['reference_claims']} reference "
+            "claims, model-judged)"
+        )
+    typer.echo(
+        f"New dataset version {diff['to'][:12]} written to {out} ({diff['from'][:12]} before)."
+    )
+
+
 @workbench_app.command("monitor")
 def monitor_command(
     manifest: Path,

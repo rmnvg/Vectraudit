@@ -68,11 +68,18 @@ def test_a_delivered_document_that_contradicts_the_reference_is_counted_on_its_o
     claims = {j["query_id"]: j for j in lines()[0] if j["evaluator"] == CLAIMS_EVALUATOR}
     support = claims["q0"]["claim_support"]
     assert list(support) == ids == ["000", "001", "002", "003"]
-    assert support["000"] == {
+    assert {k: v for k, v in support["000"].items() if k != "reference_claims"} == {
         "reference": 3, "response": 1, "response_incorrect": 0, "contradicts_reference": 1,
     }  # fmt: skip
-    assert support["002"] == dict.fromkeys(support["002"], 0)  # supports nothing: noise
+    quiet = {k: v for k, v in support["002"].items() if k != "reference_claims"}
+    assert quiet == dict.fromkeys(quiet, 0)  # supports nothing: noise
     assert support["003"]["response_incorrect"] == 1  # entailed an incorrect response claim
+    # Which reference claims each document entails, by position only (never the claim text).
+    for doc in support.values():
+        assert len(doc["reference_claims"]) == doc["reference"]
+        assert doc["reference_claims"] == sorted(set(doc["reference_claims"]))
+        assert all(0 <= i < 22 for i in doc["reference_claims"])
+    assert support["002"]["reference_claims"] == []
 
 
 def test_scores_come_from_ragchecker_and_claim_lines_carry_the_counts():
@@ -382,6 +389,25 @@ def _support(**changes):
 def test_the_reader_bounds_and_checks_claim_evidence(tmp_path, fields, message):
     with pytest.raises(AnswerJudgmentError, match=message):
         read(tmp_path, line(**fields))
+
+
+def _positions(positions, reference=2):
+    doc = {"reference": reference, "response": 0, "contradicts_reference": 0}
+    return {"claims": CLAIMS, "claim_support": {"d": {**doc, "reference_claims": positions}}}
+
+
+def test_the_reader_keeps_the_positions_of_the_reference_claims_a_document_entails(tmp_path):
+    ((_, _, judgment),) = read(tmp_path, line(**_positions([3, 1])))
+    assert judgment.claim_support[0][1]["reference_claims"] == (1, 3)
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [[1, 1], [-1, 0], [4, 5], [True, 0], ["a", "b"], "all", [0], list(range(1001))],
+)
+def test_reference_claim_positions_must_be_distinct_and_match_the_count(tmp_path, positions):
+    with pytest.raises(AnswerJudgmentError, match=r"reference_claims|lists"):
+        read(tmp_path, line(**_positions(positions)))
 
 
 def test_too_many_documents_are_refused(tmp_path):

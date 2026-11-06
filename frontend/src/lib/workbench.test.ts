@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { claimFindingText, parseArtifact } from './workbench'
-import type { ClaimFinding } from './workbench'
+import { claimFindingText, parseArtifact, proposalText } from './workbench'
+import type { ClaimFinding, EvidenceProposal } from './workbench'
 
 const run = (evidence: unknown) => ({
   format: 'vectraudit.run', run_id: 'r', status: 'complete', created_at: '2026-10-12',
@@ -26,5 +26,13 @@ describe('claim findings', () => {
     expect(claimFindingText({ ...base, finding: 'unsupported_correct', count: 6 })).toBe('unsupported correct: 6 claims')
     expect(claimFindingText({ ...base, finding: 'contradicting_document', count: 2 })).toBe('contradicting document: 2 documents')
     expect(claimFindingText({ ...base, finding: 'contradicting_document' })).toBe('contradicting document: 1 document')
+  })
+})
+
+describe('proposed required evidence', () => {
+  const base: EvidenceProposal = { query_id: 'q1', docs: ['a', 'b'], claims_covered: 5, reference_claims: 6, coverage: 5 / 6, status: 'proposed', needs_judgment: ['b'], already_relevant: ['a'] }
+  it('says what the group covers and what is still to judge', () => {
+    expect(proposalText(base)).toBe('q1: a, b covers 5 of 6 reference claims (83%), model-judged; judge b first')
+    expect(proposalText({ ...base, needs_judgment: [] })).toContain('; ready to accept')
   })
 })
