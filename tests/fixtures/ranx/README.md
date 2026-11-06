@@ -9,6 +9,7 @@ environment. No ranx code is copied; only its outputs are committed.
 | File | Contents |
 |---|---|
 | `metrics.json` | 200 queries: graded labels 0–3, the ranking, and ranx's `recall`, `precision`, `mrr`, `ndcg`, `map` and `hit_rate` at k = 1, 5, 10, 100 |
+| `fusion.json` | 40 queries with two or three stages, and ranx's `fuse()` output for `rrf` (k = 20, 60), `isr`, `bordafuse`, and `wsum`, `sum`, `mnz`, `max` under every normalisation |
 
 The queries cover single-relevant queries, rankings shorter than k, unjudged documents and
 tied scores. ranx breaks score ties with an unstable sort, so ties are resolved by

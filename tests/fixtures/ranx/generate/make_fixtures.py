@@ -152,7 +152,9 @@ def fusion_fixture(queries: list[dict]) -> dict:
                 params=params,
             )
             for q in group:
-                by_query[q["id"]] = {d: float(s) for d, s in fused[q["id"]].items()}
+                # ranx orders equal scores arbitrarily; a fixed order keeps the file reproducible.
+                scores = {d: float(s) for d, s in fused[q["id"]].items()}
+                by_query[q["id"]] = dict(sorted(scores.items(), key=lambda t: (-t[1], t[0])))
         results.append({**case, "weighted": case["method"] == "wsum", "fused": by_query})
     return {
         "generator": "tests/fixtures/ranx/generate/make_fixtures.py",

@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit.core.fusion`, a fusion library: RRF, ISR, Borda, weighted sum, CombSUM,
+  CombMNZ and CombMAX, with min-max, max, sum, z-score, rank and Borda normalisation,
+  checked against ranx 0.3.21 (`docs/fusion.md`).
 - Metric conformance tests: recall, precision, MRR, nDCG, MAP and Hit Rate at k agree with
   ranx 0.3.21 to within 1e-9 on 200 seeded queries (graded labels, ties, short lists).
 - `workbench import-traces` and `workbench intake` read LangSmith run exports and Langfuse
