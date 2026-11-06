@@ -28,6 +28,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench optimize --fusion-grid` adds one candidate per fusion setting of a hybrid
+  candidate (within `max_candidates`), and `--shortlist-from replay.json --top N` runs only
+  the points a fusion replay ranks highest. Held-out questions are still used once, for the
+  chosen candidate only.
 - `workbench fusion-replay` re-fuses a run's recorded stage hits under other fusion methods
   and weights without calling the pipeline. It flags shallow inputs, bounds the result when
   filters follow fusion, marks replays with a reranker after fusion as unknown, reports
