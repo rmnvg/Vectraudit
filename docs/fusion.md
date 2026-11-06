@@ -52,6 +52,44 @@ Denominators are floored at 1e-9, so a stage whose scores are all equal normalis
 - `depth` keeps each input's top `depth` hits before fusing. A document listed twice in
   one ranking keeps its best position.
 
+## In pipelines
+
+The built-in hybrid baseline (`"adapter": {"kind": "hybrid", ...}`) fuses its keyword and
+vector stages with `fuse()`, weighting them `1 − vector_weight` and `vector_weight`. Its
+candidate `params` choose the method:
+
+| Param | Default | Values |
+|---|---|---|
+| `fusion` | `"rrf"` | any method above |
+| `fusion_k` | `60` | integer 0–10000, used by `rrf` |
+| `fusion_norm` | `"min_max"` | any normalisation above, used by score methods |
+
+The defaults reproduce the baseline's earlier output exactly (`tests/test_hybrid_golden.py`).
+Once a candidate fuses vectors (`vector_weight` above 0), investigations offer the built-in
+fix **switch to weighted score fusion** (`{"fusion": "wsum"}`) for documents that were never
+observed or were lost at the fusion stage. Rank fusion ignores how far apart two stages'
+scores are, while score fusion lets a document one stage scores far above the rest climb.
+
+A Python pipeline can declare the same measured stage without writing fusion code:
+
+```python
+from vectraudit.pipelines.runtime import PythonPipeline, Stage, fusion_stage
+
+pipeline = PythonPipeline(
+    [
+        Stage("keyword", "keyword", bm25),
+        Stage("vector", "vector", dense),
+        fusion_stage(
+            "fused", ["keyword", "vector"], "wsum", weights={"keyword": 0.4, "vector": 0.6}
+        ),
+        Stage("final", "truncate", lambda q, p: p["fused"][: q.k], ("fused",)),
+    ]
+)
+```
+
+`fusion_stage` checks its options when the pipeline is built, and the stage is recorded with
+kind `fusion` and its parents like any other measured stage.
+
 ## Conformance
 
 Every method and normalisation is checked against ranx 0.3.21's `fuse()` on 40 seeded

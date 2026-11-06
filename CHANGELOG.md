@@ -28,6 +28,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- The hybrid baseline takes `fusion`, `fusion_k` and `fusion_norm` params (default: weighted
+  RRF with k = 60, unchanged output), `runtime.fusion_stage()` declares a measured fusion
+  stage in a Python pipeline, and investigations offer the built-in fix "switch to weighted
+  score fusion" once vectors are fused.
 - `vectraudit.core.fusion`, a fusion library: RRF, ISR, Borda, weighted sum, CombSUM,
   CombMNZ and CombMAX, with min-max, max, sum, z-score, rank and Borda normalisation,
   checked against ranx 0.3.21 (`docs/fusion.md`).
