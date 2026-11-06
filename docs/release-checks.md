@@ -231,6 +231,16 @@ weight across families. Seeded 95% bootstrap intervals resample these family mea
 than 30 families the report warns about limited evidence. One family's interval cannot estimate
 between-family uncertainty, even if it has many scenario rows.
 
+Each suite-level metric change also carries a **p-value** (the `p` column of the HTML report,
+the job summary and the terminal table; `p_value` in the check JSON): a two-sided paired
+randomization test on the same family deltas, with 5,000 seeded sign flips and
+`p = (b + 1) / (n + 1)`, so it is never 0 and below 0.001 is shown as "<0.001". It is for
+the reader. The verdict comes from the policy's rules and intervals, never from `p`; it has
+its own random generator, so adding it changed no interval and no verdict. Cohort rows do not
+carry one; a policy that sets `cohorts.control` to `holm` shows adjusted p-values for those
+rules (`holm`). With three or more candidates, `experiments` and `workbench optimize` add a
+randomized Tukey HSD instead (see `docs/experiments.md`).
+
 ### Hubs
 
 `vectraudit workbench hubs RUN [--baseline RUN] [--dataset BENCHMARK]` finds documents the
@@ -313,14 +323,23 @@ It is a diagnostic: it never changes a release verdict.
     widened to 1 − 0.05/m for the m cohort `max_drop` rules judged, lies entirely beyond the
     allowed drop. The interval is a normal approximation from the family-level standard
     error, slightly narrow for very small cohorts.
+  - **`cohorts.control: "holm"`:** the same claim and error level, tested with Holm's
+    (1979) step-down procedure. Each judged `max_drop` rule gets a one-sided p-value that
+    its drop truly exceeds the allowed one (same normal approximation and family standard
+    error); the p-values are Holm-adjusted and a rule fails when its adjusted p is below
+    0.025, the per-side level of the 95% interval it replaces. The smallest p is judged
+    exactly as Bonferroni judges it, and each next one against a threshold that loosens by
+    one rule, so Holm never fails fewer real drops than Bonferroni and never more chance
+    ones. The check JSON shows `p` and `p_adjusted` per cohort metric (`holm`). The gain
+    over Bonferroni is largest when few cohort rules are judged and several regressed.
   - **Effect:** chance failures fell from every A/A comparison to at most about one in 20,
     while a real 0.4 drop in one cohort still failed.
   - **Unchanged by the control:** `min` floors, the suite-level metrics and the rule keys
     that audited exceptions name.
   - **Choosing:** run `vectraudit calibrate` with and without the control to see the
     difference on your own runner. Leaving the control out keeps existing policy hashes.
-  - **In the workbench:** the policy editor's "Correct for many cohorts (Bonferroni)"
-    checkbox sets the control.
+  - **In the workbench:** the policy editor's "Correct for many cohorts" menu sets the
+    control (none, Bonferroni or Holm), and keeps it when a policy is edited and saved.
 - Without `--policy`, a built-in policy allows drops of 0.01 in nDCG, recall and ANN recall
   (0.02 in MRR) and a 50% p95 rise, judged on whatever both runs measured. The workbench
   labels this mode *exploratory*; it is not a substitute for an agreed release policy.

@@ -923,7 +923,7 @@ def _print_check(result: dict[str, Any], verdict: Verdict) -> None:
         )
         console.print(f"  • {escape(r['message'])}{note}")
     if result["metrics"]:
-        table = Table("Metric", "Baseline", "Candidate", "Change", "95% CI")
+        table = Table("Metric", "Baseline", "Candidate", "Change", "95% CI", "p")
         for name, m in result["metrics"].items():
             table.add_row(
                 name,
@@ -931,6 +931,7 @@ def _print_check(result: dict[str, Any], verdict: Verdict) -> None:
                 f"{m['candidate']:.4f}",
                 f"{m['delta']:+.4f}",
                 f"[{m['ci_low']:+.4f}, {m['ci_high']:+.4f}]",
+                "-" if m.get("p_value") is None else f"{m['p_value']:.3f}",
             )
         console.print(table)
     for w in result["warnings"]:

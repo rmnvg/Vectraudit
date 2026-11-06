@@ -33,13 +33,20 @@ describe('release policy form', () => {
     const exceptions = { allow: ['metric'], approver: 'engineer' }
     const raw = { metrics: { ndcg: { max_drop: 0.02 } }, cohorts: { min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } }, control: 'bonferroni' }, exceptions }
     const form = formFromPolicy(raw)
-    expect(form.cohortControl).toBe(true)
+    expect(form.cohortControl).toBe('bonferroni')
     const { policy } = policyFromForm(form)
     expect(policy?.cohorts).toEqual(raw.cohorts)
     expect(policy?.exceptions).toEqual(exceptions)
     expect(policyFromForm(formFromPolicy({ ...raw, forbidden_stages: ['rerank'] })).policy?.forbidden_stages).toEqual(['rerank'])
-    form.cohortControl = false
+    form.cohortControl = 'none'
     expect(policyFromForm(form).policy?.cohorts).toEqual({ min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } } })
+  })
+  it('keeps Holm cohort control and drops an unknown one', () => {
+    const cohorts = { min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } } }
+    const holm = formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } }, cohorts: { ...cohorts, control: 'holm' } })
+    expect(holm.cohortControl).toBe('holm')
+    expect(policyFromForm(holm).policy?.cohorts).toEqual({ ...cohorts, control: 'holm' })
+    expect(formFromPolicy({ cohorts: { ...cohorts, control: 'sidak' } }).cohortControl).toBe('none')
   })
   it('chooses one way to judge allowed drops', () => {
     expect(formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } } }).dropTest).toBe('measured')

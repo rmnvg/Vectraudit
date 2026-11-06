@@ -324,6 +324,21 @@ def optimize_command(
     retry_budget: Annotated[
         int, typer.Option(min=0, help="Maximum automatic retries per candidate run.")
     ] = RetryPolicy().max_retries,
+    fusion_grid: Annotated[
+        str | None,
+        typer.Option(
+            help='Add a candidate per fusion setting, e.g. "fusion=rrf,wsum;vector_weight=0.3,0.7".'
+        ),
+    ] = None,
+    grid_base: Annotated[
+        str | None,
+        typer.Option(help="Hybrid candidate the grid varies (default: the baseline or only one)."),
+    ] = None,
+    shortlist_from: Annotated[
+        Path | None,
+        typer.Option(help="fusion-replay report: run only the grid points it ranks highest."),
+    ] = None,
+    top: Annotated[int, typer.Option(min=1, help="Grid points kept by --shortlist-from.")] = 3,
     max_calls: MaxCalls = None,
     max_spend: MaxSpend = None,
     measured: Measured = None,
@@ -345,6 +360,31 @@ def optimize_command(
         if len(spec.candidates) > spec.max_candidates:
             raise ValueError("candidate count exceeds max_candidates")
         ds = load_dataset(manifest.parent / spec.dataset)
+        grid_record = None
+        if fusion_grid is None and (shortlist_from is not None or grid_base is not None):
+            raise ValueError("--shortlist-from and --grid-base need --fusion-grid")
+        if fusion_grid is not None:
+            from vectraudit.pipelines.fusion_grid import expand_fusion_grid, shortlist
+
+            base = _candidate(spec, grid_base or baseline)
+            points = expand_fusion_grid(
+                base,
+                fusion_grid,
+                [c.name for c in spec.candidates],
+                room=spec.max_candidates - len(spec.candidates),
+            )
+            grid_record = {"base": base.name, "grid": fusion_grid, "points": len(points)}
+            if shortlist_from is not None:
+                points, shortlisted = shortlist(
+                    points,
+                    base,
+                    json.loads(shortlist_from.read_text(encoding="utf-8")),
+                    ds.sha256,
+                    top=top,
+                )
+                grid_record["shortlist"] = shortlisted
+            grid_record["candidates"] = [c.name for c in points]
+            spec = spec.model_copy(update={"candidates": [*spec.candidates, *points]})
         retry = RetryPolicy(max_attempts=max_attempts, max_retries=retry_budget)
         budget = _guard(
             spec,
@@ -378,6 +418,13 @@ def optimize_command(
             retry=retry,
         )
         result["usage"] = reconcile(planned_total(budget), result["usage"])
+        if grid_record is not None:
+            result["fusion_grid"] = grid_record
+            typer.echo(
+                f"Fusion grid: {len(grid_record['candidates'])} of {grid_record['points']} "
+                f"points added to {grid_record['base']}"
+                + (" (shortlisted by a replay)" if "shortlist" in grid_record else "")
+            )
         _write(out, result)
         typer.echo(f"{result['status_label']}: {result['selected'] or 'none'}")
         typer.echo(f"Usage: {reconcile_line(result['usage'])}")

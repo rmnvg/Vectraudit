@@ -28,6 +28,24 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Check reports (HTML, job summary and terminal) show a paired-randomization p-value beside
+  each metric change, and `p_value` is in the check JSON. It is information only: verdicts
+  and intervals are unchanged.
+- Experiment reports and `workbench optimize` results with three or more candidates add a
+  randomized Tukey HSD: `hsd_group` letters and an adjusted p-value against the leader, and
+  "not distinguishable from the leader (randomized Tukey HSD, α = 0.05)" in the verdict.
+  `tied_with_leader`, candidate selection and the held-out check are unchanged.
+- Policies accept `cohorts.control: "holm"`, an opt-in Holm step-down control for cohort
+  rules that never fails fewer real drops than Bonferroni. Reports show the adjusted
+  p-values and the policy editor offers it. No default changes.
+- `vectraudit.evaluation.significance`: a paired randomization test (p is never 0), a
+  randomized Tukey HSD for three or more systems (Carterette 2012, paired by design) and
+  Holm's adjustment, all seeded and working on family means. Calibration tests show the
+  false-positive and false-winner rates stay within tolerance of 5%.
+- `workbench optimize --fusion-grid` adds one candidate per fusion setting of a hybrid
+  candidate (within `max_candidates`), and `--shortlist-from replay.json --top N` runs only
+  the points a fusion replay ranks highest. Held-out questions are still used once, for the
+  chosen candidate only.
 - `workbench fusion-replay` re-fuses a run's recorded stage hits under other fusion methods
   and weights without calling the pipeline. It flags shallow inputs, bounds the result when
   filters follow fusion, marks replays with a reranker after fusion as unknown, reports

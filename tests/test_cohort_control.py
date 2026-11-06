@@ -1,4 +1,4 @@
-"""Many cohorts: count what was judged, and optionally control chance failures (Bonferroni)."""
+"""Many cohorts: count what was judged, and optionally control chance failures."""
 
 from __future__ import annotations
 
@@ -90,8 +90,84 @@ def test_policy_control_is_validated_and_keeps_existing_hashes():
     assert policy_sha256(rules()) == policy_sha256(rules("none"))
     assert "control" not in rules().as_dict()["cohorts"]
     assert policy_sha256(rules("bonferroni")) != policy_sha256(rules())
+    assert policy_sha256(rules("holm")) not in {
+        policy_sha256(rules()),
+        policy_sha256(rules("bonferroni")),
+    }
+    assert rules("holm").as_dict()["cohorts"]["control"] == "holm"
     with pytest.raises(PolicyError, match=r"cohorts\.control"):
-        rules("holm")
+        rules("sidak")
+
+
+def test_holm_controls_chance_cohort_failures_and_shows_adjusted_values():
+    base, cand = noisy_pair()
+    assert len(cohort_failures(compare_runs(base, cand, rules()))) >= 2
+    result = compare_runs(base, cand, rules("holm"))
+    assert cohort_failures(result) == []
+    assert result["verdict"] == "pass"
+    holm = result["cohorts"]["tenant-0"]["metrics"]["ndcg"]["holm"]
+    assert holm["rules"] == COHORTS
+    assert 0 <= holm["p"] <= holm["p_adjusted"] <= 1
+    assert result["cohort_judging"]["control"] == "holm"
+    assert not any("one by one" in w for w in result["warnings"])
+
+
+def test_a_real_cohort_regression_still_fails_under_holm():
+    base, cand = noisy_pair(spread=0.02, sunk=3, drop=0.4)
+    result = compare_runs(base, cand, rules("holm"))
+    failures = cohort_failures(result)
+    assert [r["rule"] for r in failures] == ["cohort:tenant-3:ndcg.max_drop"]
+    assert "Holm adjustment for 20 cohort rules" in failures[0]["message"]
+    assert result["verdict"] == "fail"
+
+
+def _three_cohorts(drops, noise=0.03):
+    """Cohorts of ten with an exact mean drop and standard error noise / 3 (alternating)."""
+    tags = [[f"t{i // 10}"] for i in range(30)]
+    cand = [0.5 - drops[i // 10] + (noise if i % 2 else -noise) for i in range(30)]
+    return fake_run([0.5] * 30, tags=tags), fake_run(cand, run_id="cand", tags=tags)
+
+
+def three_rules(control):
+    return parse_policy(
+        {
+            "metrics": {"ndcg": {"max_drop": 0.5}},
+            "min_queries": 10,
+            "cohorts": {
+                "min_queries": 5,
+                "metrics": {"ndcg": {"max_drop": 0.05}},
+                "control": control,
+            },
+        }
+    )
+
+
+def test_holm_catches_a_second_regression_that_bonferroni_misses():
+    # Standard errors are 0.01, so the one-sided z scores are 4.0, 2.3 and 0.1: p of about
+    # 3e-5, 0.011 and 0.46. Bonferroni's threshold for 3 rules is 0.0083; Holm's second
+    # step is 0.025 / 2 = 0.0125, so only Holm fails the second cohort.
+    base, cand = _three_cohorts([0.09, 0.073, 0.051])
+    bonferroni = compare_runs(base, cand, three_rules("bonferroni"))
+    holm = compare_runs(base, cand, three_rules("holm"))
+    assert [r["rule"] for r in cohort_failures(bonferroni)] == ["cohort:t0:ndcg.max_drop"]
+    assert [r["rule"] for r in cohort_failures(holm)] == [
+        "cohort:t0:ndcg.max_drop",
+        "cohort:t1:ndcg.max_drop",
+    ]
+    adjusted = holm["cohorts"]["t1"]["metrics"]["ndcg"]["holm"]
+    assert adjusted["p_adjusted"] == pytest.approx(2 * adjusted["p"])
+    assert adjusted["p_adjusted"] < 0.025
+    assert holm["cohorts"]["t2"]["metrics"]["ndcg"]["holm"]["p_adjusted"] > 0.025
+
+
+def test_holm_never_fails_a_rule_bonferroni_passes_on_noisy_data():
+    for seed in range(12):
+        base, cand = noisy_pair(seed=seed, spread=0.1, sunk=2, drop=0.3)
+        bonferroni = {
+            r["rule"] for r in cohort_failures(compare_runs(base, cand, rules("bonferroni")))
+        }
+        holm = {r["rule"] for r in cohort_failures(compare_runs(base, cand, rules("holm")))}
+        assert bonferroni <= holm
 
 
 def test_reports_and_calibration_show_the_effect():
@@ -103,6 +179,7 @@ def test_reports_and_calibration_show_the_effect():
     assert line in render_html(result)
     controlled = compare_runs(base, cand, rules("bonferroni"))
     assert "Bonferroni" in render_markdown(controlled)
+    assert "(Holm)" in render_markdown(compare_runs(base, cand, rules("holm")))
     # A/A: recordings of one unchanged system, compared pairwise.
     runs = []
     for seed in range(4):
@@ -118,3 +195,5 @@ def test_reports_and_calibration_show_the_effect():
     # bounds the chance of any false alarm per comparison at about 5%; it does not make it 0.
     assert plain["false_alarms"] == plain["comparisons"] == 12
     assert controlled["false_alarms"] <= 1
+    holm = calibrate(runs, {**raw, "cohorts": {**cohorts, "control": "holm"}})["current"]
+    assert holm["false_alarms"] <= 1

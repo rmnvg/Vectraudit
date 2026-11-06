@@ -131,6 +131,35 @@ built-in baseline's; map them to your own pipeline's. The best configuration is 
 mean delta on exact replays, or on the pessimistic bound for filtered ones. Measure it on the
 real pipeline with `try-fix` before believing it.
 
+## Fusion settings in the optimiser
+
+`workbench optimize` can search fusion settings of the built-in hybrid baseline:
+
+```bash
+vectraudit workbench optimize manifest.json \
+  --fusion-grid "fusion=rrf,wsum;vector_weight=0.3,0.5,0.7" \
+  --policy retrieval/policy.json --baseline current
+```
+
+Each grid point becomes a candidate named `<base>+fusion=wsum,vector_weight=0.3`, with the
+base candidate's adapter and params plus the grid's overrides (its declared fixes are not
+copied). The base is `--grid-base`, else `--baseline`, else the manifest's only candidate,
+and must be a hybrid candidate: any other pipeline would ignore these params and the points
+would silently be identical. Keys are `fusion`, `fusion_k`, `fusion_norm` and
+`vector_weight`. A setting the effective method ignores is not repeated, and a point equal
+to the base is dropped. The grid plus the manifest's candidates must fit `max_candidates`,
+or the command stops and says by how many.
+
+Generated candidates are ordinary candidates: they run on exploratory questions only, and
+only the chosen candidate is validated, once, on held-out questions (plus the baseline when a
+policy is given), exactly as without a grid. The report gains a `fusion_grid` entry.
+
+`--shortlist-from replay.json --top 3` keeps only the grid points among a fusion replay's
+three best configurations, so the real runs go where the recorded stage hits already point.
+The replay must be of the manifest's dataset and cover the same settings, or the command
+stops. The report records which replay chose the points. A replay is a hypothesis: it saves
+runs, and the held-out check still decides.
+
 ## Conformance
 
 Every method and normalisation is checked against ranx 0.3.21's `fuse()` on 40 seeded

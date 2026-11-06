@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { guidedRequest } from '../lib/guided'
 import { DROP_TESTS, METRICS, METRIC_HELP, STARTER_POLICY, formFromPolicy, policyFromForm, policyLabel, selectedRef } from '../lib/release'
-import type { PolicyChoice, PolicyForm, PolicyListing, PolicyRecord, PolicyRef, RawPolicy } from '../lib/release'
+import type { CohortControl, PolicyChoice, PolicyForm, PolicyListing, PolicyRecord, PolicyRef, RawPolicy } from '../lib/release'
 import { ShareRecord } from '../components/ShareRecord'
 import PolicyCalibration from './PolicyCalibration'
 
@@ -113,7 +113,14 @@ function PolicyEditor({ token, base, onSaved }: { token: string; base: PolicyRec
     <div><h4 className="text-sm font-semibold">Cohorts (question tags)</h4><p className="text-xs text-muted">Protect groups such as a language or customer tier. Tags with fewer questions than the minimum are reported, not judged.</p>
       <div className="mt-2 flex flex-wrap items-end gap-4"><label className="flex flex-col text-xs">Minimum questions per cohort<input aria-label="Minimum questions per cohort" className={small} inputMode="numeric" value={form.cohortMinQueries} onChange={e => update({ cohortMinQueries: e.target.value })} /></label>
         {METRICS.map(m => <div key={m} className="flex flex-col text-xs"><label className="flex items-center gap-2"><input type="checkbox" aria-label={`Cohort ${m}`} checked={form.cohortMetrics[m].enabled} onChange={e => update({ cohortMetrics: { ...form.cohortMetrics, [m]: { ...form.cohortMetrics[m], enabled: e.target.checked } } })} />{m} allowed drop</label><input aria-label={`Cohort ${m} allowed drop`} className={small} inputMode="decimal" disabled={!form.cohortMetrics[m].enabled} value={form.cohortMetrics[m].maxDrop} onChange={e => update({ cohortMetrics: { ...form.cohortMetrics, [m]: { ...form.cohortMetrics[m], maxDrop: e.target.value } } })} /></div>)}</div>
-      <label className="mt-2 flex items-start gap-2 text-sm"><input type="checkbox" checked={form.cohortControl} onChange={e => update({ cohortControl: e.target.checked })} /><span>Correct for many cohorts (Bonferroni)<span className="block text-xs text-muted">A cohort fails only when its drop clears an interval widened for the number of cohort rules judged, so many small cohorts do not fail by chance. Real drops in small cohorts are harder to catch.</span></span></label></div>
+      <label className="mt-2 block text-sm">Correct for many cohorts
+        <select aria-label="Cohort multiplicity control" className={input} value={form.cohortControl} onChange={e => update({ cohortControl: e.target.value as CohortControl })}>
+          <option value="none">None: judge each cohort rule on its own</option>
+          <option value="bonferroni">Bonferroni</option>
+          <option value="holm">Holm (never fails fewer real drops than Bonferroni)</option>
+        </select>
+        <span className="block text-xs text-muted">A cohort fails only when its drop is unlikely to be chance given the number of cohort rules judged, so many small cohorts do not fail by chance. Real drops in small cohorts are harder to catch.</span>
+      </label></div>
 
     <div><h4 className="text-sm font-semibold">Latency</h4><p className="text-xs text-muted">Percentage limits compare the candidate with the baseline; the ceiling is absolute. Increases smaller than the noise allowance are ignored, because shared runners vary by a few milliseconds.</p>
       <div className="mt-2 flex flex-wrap gap-4">
