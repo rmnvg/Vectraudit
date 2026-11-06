@@ -2,7 +2,9 @@ export type Hit = { id: string; score?: number }
 export type Stage = { name: string; kind: string; parents: string[]; hits: Hit[]; latency_ms: number | null; source: string }
 export type ContextEvidence = { coverage: string; method: string; reached: string[]; losses: { doc_id: string; kind: 'omitted' | 'truncated'; reason: string }[]; unknown: string[] }
 export type Evidence = { stages?: Stage[]; failures?: { doc_id: string; stage: string | null; reason: string }[]; context?: ContextEvidence }
-export type Answer = { verdict: string | null; decided_by: string | null; outcome: string; judgments: { evaluator: string; kind: string; verdict: string | null }[]; diagnosis?: { class: string; facts: string[] } }
+export type Answer = { verdict: string | null; decided_by: string | null; outcome: string; judgments: { evaluator: string; kind: string; verdict: string | null }[]; diagnosis?: { class: string; facts: string[] }; claim_findings?: ClaimFinding[]; claim_evidence?: { unmatched_documents?: string[] } }
+/** What claim-level evidence (RAGChecker) says about an answer: model-judged, never a root cause. */
+export type ClaimFinding = { finding: string; count: number; points_to: string; evidence: string; disputed: boolean; documents?: string[]; more_documents?: number; note?: string }
 export type Query = { answer?: Answer; query_id: string; ids: string[] | null; latency_ms: number | null; tags: string[]; metrics: Record<string, number> | null; no_answer_correct?: boolean | null; forbidden_ids?: string[]; error?: unknown; evidence?: Evidence | null; repeat_ids?: string[][] | null; repeat_metrics?: (Record<string, number> | null)[]; repeat_ann_recall?: (number | null)[]; repeat_evidence?: Record<string, Evidence> }
 export type Run = { metric_contract?: { version: number; repeat_aggregation?: string }; format: 'vectraudit.run'; run_id: string; created_at: string; status: string; label?: string; queries: Query[]; backend?: { config?: Record<string, unknown> } | null; benchmark_source?: { split: string } | null; summary: { n_queries: number; n_ok: number; metrics: Record<string, number> | null; latency_ms: { p95: number } | null; permissions?: { violations: number }; no_answer?: { n: number; accuracy: number | null } } }
 /** A run as listed by the guided workspace: per-query records load on demand. */
@@ -17,7 +19,9 @@ export type Optimization = {
   /** Three or more candidates: which the best cannot be told apart from (randomized Tukey HSD). */
   significance?: { leader: string; alpha: number; indistinguishable: string[]; note: string } | null
 }
-export type Benchmark = { format: 'vectraudit.benchmark'; n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][]; unannotated: string[]; suggestions: { category: string; instruction: string }[]; judgment_queue: { query_id: string; doc_id: string; reason: string }[] }
+export type Benchmark = { format: 'vectraudit.benchmark'; n_queries: number; n_labelled: number; missing_categories: string[]; duplicates: string[][]; unannotated: string[]; suggestions: { category: string; instruction: string }[]; judgment_queue: { query_id: string; doc_id: string; reason: string; kind?: string; evidence?: string }[]; required_evidence_proposals?: EvidenceProposal[] }
+/** A group of documents that together cover the reference answer's claims: proposed, never applied. */
+export type EvidenceProposal = { query_id: string; docs: string[]; claims_covered: number; reference_claims: number; coverage: number; status: string; needs_judgment: string[]; already_relevant: string[] }
 export type Monitor = { format: 'vectraudit.monitor'; created_at: string; verdict: string; drift: { corpus: string; configuration: string; results: unknown[] }; alerts: { message: string }[]; summary: Run['summary'] }
 export type Artifact = Run | Optimization | Benchmark | Monitor
 
@@ -72,4 +76,18 @@ export function parseArtifact(value: unknown): Artifact {
   if (data.format === 'vectraudit.monitor') valid = typeof data.created_at === 'string' && typeof data.verdict === 'string' && object(data.drift) && typeof data.drift.corpus === 'string' && typeof data.drift.configuration === 'string' && Array.isArray(data.drift.results) && Array.isArray(data.alerts) && data.alerts.every(a => object(a) && typeof a.message === 'string') && summary(data.summary)
   if (!valid) throw new Error('Malformed artifact: check the recorded result schema.')
   return data as unknown as Artifact
+}
+
+/** A finding's heading, count and where it points, as shown under the answer. */
+export function claimFindingText(f: ClaimFinding): string {
+  const plural = f.count === 1 ? 'claim' : 'claims'
+  const subject = f.finding === 'contradicting_document' ? (f.count === 1 ? 'document' : 'documents') : plural
+  return `${f.finding.replaceAll('_', ' ')}: ${f.count} ${subject}`
+}
+
+/** One line saying what a proposed required-evidence group covers and what is still unjudged. */
+export function proposalText(p: EvidenceProposal): string {
+  const covers = `covers ${p.claims_covered} of ${p.reference_claims} reference claims (${Math.round(p.coverage * 100)}%), model-judged`
+  const todo = p.needs_judgment.length ? `; judge ${p.needs_judgment.join(', ')} first` : '; ready to accept'
+  return `${p.query_id}: ${p.docs.join(', ')} ${covers}${todo}`
 }

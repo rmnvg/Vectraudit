@@ -678,6 +678,71 @@ def ragas_judgments_command(
     typer.echo(render(counts, len(judgments), str(out), metric))
 
 
+@workbench_app.command("ragchecker-judgments")
+def ragchecker_judgments_command(
+    output: Annotated[Path, typer.Argument(help="RAGChecker output file (its results JSON).")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the questions came from.")],
+    out: Annotated[Path, typer.Option(help="Judgments to write (JSONL) for attach-answers.")],
+    extractor: Annotated[str, typer.Option(help="Model RAGChecker used to extract claims.")],
+    checker: Annotated[str, typer.Option(help="Model RAGChecker used to check entailment.")],
+    run: Annotated[
+        Path | None,
+        typer.Option(help="Run whose delivered documents the chunks are; enables chunk evidence."),
+    ] = None,
+    metrics: Annotated[
+        str, typer.Option(help="Answer metrics to keep as scores, comma separated.")
+    ] = "",
+    threshold: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="ragchecker.METRIC=VALUE pass mark (at or above; at or below for hallucination "
+            "and noise sensitivity). Without one a score gives no verdict."
+        ),
+    ] = None,
+) -> None:
+    """Turn RAGChecker's claim-level results into judgments for attach-answers.
+
+    Keeps the chosen answer metrics as scores and, per question, which delivered documents
+    entailed the reference answer's and the response's claims (and which contradicted the
+    reference). Retrieval metrics (claim recall, context precision) are refused: Vectraudit
+    measures retrieval against the benchmark's labels. Claims, responses, reference answers
+    and chunk text are never written. Chunk evidence needs --run and each chunk's doc_id.
+    """
+    from vectraudit.evaluation.ragchecker_import import (
+        load_output,
+        render,
+        run_documents,
+        to_judgments,
+    )
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+
+    try:
+        limits: dict[str, float] = {}
+        for item in threshold or []:
+            name, sep, value = item.rpartition("=")
+            if not sep or not name:
+                raise ValueError(f"--threshold expects ragchecker.METRIC=VALUE, got {item!r}")
+            limits[name] = float(value)
+        chosen = [m.strip() for m in metrics.split(",") if m.strip()]
+        rows = load_output(output)
+        questions = {q.query_id: q.text for q in load_dataset(dataset).queries}
+        documents = run_documents(load_run(run)) if run is not None else None
+        judgments, counts = to_judgments(
+            rows,
+            chosen,
+            questions,
+            run_documents=documents,
+            extractor=extractor,
+            checker=checker,
+            thresholds=limits,
+        )
+        write_jsonl(out, judgments)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, len(judgments), str(out), chosen))
+
+
 @workbench_app.command("promptfoo-judgments")
 def promptfoo_judgments_command(
     results: Annotated[Path, typer.Argument(help="promptfoo eval output (promptfoo eval -o).")],
@@ -2198,6 +2263,112 @@ def benchmark_command(
     except (OSError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
+
+
+@workbench_app.command("ragchecker-input")
+def ragchecker_input_command(
+    run: Annotated[Path, typer.Argument(help="Run file whose answers RAGChecker will check.")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the run was recorded on.")],
+    references: Annotated[
+        Path, typer.Option(help='JSONL of {"query_id": ..., "reference": ...} reference answers.')
+    ],
+    answers: Annotated[
+        Path, typer.Option(help='JSONL of {"query_id": ..., "answer": ...} system responses.')
+    ],
+    out: Annotated[Path, typer.Option(help="RAGChecker input to write (private text).")],
+    corpus: Annotated[
+        Path | None, typer.Option(help="JSONL corpus with doc_id and text for each document.")
+    ] = None,
+    manifest: Annotated[
+        Path | None,
+        typer.Option(help="Manifest whose document_lookup resolver supplies document text."),
+    ] = None,
+) -> None:
+    """Build RAGChecker's input from a run: question, reference, response and context text.
+
+    The context is what the model was given (its observed model context, else the delivered
+    documents). Document text comes from --corpus or the manifest's registered resolver, which
+    is scoped to each question's tenant, filters and the run's corpus version. A question
+    missing any of it is skipped and counted. The file contains private text and is written
+    readable by you only; run RAGChecker locally, then import its output with
+    `ragchecker-judgments`. Held-out questions are not exported.
+    """
+    from vectraudit.pipelines.document_lookup import LookupConfig
+    from vectraudit.pipelines.ragchecker_input import (
+        CorpusSource,
+        DocumentSource,
+        LookupSource,
+        build_input,
+        read_texts,
+        render,
+    )
+
+    try:
+        if (corpus is None) == (manifest is None):
+            raise ValueError("Give the document text source: --corpus or --manifest, not both")
+        source: DocumentSource
+        if corpus is not None:
+            source = CorpusSource(corpus)
+        else:
+            assert manifest is not None
+            config: LookupConfig | None = load_manifest(manifest).document_lookup
+            if config is None:
+                raise ValueError("The manifest registers no document_lookup resolver")
+            source = LookupSource(config, manifest.parent)
+        data, counts = build_input(
+            load_run(run),
+            load_dataset(dataset),
+            read_texts(references, "reference"),
+            read_texts(answers, "answer"),
+            source,
+        )
+        atomic_write(out, json.dumps(data, indent=2, ensure_ascii=False) + "\n")  # owner only
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Export error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, str(out)))
+
+
+@workbench_app.command("accept-evidence")
+def accept_evidence_command(
+    dataset: Annotated[Path, typer.Argument(help="The benchmark the proposals were made for.")],
+    audit: Annotated[
+        Path, typer.Argument(help="Benchmark audit (workbench benchmark) with proposals.")
+    ],
+    out: Annotated[Path, typer.Option(help="New dataset version to write.")],
+    question: Annotated[
+        list[str] | None, typer.Option(help="Question whose proposed evidence to accept.")
+    ] = None,
+) -> None:
+    """Accept proposed required evidence for named questions, as a new dataset version.
+
+    Proposals come from claim-level evidence (RAGChecker) and are suggestions: nothing is
+    accepted unless you name the question, every document in the group must already be
+    labelled relevant, and held-out questions never get one. The original file is untouched.
+    """
+    from vectraudit.evaluation.dataset_tools import diff_datasets
+    from vectraudit.pipelines.claim_review import accept_evidence
+
+    try:
+        if out.resolve() == dataset.resolve():
+            raise ValueError("--out must differ from the dataset; the original stays unchanged")
+        current = load_dataset(dataset)
+        report = json.loads(audit.read_text(encoding="utf-8"))
+        text, accepted = accept_evidence(current, report, question or [])
+        atomic_write(out, text)
+        diff = diff_datasets(current, load_dataset(out))
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Accept error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    for proposal in accepted:
+        typer.echo(
+            f"{proposal['query_id']}: required evidence {', '.join(proposal['docs'])} "
+            f"(covers {proposal['claims_covered']} of {proposal['reference_claims']} reference "
+            "claims, model-judged)"
+        )
+    typer.echo(
+        f"New dataset version {diff['to'][:12]} written to {out} ({diff['from'][:12]} before)."
+    )
 
 
 @workbench_app.command("monitor")

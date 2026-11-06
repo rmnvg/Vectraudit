@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from vectraudit.evaluation.dataset import Dataset
+from vectraudit.pipelines.claim_review import claim_review
 
 SUITE_TAGS = (
     "exact_identifier",
@@ -63,6 +64,17 @@ def audit_benchmark(
                 }
                 for doc in sorted(unjudged)
             )
+    # Claim-level evidence (RAGChecker via attach-answers) adds documents to judge and labels
+    # to recheck; they merge with what the pool already queued, never become labels.
+    claim_items, proposals = claim_review(dataset, runs or [], judged_extra=irrelevant)
+    queued = {(j["query_id"], j["doc_id"]): j for j in judgments}
+    for item in claim_items:
+        key = (item["query_id"], item["doc_id"])
+        if key in queued:
+            queued[key].update({**item, "priority": max(queued[key]["priority"], item["priority"])})
+        else:
+            judgments.append(item)
+            queued[key] = item
     return {
         "format": "vectraudit.benchmark",
         "dataset_sha256": dataset.sha256,
@@ -74,8 +86,14 @@ def audit_benchmark(
         "duplicates": [ids for ids in groups.values() if len(ids) > 1],
         "unannotated": [q.query_id for q in dataset.queries if not q.labelled],
         "judgment_queue": sorted(
-            judgments, key=lambda row: (-int(row["priority"]), str(row["query_id"]))
+            judgments,
+            key=lambda row: (
+                -int(row["priority"]),
+                -int(row.get("claims_entailed", 0)),
+                str(row["query_id"]),
+            ),
         ),
+        "required_evidence_proposals": proposals,
         "suggestions": [
             {"category": tag, "instruction": instruction}
             for tag, instruction in zip(
@@ -96,6 +114,6 @@ def audit_benchmark(
         ],
         "note": (
             "Suggestions require human judgment. "
-            "Held-out queries are excluded from the judgment queue."
+            "Held-out queries are excluded from the judgment queue and from proposals."
         ),
     }
