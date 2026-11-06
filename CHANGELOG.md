@@ -28,6 +28,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench ragchecker-judgments` imports RAGChecker output as answer judgments: chosen
+  answer metrics as scores (a verdict only from a declared pass mark; retrieval metrics are
+  refused) and, per question, claim counts and which delivered documents entailed or
+  contradicted the reference answer's and the response's claims. `attach-answers` attaches
+  them as `claim_evidence`. No claim, answer or chunk text is read into any file
+  (`docs/claim-evidence.md`).
 - Check reports (HTML, job summary and terminal) show a paired-randomization p-value beside
   each metric change, and `p_value` is in the check JSON. It is information only: verdicts
   and intervals are unchanged.

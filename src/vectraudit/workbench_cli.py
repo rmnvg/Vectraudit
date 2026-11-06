@@ -678,6 +678,71 @@ def ragas_judgments_command(
     typer.echo(render(counts, len(judgments), str(out), metric))
 
 
+@workbench_app.command("ragchecker-judgments")
+def ragchecker_judgments_command(
+    output: Annotated[Path, typer.Argument(help="RAGChecker output file (its results JSON).")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the questions came from.")],
+    out: Annotated[Path, typer.Option(help="Judgments to write (JSONL) for attach-answers.")],
+    extractor: Annotated[str, typer.Option(help="Model RAGChecker used to extract claims.")],
+    checker: Annotated[str, typer.Option(help="Model RAGChecker used to check entailment.")],
+    run: Annotated[
+        Path | None,
+        typer.Option(help="Run whose delivered documents the chunks are; enables chunk evidence."),
+    ] = None,
+    metrics: Annotated[
+        str, typer.Option(help="Answer metrics to keep as scores, comma separated.")
+    ] = "",
+    threshold: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="ragchecker.METRIC=VALUE pass mark (at or above; at or below for hallucination "
+            "and noise sensitivity). Without one a score gives no verdict."
+        ),
+    ] = None,
+) -> None:
+    """Turn RAGChecker's claim-level results into judgments for attach-answers.
+
+    Keeps the chosen answer metrics as scores and, per question, which delivered documents
+    entailed the reference answer's and the response's claims (and which contradicted the
+    reference). Retrieval metrics (claim recall, context precision) are refused: Vectraudit
+    measures retrieval against the benchmark's labels. Claims, responses, reference answers
+    and chunk text are never written. Chunk evidence needs --run and each chunk's doc_id.
+    """
+    from vectraudit.evaluation.ragchecker_import import (
+        load_output,
+        render,
+        run_documents,
+        to_judgments,
+    )
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+
+    try:
+        limits: dict[str, float] = {}
+        for item in threshold or []:
+            name, sep, value = item.rpartition("=")
+            if not sep or not name:
+                raise ValueError(f"--threshold expects ragchecker.METRIC=VALUE, got {item!r}")
+            limits[name] = float(value)
+        chosen = [m.strip() for m in metrics.split(",") if m.strip()]
+        rows = load_output(output)
+        questions = {q.query_id: q.text for q in load_dataset(dataset).queries}
+        documents = run_documents(load_run(run)) if run is not None else None
+        judgments, counts = to_judgments(
+            rows,
+            chosen,
+            questions,
+            run_documents=documents,
+            extractor=extractor,
+            checker=checker,
+            thresholds=limits,
+        )
+        write_jsonl(out, judgments)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, len(judgments), str(out), chosen))
+
+
 @workbench_app.command("promptfoo-judgments")
 def promptfoo_judgments_command(
     results: Annotated[Path, typer.Argument(help="promptfoo eval output (promptfoo eval -o).")],

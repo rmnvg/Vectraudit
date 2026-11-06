@@ -23,6 +23,13 @@ from an observed context, delivered with context unknown, or never delivered at 
 verdicts follow the same rule as answer verdicts (humans over models, disagreement is
 ``disputed``). Citations never change the answer verdict or the diagnosis.
 
+A judgment may instead (or also) carry ``claims`` and ``claim_support``: counts of the
+reference answer's and the response's claims that the delivered documents entail, from a
+claim-level checker such as RAGChecker (see :mod:`vectraudit.evaluation.ragchecker_import`).
+They are attached to the question as ``claim_evidence`` and never change a verdict or the
+diagnosis; a line with only claims needs no verdict or score. Counts and document IDs only:
+no claim text.
+
 Human judgments decide a question's verdict when present; otherwise model judgments do.
 Disagreement among the deciding judgments makes the verdict ``disputed`` instead of picking
 one. Each model evaluator's agreement with human review is reported where both judged.
@@ -50,6 +57,26 @@ KINDS = ("human", "model")
 SUPPORT = ("supported", "unsupported")
 MAX_JUDGMENTS = 200_000
 MAX_CITATIONS = 100
+MAX_CLAIM_DOCUMENTS = 500
+MAX_CLAIM_COUNT = 100_000
+CLAIM_REQUIRED = (
+    "reference",
+    "response",
+    "reference_in_context",
+    "reference_in_response",
+    "unsupported_incorrect",
+    "unsupported_correct",
+    "from_irrelevant_incorrect",
+    "from_relevant_incorrect",
+)
+CLAIM_OPTIONAL = (
+    "response_incorrect",
+    "reference_used",
+    "context_documents",
+    "useful_documents",
+)
+SUPPORT_REQUIRED = ("reference", "response", "contradicts_reference")
+SUPPORT_OPTIONAL = ("response_incorrect",)
 _TEXT_LIMIT = 200
 DIAGNOSES = {
     "answered_correctly": "Answered correctly.",
@@ -103,6 +130,8 @@ class Judgment:
     rubric: str | None
     citations: tuple[str, ...] | None = None
     support: tuple[tuple[str, str], ...] = ()
+    claims: tuple[tuple[str, int], ...] | None = None
+    claim_support: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -156,6 +185,90 @@ def _citations(
     return cited, pairs
 
 
+def _counts(
+    value: Any, required: Sequence[str], optional: Sequence[str], what: str, line: int
+) -> tuple[tuple[str, int], ...]:
+    if not isinstance(value, dict):
+        raise AnswerJudgmentError(f"line {line}: {what} must be an object of counts")
+    unknown = sorted(set(value) - {*required, *optional})
+    missing = [k for k in required if k not in value]
+    if unknown or missing:
+        raise AnswerJudgmentError(
+            f"line {line}: {what} "
+            + (f"has unknown {', '.join(unknown)}" if unknown else f"lacks {', '.join(missing)}")
+        )
+    for key, count in value.items():
+        if type(count) is not int or not 0 <= count <= MAX_CLAIM_COUNT:
+            raise AnswerJudgmentError(
+                f"line {line}: {what} {key} must be a whole number from 0 to {MAX_CLAIM_COUNT}"
+            )
+    return tuple(sorted(value.items()))
+
+
+def _claims(
+    obj: Mapping[str, Any], line: int
+) -> tuple[tuple[tuple[str, int], ...] | None, tuple[tuple[str, tuple[tuple[str, int], ...]], ...]]:
+    """Claim counts and per-document support; counts must be consistent with each other."""
+    raw, support = obj.get("claims"), obj.get("claim_support")
+    if raw is None:
+        if support is not None:
+            raise AnswerJudgmentError(f"line {line}: claim_support needs claims")
+        return None, ()
+    claims = _counts(raw, CLAIM_REQUIRED, CLAIM_OPTIONAL, "claims", line)
+    c = dict(claims)
+    incorrect = c.get("response_incorrect", c["response"])
+    problems = [
+        (c["reference_in_context"] > c["reference"], "reference_in_context exceeds reference"),
+        (c["reference_in_response"] > c["reference"], "reference_in_response exceeds reference"),
+        (c.get("reference_used", 0) > c["reference"], "reference_used exceeds reference"),
+        (incorrect > c["response"], "response_incorrect exceeds response"),
+        (
+            c["unsupported_incorrect"] + c["unsupported_correct"] > c["response"],
+            "unsupported claims exceed response",
+        ),
+        (
+            c["unsupported_incorrect"]
+            + c["from_relevant_incorrect"]
+            + c["from_irrelevant_incorrect"]
+            > incorrect,
+            "incorrect claims are counted more than once",
+        ),
+        (
+            c.get("useful_documents", 0) > c.get("context_documents", MAX_CLAIM_COUNT),
+            "useful_documents exceeds context_documents",
+        ),
+    ]
+    for bad, message in problems:
+        if bad:
+            raise AnswerJudgmentError(f"line {line}: claims inconsistent: {message}")
+    pairs: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
+    if support is not None:
+        if not isinstance(support, dict) or len(support) > MAX_CLAIM_DOCUMENTS:
+            raise AnswerJudgmentError(
+                f"line {line}: claim_support must map at most {MAX_CLAIM_DOCUMENTS} document "
+                "IDs to counts"
+            )
+        rows = []
+        for doc, counts in support.items():
+            _short(doc, "a claim_support document ID", line, required=True)
+            row = _counts(
+                counts, SUPPORT_REQUIRED, SUPPORT_OPTIONAL, f"claim_support {doc!r}", line
+            )
+            d = dict(row)
+            if (
+                d["reference"] > c["reference"]
+                or d["contradicts_reference"] > c["reference"]
+                or d["response"] > c["response"]
+                or d.get("response_incorrect", 0) > d["response"]
+            ):
+                raise AnswerJudgmentError(
+                    f"line {line}: claim_support {doc!r} counts more claims than were extracted"
+                )
+            rows.append((doc, row))
+        pairs = tuple(sorted(rows))
+    return claims, pairs
+
+
 def read_judgments(
     path: str | Path, thresholds: Mapping[str, float] | None = None
 ) -> list[tuple[str, str, Judgment]]:
@@ -199,8 +312,9 @@ def read_judgments(
             raise AnswerJudgmentError(f"line {line}: verdict must be one of {', '.join(VERDICTS)}")
         if verdict is None and score is not None and evaluator in thresholds:
             verdict = "correct" if score >= thresholds[evaluator] else "incorrect"
-        if verdict is None and score is None and outcome == "answered":
-            raise AnswerJudgmentError(f"line {line}: a judgment needs a verdict or a score")
+        claims, claim_support = _claims(obj, line)
+        if verdict is None and score is None and outcome == "answered" and claims is None:
+            raise AnswerJudgmentError(f"line {line}: a judgment needs a verdict, a score or claims")
         cited, support = _citations(obj, line)
         rows.append(
             (
@@ -218,6 +332,8 @@ def read_judgments(
                     rubric=_short(obj.get("rubric"), "rubric", line),
                     citations=cited,
                     support=support,
+                    claims=claims,
+                    claim_support=claim_support,
                 ),
             )
         )
@@ -344,6 +460,26 @@ def analyze_citations(
     return {"status": "consistent", "cited": list(cited), "classes": classes, "support": support}
 
 
+def _claim_evidence(qid: str, judgments: Sequence[Judgment]) -> dict[str, Any] | None:
+    """The question's claim counts and per-document support, or ``None`` when none were given."""
+    given = [j for j in judgments if j.claims is not None]
+    if not given:
+        return None
+    if len(given) > 1:
+        raise AnswerJudgmentError(
+            f"question {qid!r} has {len(given)} claim-evidence judgments; import one "
+            "extractor and checker per file, so each question has one set of claim facts"
+        )
+    j = given[0]
+    return {
+        "evaluator": j.evaluator,
+        "kind": j.kind,
+        **({"evaluator_version": j.evaluator_version} if j.evaluator_version else {}),
+        "claims": dict(j.claims or ()),
+        "claim_support": {doc: dict(counts) for doc, counts in j.claim_support},
+    }
+
+
 def attach_answers(
     run: Mapping[str, Any],
     rows: Sequence[tuple[str, str, Judgment]],
@@ -371,6 +507,7 @@ def attach_answers(
     by_prompt: dict[str, Counter[str]] = defaultdict(Counter)
     citation_flags: Counter[str] = Counter()
     cited_questions = 0
+    claim_questions = 0
     pairs: dict[str, list[tuple[str, bool]]] = defaultdict(list)
     for qid, judgments in grouped.items():
         q = by_query[qid]
@@ -387,6 +524,10 @@ def attach_answers(
             for prompt in q.get("prompts") or []:
                 key = f"{prompt['name']}@{prompt['version']}"
                 by_prompt[key][answer["diagnosis"]["class"]] += 1
+        claim_evidence = _claim_evidence(qid, judgments)
+        if claim_evidence is not None:
+            answer["claim_evidence"] = claim_evidence
+            claim_questions += 1
         if q.get("error") is None:
             citations = analyze_citations(q, judgments)
             if citations is not None:
@@ -432,6 +573,7 @@ def attach_answers(
             "questions_with_unsupported_citation": citation_flags["unsupported"],
             "questions_with_conflicting_citations": citation_flags["conflicting"],
         },
+        "claim_evidence": {"questions": claim_questions},
         "agreement_with_human": {
             name: {
                 "questions": len(results),
@@ -494,10 +636,13 @@ def render_summary(run: Mapping[str, Any]) -> str:
             f"unsupported, {cites['questions_with_conflicting_citations']} have conflicting "
             "citation lists."
         )
+    claim_questions = (answers.get("claim_evidence") or {}).get("questions")
+    if claim_questions:
+        lines.append(f"Claim-level evidence attached to {claim_questions} questions.")
     unjudged = answers["verdicts"].get("unjudged")
     if unjudged:
         lines.append(
-            f"{unjudged} questions have scores but no verdict: pass --threshold "
-            "EVALUATOR=VALUE for each scored evaluator."
+            f"{unjudged} questions have no verdict. For scores, pass --threshold "
+            "EVALUATOR=VALUE for each scored evaluator; claim evidence alone gives none."
         )
     return "\n".join(lines)
