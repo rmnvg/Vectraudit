@@ -231,6 +231,16 @@ weight across families. Seeded 95% bootstrap intervals resample these family mea
 than 30 families the report warns about limited evidence. One family's interval cannot estimate
 between-family uncertainty, even if it has many scenario rows.
 
+Each suite-level metric change also carries a **p-value** (the `p` column of the HTML report,
+the job summary and the terminal table; `p_value` in the check JSON): a two-sided paired
+randomization test on the same family deltas, with 5,000 seeded sign flips and
+`p = (b + 1) / (n + 1)`, so it is never 0 and below 0.001 is shown as "<0.001". It is for
+the reader. The verdict comes from the policy's rules and intervals, never from `p`; it has
+its own random generator, so adding it changed no interval and no verdict. Cohort rows do not
+carry one; a policy that sets `cohorts.control` to `holm` shows adjusted p-values for those
+rules (`holm`). With three or more candidates, `experiments` and `workbench optimize` add a
+randomized Tukey HSD instead (see `docs/experiments.md`).
+
 ### Hubs
 
 `vectraudit workbench hubs RUN [--baseline RUN] [--dataset BENCHMARK]` finds documents the

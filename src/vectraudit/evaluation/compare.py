@@ -28,7 +28,7 @@ from vectraudit.evaluation.diagnose import diagnose
 from vectraudit.evaluation.families import family_count, family_id, family_means
 from vectraudit.evaluation.metrics import QUALITY_METRICS, SEMANTIC_METRICS
 from vectraudit.evaluation.policy import DEFAULT_POLICY, CohortRule, MetricRule, Policy
-from vectraudit.evaluation.significance import holm_adjust
+from vectraudit.evaluation.significance import holm_adjust, paired_randomization
 
 CHECK_FORMAT = "vectraudit.check"
 CHECK_FORMAT_VERSION = 1
@@ -37,6 +37,7 @@ MANY_COHORT_RULES = 5
 """From this many cohort rules judged without control, warn that some fail by chance."""
 EPS = 1e-9
 HOLM_LEVEL = 0.025
+P_VALUE_RESAMPLES = 5000
 BOOTSTRAP_MAX_CELLS = 1_000_000
 MAX_CRITICAL_FAILURES = 10
 _ENVIRONMENT_KEYS = ("system", "machine", "cpu_count", "python")
@@ -80,6 +81,7 @@ class _Check:
     ) -> None:
         self.base, self.cand, self.policy = base, cand, policy
         self.rng = np.random.default_rng(seed)
+        self.seed = seed
         self.n_bootstrap = n_bootstrap
         self.reasons: list[dict[str, Any]] = []
         self.warnings: list[str] = []
@@ -548,7 +550,7 @@ class _Check:
     def _quality(self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]) -> None:
         available = {}
         for name in QUALITY_METRICS:
-            stats = self._metric_stats(pairs, name)
+            stats = self._metric_stats(pairs, name, p_value=True)
             if stats is not None:
                 available[name] = stats
         self.out["metrics"] = available
@@ -616,7 +618,11 @@ class _Check:
         self._regressed_queries(pairs, available)
 
     def _metric_stats(
-        self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]], name: str
+        self,
+        pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+        name: str,
+        *,
+        p_value: bool = False,
     ) -> dict[str, Any] | None:
         base_vals, cand_vals = [], []
         for b, c in pairs:
@@ -629,7 +635,7 @@ class _Check:
         base_means, cand_means = family_means(base_vals), family_means(cand_vals)
         deltas = np.asarray(cand_means) - np.asarray(base_means)
         low, high = self._bootstrap(deltas)
-        return {
+        stats = {
             "n": len(base_vals),
             "n_families": len(deltas),
             "baseline": statistics.fmean(base_means),
@@ -638,6 +644,13 @@ class _Check:
             "ci_low": low,
             "ci_high": high,
         }
+        if p_value:
+            # Information for the reader only: no rule reads it, and it has its own seeded
+            # generator, so the bootstrap interval (and every verdict) is what it was.
+            stats["p_value"] = paired_randomization(
+                deltas.tolist(), n=P_VALUE_RESAMPLES, seed=self.seed
+            ).p_value
+        return stats
 
     def _bootstrap(self, deltas: np.ndarray[Any, Any]) -> tuple[float, float]:
         if len(deltas) == 1:

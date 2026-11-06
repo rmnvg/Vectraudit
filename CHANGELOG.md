@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Check reports (HTML, job summary and terminal) show a paired-randomization p-value beside
+  each metric change, and `p_value` is in the check JSON. It is information only: verdicts
+  and intervals are unchanged.
 - Experiment reports and `workbench optimize` results with three or more candidates add a
   randomized Tukey HSD: `hsd_group` letters and an adjusted p-value against the leader, and
   "not distinguishable from the leader (randomized Tukey HSD, α = 0.05)" in the verdict.

@@ -59,12 +59,24 @@ def _metric_rows(metrics: Mapping[str, Any]) -> list[list[str]]:
             _num(m["candidate"]),
             _num(m["delta"], signed=True),
             f"[{_num(m['ci_low'], signed=True)}, {_num(m['ci_high'], signed=True)}]",
+            _p(m.get("p_value")),
             str(m["n"]),
             str(m.get("n_families", m["n"])),
         ]
         for name, m in metrics.items()
     ]
 
+
+def _p(p: Any) -> str:
+    if p is None:
+        return NONE
+    return "<0.001" if p < 0.001 else f"{p:.3f}"
+
+
+P_NOTE = (
+    "p is a paired randomization test on family means, for information. The verdict uses "
+    "the rules above, not p."
+)
 
 PAIRED_NOTE = (
     "Latency recorded interleaved (paired execution): each question ran on both sides back to "
@@ -188,11 +200,13 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     if result["metrics"]:
         out += [
             _md_table(
-                ["Metric", "Baseline", "Candidate", "Change", "95% CI", "Rows", "Families"],
+                ["Metric", "Baseline", "Candidate", "Change", "95% CI", "p", "Rows", "Families"],
                 _metric_rows(result["metrics"]),
             ),
             "",
         ]
+        if any("p_value" in m for m in result["metrics"].values()):
+            out += [P_NOTE, ""]
     latency = _latency_rows(result["latency"])
     if latency:
         out += [_md_table(["Latency", "Baseline", "Candidate", "Change"], latency), ""]
@@ -454,12 +468,15 @@ def render_html(result: Mapping[str, Any]) -> str:
                     "Candidate",
                     "Change",
                     "95% CI of change",
+                    "p",
                     "Rows",
                     "Families",
                 ],
                 _metric_rows(result["metrics"]),
             )
         )
+        if any("p_value" in m for m in result["metrics"].values()):
+            parts.append(f'<p class="muted">{html.escape(P_NOTE)}</p>')
     latency = result.get("latency")
     if latency:
         note = "" if latency["compared"] else " (not compared; see warnings)"
