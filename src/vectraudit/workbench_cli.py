@@ -1967,6 +1967,74 @@ def hubs_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("fusion-replay")
+def fusion_replay_command(
+    run: Annotated[Path, typer.Argument(help="Complete run file recorded with stage traces.")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the run was recorded on.")],
+    inputs: Annotated[
+        str | None, typer.Option(help="Input stages to fuse, comma separated (default: all).")
+    ] = None,
+    fusion_stage: Annotated[
+        str | None, typer.Option(help="Name of the fusion stage, if the run has several.")
+    ] = None,
+    methods: Annotated[str, typer.Option(help="Fusion methods to try, comma separated.")] = "rrf",
+    grid: Annotated[
+        str | None,
+        typer.Option(help='Settings to cross, e.g. "vector_weight=0.3,0.7;fusion_k=20,60".'),
+    ] = None,
+    metric: Annotated[str, typer.Option(help="Metric that ranks the configurations.")] = "ndcg",
+    seed: Annotated[int, typer.Option(help="Seed for the bootstrap intervals.")] = 0,
+    manifest: Annotated[
+        Path | None, typer.Option(help="Manifest, to name a declared fix in the next step.")
+    ] = None,
+    candidate: Annotated[str | None, typer.Option(help="Manifest candidate of the run.")] = None,
+    out: Annotated[Path | None, typer.Option(help="Write the JSON report here.")] = None,
+) -> None:
+    """What would other fusion settings have returned? Re-fuse a run's recorded stage hits.
+
+    No pipeline call is made: each question's recorded input stages are fused again and
+    scored with the same metrics. The result is a hypothesis, flagged where the recorded
+    stages are too shallow or later stages cannot be replayed; held-out questions are never
+    used. Measure a promising setting on the real pipeline with ``try-fix``.
+    """
+    from vectraudit.pipelines.fusion_replay import (
+        ReplayError,
+        expand_configs,
+        fusion_topology,
+        next_step,
+        parse_grid,
+        render_replay,
+        replay,
+    )
+    from vectraudit.pipelines.investigate import available_fixes
+
+    try:
+        record = load_run(run)
+        ds = load_dataset(dataset)
+        names = [n.strip() for n in (inputs or "").split(",") if n.strip()] or None
+        # A weight grid needs the input names, so resolve them the way replay will.
+        _, fused_inputs = fusion_topology(record, fusion_stage, names)
+        configs = expand_configs(
+            [m.strip() for m in methods.split(",") if m.strip()], parse_grid(grid), fused_inputs
+        )
+        report = replay(
+            record, ds, configs, inputs=names, fusion_stage=fusion_stage, metric=metric, seed=seed
+        )
+        fixes: list[Any] = []
+        if manifest is not None:
+            spec = load_manifest(manifest)
+            fixes = available_fixes(_candidate(spec, candidate), manifest.parent)
+        report["next_step"] = next_step(
+            report, configs, fixes, str(manifest) if manifest else None, candidate
+        )
+    except (OSError, ValueError, ReplayError) as exc:
+        typer.echo(f"Fusion replay error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render_replay(report))
+    if out is not None:
+        _write(out, report)
+
+
 @workbench_app.command("intake")
 def intake_command(
     traces: Annotated[

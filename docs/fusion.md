@@ -90,6 +90,47 @@ pipeline = PythonPipeline(
 `fusion_stage` checks its options when the pipeline is built, and the stage is recorded with
 kind `fusion` and its parents like any other measured stage.
 
+## Replay: try other fusion settings without re-running
+
+`vectraudit workbench fusion-replay` re-fuses the stage hits a run already recorded
+(`queries[].evidence.stages`), so no pipeline call is made:
+
+```bash
+vectraudit workbench fusion-replay current.run.json --dataset benchmark.jsonl \
+  --methods rrf,wsum,combmnz --grid "vector_weight=0.3,0.5,0.7;fusion_k=20,60" \
+  --out replay.json
+```
+
+Each configuration is scored with the run's metric contract and compared with the run's
+recorded final ranking, question by question, then averaged within families. Intervals are
+seeded 95% bootstrap intervals over family deltas, as in a release comparison. Grid keys are
+`<input>_weight` (the other of two inputs gets `1 - weight`, as `vector_weight` does in the
+baseline), `fusion_k`, `fusion_norm` and `depth`; a setting a method ignores (`fusion_k` for
+`wsum`, `fusion_norm` for rank methods) is not repeated. At most 200 configurations.
+
+A replay is a **hypothesis**, never a measurement, and it says where it cannot be trusted.
+The summary counts each limit and every question shows its own:
+
+| Limit | What it means |
+|---|---|
+| Excluded | No stage trace, no labels (or a no-answer question), a failed execution, or a held-out split. Held-out questions are found with the optimiser's identity guard, so a held-out question reused as an exploratory one under a new id is refused. |
+| `truncated_inputs` | An input stage recorded fewer than k hits, so deeper candidates may exist that the replay cannot see. |
+| Downstream `none` | Only the final truncation follows fusion, so the replay is exact. |
+| Downstream `filter` | Only filters follow. The result is a bound: *optimistic* keeps every replayed document the recorded filters did not drop, *pessimistic* keeps only documents they are known to have kept. A filter is assumed to judge each document on its own. |
+| `downstream_unknown` | A reranker, a custom stage or a branch follows. The replayed ranking is the one before those stages and is not compared with the recorded one. |
+
+A forbidden document in a replayed top-k is reported per configuration and question. Its
+absence is never read as safe, because later stages were not replayed.
+
+The report (`vectraudit.fusion_replay`, version 1, evidence level `hypothesis`) holds mean
+metrics and paired deltas per configuration, the documents each configuration recovers or
+loses against the recorded top-k, and a next step. The next step names `try-fix` only when
+the candidate (`--manifest`, `--candidate`) already declares a fix whose params are exactly
+the best configuration; otherwise it shows the fix to declare. Parameter names are the
+built-in baseline's; map them to your own pipeline's. The best configuration is chosen by
+mean delta on exact replays, or on the pessimistic bound for filtered ones. Measure it on the
+real pipeline with `try-fix` before believing it.
+
 ## Conformance
 
 Every method and normalisation is checked against ranx 0.3.21's `fuse()` on 40 seeded

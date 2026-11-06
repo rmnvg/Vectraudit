@@ -1,0 +1,399 @@
+{
+ "format": "vectraudit.fusion_replay",
+ "format_version": 1,
+ "evidence": "hypothesis",
+ "note": "A replay re-fuses recorded stage hits. It is a hypothesis about the pipeline, not a measurement, and held-out questions were never used.",
+ "run": {
+  "run_id": "00000000000000000000000000000000",
+  "label": null,
+  "dataset_sha256": "0efd6659908ccc392478d4ae17e46515aa4687492cf26385f40f355555fd93a7",
+  "k": 2,
+  "metric_contract_version": 2
+ },
+ "fusion_stage": "fusion",
+ "inputs": [
+  "keyword",
+  "vector"
+ ],
+ "metric": "ndcg",
+ "seed": 0,
+ "summary": {
+  "questions_in_run": 6,
+  "replayed": 5,
+  "excluded": {
+   "heldout": 1
+  },
+  "truncated_inputs": 0,
+  "downstream": {
+   "none": 5,
+   "filter": 0,
+   "unknown": 0
+  }
+ },
+ "configurations": [
+  {
+   "id": "rrf(k=60)",
+   "method": "rrf",
+   "weights": {},
+   "fusion_k": 60,
+   "fusion_norm": null,
+   "depth": null,
+   "results": {
+    "exact": {
+     "n": 5,
+     "n_families": 5,
+     "metrics": {
+      "recall": {
+       "recorded": 0.0,
+       "replay": 0.0,
+       "delta": 0.0,
+       "ci_low": 0.0,
+       "ci_high": 0.0
+      },
+      "precision": {
+       "recorded": 0.0,
+       "replay": 0.0,
+       "delta": 0.0,
+       "ci_low": 0.0,
+       "ci_high": 0.0
+      },
+      "mrr": {
+       "recorded": 0.0,
+       "replay": 0.0,
+       "delta": 0.0,
+       "ci_low": 0.0,
+       "ci_high": 0.0
+      },
+      "ndcg": {
+       "recorded": 0.0,
+       "replay": 0.0,
+       "delta": 0.0,
+       "ci_low": 0.0,
+       "ci_high": 0.0
+      },
+      "map": {
+       "recorded": 0.0,
+       "replay": 0.0,
+       "delta": 0.0,
+       "ci_low": 0.0,
+       "ci_high": 0.0
+      },
+      "hit_rate": {
+       "recorded": 0.0,
+       "replay": 0.0,
+       "delta": 0.0,
+       "ci_low": 0.0,
+       "ci_high": 0.0
+      }
+     },
+     "primary": "ndcg"
+    }
+   },
+   "forbidden_questions": 0
+  },
+  {
+   "id": "wsum(norm=none)",
+   "method": "wsum",
+   "weights": {},
+   "fusion_k": null,
+   "fusion_norm": "none",
+   "depth": null,
+   "results": {
+    "exact": {
+     "n": 5,
+     "n_families": 5,
+     "metrics": {
+      "recall": {
+       "recorded": 0.0,
+       "replay": 1.0,
+       "delta": 1.0,
+       "ci_low": 1.0,
+       "ci_high": 1.0
+      },
+      "precision": {
+       "recorded": 0.0,
+       "replay": 0.5,
+       "delta": 0.5,
+       "ci_low": 0.5,
+       "ci_high": 0.5
+      },
+      "mrr": {
+       "recorded": 0.0,
+       "replay": 0.5,
+       "delta": 0.5,
+       "ci_low": 0.5,
+       "ci_high": 0.5
+      },
+      "ndcg": {
+       "recorded": 0.0,
+       "replay": 0.6309297535714575,
+       "delta": 0.6309297535714575,
+       "ci_low": 0.6309297535714575,
+       "ci_high": 0.6309297535714575
+      },
+      "map": {
+       "recorded": 0.0,
+       "replay": 0.5,
+       "delta": 0.5,
+       "ci_low": 0.5,
+       "ci_high": 0.5
+      },
+      "hit_rate": {
+       "recorded": 0.0,
+       "replay": 1.0,
+       "delta": 1.0,
+       "ci_low": 1.0,
+       "ci_high": 1.0
+      }
+     },
+     "primary": "ndcg"
+    }
+   },
+   "forbidden_questions": 0
+  }
+ ],
+ "best": {
+  "configuration": "wsum(norm=none)",
+  "metric": "ndcg",
+  "basis": "exact",
+  "delta": 0.6309297535714575,
+  "ci_low": 0.6309297535714575,
+  "ci_high": 0.6309297535714575
+ },
+ "questions": [
+  {
+   "query_id": "q0",
+   "excluded": "heldout"
+  },
+  {
+   "query_id": "q1",
+   "configurations": {
+    "rrf(k=60)": {
+     "exact": {
+      "metrics": {
+       "recall": 0.0,
+       "precision": 0.0,
+       "mrr": 0.0,
+       "ndcg": 0.0,
+       "map": 0.0,
+       "hit_rate": 0.0
+      },
+      "recovered": [],
+      "lost": [],
+      "forbidden": []
+     }
+    },
+    "wsum(norm=none)": {
+     "exact": {
+      "metrics": {
+       "recall": 1.0,
+       "precision": 0.5,
+       "mrr": 0.5,
+       "ndcg": 0.6309297535714575,
+       "map": 0.5,
+       "hit_rate": 1.0
+      },
+      "recovered": [
+       "R1"
+      ],
+      "lost": [],
+      "forbidden": []
+     }
+    }
+   },
+   "downstream": "none",
+   "truncated_inputs": false,
+   "recorded_ids": [
+    "A1",
+    "B1"
+   ]
+  },
+  {
+   "query_id": "q2",
+   "configurations": {
+    "rrf(k=60)": {
+     "exact": {
+      "metrics": {
+       "recall": 0.0,
+       "precision": 0.0,
+       "mrr": 0.0,
+       "ndcg": 0.0,
+       "map": 0.0,
+       "hit_rate": 0.0
+      },
+      "recovered": [],
+      "lost": [],
+      "forbidden": []
+     }
+    },
+    "wsum(norm=none)": {
+     "exact": {
+      "metrics": {
+       "recall": 1.0,
+       "precision": 0.5,
+       "mrr": 0.5,
+       "ndcg": 0.6309297535714575,
+       "map": 0.5,
+       "hit_rate": 1.0
+      },
+      "recovered": [
+       "R2"
+      ],
+      "lost": [],
+      "forbidden": []
+     }
+    }
+   },
+   "downstream": "none",
+   "truncated_inputs": false,
+   "recorded_ids": [
+    "A2",
+    "B2"
+   ]
+  },
+  {
+   "query_id": "q3",
+   "configurations": {
+    "rrf(k=60)": {
+     "exact": {
+      "metrics": {
+       "recall": 0.0,
+       "precision": 0.0,
+       "mrr": 0.0,
+       "ndcg": 0.0,
+       "map": 0.0,
+       "hit_rate": 0.0
+      },
+      "recovered": [],
+      "lost": [],
+      "forbidden": []
+     }
+    },
+    "wsum(norm=none)": {
+     "exact": {
+      "metrics": {
+       "recall": 1.0,
+       "precision": 0.5,
+       "mrr": 0.5,
+       "ndcg": 0.6309297535714575,
+       "map": 0.5,
+       "hit_rate": 1.0
+      },
+      "recovered": [
+       "R3"
+      ],
+      "lost": [],
+      "forbidden": []
+     }
+    }
+   },
+   "downstream": "none",
+   "truncated_inputs": false,
+   "recorded_ids": [
+    "A3",
+    "B3"
+   ]
+  },
+  {
+   "query_id": "q4",
+   "configurations": {
+    "rrf(k=60)": {
+     "exact": {
+      "metrics": {
+       "recall": 0.0,
+       "precision": 0.0,
+       "mrr": 0.0,
+       "ndcg": 0.0,
+       "map": 0.0,
+       "hit_rate": 0.0
+      },
+      "recovered": [],
+      "lost": [],
+      "forbidden": []
+     }
+    },
+    "wsum(norm=none)": {
+     "exact": {
+      "metrics": {
+       "recall": 1.0,
+       "precision": 0.5,
+       "mrr": 0.5,
+       "ndcg": 0.6309297535714575,
+       "map": 0.5,
+       "hit_rate": 1.0
+      },
+      "recovered": [
+       "R4"
+      ],
+      "lost": [],
+      "forbidden": []
+     }
+    }
+   },
+   "downstream": "none",
+   "truncated_inputs": false,
+   "recorded_ids": [
+    "A4",
+    "B4"
+   ]
+  },
+  {
+   "query_id": "q5",
+   "configurations": {
+    "rrf(k=60)": {
+     "exact": {
+      "metrics": {
+       "recall": 0.0,
+       "precision": 0.0,
+       "mrr": 0.0,
+       "ndcg": 0.0,
+       "map": 0.0,
+       "hit_rate": 0.0
+      },
+      "recovered": [],
+      "lost": [],
+      "forbidden": []
+     }
+    },
+    "wsum(norm=none)": {
+     "exact": {
+      "metrics": {
+       "recall": 1.0,
+       "precision": 0.5,
+       "mrr": 0.5,
+       "ndcg": 0.6309297535714575,
+       "map": 0.5,
+       "hit_rate": 1.0
+      },
+      "recovered": [
+       "R5"
+      ],
+      "lost": [],
+      "forbidden": []
+     }
+    }
+   },
+   "downstream": "none",
+   "truncated_inputs": false,
+   "recorded_ids": [
+    "A5",
+    "B5"
+   ]
+  }
+ ],
+ "next_step": {
+  "kind": "declare_fix",
+  "fix": {
+   "name": "fuse with wsum(norm=none)",
+   "addresses": [
+    "not_observed",
+    "lost_downstream:fusion"
+   ],
+   "params": {
+    "fusion": "wsum",
+    "fusion_norm": "none"
+   }
+  },
+  "text": "declare this fix on the candidate, then run try-fix to measure it: {\"name\": \"fuse with wsum(norm=none)\", \"addresses\": [\"not_observed\", \"lost_downstream:fusion\"], \"params\": {\"fusion\": \"wsum\", \"fusion_norm\": \"none\"}}"
+ }
+}

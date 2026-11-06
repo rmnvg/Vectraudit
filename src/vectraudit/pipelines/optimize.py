@@ -9,6 +9,7 @@ unless that held-out policy check passed.
 
 from __future__ import annotations
 
+import json
 import statistics
 from collections.abc import Mapping
 from dataclasses import replace
@@ -22,6 +23,21 @@ from vectraudit.evaluation.policy import Policy, policy_sha256
 from vectraudit.pipelines.budget import combine
 from vectraudit.pipelines.runner import PipelineOptions, RetryPolicy, execute_pipeline
 from vectraudit.pipelines.runtime import Pipeline
+
+
+def question_identities(rows: list[dict[str, Any]]) -> set[str]:
+    """What makes two dataset rows the same question, whatever their ids.
+
+    Query ids alone do not protect against reusing a question under a new id, so exploratory
+    work compares these against the held-out rows' (see ``optimize`` and the fusion replay).
+    """
+    found = set()
+    for row in rows:
+        if row.get("text"):
+            found.add("text:" + " ".join(row["text"].casefold().split()))
+        elif row.get("vector"):
+            found.add("vector:" + json.dumps(row["vector"]))
+    return found
 
 
 def optimize(
@@ -71,19 +87,7 @@ def optimize(
     if not explore or not heldout:
         raise ValueError("optimization requires both explore and heldout queries")
 
-    # Query ids alone do not protect against reusing the same question under a new id.
-    def identities(rows: list[dict[str, Any]]) -> set[str]:
-        import json
-
-        found = set()
-        for row in rows:
-            if row.get("text"):
-                found.add("text:" + " ".join(row["text"].casefold().split()))
-            elif row.get("vector"):
-                found.add("vector:" + json.dumps(row["vector"]))
-        return found
-
-    if identities(explore) & identities(heldout):
+    if question_identities(explore) & question_identities(heldout):
         raise ValueError("duplicate questions cross explore/heldout boundary")
     settings = {name: dict((execution or {}).get(name) or {}) for name, _, _ in candidates}
     unknown = set(execution or {}) - set(settings)
