@@ -71,6 +71,17 @@ For finer evaluation, label the exact passage with character offsets in the sour
 - **Paired statistics.** Every candidate is compared with the leader on the same queries,
   with a bootstrap 95% interval. If the interval includes zero, the report says *tied*:
   the queries can't separate them, so pick on cost or add queries.
+- **Many candidates at once.** With three or more candidates, every pairwise interval is
+  another chance to see a winner that is not there. The report also runs a randomized Tukey
+  HSD (Carterette, 2012): system labels are permuted within each family and the largest gap
+  between any two candidates is compared with each observed gap, so the chance of *any*
+  false winner stays at 5%. Each candidate gets `hsd_group` letters (candidates that share a
+  letter cannot be told apart) and `p_vs_leader_adjusted`, and the report says which
+  candidates are "not distinguishable from the leader (randomized Tukey HSD, α = 0.05)". It
+  is paired, because all candidates answer the same questions. The bootstrap tie above is
+  unchanged. `workbench optimize` adds the same annotation to its exploratory ranking
+  (`significance` in the report, and extra columns in the workbench's Experiments tab); the
+  choice of candidate and the held-out check do not read it.
 - **Costs alongside quality.** Chunks, dimensions, index size, embedding time and search
   latency (query embedding is timed separately from search).
 

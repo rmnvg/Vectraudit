@@ -7,6 +7,7 @@ import pytest
 
 from vectraudit.evaluation.significance import (
     holm_adjust,
+    hsd_for_runs,
     paired_randomization,
     randomized_tukey_hsd,
 )
@@ -86,6 +87,8 @@ def test_hsd_groups_two_better_systems_apart_from_three_equal_ones():
     assert p[result["leader"]] is None
     assert p[other] > 0.05
     assert all(p[c] < 0.01 for c in ("c1", "c2", "c3"))
+    assert result["letters"][result["leader"]] == "a"
+    assert {result["letters"][c] for c in ("c1", "c2", "c3")} == {"b"}
     assert len(result["pairs"]) == 10
     assert list(result["systems"]) == sorted(result["systems"], key=lambda s: -result["systems"][s])
     assert result == randomized_tukey_hsd(scores, n=5_000, seed=3)
@@ -142,3 +145,38 @@ def test_holm_adjusts_in_the_order_given_and_never_exceeds_bonferroni():
         assert [adjusted[i] for i in order] == sorted(adjusted)
     with pytest.raises(ValueError, match="between 0 and 1"):
         holm_adjust([1.5])
+
+
+def _run(scores, families=None):
+    return {
+        "queries": [
+            {
+                "query_id": f"q{i}",
+                **({"family_id": families[i]} if families else {}),
+                "metrics": None if s is None else {"ndcg": s},
+            }
+            for i, s in enumerate(scores)
+        ]
+    }
+
+
+def test_hsd_for_runs_uses_shared_questions_and_family_means():
+    scores = {
+        "a": [0.9, 0.8, 0.9, 0.8, None],  # not scored on the last question
+        "b": [0.5, 0.4, 0.5, 0.4, 0.7],
+        "c": [0.1, 0.0, 0.1, 0.0, 0.2],
+    }
+    result = hsd_for_runs({n: _run(s) for n, s in scores.items()}, "ndcg", n=500)
+    assert (result["n_queries"], result["n_families"], result["metric"]) == (4, 4, "ndcg")
+    assert result["leader"] == "a"
+    # Two questions of one family are one unit, not two.
+    families = ["f1", "f1", "f2", "f2", "f3"]
+    grouped = hsd_for_runs({n: _run(s, families) for n, s in scores.items()}, "ndcg", n=500)
+    assert (grouped["n_queries"], grouped["n_families"]) == (4, 2)
+
+
+def test_hsd_for_runs_needs_three_runs_and_a_shared_question():
+    two = {"a": _run([0.5]), "b": _run([0.6])}
+    assert hsd_for_runs(two, "ndcg") is None
+    disjoint = {"a": _run([0.5, None]), "b": _run([None, 0.5]), "c": _run([0.5, 0.5])}
+    assert hsd_for_runs(disjoint, "ndcg") is None

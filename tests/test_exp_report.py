@@ -138,3 +138,42 @@ def test_experiment_demo_synthetic(tmp_path) -> None:
     result = json.loads((tmp_path / "demo" / "result.json").read_text())
     assert result["ranking"][-1]["name"] == "lexical-64"  # tiny hashing space collides
     assert (tmp_path / "demo" / "runs" / "lexical-2048.json").exists()
+
+
+def test_three_candidates_get_a_randomized_tukey_hsd_beside_the_ties(ranked) -> None:
+    hsd = ranked["hsd"]
+    assert hsd["method"] == "randomized_tukey_hsd"
+    assert hsd["metric"] == "ndcg"
+    by = {r["name"]: r for r in ranked["ranking"]}
+    # The two semantic candidates cannot be told apart and share a group; lexical is separate.
+    assert by["semantic"]["hsd_group"] == by["semantic-paragraphs"]["hsd_group"] == "a"
+    assert by["lexical"]["hsd_group"] == "b"
+    assert by["semantic"]["p_vs_leader_adjusted"] is None
+    assert by["semantic-paragraphs"]["p_vs_leader_adjusted"] > 0.05
+    assert by["lexical"]["p_vs_leader_adjusted"] < 0.01
+    assert hsd["indistinguishable"] == [
+        n for n in ("semantic", "semantic-paragraphs") if n != ranked["leader"]
+    ]
+    # The bootstrap-based tie is reported exactly as before.
+    assert set(ranked["tied_with_leader"]) == {"semantic", "semantic-paragraphs"}
+    sentence = verdict_sentence(ranked)
+    assert "statistically tied" in sentence
+    assert "Not distinguishable from the leader (randomized Tukey HSD, \u03b1 = 0.05" in sentence
+    assert "| HSD group | p vs leader (adj.) |" in render_markdown(ranked)
+    page = render_html(ranked)
+    assert "<th>HSD group</th>" in page
+    assert "<td>&lt;0.001</td>" in page
+    json.dumps(ranked, allow_nan=False, default=str)
+
+
+def test_two_candidates_get_no_hsd(tmp_path) -> None:
+    path = write_fixture(tmp_path, [LEXICAL, SEMANTIC])
+    summary, results = run_experiment(
+        load_manifest(path), embedders={"synonyms": SynonymEmbedder()}
+    )
+    ranked = rank(summary, results)
+    assert "hsd" not in ranked
+    assert all("hsd_group" not in r for r in ranked["ranking"])
+    assert "HSD" not in verdict_sentence(ranked)
+    assert "HSD" not in render_markdown(ranked)
+    assert "HSD" not in render_html(ranked)

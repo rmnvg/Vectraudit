@@ -255,3 +255,34 @@ def test_a_quality_tie_keeps_the_baseline_whatever_the_latency():
     )
     assert report["selected"] == "current"
     assert report["status"] == "baseline_remains_best"
+
+
+def test_three_candidates_show_which_the_best_cannot_be_told_apart_from():
+    calls = []
+    candidates = [
+        ("current", pipeline(second, calls, "current"), {}),
+        ("better", pipeline(right, calls, "better"), {}),
+        ("worse", pipeline(wrong, calls, "worse"), {}),
+    ]
+    report = optimize(dataset(), candidates, repeats=1)
+    significance = report["significance"]
+    assert significance["method"] == "randomized_tukey_hsd"
+    assert significance["leader"] == "better"
+    assert "does not change which candidate is selected" in significance["note"]
+    by = {c["name"]: c for c in report["candidates"]}
+    assert by["better"]["p_vs_leader_adjusted"] is None
+    assert all(0 < by[n]["p_vs_leader_adjusted"] <= 1 for n in ("current", "worse"))
+    assert all(isinstance(c["hsd_group"], str) and c["hsd_group"] for c in by.values())
+    # Information only: selection and the single held-out run are what they were without it.
+    assert report["selected"] == "better"
+    assert {name for name, q in calls if q in HELDOUT} == {"better"}
+    assert [q for name, q in calls if q in HELDOUT] == HELDOUT
+    json.dumps(report, allow_nan=False)
+
+
+def test_two_candidates_have_no_significance_entry():
+    report = optimize(
+        dataset(), [("a", pipeline(right), {}), ("b", pipeline(second), {})], repeats=1
+    )
+    assert "significance" not in report
+    assert all("hsd_group" not in c for c in report["candidates"])

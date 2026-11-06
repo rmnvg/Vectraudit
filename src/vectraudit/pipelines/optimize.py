@@ -20,6 +20,7 @@ from vectraudit.evaluation.dataset import Dataset, parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.exceptions import failing_rules
 from vectraudit.evaluation.policy import Policy, policy_sha256
+from vectraudit.evaluation.significance import hsd_for_runs
 from vectraudit.pipelines.budget import combine
 from vectraudit.pipelines.runner import PipelineOptions, RetryPolicy, execute_pipeline
 from vectraudit.pipelines.runtime import Pipeline
@@ -125,6 +126,7 @@ def optimize(
                 **_measure(run, max_p95_ms, max_cost_usd, max_memory_bytes),
             }
         )
+    significance = _significance(reports)
     if policy is not None:
         _screen(reports, baseline, _restrict(policy, {q.query_id for q in tuning.queries}))
     # With a baseline, a candidate must beat it on quality: on a tie the current configuration
@@ -207,6 +209,7 @@ def optimize(
             "max_memory_bytes": max_memory_bytes,
         },
         "candidates": reports,
+        **({"significance": significance} if significance is not None else {}),
         "selected": chosen,
         "heldout": validation_report,
         "requires_review": True,
@@ -215,6 +218,35 @@ def optimize(
         "eligible": eligible,
         "measurement_note": "p95 across per-query median latencies; cost/memory adapter-reported",
         "latency_note": _latency_note(reports),
+    }
+
+
+def _significance(reports: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Which candidates the exploratory nDCG cannot tell apart from the best one.
+
+    A randomized Tukey HSD over all candidates at once (three or more), shown beside the
+    ranking as information: ``hsd_group`` letters and ``p_vs_leader_adjusted`` are added to
+    each candidate, and neither selection nor any constraint reads them.
+    """
+    hsd = hsd_for_runs({r["name"]: r["run"] for r in reports}, "ndcg")
+    if hsd is None:
+        return None
+    for report in reports:
+        report["hsd_group"] = hsd["letters"][report["name"]]
+        report["p_vs_leader_adjusted"] = hsd["p_vs_leader"][report["name"]]
+    return {
+        "method": hsd["method"],
+        "alpha": hsd["alpha"],
+        "resamples": hsd["resamples"],
+        "metric": "ndcg",
+        "n_families": hsd["n_families"],
+        "leader": hsd["leader"],
+        "indistinguishable": hsd["indistinguishable"],
+        "groups": hsd["groups"],
+        "note": (
+            "Exploratory questions only. Candidates sharing a group letter cannot be told "
+            "apart on these questions; this does not change which candidate is selected."
+        ),
     }
 
 

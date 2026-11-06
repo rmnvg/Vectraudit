@@ -28,6 +28,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Experiment reports and `workbench optimize` results with three or more candidates add a
+  randomized Tukey HSD: `hsd_group` letters and an adjusted p-value against the leader, and
+  "not distinguishable from the leader (randomized Tukey HSD, α = 0.05)" in the verdict.
+  `tied_with_leader`, candidate selection and the held-out check are unchanged.
 - Policies accept `cohorts.control: "holm"`, an opt-in Holm step-down control for cohort
   rules that never fails fewer real drops than Bonferroni. Reports show the adjusted
   p-values and the policy editor offers it. No default changes.

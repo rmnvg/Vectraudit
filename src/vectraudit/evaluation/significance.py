@@ -31,6 +31,8 @@ from typing import Any
 
 import numpy as np
 
+from vectraudit.evaluation.families import family_id, family_means
+
 DEFAULT_RESAMPLES = 10_000
 ALPHA = 0.05
 MAX_CELLS = 2_000_000
@@ -82,8 +84,9 @@ def randomized_tukey_hsd(
     ``scores_by_system`` maps each system to its per-family mean scores, in the same family
     order for every system. Returns each system's mean, every pair's difference and adjusted
     p-value, and ``groups``: maximal sets of systems that cannot be told apart at ``alpha``,
-    best system first. ``leader`` is the system with the best mean; ``indistinguishable``
-    lists those sharing a group with it.
+    best system first, each system's ``letters`` (``"ab"`` when it belongs to groups a and b,
+    as in a compact letter display), ``leader`` (the best mean) and ``indistinguishable``
+    (those sharing a group with it).
     """
     if len(scores_by_system) < 3:
         raise ValueError("randomized Tukey HSD needs three or more systems; use a paired test")
@@ -116,6 +119,9 @@ def randomized_tukey_hsd(
     groups = _groups(ranked, adjusted, alpha)
     leader = ranked[0]
     together = {i for g in groups if leader in g for i in g}
+    letters = {
+        names[i]: "".join(chr(ord("a") + k) for k, g in enumerate(groups) if i in g) for i in ranked
+    }
     return {
         "method": "randomized_tukey_hsd",
         "alpha": alpha,
@@ -124,6 +130,7 @@ def randomized_tukey_hsd(
         "systems": {names[i]: float(means[i]) for i in ranked},
         "pairs": pairs,
         "groups": [[names[i] for i in g] for g in groups],
+        "letters": letters,
         "leader": names[leader],
         "indistinguishable": [names[i] for i in ranked if i in together and i != leader],
         "p_vs_leader": {names[i]: (None if i == leader else adjusted[(leader, i)]) for i in ranked},
@@ -150,6 +157,42 @@ def _groups(
         if not any((s2 <= s and e <= e2 and (s2, e2) != (s, e)) for s2, e2 in runs)
     ]
     return [list(ranked[s : e + 1]) for s, e in dict.fromkeys(kept)]
+
+
+def hsd_for_runs(
+    runs: Mapping[str, Mapping[str, Any]],
+    metric: str,
+    *,
+    n: int = DEFAULT_RESAMPLES,
+    seed: int = 0,
+) -> dict[str, Any] | None:
+    """Randomized Tukey HSD of ``metric`` across run records, on the questions all share.
+
+    Each system's score is the mean of its questions within a family, then the families are
+    the units, as in a release comparison. ``None`` when fewer than three runs or no question
+    is scored by all of them.
+    """
+    if len(runs) < 3:
+        return None
+    scored = {
+        name: {
+            q["query_id"]: (family_id(q), float(q["metrics"][metric]))
+            for q in run["queries"]
+            if q.get("metrics") and q["metrics"].get(metric) is not None
+        }
+        for name, run in runs.items()
+    }
+    shared = sorted(set.intersection(*(set(s) for s in scored.values())))
+    if not shared:
+        return None
+    first = scored[next(iter(scored))]
+    scores: dict[str, list[float]] = {}
+    for name, per_query in scored.items():
+        scores[name] = family_means((first[q][0], per_query[q][1]) for q in shared)
+    result = randomized_tukey_hsd(scores, n=n, seed=seed)
+    result["metric"] = metric
+    result["n_queries"] = len(shared)
+    return result
 
 
 def holm_adjust(p_values: Sequence[float]) -> list[float]:
