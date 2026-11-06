@@ -209,6 +209,15 @@ never an empty result.
   Runs recorded before these were added lack them. A policy rule on `map` or `hit_rate`
   against such a run makes the check not comparable rather than letting it pass, so
   re-record the baseline to use them. Both work as `primary_metric` and in cohort rules.
+- **Conformance.** All six label metrics agree with [ranx](https://github.com/AmenRa/ranx)
+  0.3.21 (`recall@k`, `precision@k`, `mrr@k`, `ndcg@k` with Järvelin gains, `map@k`,
+  `hit_rate@k`) to within 1e-9 on 200 seeded queries at k = 1, 5, 10 and 100, covering
+  graded labels 0–3, single-relevant queries, lists shorter than k (precision still divides
+  by k) and tied scores (`tests/test_metric_conformance.py`). Dividing gains by the query's
+  maximum grade cancels in the nDCG ratio. ranx breaks score ties arbitrarily, while
+  Vectraudit keeps the backend's order, so the fixture fixes one order before both sides
+  score it. ranx runs cannot repeat a document, so the no-extra-credit rule for duplicates
+  is tested separately.
 - **ANN recall@k** (needs an exact reference): overlap with an exact search over the same
   corpus and distance. It measures approximation loss, **not** whether the results answer the
   query, so it can't choose between embedding models.

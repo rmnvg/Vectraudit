@@ -28,6 +28,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Metric conformance tests: recall, precision, MRR, nDCG, MAP and Hit Rate at k agree with
+  ranx 0.3.21 to within 1e-9 on 200 seeded queries (graded labels, ties, short lists).
 - `workbench import-traces` and `workbench intake` read LangSmith run exports and Langfuse
   observations (an API page or a list) as well as OpenInference. Retrievers are the runs or
   observations the export marks as retrievers, or the span names given with `--stage-kind`;
