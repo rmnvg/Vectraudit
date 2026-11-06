@@ -142,11 +142,10 @@ def cohort_line(result: Mapping[str, Any]) -> str | None:
     judging = result.get("cohort_judging")
     if not judging or not judging["judged_rules"]:
         return None
-    control = (
-        "each rule widened for the number judged (Bonferroni)"
-        if judging["control"] == "bonferroni"
-        else "no multiplicity control"
-    )
+    control = {
+        "bonferroni": "each rule widened for the number judged (Bonferroni)",
+        "holm": "p-values adjusted for the number judged (Holm)",
+    }.get(judging["control"], "no multiplicity control")
     return (
         f"Cohorts: {judging['judged_cohorts']} of {judging['cohorts']} judged on "
         f"{judging['judged_rules']} rules, {judging['failed_rules']} failed; {control}."

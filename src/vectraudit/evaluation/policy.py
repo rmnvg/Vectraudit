@@ -50,7 +50,7 @@ STAGE_KINDS = ("keyword", "vector", "filter", "fusion", "rerank", "truncate", "c
 EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical", "prompt")
 PROMPT_CHANGES = ("report", "fail")
 """Rule kinds a policy may open to audited exceptions. Safety rules are governed separately."""
-COHORT_CONTROLS = ("none", "bonferroni")
+COHORT_CONTROLS = ("none", "bonferroni", "holm")
 _LATENCY_KEYS = {
     "p50_max_increase_pct",
     "p95_max_increase_pct",
@@ -96,7 +96,10 @@ class CohortRule:
     control: str = "none"
     """``none``: each cohort rule is judged on its own. ``bonferroni``: a cohort ``max_drop``
     fails only when its interval, widened for the number of cohort rules judged, lies
-    entirely beyond the allowed drop, so many small cohorts do not fail by chance."""
+    entirely beyond the allowed drop, so many small cohorts do not fail by chance. ``holm``:
+    the same family-wise error level, but each rule's one-sided p-value for "the drop exceeds
+    the allowed one" is adjusted by Holm's step-down procedure, which fails at least as many
+    real drops as Bonferroni and never more false ones."""
 
 
 @dataclass(frozen=True)

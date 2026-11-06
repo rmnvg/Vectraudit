@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Policies accept `cohorts.control: "holm"`, an opt-in Holm step-down control for cohort
+  rules that never fails fewer real drops than Bonferroni. Reports show the adjusted
+  p-values and the policy editor offers it. No default changes.
 - `vectraudit.evaluation.significance`: a paired randomization test (p is never 0), a
   randomized Tukey HSD for three or more systems (Carterette 2012, paired by design) and
   Holm's adjustment, all seeded and working on family means. Calibration tests show the

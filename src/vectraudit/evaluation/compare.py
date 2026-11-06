@@ -27,7 +27,8 @@ import numpy as np
 from vectraudit.evaluation.diagnose import diagnose
 from vectraudit.evaluation.families import family_count, family_id, family_means
 from vectraudit.evaluation.metrics import QUALITY_METRICS, SEMANTIC_METRICS
-from vectraudit.evaluation.policy import DEFAULT_POLICY, MetricRule, Policy
+from vectraudit.evaluation.policy import DEFAULT_POLICY, CohortRule, MetricRule, Policy
+from vectraudit.evaluation.significance import holm_adjust
 
 CHECK_FORMAT = "vectraudit.check"
 CHECK_FORMAT_VERSION = 1
@@ -35,6 +36,7 @@ SMALL_SAMPLE = 30
 MANY_COHORT_RULES = 5
 """From this many cohort rules judged without control, warn that some fail by chance."""
 EPS = 1e-9
+HOLM_LEVEL = 0.025
 BOOTSTRAP_MAX_CELLS = 1_000_000
 MAX_CRITICAL_FAILURES = 10
 _ENVIRONMENT_KEYS = ("system", "machine", "cpu_count", "python")
@@ -783,7 +785,9 @@ class _Check:
         With ``cohorts.control = "bonferroni"`` a cohort ``max_drop`` fails only when its 95%
         interval, widened to 1 - 0.05/m for the m cohort ``max_drop`` rules judged, lies
         entirely beyond the allowed drop: a normal interval on the family-mean change with the
-        family standard error. ``min`` rules are absolute floors and are not adjusted.
+        family standard error. ``"holm"`` tests the same claim with Holm's step-down
+        procedure on one-sided p-values (:meth:`_holm_adjusted`). ``min`` rules are absolute
+        floors and are not adjusted.
         """
         tags = sorted({t for b, _ in pairs for t in b.get("tags", [])})
         rule = self.policy.cohorts
@@ -820,13 +824,23 @@ class _Check:
             for name in judged
             if rule.metrics[name].max_drop is not None
         )
-        adjust = rule.control == "bonferroni" and drop_rules > 1
+        adjust = rule.control in ("bonferroni", "holm") and drop_rules > 1
+        holm = (
+            self._holm_adjusted(prepared, rule, drop_rules)
+            if adjust and rule.control == "holm"
+            else {}
+        )
         failures_before = len(self.reasons)
         for tag, members, metrics, n_families, enough_queries, judged_metrics in prepared:
             for name in judged_metrics:
                 metric_rule = rule.metrics[name]
                 if adjust and metric_rule.max_drop is not None:
-                    self._apply_adjusted(tag, name, metric_rule, members, metrics[name], drop_rules)
+                    if holm:
+                        self._apply_holm(tag, name, metric_rule, metrics[name], holm[(tag, name)])
+                    else:
+                        self._apply_adjusted(
+                            tag, name, metric_rule, members, metrics[name], drop_rules
+                        )
                     metric_rule = MetricRule(min=metric_rule.min, required=metric_rule.required)
                 self._apply_rule(
                     name, metric_rule, metrics[name], f"cohort {tag!r}: ", f"cohort:{tag}"
@@ -881,6 +895,58 @@ class _Check:
                 f"({stats['baseline']:.4f} → {stats['candidate']:.4f}); even the "
                 f"{confidence:.2%} interval adjusted for {m} cohort rules "
                 f"[{low:+.4f}, {high:+.4f}] exceeds the allowed {rule.max_drop:.4f}.",
+                f"cohort:{tag}:{name}.max_drop",
+            )
+
+    def _holm_adjusted(
+        self, prepared: Sequence[tuple[Any, ...]], rule: CohortRule, m: int
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """Holm-adjusted p-values that each judged cohort ``max_drop`` is truly exceeded.
+
+        The null for a rule is "the true drop is at most the allowed one"; the one-sided
+        p-value uses the same normal approximation and family standard error as the
+        Bonferroni interval. A rule fails when its adjusted p-value is below 0.025, the
+        per-side level of the 95% interval it replaces, so both controls hold the chance of
+        any false failure to the same level and Holm rejects at least as often.
+        """
+        keys, raw = [], []
+        for tag, members, metrics, _, _, judged in prepared:
+            for name in judged:
+                limit = rule.metrics[name].max_drop
+                if limit is None:
+                    continue
+                deltas = self._family_deltas(members, name)
+                delta = metrics[name]["delta"]
+                se = statistics.stdev(deltas) / math.sqrt(len(deltas)) if len(deltas) > 1 else 0.0
+                excess = -delta - limit
+                if se == 0:
+                    p = 0.0 if excess > EPS else 1.0
+                else:
+                    p = 1 - statistics.NormalDist().cdf(excess / se)
+                keys.append((tag, name))
+                raw.append(min(1.0, max(0.0, p)))
+        return {
+            key: {"p": p, "p_adjusted": adj, "rules": m}
+            for key, p, adj in zip(keys, raw, holm_adjust(raw), strict=True)
+        }
+
+    def _apply_holm(
+        self,
+        tag: str,
+        name: str,
+        rule: MetricRule,
+        stats: dict[str, Any],
+        holm: dict[str, Any],
+    ) -> None:
+        stats["holm"] = holm
+        assert rule.max_drop is not None
+        if holm["p_adjusted"] < HOLM_LEVEL:
+            self.flag(
+                Verdict.FAIL,
+                f"cohort {tag!r}: {name} dropped by {-stats['delta']:.4f} "
+                f"({stats['baseline']:.4f} → {stats['candidate']:.4f}); the drop exceeds the "
+                f"allowed {rule.max_drop:.4f} even after Holm adjustment for {holm['rules']} "
+                f"cohort rules (adjusted p = {holm['p_adjusted']:.4f}).",
                 f"cohort:{tag}:{name}.max_drop",
             )
 
