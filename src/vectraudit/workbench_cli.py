@@ -2265,6 +2265,70 @@ def benchmark_command(
         raise typer.Exit(2) from exc
 
 
+@workbench_app.command("ragchecker-input")
+def ragchecker_input_command(
+    run: Annotated[Path, typer.Argument(help="Run file whose answers RAGChecker will check.")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the run was recorded on.")],
+    references: Annotated[
+        Path, typer.Option(help='JSONL of {"query_id": ..., "reference": ...} reference answers.')
+    ],
+    answers: Annotated[
+        Path, typer.Option(help='JSONL of {"query_id": ..., "answer": ...} system responses.')
+    ],
+    out: Annotated[Path, typer.Option(help="RAGChecker input to write (private text).")],
+    corpus: Annotated[
+        Path | None, typer.Option(help="JSONL corpus with doc_id and text for each document.")
+    ] = None,
+    manifest: Annotated[
+        Path | None,
+        typer.Option(help="Manifest whose document_lookup resolver supplies document text."),
+    ] = None,
+) -> None:
+    """Build RAGChecker's input from a run: question, reference, response and context text.
+
+    The context is what the model was given (its observed model context, else the delivered
+    documents). Document text comes from --corpus or the manifest's registered resolver, which
+    is scoped to each question's tenant, filters and the run's corpus version. A question
+    missing any of it is skipped and counted. The file contains private text and is written
+    readable by you only; run RAGChecker locally, then import its output with
+    `ragchecker-judgments`. Held-out questions are not exported.
+    """
+    from vectraudit.pipelines.document_lookup import LookupConfig
+    from vectraudit.pipelines.ragchecker_input import (
+        CorpusSource,
+        DocumentSource,
+        LookupSource,
+        build_input,
+        read_texts,
+        render,
+    )
+
+    try:
+        if (corpus is None) == (manifest is None):
+            raise ValueError("Give the document text source: --corpus or --manifest, not both")
+        source: DocumentSource
+        if corpus is not None:
+            source = CorpusSource(corpus)
+        else:
+            assert manifest is not None
+            config: LookupConfig | None = load_manifest(manifest).document_lookup
+            if config is None:
+                raise ValueError("The manifest registers no document_lookup resolver")
+            source = LookupSource(config, manifest.parent)
+        data, counts = build_input(
+            load_run(run),
+            load_dataset(dataset),
+            read_texts(references, "reference"),
+            read_texts(answers, "answer"),
+            source,
+        )
+        atomic_write(out, json.dumps(data, indent=2, ensure_ascii=False) + "\n")  # owner only
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Export error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, str(out)))
+
+
 @workbench_app.command("accept-evidence")
 def accept_evidence_command(
     dataset: Annotated[Path, typer.Argument(help="The benchmark the proposals were made for.")],

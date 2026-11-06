@@ -7,6 +7,38 @@ Datasets and Benchmarks; Apache-2.0), Vectraudit can keep what its output says a
 own evidence. It never runs RAGChecker or any model, and writes no claim, answer or
 document text.
 
+## The round trip
+
+```bash
+# 1. Build RAGChecker's input from the run (private text; stays on this machine)
+vectraudit workbench ragchecker-input current.run.json --dataset benchmark.jsonl \
+  --corpus corpus.jsonl --references references.jsonl --answers answers.jsonl \
+  --out ragchecker_input.json
+# 2. Run RAGChecker's own CLI on that file, with your own extractor and checker models
+# 3. Import its output, then attach the judgments (see below)
+vectraudit workbench ragchecker-judgments ragchecker_output.json ... --out judgments.jsonl
+vectraudit workbench attach-answers current.run.json judgments.jsonl --out answered.run.json
+```
+
+`ragchecker-input` writes, per question, RAGChecker's `query_id`, `query`, `gt_answer`,
+`response` and `retrieved_context` (`doc_id` and `text`). The context is what the model was
+given: the run's observed model context when it recorded one, otherwise the documents
+retrieval delivered, in the recorded order. Document text comes from `--corpus` (JSONL with
+`doc_id` and `text`) or `--manifest` (its `document_lookup` resolver, the one passage review
+uses, scoped to each question's tenant, filters and the run's corpus version). Reference
+answers are JSONL lines `{"query_id": ..., "reference": ...}` and responses
+`{"query_id": ..., "answer": ...}`.
+
+A question is exported only when everything RAGChecker judges is present: question text, a
+reference, a response, a context and the text of every context document. Otherwise it is
+skipped and counted, never exported with a partial context, since RAGChecker would then judge
+something other than what the model saw. Held-out questions are not exported, so claim
+evidence is never gathered for them.
+
+**The file contains private text** (questions, answers and documents). It is written
+readable by you only and the command says so; keep it local. Vectraudit never uploads it and
+never calls a model.
+
 ## Import
 
 Run RAGChecker yourself (on your machine, with your models), then:
@@ -142,6 +174,30 @@ one), refuses another version's proposals, and leaves the original file alone.
 **Held-out questions never get items or proposals,** and `accept-evidence` refuses one even if
 a proposal file is edited by hand. Judging documents for held-out questions would let their
 labels be tuned to what the pipeline returns, which is what held-out questions are for.
+
+## Can you trust the findings?
+
+Claim findings depend on the extractor and checker models, so check them against people
+before relying on them. When some questions also have human verdicts (`attach-answers` with
+`"kind": "human"` judgments), the attach summary and `answers.claim_evidence.meta_evaluation`
+report, for each finding, how many of the questions that had it a human judged incorrect,
+beside the same figure for questions with no finding and for all of them:
+
+```text
+Human review of the answers, by claim finding (incorrect / judged):
+  all questions: 12 of 40 judged incorrect (60 questions)
+  no finding: 1 of 15 judged incorrect (22 questions)
+  unsupported incorrect: 9 of 11 judged incorrect (14 questions)
+```
+
+Read it as you would a diagnostic test. A finding is worth acting on when answers that have
+it are judged incorrect much more often than answers without any finding, and when enough
+questions were judged (`human_judged`; a rate over a handful is noise). If the rates do not
+separate, that extractor and checker pair does not predict what your reviewers call wrong, so
+treat its findings as leads only, or change the models and compare again: the models used are
+recorded with each judgment. Only questions a human decided count; a disputed verdict or a
+question with only model verdicts does not. `agreement_with_human` shows how often a model
+verdict (for example `ragchecker.f1` with a pass mark) matched the human one.
 
 ## Evidence level
 

@@ -42,6 +42,14 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   reference claims but are unjudged, labels that may be stale or wrong, and proposed
   required-evidence groups. `workbench accept-evidence` writes a new dataset version for the
   questions you name. Held-out questions never get any.
+- `workbench ragchecker-input` builds RAGChecker's input from a run: each question's text,
+  reference, response and the context the model was given, with document text from a corpus
+  file or the registered document resolver. Incomplete questions are skipped and counted,
+  held-out ones are not exported, and the file is written owner-only with a warning that it
+  holds private text.
+- Attaching claim evidence reports, per claim finding, how often human reviewers judged the
+  answer incorrect (`meta_evaluation`), so a team can check a finding against people before
+  trusting it.
 - Check reports (HTML, job summary and terminal) show a paired-randomization p-value beside
   each metric change, and `p_value` is in the check JSON. It is information only: verdicts
   and intervals are unchanged.

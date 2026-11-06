@@ -308,6 +308,41 @@ def test_the_round_trip_attaches_claim_evidence_without_changing_a_verdict(tmp_p
         assert not [s for s in private_strings() if s in text]
 
 
+def test_nothing_private_reaches_the_audit_report_or_an_accepted_dataset(tmp_path):
+    """The end of the chain: findings, review queue, proposals and the new dataset version."""
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.pipelines.benchmark import audit_benchmark
+    from vectraudit.pipelines.claim_review import accept_evidence
+
+    ds, run_path = _world(tmp_path)
+    out = tmp_path / "judgments.jsonl"
+    result = invoke(
+        "ragchecker-judgments", str(FIXTURE), "--dataset", str(ds), "--run", str(run_path),
+        "--extractor", "x", "--checker", "y", "--metrics", "f1", "--out", str(out),
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    # The benchmark labels two documents per question, so proposals can be accepted.
+    rows = [
+        {"query_id": qid, "text": text, "relevant": {"000": 1, "001": 1, "003": 1}}
+        for qid, text in QUESTIONS.items()
+    ]
+    benchmark = parse_dataset("\n".join(json.dumps(r) for r in rows))
+    run = json.loads(run_path.read_text())
+    run["dataset"]["sha256"] = benchmark.sha256
+    attached = attach_file(run, out)
+    audit = audit_benchmark(benchmark, [attached])
+    assert audit["judgment_queue"]
+    assert audit["required_evidence_proposals"]
+    text, _ = accept_evidence(benchmark, audit, ["q0"])
+    for written in (json.dumps(audit), json.dumps(attached)):
+        assert not [s for s in private_strings() if s in written]
+    # A dataset holds its own question text; accepting evidence must add none of the rest.
+    own = "\n".join(json.dumps(r) for r in rows)
+    added = [s for s in private_strings() if s not in own]
+    assert len(added) > 30
+    assert not [s for s in added if s in text]
+
+
 def test_cli_reports_what_it_could_not_use_and_refuses_bad_input(tmp_path):
     ds, _ = _world(tmp_path)
     base = [

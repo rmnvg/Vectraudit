@@ -200,3 +200,74 @@ def test_the_summary_counts_findings_per_question_and_the_terminal_says_what_the
     assert "Claim-level evidence attached to 2 questions." in text
     assert "2: contradicting document." in text
     assert "A delivered document contradicts the reference answer" in text
+
+
+def _six_questions(tmp_path):
+    clean = dict.fromkeys(CLAIMS, 0) | {
+        "reference": 2, "reference_in_context": 2, "reference_in_response": 2,
+        "reference_used": 2, "response": 2,
+    }  # fmt: skip
+    invented = dict.fromkeys(CLAIMS, 0) | {
+        "reference": 2, "reference_in_context": 2, "reference_in_response": 1,
+        "reference_used": 1, "response": 3, "response_incorrect": 1, "unsupported_incorrect": 1,
+    }  # fmt: skip
+    stale = {
+        "d": {"reference": 0, "response": 0, "response_incorrect": 0, "contradicts_reference": 1}
+    }
+    rows = []
+
+    def add(qid, claims, support=None, verdicts=()):
+        rows.append({"query_id": qid, **claim_line(claims=claims, support=support or {})})
+        for i, verdict in enumerate(verdicts):
+            rows.append(
+                {"query_id": qid, "evaluator": f"review{i}", "kind": "human", "verdict": verdict}
+            )
+
+    add("q0", invented, verdicts=["incorrect"])
+    add("q1", invented, verdicts=["correct"])
+    add("q2", clean, verdicts=["correct"])
+    add("q3", clean, verdicts=["correct"])
+    add("q4", invented, stale)  # no human verdict
+    add("q5", invented, verdicts=["incorrect", "correct"])  # the humans disagree: disputed
+    path = tmp_path / "j.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows))
+    run = fake_run([1.0] * 6)
+    for i, q in enumerate(run["queries"]):
+        q["query_id"] = f"q{i}"
+        q["ids"] = ["d"]
+    return attach_file(run, path)
+
+
+def test_meta_evaluation_shows_how_often_humans_found_the_answer_wrong_per_finding(tmp_path):
+    attached = _six_questions(tmp_path)
+    meta = attached["answers"]["claim_evidence"]["meta_evaluation"]
+    assert meta["unsupported_incorrect"] == {
+        "questions": 4, "human_judged": 2, "human_incorrect": 1, "human_partial": 0,
+        "human_correct": 1, "incorrect_rate": 0.5,
+    }  # fmt: skip
+    # A disputed question and one with only a model verdict are not "judged by a human".
+    assert meta["no_findings"]["human_incorrect"] == 0
+    assert (meta["no_findings"]["questions"], meta["no_findings"]["incorrect_rate"]) == (2, 0.0)
+    assert meta["all_questions"]["questions"] == 6
+    assert meta["all_questions"]["human_judged"] == 4
+    assert meta["contradicting_document"]["human_judged"] == 0
+    assert meta["contradicting_document"]["incorrect_rate"] is None
+
+
+def test_the_terminal_reports_it_only_where_humans_judged(tmp_path):
+    text = render_summary(_six_questions(tmp_path))
+    assert "Human review of the answers, by claim finding (incorrect / judged):" in text
+    assert "unsupported incorrect: 1 of 2 judged incorrect (4 questions)" in text
+    assert "no finding: 0 of 2 judged incorrect (2 questions)" in text
+    assert "contradicting document:" not in text  # nobody judged those answers
+
+
+def test_without_human_verdicts_there_is_nothing_to_report(tmp_path):
+    answer = attach(tmp_path, [claim_line()])
+    assert answer["claim_findings"]
+    path = tmp_path / "only.jsonl"
+    path.write_text(json.dumps({"query_id": "q", **claim_line()}))
+    attached = attach_file(run_with(), path)
+    meta = attached["answers"]["claim_evidence"]["meta_evaluation"]
+    assert all(row["human_judged"] == 0 for row in meta.values())
+    assert "Human review of the answers" not in render_summary(attached)

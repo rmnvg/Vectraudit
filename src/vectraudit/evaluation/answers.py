@@ -597,6 +597,44 @@ def analyze_citations(
     return {"status": "consistent", "cited": list(cited), "classes": classes, "support": support}
 
 
+def _meta_evaluation(answers: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """How often human reviewers judged answers incorrect, for each claim finding.
+
+    Over questions that have claim evidence: those with a given finding, those with none, and
+    all of them. Only questions a human decided count as judged (a ``disputed`` verdict does
+    not). It shows whether a finding goes with answers people find wrong for this extractor
+    and checker, before anyone relies on it.
+    """
+    groups: dict[str, Counter[str]] = defaultdict(Counter)
+    for answer in answers.values():
+        if "claim_findings" not in answer:
+            continue
+        human = answer["decided_by"] == "human" and answer["verdict"] in VERDICTS
+        names = {f["finding"] for f in answer["claim_findings"]} or {"no_findings"}
+        for name in names | {"all_questions"}:
+            groups[name]["questions"] += 1
+            if human:
+                groups[name]["human_judged"] += 1
+                groups[name][f"human_{answer['verdict']}"] += 1
+    out: dict[str, dict[str, Any]] = {}
+    for name, counts in sorted(groups.items()):
+        row: dict[str, Any] = {
+            k: counts[k]
+            for k in (
+                "questions",
+                "human_judged",
+                "human_incorrect",
+                "human_partial",
+                "human_correct",
+            )
+        }
+        row["incorrect_rate"] = (
+            counts["human_incorrect"] / counts["human_judged"] if counts["human_judged"] else None
+        )
+        out[name] = row
+    return out
+
+
 def _disagrees(judgments: Sequence[Judgment]) -> bool:
     """Whether a human verdict contradicts a model verdict on this question."""
     human = {j.verdict for j in judgments if j.kind == "human" and j.verdict}
@@ -739,6 +777,7 @@ def attach_answers(
         "claim_evidence": {
             "questions": claim_questions,
             "findings": dict(sorted(finding_counts.items())),
+            "meta_evaluation": _meta_evaluation({qid: by_query[qid]["answer"] for qid in grouped}),
         },
         "agreement_with_human": {
             name: {
@@ -809,6 +848,18 @@ def render_summary(run: Mapping[str, Any]) -> str:
             f"  {n}: {name.replace('_', ' ')}. {CLAIM_FINDINGS[name]}"
             for name, n in sorted(claims.get("findings", {}).items(), key=lambda kv: -kv[1])
         ]
+        meta = claims.get("meta_evaluation") or {}
+        judged = {k: v for k, v in meta.items() if v["human_judged"]}
+        if judged:
+            lines.append("Human review of the answers, by claim finding (incorrect / judged):")
+            for name, row in sorted(judged.items()):
+                label = {"all_questions": "all questions", "no_findings": "no finding"}.get(
+                    name, name.replace("_", " ")
+                )
+                lines.append(
+                    f"  {label}: {row['human_incorrect']} of {row['human_judged']} "
+                    f"judged incorrect ({row['questions']} questions)"
+                )
     unjudged = answers["verdicts"].get("unjudged")
     if unjudged:
         lines.append(
