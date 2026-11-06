@@ -8,7 +8,7 @@ import socket
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
+from vectraudit.core.fusion import FusionMethod, NormMethod, fuse
 from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.models import Hit, PipelineRequest, PipelineResult, StageTrace
 
@@ -32,6 +33,33 @@ class Stage:
     kind: Any
     run: Callable[[PipelineRequest, dict[str, list[Hit]]], list[Hit]]
     parents: tuple[str, ...] = ()
+
+
+def fusion_stage(
+    name: str,
+    parents: Sequence[str],
+    method: FusionMethod = "rrf",
+    *,
+    weights: Mapping[str, float] | None = None,
+    rrf_k: int = 60,
+    norm: NormMethod = "min_max",
+    depth: int | None = None,
+) -> Stage:
+    """A measured ``fusion`` stage over ``parents``, using :func:`vectraudit.core.fusion.fuse`.
+
+    ``weights`` are keyed by parent name. Options are checked now, so a pipeline with an
+    invalid fusion fails when it is built, not on the first query.
+    """
+    if not parents:
+        raise ValueError("a fusion stage needs at least one parent")
+    options: dict[str, Any] = {"weights": weights, "rrf_k": rrf_k, "norm": norm, "depth": depth}
+    fuse({p: [] for p in parents}, method, **options)
+
+    def run(request: PipelineRequest, inputs: dict[str, list[Hit]]) -> list[Hit]:
+        rankings = {p: [(h.id, h.score) for h in inputs[p]] for p in parents}
+        return [Hit(id=doc, score=score) for doc, score in fuse(rankings, method, **options)]
+
+    return Stage(name, "fusion", run, tuple(parents))
 
 
 class PythonPipeline:

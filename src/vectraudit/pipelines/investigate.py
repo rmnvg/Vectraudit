@@ -150,7 +150,8 @@ def builtin_fixes(candidate: Candidate, has_vectors: bool = False) -> list[Fix]:
     """Fixes the built-in hybrid baseline supports, from its current parameters.
 
     Vector fusion is offered only when every corpus document has a vector: without vectors
-    the baseline cannot run it.
+    the baseline cannot run it. Weighted score fusion is offered once vectors are fused, since
+    rank fusion ignores how far apart two stages' scores are.
     """
     if candidate.adapter.kind != "hybrid":
         return []
@@ -178,6 +179,14 @@ def builtin_fixes(candidate: Candidate, has_vectors: bool = False) -> list[Fix]:
                 name="add vector similarity to fusion",
                 addresses=["not_observed", "lost_downstream:truncate"],
                 params={"vector_weight": 0.5},
+            )
+        )
+    if params.get("vector_weight") and has_vectors and params.get("fusion", "rrf") != "wsum":
+        fixes.append(
+            Fix(
+                name="switch to weighted score fusion",
+                addresses=["not_observed", "lost_downstream:fusion"],
+                params={"fusion": "wsum"},
             )
         )
     return fixes

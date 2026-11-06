@@ -30,3 +30,6 @@ examples/rag_data/
 
 # Business documents (kept out of the repository)
 *.docx
+
+# Reference repositories cloned for reading only (PLAN-oss-learnings.md)
+.refs/
