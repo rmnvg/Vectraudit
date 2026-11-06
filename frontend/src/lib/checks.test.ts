@@ -7,6 +7,7 @@ import access from './fixtures/access.json'
 import cache from './fixtures/cache.json'
 import migration from './fixtures/migration.json'
 import intake from './fixtures/intake.json'
+import fusionReplay from './fixtures/fusion_replay.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -61,4 +62,21 @@ it('refuses other or malformed JSON', () => {
   expect(isCheckReport({ format: 'vectraudit.run' })).toBe(false)
   expect(isCheckReport({ format: 'vectraudit.cache_probe', leaks: 'x', errors: [], complete: true })).toBe(false)
   expect(isCheckReport(null)).toBe(false)
+})
+
+it('shows a fusion replay as a hypothesis with its limits and next step', () => {
+  const s = summary(fusionReplay)
+  expect(s.title).toBe('Fusion replay')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toContain('a hypothesis, not a measurement')
+  expect(s.headline).toContain('best wsum(norm=none)')
+  expect(s.items.some(i => i.startsWith('wsum(norm=none) (exact): ndcg'))).toBe(true)
+  expect(s.notes.some(n => n.includes('1 heldout'))).toBe(true)
+  expect(s.notes.some(n => n.startsWith('Next: declare this fix'))).toBe(true)
+})
+
+it('does not read a replay with no comparable question as an improvement', () => {
+  const s = summary({ ...fusionReplay, best: null, configurations: [] })
+  expect(s.verdict).toBe('pass')
+  expect(s.headline).toContain('none could be compared')
 })

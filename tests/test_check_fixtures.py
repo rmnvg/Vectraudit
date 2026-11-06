@@ -73,7 +73,20 @@ def intake(tmp_path: Path) -> dict[str, Any]:
     return run(tmp_path, first_batch())
 
 
-@pytest.mark.parametrize("build", [lineage, freshness, access, cache, migration, intake])
+def fusion_replay(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_fusion_replay import _dataset, _run
+    from vectraudit.pipelines.fusion_replay import Config, next_step, replay
+
+    dataset, run = _run(_dataset(extra={0: {"split": "heldout"}}))
+    configs = [Config("rrf"), Config("wsum", norm="none")]
+    report = replay(run, dataset, configs)
+    report["next_step"] = next_step(report, configs)
+    return report
+
+
+@pytest.mark.parametrize(
+    "build", [lineage, freshness, access, cache, migration, intake, fusion_replay]
+)
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):
     current = build(tmp_path)
     fixture = json.loads((FIXTURES / f"{build.__name__}.json").read_text())

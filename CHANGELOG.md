@@ -32,7 +32,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   and weights without calling the pipeline. It flags shallow inputs, bounds the result when
   filters follow fusion, marks replays with a reranker after fusion as unknown, reports
   forbidden documents, never uses held-out questions, and writes a `vectraudit.fusion_replay`
-  hypothesis with a next step (`docs/fusion.md`).
+  hypothesis with a next step (`docs/fusion.md`). The Checks tab shows the report, marking it
+  a hypothesis and listing its limits.
 - The hybrid baseline takes `fusion`, `fusion_k` and `fusion_norm` params (default: weighted
   RRF with k = 60, unchanged output), `runtime.fusion_stage()` declares a measured fusion
   stage in a Python pipeline, and investigations offer the built-in fix "switch to weighted

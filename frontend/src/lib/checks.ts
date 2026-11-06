@@ -8,6 +8,7 @@ export const CHECK_FORMATS = [
   'vectraudit.cache_probe',
   'vectraudit.migration_report',
   'vectraudit.intake',
+  'vectraudit.fusion_replay',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -36,6 +37,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.cache_probe': return arrays('leaks', 'errors') && typeof value.complete === 'boolean'
     case 'vectraudit.migration_report': return arrays('concerns', 'environment') && typeof value.migration_ready === 'boolean'
     case 'vectraudit.intake': return arrays('likely_recurrences') && object(value.queue)
+    case 'vectraudit.fusion_replay': return arrays('configurations', 'questions') && object(value.summary) && typeof value.metric === 'string'
   }
 }
 
@@ -139,6 +141,39 @@ function intake(r: Row): CheckSummary {
   }
 }
 
+function fusionReplay(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const downstream = object(summary.downstream) ? summary.downstream : {}
+  const best = object(r.best) ? r.best : null
+  const metric = text(r.metric)
+  const configs = rows(r.configurations)
+  const forbidden = configs.reduce((sum, c) => sum + count(c.forbidden_questions), 0)
+  const signed = (v: unknown) => `${count(v) >= 0 ? '+' : '−'}${Math.abs(count(v)).toFixed(3)}`
+  const gains = !!best && count(best.ci_low) > 0
+  const items = configs.flatMap(config => Object.entries(object(config.results) ? config.results : {}).map(([view, data]) => {
+    const stats = object(data) && object(data.metrics) && object(data.metrics[metric]) ? data.metrics[metric] : {}
+    const families = object(data) ? count(data.n_families) : 0
+    return `${text(config.id)} (${words(view)}): ${metric} ${count(stats.replay).toFixed(3)} against ${count(stats.recorded).toFixed(3)} recorded, ${signed(stats.delta)} (95% interval ${signed(stats.ci_low)} to ${signed(stats.ci_high)}, ${plural(families, 'family', 'families')})`
+  }))
+  const excluded = Object.entries(object(summary.excluded) ? summary.excluded : {}).map(([why, n]) => `${count(n)} ${words(why)}`)
+  const notes = [
+    text(r.note),
+    `Excluded: ${excluded.join(', ') || 'none'}. After fusion: ${count(downstream.none)} exact, ${count(downstream.filter)} bounded by filters, ${count(downstream.unknown)} unknown (a reranker or custom stage follows).`,
+    count(summary.truncated_inputs) ? `${plural(count(summary.truncated_inputs), 'question')} recorded fewer than k hits from an input stage, so deeper candidates may be missing.` : '',
+    forbidden ? `A forbidden document is in a replayed top results for ${plural(forbidden, 'question')}; later stages were not replayed, so its absence elsewhere proves nothing.` : '',
+    object(r.next_step) ? `Next: ${text(r.next_step.text)}` : '',
+  ].filter(Boolean)
+  return {
+    title: 'Fusion replay',
+    verdict: forbidden || gains ? 'attention' : 'pass',
+    headline: best
+      ? `${plural(count(summary.replayed), 'question')} of ${count(summary.questions_in_run)} replayed (a hypothesis, not a measurement); best ${text(best.configuration)}: ${metric} ${signed(best.delta)} against the recorded ranking${gains ? '' : ', not clearly better'}.`
+      : `${plural(count(summary.replayed), 'question')} replayed, but none could be compared with the recorded ranking because a reranker or custom stage follows fusion.`,
+    items,
+    notes,
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -149,5 +184,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.cache_probe': return cacheProbe(report)
     case 'vectraudit.migration_report': return migration(report)
     case 'vectraudit.intake': return intake(report)
+    case 'vectraudit.fusion_replay': return fusionReplay(report)
   }
 }
