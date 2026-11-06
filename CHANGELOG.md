@@ -32,7 +32,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   answer metrics as scores (a verdict only from a declared pass mark; retrieval metrics are
   refused) and, per question, claim counts and which delivered documents entailed or
   contradicted the reference answer's and the response's claims. `attach-answers` attaches
-  them as `claim_evidence`. No claim, answer or chunk text is read into any file
+  them as `claim_evidence`, and the answer gains `claim_findings`: reference claims missing
+  from the context, unused evidence, the documents that misled the answer, invented and
+  own-knowledge claims, and documents contradicting the reference. Findings are
+  model-judged (`supported`), marked disputed when human review disagrees, and never change a
+  verdict or the diagnosis. No claim, answer or chunk text is read into any file
   (`docs/claim-evidence.md`).
 - Check reports (HTML, job summary and terminal) show a paired-randomization p-value beside
   each metric change, and `p_value` is in the check JSON. It is information only: verdicts

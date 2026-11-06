@@ -28,7 +28,10 @@ reference answer's and the response's claims that the delivered documents entail
 claim-level checker such as RAGChecker (see :mod:`vectraudit.evaluation.ragchecker_import`).
 They are attached to the question as ``claim_evidence`` and never change a verdict or the
 diagnosis; a line with only claims needs no verdict or score. Counts and document IDs only:
-no claim text.
+no claim text. :func:`claim_findings` reads them beside the diagnosis (``claim_findings`` on
+the answer): which delivered documents the answer was or was not built from, and which ones
+misled it. Findings are model-judged, so their evidence level is ``supported``, never
+``verified``, and they are marked ``disputed`` when human review disagrees with the model.
 
 Human judgments decide a question's verdict when present; otherwise model judgments do.
 Disagreement among the deciding judgments makes the verdict ``disputed`` instead of picking
@@ -414,6 +417,116 @@ def diagnose(query: Mapping[str, Any], verdict: str | None, outcome: str) -> dic
     return {"class": "not_observed", "facts": facts}
 
 
+CLAIM_FINDINGS = {
+    "reference_not_in_context": (
+        "Reference claims no delivered document entails: a retrieval gap, unless the label or "
+        "the required evidence is incomplete or stale."
+    ),
+    "evidence_unused": (
+        "Claims the delivered documents support were left out of the response: generation or "
+        "context packing."
+    ),
+    "misled_by_irrelevant_context": (
+        "Incorrect response claims entailed only by documents that support no reference "
+        "claim: noise, hubs, poisoned or stale documents."
+    ),
+    "misled_by_relevant_context": (
+        "Incorrect response claims entailed by documents that do support reference claims: "
+        "conflicting content inside relevant documents."
+    ),
+    "unsupported_incorrect": "Incorrect response claims no delivered document supports: invented.",
+    "unsupported_correct": (
+        "Correct response claims no delivered document supports: the model answered from its "
+        "own knowledge."
+    ),
+    "contradicting_document": (
+        "A delivered document contradicts the reference answer, which often means it is stale: "
+        "check it with `vectraudit workbench freshness`."
+    ),
+}
+MAX_FINDING_DOCUMENTS = 20
+
+
+def _documents(
+    support: Mapping[str, Mapping[str, int]], key: str, keep: Any
+) -> tuple[list[str], int]:
+    """Documents whose ``key`` count is positive and that ``keep`` accepts, most first."""
+    found = sorted(
+        (doc for doc, s in support.items() if s.get(key, 0) > 0 and keep(s)),
+        key=lambda doc: (-support[doc][key], doc),
+    )
+    return found[:MAX_FINDING_DOCUMENTS], max(0, len(found) - MAX_FINDING_DOCUMENTS)
+
+
+def claim_findings(
+    query: Mapping[str, Any], evidence: Mapping[str, Any], *, disputed: bool
+) -> list[dict[str, Any]]:
+    """What the claim-level evidence says about one question, beside (never in) its diagnosis.
+
+    Only documents the run delivered or put in the model context are named; any other in
+    ``claim_support`` is listed as unmatched on the evidence. Where the counts per document
+    lack ``response_incorrect`` the finding keeps its count but names no documents.
+    """
+    claims = evidence["claims"]
+    run_docs = set(query.get("ids") or [])
+    context = query.get("model_context")
+    if isinstance(context, Mapping):
+        run_docs |= {i.get("id") for i in context.get("items") or [] if isinstance(i, Mapping)}
+    support = {d: s for d, s in evidence["claim_support"].items() if d in run_docs}
+    findings: list[dict[str, Any]] = []
+
+    def add(
+        name: str, count: int, docs: tuple[list[str], int] | None = None, note: str = ""
+    ) -> None:
+        if count <= 0:
+            return
+        finding: dict[str, Any] = {
+            "finding": name,
+            "count": count,
+            "points_to": CLAIM_FINDINGS[name],
+            "evidence": "supported",
+            "disputed": disputed,
+        }
+        if docs is not None:
+            finding["documents"] = docs[0]
+            if docs[1]:
+                finding["more_documents"] = docs[1]
+        if note:
+            finding["note"] = note
+        findings.append(finding)
+
+    missing = claims["reference"] - claims["reference_in_context"]
+    sufficiency = query.get("sufficiency")
+    note = ""
+    if isinstance(sufficiency, Mapping) and sufficiency.get("delivered") == "sufficient":
+        note = (
+            "A complete required evidence group was delivered, so the label or the required "
+            "evidence may be incomplete or stale."
+        )
+    add("reference_not_in_context", missing, None, note)
+    used = claims.get("reference_used")
+    if used is not None:  # absent from older exports: unknown, not zero
+        add("evidence_unused", claims["reference_in_context"] - used)
+    named = any("response_incorrect" in s for s in support.values())
+    irrelevant = _documents(support, "response_incorrect", lambda s: s["reference"] == 0)
+    relevant = _documents(support, "response_incorrect", lambda s: s["reference"] > 0)
+    add(
+        "misled_by_irrelevant_context",
+        claims["from_irrelevant_incorrect"],
+        irrelevant if named else None,
+    )
+    add(
+        "misled_by_relevant_context",
+        claims["from_relevant_incorrect"],
+        relevant if named else None,
+    )
+    add("unsupported_incorrect", claims["unsupported_incorrect"])
+    add("unsupported_correct", claims["unsupported_correct"])
+    contradicting = _documents(support, "contradicts_reference", lambda s: True)
+    add("contradicting_document", len(contradicting[0]) + contradicting[1], contradicting)
+    return findings
+
+
 CITATION_CLASSES = {
     "in_context": "in the model context",
     "not_in_context": "delivered, but absent from the observed model context",
@@ -458,6 +571,13 @@ def analyze_citations(
                 support[doc] = {"verdict": verdicts.pop(), "decided_by": kind}
                 break
     return {"status": "consistent", "cited": list(cited), "classes": classes, "support": support}
+
+
+def _disagrees(judgments: Sequence[Judgment]) -> bool:
+    """Whether a human verdict contradicts a model verdict on this question."""
+    human = {j.verdict for j in judgments if j.kind == "human" and j.verdict}
+    model = {j.verdict for j in judgments if j.kind == "model" and j.verdict}
+    return bool(human) and bool(model - human)
 
 
 def _claim_evidence(qid: str, judgments: Sequence[Judgment]) -> dict[str, Any] | None:
@@ -508,6 +628,7 @@ def attach_answers(
     citation_flags: Counter[str] = Counter()
     cited_questions = 0
     claim_questions = 0
+    finding_counts: Counter[str] = Counter()
     pairs: dict[str, list[tuple[str, bool]]] = defaultdict(list)
     for qid, judgments in grouped.items():
         q = by_query[qid]
@@ -528,6 +649,21 @@ def attach_answers(
         if claim_evidence is not None:
             answer["claim_evidence"] = claim_evidence
             claim_questions += 1
+            known = set(q.get("ids") or []) | {
+                i.get("id")
+                for i in (q.get("model_context") or {}).get("items") or []
+                if isinstance(i, Mapping)
+            }
+            unmatched = sorted(set(claim_evidence["claim_support"]) - known)
+            if unmatched:
+                claim_evidence["unmatched_documents"] = unmatched[:MAX_FINDING_DOCUMENTS]
+            if q.get("error") is None:
+                disagree = _disagrees(judgments)
+                answer["claim_findings"] = claim_findings(
+                    q, claim_evidence, disputed=verdict == "disputed" or disagree
+                )
+                for finding in answer["claim_findings"]:
+                    finding_counts[finding["finding"]] += 1
         if q.get("error") is None:
             citations = analyze_citations(q, judgments)
             if citations is not None:
@@ -573,7 +709,10 @@ def attach_answers(
             "questions_with_unsupported_citation": citation_flags["unsupported"],
             "questions_with_conflicting_citations": citation_flags["conflicting"],
         },
-        "claim_evidence": {"questions": claim_questions},
+        "claim_evidence": {
+            "questions": claim_questions,
+            "findings": dict(sorted(finding_counts.items())),
+        },
         "agreement_with_human": {
             name: {
                 "questions": len(results),
@@ -636,9 +775,13 @@ def render_summary(run: Mapping[str, Any]) -> str:
             f"unsupported, {cites['questions_with_conflicting_citations']} have conflicting "
             "citation lists."
         )
-    claim_questions = (answers.get("claim_evidence") or {}).get("questions")
-    if claim_questions:
-        lines.append(f"Claim-level evidence attached to {claim_questions} questions.")
+    claims = answers.get("claim_evidence") or {}
+    if claims.get("questions"):
+        lines.append(f"Claim-level evidence attached to {claims['questions']} questions.")
+        lines += [
+            f"  {n}: {name.replace('_', ' ')}. {CLAIM_FINDINGS[name]}"
+            for name, n in sorted(claims.get("findings", {}).items(), key=lambda kv: -kv[1])
+        ]
     unjudged = answers["verdicts"].get("unjudged")
     if unjudged:
         lines.append(

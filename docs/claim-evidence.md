@@ -74,6 +74,33 @@ counts that must be consistent with each other). A question with two claim judgm
 error: import one extractor and checker per file. Claim evidence never changes a verdict or
 the diagnosis, and a file with only claim lines gives no verdicts.
 
+## Findings
+
+When a question has claim evidence, `attach-answers` adds `claim_findings` beside the
+diagnosis (and prints their counts). The findings are read from the counts; they never change
+a verdict or the diagnosis class.
+
+| Finding | When | Points to |
+|---|---|---|
+| `reference_not_in_context` | Reference claims no delivered document entails | A retrieval gap. If a complete `required_evidence` group was delivered, the finding says the label or the required evidence may be incomplete or stale |
+| `evidence_unused` | Claims in the delivered documents that the response left out (needs `reference_used`) | Generation or context packing |
+| `misled_by_irrelevant_context` | Incorrect claims entailed only by documents that support no reference claim; the documents are listed | Noise, hubs, poisoned or stale documents |
+| `misled_by_relevant_context` | Incorrect claims entailed by documents that do support reference claims; listed | Conflicting content inside relevant documents |
+| `unsupported_incorrect` | Incorrect claims no delivered document supports | The model invented content |
+| `unsupported_correct` | Correct claims no delivered document supports | Correct, but not from the documents |
+| `contradicting_document` | Delivered documents that contradict the reference answer; listed | A stale document: check it with `workbench freshness` |
+
+Each finding carries its count, the documents it names (at most 20, with how many more),
+its evidence level, and `disputed`. The level is always `supported` (model-judged), never
+`verified`. `disputed` is true when human review disagrees with a model verdict on the
+question, or when the human verdicts disagree with each other, so a reader sees that the
+claim-level evidence is contested rather than being quietly overruled. Only documents the
+run delivered or put in the model context are named; any others in the claim support are
+listed as `unmatched_documents` on the evidence (the file was probably made against another
+run). Documents are listed in the investigation view with a link to passage review. Where
+the claim support has no per-document `response_incorrect` count, a finding keeps its count
+but names no documents.
+
 ## Evidence level
 
 Everything here is model-judged. It is evidence to review, not a measurement: it depends on

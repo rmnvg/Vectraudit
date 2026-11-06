@@ -281,7 +281,7 @@ def test_the_round_trip_attaches_claim_evidence_without_changing_a_verdict(tmp_p
     run = json.loads(run_path.read_text())
     attached = attach_file(run, out)
     q0, q1 = attached["queries"]
-    assert attached["answers"]["claim_evidence"] == {"questions": 2}
+    assert attached["answers"]["claim_evidence"]["questions"] == 2
     assert q0["answer"]["claim_evidence"]["claims"]["unsupported_incorrect"] == 1
     assert q0["answer"]["claim_evidence"]["claim_support"]["000"]["contradicts_reference"] == 1
     assert q0["answer"]["claim_evidence"]["evaluator"] == CLAIMS_EVALUATOR
