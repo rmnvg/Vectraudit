@@ -28,6 +28,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit.evaluation.significance`: a paired randomization test (p is never 0), a
+  randomized Tukey HSD for three or more systems (Carterette 2012, paired by design) and
+  Holm's adjustment, all seeded and working on family means. Calibration tests show the
+  false-positive and false-winner rates stay within tolerance of 5%.
 - `workbench optimize --fusion-grid` adds one candidate per fusion setting of a hybrid
   candidate (within `max_candidates`), and `--shortlist-from replay.json --top N` runs only
   the points a fusion replay ranks highest. Held-out questions are still used once, for the
