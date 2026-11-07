@@ -33,6 +33,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   questions (passed, failed, regressed) from run records. Held-out questions are hidden and never
   colour anything; every question and notable document survives sampling. See
   `docs/corpus-atlas.md`.
+- `workbench benchmark --corpus` reports `embedding_coverage`: groups of documents (seeded
+  k-means on the full-dimensional vectors) that no exploratory question is close to, as
+  `hypothesis` findings with top terms; the atlas draws the same regions.
 - Filtered FAISS search (`vectraudit.core.filtering`): a metadata filter becomes an allowed
   set of ids that FAISS applies during the search (IVF, HNSW, flat, IDMap, PreTransform and
   refine indexes), with exact ground truth over the same set, cached per filter. A filtered

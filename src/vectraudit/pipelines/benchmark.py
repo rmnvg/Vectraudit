@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
+
+from vectraudit.core.coverage import coverage, public
 from vectraudit.evaluation.dataset import Dataset
 from vectraudit.pipelines.claim_review import claim_review
 
@@ -20,13 +26,42 @@ SUITE_TAGS = (
 )
 
 
+@dataclass(frozen=True)
+class CorpusVectors:
+    """The corpus as the coverage analysis needs it."""
+
+    ids: Sequence[str]
+    vectors: npt.ArrayLike
+    titles: Sequence[str | None] | None = None
+
+
+def _embedding_coverage(dataset: Dataset, corpus: CorpusVectors | None) -> dict[str, Any] | None:
+    """Coverage regions of the corpus against the exploratory questions (held-out never count)."""
+    if corpus is None:
+        return None
+    asked = [q.vector for q in dataset.queries if q.split == "explore" and q.vector is not None]
+    if not asked:
+        return {
+            "findings": [],
+            "note": "No exploratory question has a vector, so coverage was not measured.",
+        }
+    relevant = frozenset(d for q in dataset.queries if q.split == "explore" for d in q.relevant)
+    result = coverage(corpus.ids, corpus.vectors, np.asarray(asked), relevant, corpus.titles)
+    return public(result)
+
+
 def audit_benchmark(
     dataset: Dataset,
     runs: list[dict[str, Any]] | None = None,
     *,
     irrelevant: dict[str, list[str]] | None = None,
+    corpus: CorpusVectors | None = None,
 ) -> dict[str, Any]:
-    """Suggest human review; never infer relevance or modify a frozen benchmark."""
+    """Suggest human review; never infer relevance or modify a frozen benchmark.
+
+    With ``corpus`` (document IDs, vectors, and titles) the report gains ``embedding_coverage``:
+    groups of documents no exploratory question is close to, as hypotheses to look at.
+    """
     groups: dict[str, list[str]] = defaultdict(list)
     tags: Counter[str] = Counter()
     for q in dataset.queries:
@@ -82,6 +117,7 @@ def audit_benchmark(
         "n_labelled": dataset.n_labelled,
         "splits": dict(Counter(q.split for q in dataset.queries)),
         "coverage": dict(tags),
+        "embedding_coverage": _embedding_coverage(dataset, corpus),
         "missing_categories": [tag for tag in SUITE_TAGS if not tags[tag]],
         "duplicates": [ids for ids in groups.values() if len(ids) > 1],
         "unannotated": [q.query_id for q in dataset.queries if not q.labelled],

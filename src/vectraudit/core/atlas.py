@@ -40,6 +40,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from vectraudit.core.coverage import coverage
 from vectraudit.core.projection import PcaModel, Projection, ProjectionMethod, fit_pca, place_points
 
 FORMAT = "vectraudit.atlas"
@@ -337,6 +338,28 @@ def build_atlas(
         with_vectors
     )
 
+    # Regions come from the full-dimensional grouping that the coverage findings use, so the
+    # picture and the findings agree. Held-out questions never count as covering a region.
+    judged = [q for q in with_vectors if not q.heldout]
+    cov = coverage(
+        doc_ids,
+        x,
+        np.ascontiguousarray([q.vector for q in judged], dtype=np.float32)
+        if judged
+        else np.empty((0, x.shape[1]), dtype=np.float32),
+        frozenset(d for q in questions if not q.heldout for d in q.relevant),
+        titles,
+        seed=seed,
+    )
+    uncovered = {c for f in cov["findings"] for c in f["clusters"]}
+    regions = [
+        {
+            **{k: v for k, v in r.items() if k != "member_rows"},
+            "centre": [float(v) for v in doc_xy[r["member_rows"]].mean(axis=0)],
+            "uncovered": r["cluster"] in uncovered,
+        }
+        for r in cov["regions"]
+    ]
     atlas = Atlas(px, py, cat, row)
     payload = atlas.payload()
     counts = {
@@ -401,7 +424,9 @@ def build_atlas(
             "layout": "float32 x[n], float32 y[n], uint8 category[n] (padded to 4), uint32 row[n]; "
             "little-endian",
         },
-        "regions": [],
+        "regions": regions,
+        "findings": cov["findings"],
+        "coverage": {k: cov[k] for k in ("method", "k", "seed", "min_share", "far_factor", "note")},
     }
     return atlas
 

@@ -52,6 +52,29 @@ out, and the cap can be exceeded when there are more notable points than that (t
 so). Sampling is seeded (`--seed`). Going above 50,000 needs `--large-atlas` (up to
 1,000,000); above 200,000 points the sidecar omits titles to stay servable.
 
+## Coverage regions
+
+`vectraudit workbench benchmark benchmark.jsonl --corpus corpus.jsonl` adds
+`embedding_coverage` to the audit, and the atlas draws the same regions. Documents are grouped
+by seeded k-means on the **full-dimensional** vectors (about the square root of the corpus size,
+at most 48 groups), never on the 2D map. Each region reports its documents, the questions whose
+nearest region it is, the documents labelled relevant to a question, and its top terms (TF-IDF
+over local titles and first lines).
+
+A group of regions becomes a finding, at evidence level `hypothesis`, when all of these hold:
+
+- no question's nearest region is any of them;
+- their documents are far from every question: the median distance to the nearest question is
+  more than twice that of the regions that do have a question;
+- together (neighbouring regions are merged, since k-means cuts one topic into several pieces)
+  they hold at least 5% of the corpus.
+
+For example: "About 16% of documents form a group no benchmark question is close to (about:
+refund, policy)." Only exploratory questions count: a held-out question near the group does not
+cover it. A finding says the benchmark may not ask about that part of the corpus; it does not
+say the benchmark is wrong, and a question can sit far from its answers in an embedding space.
+With no exploratory question vectors, coverage is reported as not measured.
+
 ## Files
 
 `atlas-<name>.json` (format `vectraudit.atlas` v1) holds identifiers, titles, the legend, counts

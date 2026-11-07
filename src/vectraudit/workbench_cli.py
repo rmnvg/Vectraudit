@@ -2256,20 +2256,40 @@ def intake_command(
 
 @workbench_app.command("benchmark")
 def benchmark_command(
-    dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None
+    dataset: Path,
+    out: Path = Path("benchmark.json"),
+    runs: Path | None = None,
+    corpus: Annotated[
+        Path | None,
+        typer.Option(
+            help="Corpus JSONL with vectors: also report groups of documents no exploratory "
+            "question is close to (embedding_coverage, hypotheses)."
+        ),
+    ] = None,
 ) -> None:
     """Audit coverage and duplicates; prioritize exploratory judgments from run pools."""
+    from vectraudit.core.atlas import AtlasError
+    from vectraudit.pipelines.atlas_build import read_corpus
+    from vectraudit.pipelines.benchmark import CorpusVectors
+
     try:
+        vectors = None
+        if corpus is not None:
+            ids, matrix, titles, _ = read_corpus(corpus)
+            vectors = CorpusVectors(ids, matrix, titles)
         result = audit_benchmark(
             load_dataset(dataset),
             [load_run(p) for p in sorted(runs.glob("*.run.json"))] if runs else [],
+            corpus=vectors,
         )
         _write(out, result)
         typer.echo(
             f"{result['n_labelled']}/{result['n_queries']} annotated; "
             f"{len(result['duplicates'])} duplicate groups"
         )
-    except (OSError, ValueError) as exc:
+        for finding in (result["embedding_coverage"] or {}).get("findings", []):
+            typer.echo(f"Hypothesis: {finding['message']}")
+    except (OSError, ValueError, AtlasError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
 
