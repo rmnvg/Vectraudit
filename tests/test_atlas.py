@@ -333,3 +333,24 @@ def test_the_workbench_serves_the_points_and_nothing_else(tmp_path) -> None:
     # The sidecar is listed like any workbench artifact.
     names = [a["name"] for a in client.get("/api/workbench").json()["artifacts"]]
     assert "atlas-demo.json" in names
+
+
+# --- the frontend's fixture ---------------------------------------------------
+
+
+def test_the_frontend_fixture_matches_what_the_builder_writes() -> None:
+    """frontend/src/lib/fixtures/atlas.{json,bin} are real output; regenerate them if this fails."""
+    from pathlib import Path
+
+    fixtures = Path(__file__).parents[1] / "frontend" / "src" / "lib" / "fixtures"
+    fixture = json.loads((fixtures / "atlas.json").read_text())
+    data = (fixtures / "atlas.bin").read_bytes()
+    ids, vectors = corpus(30)
+    current = A.build_atlas(ids, vectors, [question("q", vectors[0], ["d1"])], name="fixture")
+    assert set(fixture) == set(current.sidecar)
+    assert set(fixture["points"]) == set(current.sidecar["points"])
+    assert set(fixture["regions"][0]) >= set(current.sidecar["regions"][0]) - {"pool"}
+    assert hashlib.sha256(data).hexdigest() == fixture["bin"]["sha256"]
+    x, y, category, row = A.decode_payload(data, fixture["bin"]["n"])
+    assert len(x) == len(y) == len(category) == len(row) == len(fixture["points"]["ids"])
+    assert fixture["format"] == "vectraudit.atlas"

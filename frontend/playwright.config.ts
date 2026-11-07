@@ -50,5 +50,14 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
+    {
+      // The workbench with a synthetic atlas (a 20,000-document corpus with one unasked group).
+      command:
+        'uv run --project .. python e2e/atlas_data.py' +
+        ' && uv run --project .. vectraudit workbench serve e2e/.data-atlas --port 8796',
+      url: 'http://127.0.0.1:8796/api/workbench',
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
+    },
   ],
 })
