@@ -9,6 +9,9 @@ export const CHECK_FORMATS = [
   'vectraudit.migration_report',
   'vectraudit.intake',
   'vectraudit.fusion_replay',
+  'vectraudit.corpus_scan',
+  'vectraudit.poisoning',
+  'vectraudit.promptfoo_redteam',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -38,6 +41,9 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.migration_report': return arrays('concerns', 'environment') && typeof value.migration_ready === 'boolean'
     case 'vectraudit.intake': return arrays('likely_recurrences') && object(value.queue)
     case 'vectraudit.fusion_replay': return arrays('configurations', 'questions') && object(value.summary) && typeof value.metric === 'string'
+    case 'vectraudit.corpus_scan': return arrays('detectors', 'review', 'documents') && object(value.summary)
+    case 'vectraudit.promptfoo_redteam': return object(value.plugins) && object(value.summary)
+    case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
 
@@ -174,6 +180,85 @@ function fusionReplay(r: Row): CheckSummary {
   }
 }
 
+function corpusScan(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const flagged = count(summary.flagged)
+  const explain = Object.fromEntries(rows(r.detectors).map(d => [text(d.id), text(d.explanation)]))
+  const byDetector = Object.entries(object(summary.documents_by_detector) ? summary.documents_by_detector : {}).sort((a, b) => count(b[1]) - count(a[1]))
+  return {
+    title: 'Corpus injection scan',
+    verdict: flagged ? 'attention' : 'pass',
+    headline: `${plural(count(summary.documents), 'document')} scanned; ${flagged} flagged. Findings are hypotheses for a person to read, not proof either way.`,
+    items: [
+      ...byDetector.map(([name, n]) => `${plural(count(n), 'document')}: ${words(name)}. ${explain[name] ?? ''}`.trim()),
+      ...rows(r.review).slice(0, LIMIT).map(d => `Read ${text(d.doc_id)} (row ${text(d.row)}, ${text(d.severity)} severity, ${plural(count(d.findings), 'finding')})`),
+    ],
+    notes: [
+      text(r.note),
+      flagged ? '' : 'No findings does not show the corpus is safe: the scan only finds known traces of injected text.',
+    ].filter(Boolean),
+  }
+}
+
+function poisoning(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const attacks = object(r.attacks) ? r.attacks : {}
+  const percent = (v: unknown) => `${Math.round(count(v) * 100)}%`
+  const verdict = text(r.verdict)
+  const rate = (value: unknown) => {
+    const x = object(value) ? value : {}
+    return `${count(x.flagged)} of ${plural(count(x.families), 'family', 'families')} (${x.rate == null ? 'n/a' : percent(x.rate)}, 95% interval ${percent(x.ci_low)} to ${percent(x.ci_high)})`
+  }
+  const displaced = object(summary.displaced) ? summary.displaced : {}
+  const collateral = object(r.collateral) ? r.collateral : {}
+  const overlay = object(r.overlay) ? r.overlay : {}
+  const followed = object(r.followed_injection) ? r.followed_injection : null
+  return {
+    title: 'Poisoning check',
+    verdict: verdict === 'fail' ? 'fail' : verdict === 'pass' ? 'pass' : 'attention',
+    headline: `${verdict === 'inconclusive' ? 'Inconclusive' : verdict === 'pass' ? 'No failure' : 'Failed'} on ${plural(count(summary.targets_measured), 'target question')} and ${plural(count(summary.controls), 'control question')} (exploratory, not a release approval).`,
+    items: [
+      ...rows(r.failures).map(f => text(f.message)),
+      ...Object.entries(attacks).map(([name, a]) => {
+        const x = object(a) ? a : {}
+        return `${words(name)}: retrieved for ${rate(x.retrieved)}; reached the model for ${count(object(x.reached_model_context) ? x.reached_model_context.flagged : 0)}`
+      }),
+      ...(followed ? [`Answers that followed an injected instruction (canary found): ${rate(followed)} of the ${plural(count(followed.questions_checked), 'checked question')}`] : []),
+      `Answering evidence displaced: ${rate(displaced)}`,
+      `Poisoned documents on control questions: ${rate(collateral)}`,
+    ],
+    notes: [
+      text(r.note),
+      ...(Array.isArray(r.reasons_inconclusive) ? r.reasons_inconclusive.map(x => `Inconclusive: ${text(x)}`) : []),
+      text(overlay.warning),
+    ].filter(Boolean),
+  }
+}
+
+function promptfooRedteam(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const plugins = Object.entries(object(r.plugins) ? r.plugins : {})
+  const failed = plugins.reduce((sum, [, p]) => sum + (object(p) ? count(p.failed) : 0), 0)
+  const percent = (v: unknown) => `${Math.round(count(v) * 100)}%`
+  const skipped = Object.entries(object(summary.skipped_other_plugins) ? summary.skipped_other_plugins : {})
+  return {
+    title: 'promptfoo red team (RAG plugins)',
+    verdict: failed ? 'attention' : 'pass',
+    headline: `${count(summary.kept)} of ${plural(count(summary.results), 'result')} kept: ${failed} failed. Graded by a model and exploratory, not a release approval.`,
+    items: plugins.map(([name, plugin]) => {
+      const p = object(plugin) ? plugin : {}
+      const strategies = Object.entries(object(p.by_strategy) ? p.by_strategy : {}).map(([s, v]) => `${s} ${object(v) ? count(v.failed) : 0}/${object(v) ? count(v.tests) : 0}`).join(', ')
+      const rate = p.failure_rate == null ? 'n/a' : percent(p.failure_rate)
+      return `${name}: ${count(p.failed)} of ${plural(count(p.tests), 'test')} failed (${rate}, 95% interval ${percent(p.ci_low)} to ${percent(p.ci_high)})${strategies ? `; by strategy: ${strategies}` : ''}${count(p.errored) ? `; ${count(p.errored)} errored` : ''}`
+    }),
+    notes: [
+      text(r.note),
+      `${count(summary.matched_by_query_id) + count(summary.matched_by_trace_id)} tests named a benchmark question or trace; ${count(summary.unmatched)} are counted here only.`,
+      skipped.length ? `Skipped other plugins: ${skipped.map(([k, n]) => `${k} (${count(n)})`).join(', ')}.` : '',
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -185,5 +270,8 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.migration_report': return migration(report)
     case 'vectraudit.intake': return intake(report)
     case 'vectraudit.fusion_replay': return fusionReplay(report)
+    case 'vectraudit.corpus_scan': return corpusScan(report)
+    case 'vectraudit.poisoning': return poisoning(report)
+    case 'vectraudit.promptfoo_redteam': return promptfooRedteam(report)
   }
 }

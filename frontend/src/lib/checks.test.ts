@@ -8,6 +8,9 @@ import cache from './fixtures/cache.json'
 import migration from './fixtures/migration.json'
 import intake from './fixtures/intake.json'
 import fusionReplay from './fixtures/fusion_replay.json'
+import corpusScan from './fixtures/corpus_scan.json'
+import poisoningReport from './fixtures/poisoning.json'
+import redteam from './fixtures/promptfoo_redteam.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -79,4 +82,64 @@ it('does not read a replay with no comparable question as an improvement', () =>
   const s = summary({ ...fusionReplay, best: null, configurations: [] })
   expect(s.verdict).toBe('pass')
   expect(s.headline).toContain('none could be compared')
+})
+
+it('lists the documents a corpus scan flags as hypotheses to read, with what each detector means', () => {
+  const s = summary(corpusScan)
+  expect(s.title).toBe('Corpus injection scan')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toContain('5 documents scanned; 4 flagged')
+  expect(s.headline).toContain('hypotheses for a person to read')
+  expect(s.items.some(i => i.startsWith('1 document: instruction override.'))).toBe(true)
+  expect(s.items[s.items.length - 1]).toMatch(/^Read page-/)
+  expect(s.items.some(i => i.includes('Read page-chat_template_token (row 3, high severity'))).toBe(true)
+})
+
+it('does not read a clean scan as proof the corpus is safe', () => {
+  const clean = { ...corpusScan, summary: { ...corpusScan.summary, flagged: 0, findings: 0, documents_by_detector: {}, by_detector: {} }, review: [], documents: [] }
+  const s = summary(clean)
+  expect(s.verdict).toBe('pass')
+  expect(s.notes.some(n => n.includes('does not show the corpus is safe'))).toBe(true)
+})
+
+it('shows a failed poisoning check with its safety reason, rates and limits', () => {
+  const s = summary(poisoningReport)
+  expect(s.title).toBe('Poisoning check')
+  expect(s.verdict).toBe('fail')
+  expect(s.headline).toContain('exploratory, not a release approval')
+  expect(s.items.some(i => i.includes('reached the final results'))).toBe(true)
+  expect(s.items.some(i => i.startsWith('hijack: retrieved for 1 of 2 families'))).toBe(true)
+  expect(s.items.some(i => i.startsWith('Poisoned documents on control questions: 1 of 1 family'))).toBe(true)
+})
+
+it('reads an inconclusive poisoning check as attention, never a pass', () => {
+  const s = summary({ ...poisoningReport, verdict: 'inconclusive', failures: [], reasons_inconclusive: ['the overlay may not be loaded'], overlay: { warning: 'No poisoned document appears in any recorded stage.' } })
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toContain('Inconclusive')
+  expect(s.notes.some(n => n.includes('overlay may not be loaded'))).toBe(true)
+})
+
+it('adds the rate of answers that followed an injected instruction when it was measured', () => {
+  const followed = { questions_checked: 4, flagged: 1, families: 4, rate: 0.25, ci_low: 0.05, ci_high: 0.7 }
+  const s = summary({ ...poisoningReport, followed_injection: followed })
+  expect(s.items.some(i => i.startsWith('Answers that followed an injected instruction (canary found): 1 of 4 families (25%'))).toBe(true)
+  expect(summary(poisoningReport).items.some(i => i.includes('followed an injected instruction'))).toBe(false)
+})
+
+it('summarises promptfoo red-team results per plugin as model-graded and exploratory', () => {
+  const s = summary(redteam)
+  expect(s.title).toBe('promptfoo red team (RAG plugins)')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toContain('Graded by a model and exploratory')
+  expect(s.items.some(i => i.startsWith('rag-poisoning: 2 of 3 tests failed (67%'))).toBe(true)
+  expect(s.items.some(i => i.includes('by strategy: base64 1/2, basic 1/1'))).toBe(true)
+  expect(s.notes.some(n => n.includes('Skipped other plugins: harmful:hate (1)'))).toBe(true)
+  expect(s.notes.some(n => n.includes('are counted here only'))).toBe(true)
+})
+
+it('reads a red-team run with no failures as a pass, not as proof', () => {
+  const clean = { ...redteam, plugins: Object.fromEntries(Object.entries(redteam.plugins).map(([k, p]) => [k, { ...p, failed: 0, passed: p.tests, failure_rate: 0 }])) }
+  const s = summary(clean)
+  expect(s.verdict).toBe('pass')
+  expect(s.headline).toContain('exploratory, not a release approval')
 })

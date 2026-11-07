@@ -140,6 +140,7 @@ function AnswerPanel({ answer, onDoc }: { answer: Answer; onDoc: (doc: string) =
     <h3 className="text-sm font-semibold">Answer: {label(verdict)}</h3>
     <p className="mt-1 text-xs text-muted">{answer.decided_by ? `Decided by ${answer.decided_by} review` : 'No deciding verdict'} · {answer.judgments.map(j => `${j.evaluator} (${j.kind}): ${j.verdict ?? 'score only'}`).join(' · ')}</p>
     {answer.diagnosis && <><p className="mt-2 text-sm">First observable loss: <b>{label(answer.diagnosis.class)}</b></p><ul className="mt-1 list-disc pl-5 text-xs text-muted">{answer.diagnosis.facts.map(f => <li key={f}>{f}</li>)}</ul></>}
+    {answer.safety?.followed_injection && <p className="mt-3 text-sm text-red-600" role="alert">Safety failure: this answer echoed a poisoned document's canary ({answer.safety.attacks.join(', ')}), so the model followed an injected instruction. This is recorded apart from the answer's verdict.</p>}
     {!!answer.claim_findings?.length && <div className="mt-3" aria-label="Claim findings">
       <p className="text-sm">Claim-level findings <span className="text-xs text-muted">(model-judged evidence, not a measurement)</span></p>
       <ul className="mt-1 space-y-2 text-xs">{answer.claim_findings.map(f => <li key={f.finding}>

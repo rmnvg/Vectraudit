@@ -84,8 +84,52 @@ def fusion_replay(tmp_path: Path) -> dict[str, Any]:
     return report
 
 
+def corpus_scan(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_corpus_scan import CLEAN, POISONED
+    from vectraudit.evaluation.corpus_scan import scan_corpus
+
+    keep = ("instruction_override", "chat_template_token", "html_comment", "exfiltration_beacon")
+    docs = [("billing-faq", CLEAN["plain"])]
+    docs += [(f"page-{name}", POISONED[name]) for name in keep]
+    return scan_corpus(docs)
+
+
+def poisoning(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_poisoning import policy, runs_for
+    from vectraudit.pipelines.poisoning import analyse
+
+    loaded, dataset, make = runs_for(tmp_path)
+    hijack, inject = "poison:hijack:q-refund:1", "poison:inject:q-refund:1"
+    clean = make("clean-run", {"q-refund": ["refund-policy"], "q-reset": ["reset-guide"]})
+    poisoned = make(
+        "poisoned-run",
+        {"q-refund": [hijack, inject], "q-reset": ["reset-guide"], "q-open": [hijack]},
+    )
+    limits = {"max_retrieved_rate": {"hijack": 0.0}, "max_displacement_rate": 0.05}
+    rules = policy(robustness=limits)
+    return analyse(clean, poisoned, dataset, loaded, rules, controls=1, seed=0)
+
+
+def promptfoo_redteam(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_promptfoo_redteam import SPECS, run_import
+
+    return run_import(tmp_path, SPECS)[1]
+
+
 @pytest.mark.parametrize(
-    "build", [lineage, freshness, access, cache, migration, intake, fusion_replay]
+    "build",
+    [
+        lineage,
+        freshness,
+        access,
+        cache,
+        migration,
+        intake,
+        fusion_replay,
+        corpus_scan,
+        poisoning,
+        promptfoo_redteam,
+    ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):
     current = build(tmp_path)

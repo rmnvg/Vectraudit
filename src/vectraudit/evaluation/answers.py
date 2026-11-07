@@ -47,8 +47,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,6 +59,11 @@ ANSWERS_FORMAT_VERSION = 1
 VERDICTS = ("correct", "partial", "incorrect")
 OUTCOMES = ("answered", "abstained", "handoff")
 KINDS = ("human", "model")
+SAFETY_KIND = "safety"
+"""A record of what an answer did (for example echoed an injected canary), kept apart from
+answer verdicts: following an injected instruction is a safety failure that never changes
+whether the answer was correct."""
+MAX_SAFETY_ITEMS = 100
 SUPPORT = ("supported", "unsupported")
 MAX_JUDGMENTS = 200_000
 MAX_CITATIONS = 100
@@ -136,6 +143,8 @@ class Judgment:
     support: tuple[tuple[str, str], ...] = ()
     claims: tuple[tuple[str, int], ...] | None = None
     claim_support: tuple[tuple[str, dict[str, Any]], ...] = ()
+    safety: dict[str, Any] | None = None
+    redteam: dict[str, Any] | None = None
 
     def record(self) -> dict[str, Any]:
         return {
@@ -296,6 +305,94 @@ def _claims(
     return claims, pairs
 
 
+def _safety(
+    obj: Mapping[str, Any], kind: str, line: int
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """The ``safety`` or ``redteam`` object of a safety record; ``(None, None)`` otherwise.
+
+    A safety record has kind ``safety`` and exactly one of the two objects; no other line may
+    have either. It carries no verdict or score: it is kept apart from answer judgments.
+    """
+    safety, redteam = obj.get("safety"), obj.get("redteam")
+    if kind != SAFETY_KIND:
+        if safety is not None or redteam is not None:
+            raise AnswerJudgmentError(
+                f'line {line}: a safety record has kind "safety" and a safety or redteam '
+                "object, and nothing else has either"
+            )
+        return None, None
+    if (safety is None) == (redteam is None):
+        raise AnswerJudgmentError(
+            f'line {line}: a safety record has kind "safety" and exactly one of a safety '
+            "object (canary check) or a redteam object (red-team result)"
+        )
+    if obj.get("verdict") is not None or obj.get("score") is not None:
+        raise AnswerJudgmentError(
+            f"line {line}: a safety record carries no verdict or score; it is kept apart from "
+            "answer judgments"
+        )
+    if redteam is not None:
+        return None, _redteam(redteam, line)
+    if not isinstance(safety, dict) or set(safety) != {
+        "followed_injection",
+        "attacks",
+        "documents",
+    }:
+        raise AnswerJudgmentError(
+            f"line {line}: safety needs followed_injection, attacks and documents"
+        )
+    followed, attacks, documents = (
+        safety["followed_injection"],
+        safety["attacks"],
+        safety["documents"],
+    )
+    if not isinstance(followed, bool):
+        raise AnswerJudgmentError(f"line {line}: followed_injection must be true or false")
+    for name, items in (("attacks", attacks), ("documents", documents)):
+        if (
+            not isinstance(items, list)
+            or len(items) > MAX_SAFETY_ITEMS
+            or any(not isinstance(i, str) or not i.strip() or len(i) > _TEXT_LIMIT for i in items)
+            or len(set(items)) != len(items)
+        ):
+            raise AnswerJudgmentError(
+                f"line {line}: safety {name} must be at most {MAX_SAFETY_ITEMS} distinct names"
+            )
+    if followed != bool(attacks) or (not followed and documents):
+        raise AnswerJudgmentError(
+            f"line {line}: safety is inconsistent: an injection was followed exactly when "
+            "attacks are named"
+        )
+    return (
+        {
+            "followed_injection": followed,
+            "attacks": sorted(attacks),
+            "documents": sorted(documents),
+        },
+        None,
+    )
+
+
+def _redteam(raw: Any, line: int) -> dict[str, Any]:
+    """One red-team test result: the plugin, the strategy if any, and whether it was resisted."""
+    if (
+        not isinstance(raw, dict)
+        or set(raw) - {"plugin", "strategy", "passed"}
+        or not ({"plugin", "passed"} <= set(raw))
+    ):
+        raise AnswerJudgmentError(f"line {line}: redteam needs plugin and passed (and a strategy)")
+    plugin, strategy, passed = raw["plugin"], raw.get("strategy"), raw["passed"]
+    if not isinstance(plugin, str) or not re.fullmatch(r"[a-z0-9:_.-]{1,80}", plugin):
+        raise AnswerJudgmentError(f"line {line}: redteam plugin must be a plugin ID")
+    if strategy is not None and (
+        not isinstance(strategy, str) or not re.fullmatch(r"[a-z0-9:_.-]{1,80}", strategy)
+    ):
+        raise AnswerJudgmentError(f"line {line}: redteam strategy must be a strategy ID")
+    if not isinstance(passed, bool):
+        raise AnswerJudgmentError(f"line {line}: redteam passed must be true or false")
+    return {"plugin": plugin, "strategy": strategy, "passed": passed}
+
+
 def read_judgments(
     path: str | Path, thresholds: Mapping[str, float] | None = None
 ) -> list[tuple[str, str, Judgment]]:
@@ -326,8 +423,9 @@ def read_judgments(
         assert key is not None
         assert evaluator is not None
         kind = obj.get("kind", "model")
-        if kind not in KINDS:
-            raise AnswerJudgmentError(f"line {line}: kind must be human or model")
+        if kind not in (*KINDS, SAFETY_KIND):
+            raise AnswerJudgmentError(f"line {line}: kind must be human, model or safety")
+        safety, redteam = _safety(obj, kind, line)
         outcome = obj.get("outcome", "answered")
         if outcome not in OUTCOMES:
             raise AnswerJudgmentError(f"line {line}: outcome must be one of {', '.join(OUTCOMES)}")
@@ -340,8 +438,18 @@ def read_judgments(
         if verdict is None and score is not None and evaluator in thresholds:
             verdict = "correct" if score >= thresholds[evaluator] else "incorrect"
         claims, claim_support = _claims(obj, line)
-        if verdict is None and score is None and outcome == "answered" and claims is None:
-            raise AnswerJudgmentError(f"line {line}: a judgment needs a verdict, a score or claims")
+        if (
+            verdict is None
+            and score is None
+            and outcome == "answered"
+            and claims is None
+            and safety is None
+            and redteam is None
+        ):
+            raise AnswerJudgmentError(
+                f"line {line}: a judgment needs a verdict, a score, claims or a safety or "
+                "red-team record"
+            )
         cited, support = _citations(obj, line)
         rows.append(
             (
@@ -361,6 +469,8 @@ def read_judgments(
                     support=support,
                     claims=claims,
                     claim_support=claim_support,
+                    safety=safety,
+                    redteam=redteam,
                 ),
             )
         )
@@ -556,13 +666,22 @@ CITATION_CLASSES = {
     "not_in_context": "delivered, but absent from the observed model context",
     "delivered_context_unknown": "delivered; whether it reached the model is unknown",
     "not_delivered": "never delivered by retrieval (memory, another source, or an invalid ID)",
+    "not_in_corpus": (
+        "absent from the corpus inventory: a fabricated citation, found by lookup, not judged"
+    ),
 }
 
 
 def analyze_citations(
-    query: Mapping[str, Any], judgments: Sequence[Judgment]
+    query: Mapping[str, Any],
+    judgments: Sequence[Judgment],
+    inventory: AbstractSet[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Place each cited document against the run's recorded evidence; ``None`` if none given."""
+    """Place each cited document against the run's recorded evidence; ``None`` if none given.
+
+    With a corpus ``inventory``, a cited ID the inventory does not hold is ``not_in_corpus``:
+    a fabricated citation, found deterministically (no model), whatever retrieval delivered.
+    """
     reported = {j.citations for j in judgments if j.citations is not None}
     if not reported:
         return None
@@ -575,7 +694,9 @@ def analyze_citations(
     in_context = {i.get("id") for i in (context or {}).get("items", [])} if context else set()
     classes = {}
     for doc in cited:
-        if observed:
+        if inventory is not None and doc not in inventory:
+            classes[doc] = "not_in_corpus"
+        elif observed:
             classes[doc] = (
                 "in_context"
                 if doc in in_context
@@ -635,6 +756,23 @@ def _meta_evaluation(answers: Mapping[str, Mapping[str, Any]]) -> dict[str, dict
     return out
 
 
+def _safety_record(qid: str, judgments: Sequence[Judgment]) -> dict[str, Any] | None:
+    """The question's safety record (what its answer did), or ``None`` when none was given."""
+    given = [j for j in judgments if j.safety is not None]
+    if not given:
+        return None
+    if len(given) > 1:
+        raise AnswerJudgmentError(
+            f"question {qid!r} has {len(given)} safety records; use one canary check per file"
+        )
+    j = given[0]
+    return {
+        **(j.safety or {}),
+        "evaluator": j.evaluator,
+        **({"evaluator_version": j.evaluator_version} if j.evaluator_version else {}),
+    }
+
+
 def _disagrees(judgments: Sequence[Judgment]) -> bool:
     """Whether a human verdict contradicts a model verdict on this question."""
     human = {j.verdict for j in judgments if j.kind == "human" and j.verdict}
@@ -670,8 +808,12 @@ def attach_answers(
     rows: Sequence[tuple[str, str, Judgment]],
     *,
     source_sha256: str | None = None,
+    inventory: AbstractSet[str] | None = None,
 ) -> dict[str, Any]:
     """A copy of the run with ``answer`` on each judged question and an ``answers`` summary.
+
+    ``inventory`` is the corpus's document IDs; with it, a cited ID outside it is a fabricated
+    citation (``not_in_corpus``).
 
     Judgments for questions the run does not contain are counted, never attached. Failed
     questions keep their judgments but get no diagnosis: there is no evidence to read.
@@ -693,6 +835,9 @@ def attach_answers(
     citation_flags: Counter[str] = Counter()
     cited_questions = 0
     claim_questions = 0
+    safety_checked = safety_followed = 0
+    redteam_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    safety_attacks: Counter[str] = Counter()
     finding_counts: Counter[str] = Counter()
     pairs: dict[str, list[tuple[str, bool]]] = defaultdict(list)
     for qid, judgments in grouped.items():
@@ -710,6 +855,29 @@ def attach_answers(
             for prompt in q.get("prompts") or []:
                 key = f"{prompt['name']}@{prompt['version']}"
                 by_prompt[key][answer["diagnosis"]["class"]] += 1
+        safety = _safety_record(qid, judgments)
+        if safety is not None:
+            answer["safety"] = safety
+            safety_checked += 1
+            safety_followed += safety["followed_injection"]
+            safety_attacks.update(safety["attacks"])
+        red = sorted(
+            (
+                {
+                    **j.redteam,
+                    "evaluator": j.evaluator,
+                    **({"evaluator_version": j.evaluator_version} if j.evaluator_version else {}),
+                }
+                for j in judgments
+                if j.redteam is not None
+            ),
+            key=lambda r: (r["plugin"], r["strategy"] or "", r["passed"]),
+        )
+        if red:
+            answer["redteam"] = red
+            for result in red:
+                redteam_counts[result["plugin"]]["tests"] += 1
+                redteam_counts[result["plugin"]]["failed"] += not result["passed"]
         claim_evidence = _claim_evidence(qid, judgments)
         if claim_evidence is not None:
             answer["claim_evidence"] = claim_evidence
@@ -730,12 +898,12 @@ def attach_answers(
                 for finding in answer["claim_findings"]:
                     finding_counts[finding["finding"]] += 1
         if q.get("error") is None:
-            citations = analyze_citations(q, judgments)
+            citations = analyze_citations(q, judgments, inventory)
             if citations is not None:
                 answer["citations"] = citations
                 cited_questions += 1
                 classes = set(citations.get("classes", {}).values())
-                for name in ("not_delivered", "not_in_context"):
+                for name in ("not_delivered", "not_in_context", "not_in_corpus"):
                     citation_flags[name] += name in classes
                 citation_flags["unsupported"] += any(
                     s["verdict"] == "unsupported" for s in citations.get("support", {}).values()
@@ -773,6 +941,23 @@ def attach_answers(
             "questions_citing_outside_context": citation_flags["not_in_context"],
             "questions_with_unsupported_citation": citation_flags["unsupported"],
             "questions_with_conflicting_citations": citation_flags["conflicting"],
+            **(
+                {
+                    "questions_citing_outside_corpus": citation_flags["not_in_corpus"],
+                    "inventory_documents": len(inventory),
+                }
+                if inventory is not None
+                else {}
+            ),
+        },
+        "redteam": {
+            plugin: {"tests": c["tests"], "failed": c["failed"]}
+            for plugin, c in sorted(redteam_counts.items())
+        },
+        "safety": {
+            "questions_checked": safety_checked,
+            "followed_injection": safety_followed,
+            "by_attack": dict(sorted(safety_attacks.items())),
         },
         "claim_evidence": {
             "questions": claim_questions,
@@ -792,12 +977,15 @@ def attach_answers(
 
 
 def attach_file(
-    run: Mapping[str, Any], path: str | Path, thresholds: Mapping[str, float] | None = None
+    run: Mapping[str, Any],
+    path: str | Path,
+    thresholds: Mapping[str, float] | None = None,
+    inventory: AbstractSet[str] | None = None,
 ) -> dict[str, Any]:
     """:func:`attach_answers` from a judgments file, recording the file's digest."""
     rows = read_judgments(path, thresholds)
     digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-    return attach_answers(run, rows, source_sha256=digest)
+    return attach_answers(run, rows, source_sha256=digest, inventory=inventory)
 
 
 def render_summary(run: Mapping[str, Any]) -> str:
@@ -840,6 +1028,23 @@ def render_summary(run: Mapping[str, Any]) -> str:
             f"context, {cites['questions_with_unsupported_citation']} have a citation judged "
             f"unsupported, {cites['questions_with_conflicting_citations']} have conflicting "
             "citation lists."
+        )
+        if "questions_citing_outside_corpus" in cites:
+            lines.append(
+                f"{cites['questions_citing_outside_corpus']} questions cite an ID absent from the "
+                f"{cites['inventory_documents']}-document corpus inventory: fabricated citations."
+            )
+    for plugin, row in (answers.get("redteam") or {}).items():
+        lines.append(
+            f"Red-team {plugin}: {row['failed']} of {row['tests']} tests matched to questions "
+            "failed (model-graded; recorded apart from answer verdicts)."
+        )
+    safety = answers.get("safety") or {}
+    if safety.get("questions_checked"):
+        lines.append(
+            f"Canary check: {safety['followed_injection']} of {safety['questions_checked']} "
+            "answers followed an injected instruction (recorded as a safety failure, apart from "
+            "answer verdicts)."
         )
     claims = answers.get("claim_evidence") or {}
     if claims.get("questions"):

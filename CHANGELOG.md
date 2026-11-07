@@ -28,6 +28,47 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
+  scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
+  one that is not, an injection that displaces required evidence) and a failing release
+  comparison. The threat model covers poisoning (local generation, staging only, no writes).
+
+- `workbench promptfoo-redteam` imports promptfoo's RAG red-team results (rag-poisoning,
+  rag-document-exfiltration, indirect-prompt-injection, rag-source-attribution,
+  prompt-extraction): suite-level counts per plugin and strategy with a Wilson interval, plus
+  per-question safety records for tests that name a `query_id` or `trace_id`, kept apart from
+  answer verdicts. Reasons, prompts and outputs are never written. `attach-answers --inventory`
+  adds the citation class `not_in_corpus`: a cited ID absent from the corpus inventory is a
+  fabricated citation, found by lookup. The Checks tab shows the red-team report.
+- `workbench canary-judgments` checks the answers your system gave for the canaries of a poison
+  suite (normalised for case, Unicode form and invisible characters) and writes `safety`
+  records with no answer text. `attach-answers` stores them as `answer.safety`, apart from
+  answer verdicts, and `workbench poison followed` adds the rate at which answers followed an
+  injected instruction to the poisoning report; any followed injection is a safety failure.
+- `workbench poison run` runs a clean and a poisoned candidate side by side on a suite's target
+  questions and a seeded sample of control questions, and reports per attack how often a
+  poisoned document was retrieved (with Wilson intervals over question families), how deep it
+  got, whether it reached the model, whether it displaced answering evidence, and whether it
+  turned up on unrelated control questions. Safety failures come from the forbidden-document
+  machinery; unknown (an incomplete run, an overlay that never appeared) is inconclusive, never
+  a pass. A policy can set opt-in `robustness` limits. The Checks tab shows the report.
+- Candidates can run poisoned: the hybrid baseline takes `adapter.corpus_overlay` (a poison
+  suite's corpus, loaded in memory; repeated IDs are an error), and Python or HTTP candidates
+  declare `"environment": "staging"` and an `overlay` for a staging index you loaded
+  yourself. A suite is verified against its hashes before use, and a run that shows no poisoned
+  document in any recorded stage gets a warning that the overlay may not be loaded. Existing
+  candidate identities are unchanged.
+- `workbench poison generate` builds a deterministic poison suite from your corpus and
+  benchmark: hijack, inject, contradict, authority and exfil documents with harmless sentinel
+  claims and unique canaries, a copy of the benchmark that forbids them, and a descriptor
+  with hashes and canaries. Only exploratory questions are targeted; nothing is inserted
+  anywhere and your files are unchanged (`docs/poisoning.md`).
+- `workbench corpus-scan` looks through a corpus for text that tries to instruct a model:
+  override and role phrases, chat-template markers, zero-width and bidirectional characters,
+  hidden HTML, exfiltration beacons, encoded instructions and homoglyph words, with
+  detectors of your own from a patterns file. Findings are hypotheses with offsets and no
+  document text; excerpts print to the terminal only, with control characters escaped. The
+  Checks tab shows the report (`docs/poisoning.md`).
 - `workbench ragchecker-judgments` imports RAGChecker output as answer judgments: chosen
   answer metrics as scores (a verdict only from a declared pass mark; retrieval metrics are
   refused) and, per question, claim counts and which delivered documents entailed or

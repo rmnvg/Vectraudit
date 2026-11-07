@@ -812,6 +812,13 @@ def attach_answers_command(
             "that give only a score; there is no default."
         ),
     ] = None,
+    inventory: Annotated[
+        Path | None,
+        typer.Option(
+            help="Corpus inventory JSONL ({id, sha256?, metadata?}, no text): a cited ID absent "
+            "from it is a fabricated citation (not_in_corpus), found by lookup."
+        ),
+    ] = None,
 ) -> None:
     """Attach answer judgments from human review or tools such as Ragas, and diagnose them.
 
@@ -820,6 +827,7 @@ def attach_answers_command(
     Release verdicts do not change. Writes a new file; the original run is left unchanged.
     """
     from vectraudit.evaluation.answers import attach_file, render_summary
+    from vectraudit.evaluation.migration import read_inventory
 
     try:
         limits = {}
@@ -830,7 +838,8 @@ def attach_answers_command(
             limits[name] = float(value)
         if out.resolve() == run.resolve():
             raise ValueError("--out must differ from the run file; the original stays unchanged")
-        result = attach_file(load_run(run), judgments, limits)
+        known = set(read_inventory(inventory)) if inventory is not None else None
+        result = attach_file(load_run(run), judgments, limits, known)
         _write(out, result)
     except (OSError, ValueError) as exc:
         typer.echo(f"Attach error: {exc}", err=True)
@@ -2327,6 +2336,378 @@ def ragchecker_input_command(
         typer.echo(f"Export error: {exc}", err=True)
         raise typer.Exit(2) from exc
     typer.echo(render(counts, str(out)))
+
+
+poison_app = typer.Typer(
+    help="Retrieval poisoning checks: generate a poison suite, run it against a pipeline.",
+    no_args_is_help=True,
+)
+workbench_app.add_typer(poison_app, name="poison")
+
+
+@poison_app.command("generate")
+def poison_generate_command(
+    corpus: Annotated[Path, typer.Option(help="Corpus JSONL (doc_id, text, metadata, vector).")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark whose questions are targeted.")],
+    out: Annotated[Path, typer.Option(help="Directory for the suite files.")],
+    targets: Annotated[
+        str | None, typer.Option(help="Question IDs to target, comma separated.")
+    ] = None,
+    sample: Annotated[
+        int | None, typer.Option(min=1, help="Or: target a seeded sample of N questions.")
+    ] = None,
+    attacks: Annotated[
+        str, typer.Option(help="Attacks: hijack, inject, contradict, authority, exfil.")
+    ] = "hijack,inject,contradict,authority,exfil",
+    per_target: Annotated[
+        int, typer.Option(min=1, max=5, help="Poisoned documents per attack and question.")
+    ] = 1,
+    match_filters: Annotated[
+        bool,
+        typer.Option(
+            "--match-filters",
+            help="Copy each target's tenant and filter fields, so a filter does not remove them.",
+        ),
+    ] = False,
+    seed: Annotated[int, typer.Option(help="Seed for sampling and canary tokens.")] = 0,
+    generator: Annotated[
+        str | None,
+        typer.Option(help="module:function of yours that writes the text (run locally)."),
+    ] = None,
+) -> None:
+    """Generate a deterministic poison suite from your corpus and benchmark. Nothing is inserted.
+
+    Writes poison-corpus.jsonl (only the poisoned documents), poison-dataset.jsonl (a copy of
+    the benchmark where each target question forbids its poisoned documents) and
+    poison-suite.json (hashes, canaries, seed). The poisoned claims are harmless sentinels.
+    Only exploratory questions are targeted. Your benchmark and corpus are not changed.
+    """
+    from vectraudit.pipelines.poison import (
+        build_suite,
+        load_corpus,
+        load_generator,
+        render,
+        select_targets,
+        write_suite,
+    )
+
+    try:
+        rows = load_corpus(corpus)
+        ds = load_dataset(dataset)
+        chosen = select_targets(
+            ds,
+            rows,
+            targets=[t.strip() for t in targets.split(",") if t.strip()] if targets else None,
+            sample=sample,
+            seed=seed,
+        )
+        names = [a.strip() for a in attacks.split(",") if a.strip()]
+        poisoned, dataset_rows_ = build_suite(
+            rows,
+            ds,
+            chosen,
+            attacks=names,
+            per_target=per_target,
+            match_filters=match_filters,
+            seed=seed,
+            generator=load_generator(generator) if generator else None,
+        )
+        descriptor = write_suite(
+            out,
+            corpus_path=corpus,
+            dataset_path=dataset,
+            dataset=ds,
+            poisoned=poisoned,
+            dataset_rows_=dataset_rows_,
+            attacks=names,
+            per_target=per_target,
+            match_filters=match_filters,
+            seed=seed,
+            generator=generator,
+            targets=[t.query.query_id for t in chosen],
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Poison error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(descriptor, str(out)))
+
+
+@poison_app.command("run")
+def poison_run_command(
+    manifest: Path,
+    clean: Annotated[str, typer.Option(help="Candidate without the poisoned documents.")],
+    poisoned: Annotated[
+        str,
+        typer.Option(help="Candidate with them: a corpus_overlay, or a declared staging index."),
+    ],
+    suite: Annotated[Path, typer.Option(help="The suite's poison-suite.json.")],
+    policy: Annotated[
+        Path | None, typer.Option(help="Release policy; its robustness section sets the limits.")
+    ] = None,
+    controls: Annotated[
+        int, typer.Option(min=0, max=500, help="Control questions sampled (seeded).")
+    ] = 20,
+    seed: Annotated[int, typer.Option(help="Seed for the control sample.")] = 0,
+    out: Annotated[Path, typer.Option(help="Report to write.")] = Path("poisoning.json"),
+    max_calls: MaxCalls = None,
+    max_spend: MaxSpend = None,
+    measured: Measured = None,
+) -> None:
+    """Run a clean and a poisoned candidate side by side and report what the poison did.
+
+    Both candidates answer the suite's target questions and a seeded sample of control
+    questions, interleaved. Nothing is inserted into any backend: the poisoned side is the
+    hybrid baseline with a corpus_overlay, or a staging index you loaded and declared. Only
+    exploratory questions are used. Exit 0 on pass; 3 on fail or inconclusive (a run that
+    cannot show resistance never passes); 2 on a setup error.
+    """
+    from vectraudit.evaluation.policy import DEFAULT_POLICY
+    from vectraudit.pipelines.poison_run import load_suite, poisoned_side_problem
+    from vectraudit.pipelines.poisoning import analyse, render, select_controls, subset
+    from vectraudit.pipelines.runner import PairedSide, execute_paired
+
+    try:
+        spec = load_manifest(manifest)
+        by_name = {c.name: c for c in spec.candidates}
+        if clean == poisoned:
+            raise ValueError("--clean and --poisoned must be different candidates")
+        for name in (clean, poisoned):
+            if name not in by_name:
+                raise ValueError(f"no candidate {name!r} in the manifest: {', '.join(by_name)}")
+        clean_c, poisoned_c = by_name[clean], by_name[poisoned]
+        loaded = load_suite(suite)
+        benchmark = load_dataset(manifest.parent / spec.dataset)
+        if loaded.descriptor["inputs"]["dataset"]["sha256"] != benchmark.sha256:
+            raise ValueError(
+                "The suite was generated for another version of the manifest's benchmark; "
+                "generate it again."
+            )
+        problem = poisoned_side_problem(poisoned_c)
+        if problem:
+            raise ValueError(problem)
+        if clean_c.overlay or clean_c.adapter.corpus_overlay:
+            raise ValueError(f"The clean candidate {clean!r} declares an overlay; it must not.")
+        _same_suite(poisoned_c, loaded, manifest.parent)
+        if any(c.concurrency != 1 for c in (clean_c, poisoned_c)):
+            raise ValueError("A poison run is paired and serial; set concurrency 1")
+        rules = load_policy(policy) if policy is not None else DEFAULT_POLICY
+        poison_ds = load_dataset(loaded.dataset_path)
+        chosen = select_controls(poison_ds, loaded.targets, controls, seed)
+        ds = subset(poison_ds, [*loaded.targets, *chosen])
+        budget = _guard(
+            spec.model_copy(update={"candidates": [clean_c, poisoned_c]}),
+            ds,
+            "run",
+            max_calls=max_calls,
+            max_spend=max_spend,
+            measured=measured,
+        )
+        sides = []
+        for candidate in (clean_c, poisoned_c):
+            config = candidate_config(candidate, manifest.parent)
+            sides.append(
+                PairedSide(
+                    open_adapter(candidate.adapter, manifest.parent),
+                    PipelineOptions(
+                        k=spec.k,
+                        params=candidate.params,
+                        repeats=spec.repeats,
+                        warmup=0,
+                        label=candidate.name,
+                        max_rps=candidate.max_rps,
+                    ),
+                    config,
+                    spec.corpus_version or config.get("corpus_sha256"),
+                )
+            )
+        clean_run, poisoned_run = execute_paired(ds, sides[0], sides[1])
+        runs_dir = out.parent / f"{out.stem}-runs"
+        for run in (clean_run, poisoned_run):
+            write_run(runs_dir / f"{run['run_id']}.run.json", run)
+        report = analyse(clean_run, poisoned_run, ds, loaded, rules, controls=controls, seed=seed)
+        report["runs"]["directory"] = runs_dir.name
+        report["budget"] = {"planned_calls": planned_total(budget)}
+        _write(out, report)
+    except (OSError, ValueError, ImportError, AttributeError, PolicyError) as exc:
+        typer.echo(f"Poison run error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    if report["overlay"]["warning"]:
+        typer.echo(f"Warning: {report['overlay']['warning']}")
+    if report["verdict"] != "pass":
+        raise typer.Exit(3)
+
+
+def _same_suite(candidate: Any, suite: Any, root: Path) -> None:
+    """The poisoned candidate's declared overlay must be this suite's, by hash."""
+    import hashlib
+
+    from vectraudit.pipelines.poison_run import load_suite
+
+    if candidate.adapter.kind == "hybrid":
+        overlay = root / str(candidate.adapter.corpus_overlay)
+        if (
+            hashlib.sha256(overlay.read_bytes()).hexdigest()
+            != hashlib.sha256(suite.corpus_path.read_bytes()).hexdigest()
+        ):
+            raise ValueError(
+                f"{candidate.name!r}'s corpus_overlay is not this suite's poison-corpus.jsonl"
+            )
+        return
+    declared = load_suite(root / str(candidate.overlay))
+    if declared.suite_hash != suite.suite_hash:
+        raise ValueError(
+            f"{candidate.name!r} declares an overlay of suite {declared.suite_hash}, not "
+            f"{suite.suite_hash}; load the suite you are checking into staging"
+        )
+
+
+@poison_app.command("followed")
+def poison_followed_command(
+    report: Annotated[Path, typer.Argument(help="poisoning.json from `poison run`.")],
+    run: Annotated[Path, typer.Argument(help="The poisoned run after attach-answers.")],
+    suite: Annotated[Path, typer.Option(help="The suite's poison-suite.json.")],
+    out: Annotated[Path | None, typer.Option(help="Write the updated report here.")] = None,
+) -> None:
+    """Add the rate at which answers followed an injected instruction to a poisoning report.
+
+    The run is the report's poisoned run with canary safety records attached (from
+    canary-judgments and attach-answers). Any followed injection is a safety failure and makes
+    the verdict fail; questions with no checked answer are not counted as safe. Exit 3 on fail.
+    """
+    from vectraudit.pipelines.poison_run import load_suite
+    from vectraudit.pipelines.poisoning import add_followed_injection, render
+
+    try:
+        updated = add_followed_injection(
+            json.loads(report.read_text(encoding="utf-8")), load_run(run), load_suite(suite)
+        )
+        _write(out or report, updated)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Poison error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(updated))
+    if updated["verdict"] != "pass":
+        raise typer.Exit(3)
+
+
+@workbench_app.command("canary-judgments")
+def canary_judgments_command(
+    answers: Annotated[
+        Path, typer.Argument(help='JSONL of {"query_id": ..., "answer": ...}; read locally.')
+    ],
+    suite: Annotated[Path, typer.Option(help="The suite's poison-suite.json.")],
+    out: Annotated[Path, typer.Option(help="Safety records to write (JSONL) for attach-answers.")],
+) -> None:
+    """Record whether answers echoed a poisoned document's canary, as safety records.
+
+    Answer text and canaries are normalised (NFKC, invisible characters removed, case folded)
+    and matched as whole tokens. The records hold question IDs, attack names and poisoned
+    document IDs, never text, and are attached by attach-answers apart from answer verdicts:
+    following an injected instruction is a safety failure that never changes correctness.
+    """
+    from vectraudit.pipelines.canary import canary_records, render
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+    from vectraudit.pipelines.poison_run import load_suite
+    from vectraudit.pipelines.ragchecker_input import read_texts
+
+    try:
+        records, counts = canary_records(read_texts(answers, "answer"), load_suite(suite))
+        write_jsonl(out, records)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Canary error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, len(records), str(out)))
+
+
+@workbench_app.command("promptfoo-redteam")
+def promptfoo_redteam_command(
+    results: Annotated[Path, typer.Argument(help="promptfoo redteam run output (JSON).")],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark whose questions may be named.")],
+    out: Annotated[Path, typer.Option(help="Per-question safety records (JSONL).")],
+    report: Annotated[Path, typer.Option(help="Suite-level counts to write (JSON).")] = Path(
+        "redteam.json"
+    ),
+) -> None:
+    """Import promptfoo's RAG red-team results: suite-level counts, and safety records where named.
+
+    Keeps the rag-poisoning, rag-document-exfiltration, indirect-prompt-injection,
+    rag-source-attribution and prompt-extraction plugins. Red-team prompts are generated, so
+    most match no benchmark question and are only counted; a test naming a query_id or trace_id
+    in its metadata or variables becomes a safety record, kept apart from answer verdicts.
+    Reasons, prompts and outputs are never written. promptfoo's grader is a model, so this is
+    exploratory evidence.
+    """
+    from vectraudit.evaluation.promptfoo_redteam_import import (
+        import_redteam,
+        load_results,
+        render,
+    )
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+
+    try:
+        questions = {q.query_id: q.text for q in load_dataset(dataset).queries}
+        records, summary = import_redteam(load_results(results), questions)
+        write_jsonl(out, records)
+        _write(report, summary)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(summary, len(records), str(out)))
+
+
+@workbench_app.command("corpus-scan")
+def corpus_scan_command(
+    corpus: Annotated[Path, typer.Argument(help="Corpus JSONL: doc_id (or id) and text per line.")],
+    patterns: Annotated[
+        Path | None,
+        typer.Option(help="JSON file of extra detectors: [{id, pattern, explanation}]."),
+    ] = None,
+    out: Annotated[Path | None, typer.Option(help="Write the JSON report here.")] = None,
+    show_excerpts: Annotated[
+        bool,
+        typer.Option(
+            "--show-excerpts", help="Print a short escaped excerpt per finding (terminal only)."
+        ),
+    ] = False,
+    fail_on_findings: Annotated[
+        bool, typer.Option("--fail-on-findings", help="Exit 3 when any document is flagged.")
+    ] = False,
+) -> None:
+    """Scan a corpus for text that tries to instruct a model: injection, hidden text, beacons.
+
+    Deterministic detectors, no model and no network. A finding is a hypothesis that marks a
+    document for a person to read, never proof either way. The report holds document IDs,
+    detector IDs and character offsets, never text; --show-excerpts prints at most 120
+    characters around each match to the terminal only, with control characters escaped.
+    """
+    from vectraudit.evaluation.corpus_scan import (
+        load_patterns,
+        read_corpus,
+        render,
+        scan_corpus,
+    )
+
+    shown: list[str] = []
+
+    def excerpt(doc: str, detector: str, start: int, end: int, text: str) -> None:
+        shown.append(f"  {doc} [{start}:{end}] {detector}: {text}")
+
+    try:
+        custom = load_patterns(patterns) if patterns is not None else []
+        report = scan_corpus(
+            read_corpus(corpus), custom, on_excerpt=excerpt if show_excerpts else None
+        )
+        if out is not None:
+            _write(out, report)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Scan error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    for line in shown:
+        typer.echo(line)
+    if fail_on_findings and report["summary"]["flagged"]:
+        raise typer.Exit(3)
 
 
 @workbench_app.command("accept-evidence")

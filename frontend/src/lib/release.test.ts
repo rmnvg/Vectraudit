@@ -48,6 +48,12 @@ describe('release policy form', () => {
     expect(policyFromForm(holm).policy?.cohorts).toEqual({ ...cohorts, control: 'holm' })
     expect(formFromPolicy({ cohorts: { ...cohorts, control: 'sidak' } }).cohortControl).toBe('none')
   })
+  it('keeps the poisoning robustness limits through editing', () => {
+    const robustness = { max_retrieved_rate: { hijack: 0, inject: 0.1 }, max_displacement_rate: 0.05 }
+    const raw = { metrics: { ndcg: { max_drop: 0.02 } }, robustness }
+    expect(policyFromForm(formFromPolicy(raw)).policy?.robustness).toEqual(robustness)
+    expect(policyFromForm(formFromPolicy({ metrics: raw.metrics })).policy).not.toHaveProperty('robustness')
+  })
   it('chooses one way to judge allowed drops', () => {
     expect(formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } } }).dropTest).toBe('measured')
     const form = formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } }, non_inferiority: true })
