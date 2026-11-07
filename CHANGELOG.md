@@ -28,6 +28,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench corpus-scan` looks through a corpus for text that tries to instruct a model:
+  override and role phrases, chat-template markers, zero-width and bidirectional characters,
+  hidden HTML, exfiltration beacons, encoded instructions and homoglyph words, with
+  detectors of your own from a patterns file. Findings are hypotheses with offsets and no
+  document text; excerpts print to the terminal only, with control characters escaped. The
+  Checks tab shows the report (`docs/poisoning.md`).
 - `workbench ragchecker-judgments` imports RAGChecker output as answer judgments: chosen
   answer metrics as scores (a verdict only from a declared pass mark; retrieval metrics are
   refused) and, per question, claim counts and which delivered documents entailed or

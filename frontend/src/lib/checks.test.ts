@@ -8,6 +8,7 @@ import cache from './fixtures/cache.json'
 import migration from './fixtures/migration.json'
 import intake from './fixtures/intake.json'
 import fusionReplay from './fixtures/fusion_replay.json'
+import corpusScan from './fixtures/corpus_scan.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -79,4 +80,22 @@ it('does not read a replay with no comparable question as an improvement', () =>
   const s = summary({ ...fusionReplay, best: null, configurations: [] })
   expect(s.verdict).toBe('pass')
   expect(s.headline).toContain('none could be compared')
+})
+
+it('lists the documents a corpus scan flags as hypotheses to read, with what each detector means', () => {
+  const s = summary(corpusScan)
+  expect(s.title).toBe('Corpus injection scan')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toContain('5 documents scanned; 4 flagged')
+  expect(s.headline).toContain('hypotheses for a person to read')
+  expect(s.items.some(i => i.startsWith('1 document: instruction override.'))).toBe(true)
+  expect(s.items[s.items.length - 1]).toMatch(/^Read page-/)
+  expect(s.items.some(i => i.includes('Read page-chat_template_token (row 3, high severity'))).toBe(true)
+})
+
+it('does not read a clean scan as proof the corpus is safe', () => {
+  const clean = { ...corpusScan, summary: { ...corpusScan.summary, flagged: 0, findings: 0, documents_by_detector: {}, by_detector: {} }, review: [], documents: [] }
+  const s = summary(clean)
+  expect(s.verdict).toBe('pass')
+  expect(s.notes.some(n => n.includes('does not show the corpus is safe'))).toBe(true)
 })

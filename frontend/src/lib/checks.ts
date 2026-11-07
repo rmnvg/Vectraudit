@@ -9,6 +9,7 @@ export const CHECK_FORMATS = [
   'vectraudit.migration_report',
   'vectraudit.intake',
   'vectraudit.fusion_replay',
+  'vectraudit.corpus_scan',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -38,6 +39,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.migration_report': return arrays('concerns', 'environment') && typeof value.migration_ready === 'boolean'
     case 'vectraudit.intake': return arrays('likely_recurrences') && object(value.queue)
     case 'vectraudit.fusion_replay': return arrays('configurations', 'questions') && object(value.summary) && typeof value.metric === 'string'
+    case 'vectraudit.corpus_scan': return arrays('detectors', 'review', 'documents') && object(value.summary)
   }
 }
 
@@ -174,6 +176,26 @@ function fusionReplay(r: Row): CheckSummary {
   }
 }
 
+function corpusScan(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const flagged = count(summary.flagged)
+  const explain = Object.fromEntries(rows(r.detectors).map(d => [text(d.id), text(d.explanation)]))
+  const byDetector = Object.entries(object(summary.documents_by_detector) ? summary.documents_by_detector : {}).sort((a, b) => count(b[1]) - count(a[1]))
+  return {
+    title: 'Corpus injection scan',
+    verdict: flagged ? 'attention' : 'pass',
+    headline: `${plural(count(summary.documents), 'document')} scanned; ${flagged} flagged. Findings are hypotheses for a person to read, not proof either way.`,
+    items: [
+      ...byDetector.map(([name, n]) => `${plural(count(n), 'document')}: ${words(name)}. ${explain[name] ?? ''}`.trim()),
+      ...rows(r.review).slice(0, LIMIT).map(d => `Read ${text(d.doc_id)} (row ${text(d.row)}, ${text(d.severity)} severity, ${plural(count(d.findings), 'finding')})`),
+    ],
+    notes: [
+      text(r.note),
+      flagged ? '' : 'No findings does not show the corpus is safe: the scan only finds known traces of injected text.',
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -185,5 +207,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.migration_report': return migration(report)
     case 'vectraudit.intake': return intake(report)
     case 'vectraudit.fusion_replay': return fusionReplay(report)
+    case 'vectraudit.corpus_scan': return corpusScan(report)
   }
 }

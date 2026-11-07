@@ -2329,6 +2329,60 @@ def ragchecker_input_command(
     typer.echo(render(counts, str(out)))
 
 
+@workbench_app.command("corpus-scan")
+def corpus_scan_command(
+    corpus: Annotated[Path, typer.Argument(help="Corpus JSONL: doc_id (or id) and text per line.")],
+    patterns: Annotated[
+        Path | None,
+        typer.Option(help="JSON file of extra detectors: [{id, pattern, explanation}]."),
+    ] = None,
+    out: Annotated[Path | None, typer.Option(help="Write the JSON report here.")] = None,
+    show_excerpts: Annotated[
+        bool,
+        typer.Option(
+            "--show-excerpts", help="Print a short escaped excerpt per finding (terminal only)."
+        ),
+    ] = False,
+    fail_on_findings: Annotated[
+        bool, typer.Option("--fail-on-findings", help="Exit 3 when any document is flagged.")
+    ] = False,
+) -> None:
+    """Scan a corpus for text that tries to instruct a model: injection, hidden text, beacons.
+
+    Deterministic detectors, no model and no network. A finding is a hypothesis that marks a
+    document for a person to read, never proof either way. The report holds document IDs,
+    detector IDs and character offsets, never text; --show-excerpts prints at most 120
+    characters around each match to the terminal only, with control characters escaped.
+    """
+    from vectraudit.evaluation.corpus_scan import (
+        load_patterns,
+        read_corpus,
+        render,
+        scan_corpus,
+    )
+
+    shown: list[str] = []
+
+    def excerpt(doc: str, detector: str, start: int, end: int, text: str) -> None:
+        shown.append(f"  {doc} [{start}:{end}] {detector}: {text}")
+
+    try:
+        custom = load_patterns(patterns) if patterns is not None else []
+        report = scan_corpus(
+            read_corpus(corpus), custom, on_excerpt=excerpt if show_excerpts else None
+        )
+        if out is not None:
+            _write(out, report)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Scan error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    for line in shown:
+        typer.echo(line)
+    if fail_on_findings and report["summary"]["flagged"]:
+        raise typer.Exit(3)
+
+
 @workbench_app.command("accept-evidence")
 def accept_evidence_command(
     dataset: Annotated[Path, typer.Argument(help="The benchmark the proposals were made for.")],

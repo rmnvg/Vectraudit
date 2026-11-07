@@ -84,8 +84,18 @@ def fusion_replay(tmp_path: Path) -> dict[str, Any]:
     return report
 
 
+def corpus_scan(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_corpus_scan import CLEAN, POISONED
+    from vectraudit.evaluation.corpus_scan import scan_corpus
+
+    keep = ("instruction_override", "chat_template_token", "html_comment", "exfiltration_beacon")
+    docs = [("billing-faq", CLEAN["plain"])]
+    docs += [(f"page-{name}", POISONED[name]) for name in keep]
+    return scan_corpus(docs)
+
+
 @pytest.mark.parametrize(
-    "build", [lineage, freshness, access, cache, migration, intake, fusion_replay]
+    "build", [lineage, freshness, access, cache, migration, intake, fusion_replay, corpus_scan]
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):
     current = build(tmp_path)
