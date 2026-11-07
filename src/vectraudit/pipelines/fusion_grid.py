@@ -10,6 +10,10 @@ and only the chosen one is validated once on held-out questions, as for any cand
 settings the recorded stage hits already favour. A replay is a hypothesis: the shortlist
 saves runs, it does not replace them, and the optimisation report records that a replay
 chose which points ran.
+
+Credit: the fusion methods are Cormack, Clarke and Buettcher's reciprocal rank fusion (SIGIR
+2009) and weighted score fusion as compared in ranx (Bassani). Our own implementation; see
+docs/credits.md.
 """
 
 from __future__ import annotations

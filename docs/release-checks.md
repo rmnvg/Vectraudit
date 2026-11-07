@@ -101,6 +101,8 @@ imported with `dataset import-vdbbench`) instead of the backend's own exact sear
 records the reference's source and hashes, and two runs measured against different references
 are not compared on ANN recall ([details](vectordbbench.md)).
 
+**Capacity.** `vectraudit capacity` measures throughput, latency percentiles, errors and sampled recall per concurrency level against a staging target, under a rate ceiling and with an explicit target confirmation; see [capacity](capacity.md). Its report is not a release verdict.
+
 **Cohorts by filter selectivity.** `"selectivity_buckets": [0.001, 0.01, 0.1]` tags each
 filtered question with the one bucket its filter's **pass rate** falls in, named by the
 bucket's upper bound (`pass_rate<1%`), judged like any cohort. The pass rate is the fraction

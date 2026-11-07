@@ -28,6 +28,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `docs/credits.md` credits every reimplemented method (ranx, RAGChecker, promptfoo,
+  VectorDBBench, embedding-atlas and the papers behind the statistics) and states that none of
+  them runs inside Vectraudit; module docstrings carry the same credit, and a test keeps the
+  page and the docstrings in step. The trust package states that these analyses add no
+  subprocessor or outbound call; the FAISS debugger and release-check docs describe the filtered
+  sweep, external references and the capacity curve. Browser smoke scripts cover the atlas, the
+  new Checks reports and the pass-rate card.
 - `vectraudit workbench atlas`: a 2D corpus atlas (`vectraudit.atlas`, a JSON sidecar and a
   binary points file) categorising documents (relevant, lost by where, hub, flagged) and
   questions (passed, failed, regressed) from run records. Held-out questions are hidden and never

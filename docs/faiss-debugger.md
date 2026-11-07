@@ -202,6 +202,28 @@ server log. `vectraudit cache info` shows usage per index. `vectraudit cache cle
 everything, or only entries unused for `--older-than-days`, or least recently used entries
 beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the disk cache.
 
+## Filtered search
+
+Metadata filters are applied inside the FAISS search (an `IDSelector`, so IVF, HNSW, flat,
+ID-map and refine indexes never return a disallowed id), and recall is measured against the
+exact neighbours **among the documents that pass**:
+
+```bash
+vectraudit sweep index.faiss --vectors x.npy --meta meta.jsonl \
+  --filter 'lang=de' --pass-rates 0.001,0.01,0.1
+```
+
+The Tuner has the same sweep as a pass-rate card. A pass rate is the fraction of documents that
+*pass*, not the fraction removed. See [Filtered search](filtered-search.md).
+
+## An external exact reference
+
+`vectraudit sweep ... --queries queries.npy --reference reference.json` uses published exact
+neighbours (for example from a VectorDBBench dataset imported with `dataset import-vdbbench`)
+as ground truth instead of computing it, and records where they came from. Sweeps measured
+against different ground truth are not compared on recall. See
+[VectorDBBench datasets](vectordbbench.md).
+
 ## How it compares
 
 - **[Feder](https://github.com/zilliztech/feder)** (Zilliz) visualises FAISS IVF-Flat and

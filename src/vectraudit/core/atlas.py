@@ -26,6 +26,9 @@ The payload is binary (little-endian): ``x`` float32, ``y`` float32, ``category`
 to a 4-byte boundary, ``row`` uint32 (the point's row in the corpus or the dataset), each of
 length ``n``, plus a JSON sidecar with identifiers, titles, the legend and the counts. This
 module imports nothing web-related.
+
+Credit: the map is drawn in the browser by embedding-atlas (Apple, MIT); this module only builds
+its input. See docs/credits.md and the third-party notices.
 """
 
 from __future__ import annotations

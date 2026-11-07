@@ -8,6 +8,10 @@ results, and this measures what an index that filters *during* search does.
 
 ``pass_rate`` is the fraction of the corpus that **satisfies** the filter. Benchmarks that
 quote a "filter rate" usually mean the fraction removed; convert before comparing.
+
+Credit: the filter-rate framing of filtered search follows VectorDBBench (Zilliz); its filter
+rate is the fraction removed, Vectraudit's pass rate the fraction kept. Our own implementation.
+See docs/credits.md.
 """
 
 from __future__ import annotations

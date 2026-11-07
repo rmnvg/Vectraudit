@@ -16,6 +16,10 @@ asks whether any poisoned document appears in any recorded stage of any target q
 none does, the overlay may not have been loaded into what was run. That is a warning, not
 proof: a poisoned document that ranks nowhere looks the same, and an undisclosed stage
 cannot be seen.
+
+Credit: the attack classes follow promptfoo's RAG plugins and the indirect prompt injection
+literature (Greshake et al. 2023; Zou et al., PoisonedRAG, 2025). Our own implementation;
+promptfoo is never run. See docs/credits.md.
 """
 
 from __future__ import annotations

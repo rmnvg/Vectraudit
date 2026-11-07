@@ -132,6 +132,8 @@ vectraudit workbench phoenix-push current.judged.run.json --send   # or langfuse
 | `lineage`, `freshness` | Where was each required passage first lost between source and model context? Did a content change reach the index, results and context? | [Lineage](docs/lineage.md) |
 | `access`, `cache-probe` | Do permission changes hold in a later run? Does one context's question warm another's cached answer? | [Permission lifecycle](docs/permission-lifecycle.md) |
 | `migration` | Is a new system as good as the old one on the same benchmark, under the release policy? | [Migration report](docs/migration-report.md) |
+| `fusion-replay`, `optimize` fusion grid | Would a different way of combining keyword and vector rankings have helped, measured on your questions with paired significance tests? | [Rank fusion](docs/fusion.md) |
+| `ragchecker-input`, `ragchecker-judgments`, `attach-answers` | Which claims in an answer are unsupported by the context, and which retrieved documents does that point to? | [Claim-level evidence](docs/claim-evidence.md) |
 | `workbench atlas`, `workbench benchmark --corpus`, `dataset import-vdbbench`, `sweep --filter`, `sweep --pass-rates`, `capacity` | How does recall fall as a metadata filter keeps fewer documents? How do throughput, latency and errors change as concurrent load grows on a staging target? | [Corpus atlas](docs/corpus-atlas.md), [VectorDBBench datasets](docs/vectordbbench.md), [Filtered search](docs/filtered-search.md), [Capacity](docs/capacity.md) |
 | `corpus-scan`, `poison generate`, `poison run`, `canary-judgments`, `promptfoo-redteam` | Does the corpus hold text that tries to instruct a model? When poisoned documents are present, are they retrieved, do they reach the model, do they push out the right answer, and did the answer follow them? | [Poisoning checks](docs/poisoning.md) |
 
@@ -294,7 +296,10 @@ After adding or upgrading a frontend runtime dependency, run
 `src/vectraudit/THIRD_PARTY_NOTICES.txt`, which ships in the wheel (CI fails on drift).
 Browser tests run on Chromium, Firefox and WebKit: `npx playwright install chromium firefox
 webkit`, build the UI, then `npm run e2e` in `frontend/`. The workbench journeys run with
-`node scripts/workbench_smoke.mjs` and `node scripts/guided_smoke.mjs`.
+`node scripts/workbench_smoke.mjs` and `node scripts/guided_smoke.mjs`; the newer flows have
+`scripts/atlas_smoke.mjs` (the atlas, needs a GPU-capable Chrome), `scripts/checks_smoke.mjs` (the
+new check reports in the Checks tab) and `scripts/filtered_sweep_smoke.mjs` (the Tuner's pass-rate
+card).
 Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
@@ -302,3 +307,5 @@ Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
 Proprietary. Copyright (c) 2026 Ramanjot Singh. All rights reserved; use requires a written
 agreement. See [LICENSE](LICENSE). The demo corpus is "RAG Dataset 12000" by Neural Bridge AI
 (Apache-2.0), with passages from Falcon RefinedWeb (ODC-By 1.0).
+
+The methods Vectraudit reimplements, and where they come from, are credited in [docs/credits.md](docs/credits.md).
