@@ -45,6 +45,15 @@ export const CANVAS: Record<
   },
 }
 
+/**
+ * Atlas point colours by category id (index = ``Category`` in core/atlas.py): plain documents
+ * recede, findings stand out, and no category relies on hue alone against the surface.
+ */
+export const ATLAS_COLORS: Record<ThemeMode, string[]> = {
+  light: ['#b9b8ae', '#2a78d6', '#c0392b', '#eb6834', '#7b4bb7', '#d4147a', '#1baf7a', '#d62839', '#c78a00', '#2c7a7b', '#6f6e69'],
+  dark: ['#4a4a46', '#3987e5', '#e5645a', '#f08a52', '#a279e0', '#f060a8', '#2fc592', '#ff5a6a', '#e5a812', '#4fc3c4', '#a3a29b'],
+}
+
 export function hex(h: string, alpha = 255): RGBA {
   const n = parseInt(h.slice(1), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255, alpha]

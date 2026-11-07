@@ -48,6 +48,8 @@ FORMAT_VERSION = 1
 DEFAULT_MAX_POINTS = 50_000
 HARD_MAX_POINTS = 1_000_000
 TITLE_CHARS = 120
+POOL_SIZE = 25
+"""Documents listed per uncovered region: the ones nearest its centre, for a person to judge."""
 TITLES_MAX_POINTS = 200_000
 """Above this many points the sidecar omits titles, keeping it small enough to serve."""
 
@@ -352,14 +354,23 @@ def build_atlas(
         seed=seed,
     )
     uncovered = {c for f in cov["findings"] for c in f["clusters"]}
-    regions = [
-        {
+    regions = []
+    for r in cov["regions"]:
+        rows = r["member_rows"]
+        region = {
             **{k: v for k, v in r.items() if k != "member_rows"},
-            "centre": [float(v) for v in doc_xy[r["member_rows"]].mean(axis=0)],
+            "centre": [float(v) for v in doc_xy[rows].mean(axis=0)],
             "uncovered": r["cluster"] in uncovered,
         }
-        for r in cov["regions"]
-    ]
+        if region["uncovered"]:
+            # The most representative documents, to be judged by a person: never labels.
+            gap = ((x[rows] - x[rows].mean(axis=0)) ** 2).sum(axis=1)
+            nearest = rows[np.argsort(gap, kind="stable")[:POOL_SIZE]]
+            region["pool"] = [
+                {"id": str(doc_ids[i]), "title": _title(titles[i]) if titles[i] else None}
+                for i in nearest
+            ]
+        regions.append(region)
     atlas = Atlas(px, py, cat, row)
     payload = atlas.payload()
     counts = {

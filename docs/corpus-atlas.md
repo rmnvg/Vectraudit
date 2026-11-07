@@ -52,6 +52,20 @@ out, and the cap can be exceeded when there are more notable points than that (t
 so). Sampling is seeded (`--seed`). Going above 50,000 needs `--large-atlas` (up to
 1,000,000); above 200,000 points the sidecar omits titles to stay servable.
 
+## In the workbench
+
+`vectraudit workbench serve runs/` lists the sidecar under **Open local artifact**; opening it
+shows the **Atlas** tab (loaded on demand, so it adds nothing to the first load). The map
+renders offline with WebGL 2 and shows density, region labels, and a tooltip with the title, ID
+and category. Click a point, or use the rectangle or lasso tool, to list what is there:
+questions link to **Pipeline runs** when the run the atlas was built from is loaded, and
+documents point you to the **Guided workflow** to grade them. A group no question is close to
+is listed once, with a download of its most representative documents (`*-to-judge.jsonl`) for a
+person to read and judge. They are never labels and nothing is written to the benchmark.
+
+Points are verified against the sidecar's SHA-256 before drawing. The tab needs WebGL 2; in
+headless Chrome, pass `--enable-gpu`.
+
 ## Coverage regions
 
 `vectraudit workbench benchmark benchmark.jsonl --corpus corpus.jsonl` adds

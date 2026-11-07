@@ -183,6 +183,11 @@ def test_the_atlas_regions_agree_with_the_findings() -> None:
     assert (centres.min(axis=0) >= proj.min(axis=0) - 1.5).all()
     assert (centres.max(axis=0) <= proj.max(axis=0) + 1.5).all()
     assert "member_rows" not in flagged[0]
+    # An uncovered region lists its most representative documents, for a person to judge.
+    pool = [d["id"] for r in flagged for d in r["pool"]]
+    assert 0 < len(pool) <= A.POOL_SIZE * len(flagged)
+    assert all(i.startswith(f"{NO_QUESTIONS}-") for i in pool)
+    assert all("pool" not in r for r in atlas.sidecar["regions"] if not r["uncovered"])
     json.dumps(atlas.sidecar, allow_nan=False)
 
 
