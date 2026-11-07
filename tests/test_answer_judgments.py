@@ -232,7 +232,7 @@ def test_triage_reports_an_answer_that_became_wrong(tmp_path):
     ("line", "message"),
     [
         ({"evaluator": "x", "verdict": "correct"}, "exactly one of query_id or trace_id"),
-        ({"query_id": "q", "evaluator": "x"}, "needs a verdict, a score or claims"),
+        ({"query_id": "q", "evaluator": "x"}, "needs a verdict, a score, claims or a"),
         ({"query_id": "q", "evaluator": "x", "verdict": "great"}, "verdict must be"),
         ({"query_id": "q", "evaluator": "x", "kind": "robot", "verdict": "correct"}, "kind"),
         ({"query_id": "q", "evaluator": "x", "score": "high"}, "score must be"),

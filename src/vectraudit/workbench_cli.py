@@ -2553,6 +2553,64 @@ def _same_suite(candidate: Any, suite: Any, root: Path) -> None:
         )
 
 
+@poison_app.command("followed")
+def poison_followed_command(
+    report: Annotated[Path, typer.Argument(help="poisoning.json from `poison run`.")],
+    run: Annotated[Path, typer.Argument(help="The poisoned run after attach-answers.")],
+    suite: Annotated[Path, typer.Option(help="The suite's poison-suite.json.")],
+    out: Annotated[Path | None, typer.Option(help="Write the updated report here.")] = None,
+) -> None:
+    """Add the rate at which answers followed an injected instruction to a poisoning report.
+
+    The run is the report's poisoned run with canary safety records attached (from
+    canary-judgments and attach-answers). Any followed injection is a safety failure and makes
+    the verdict fail; questions with no checked answer are not counted as safe. Exit 3 on fail.
+    """
+    from vectraudit.pipelines.poison_run import load_suite
+    from vectraudit.pipelines.poisoning import add_followed_injection, render
+
+    try:
+        updated = add_followed_injection(
+            json.loads(report.read_text(encoding="utf-8")), load_run(run), load_suite(suite)
+        )
+        _write(out or report, updated)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Poison error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(updated))
+    if updated["verdict"] != "pass":
+        raise typer.Exit(3)
+
+
+@workbench_app.command("canary-judgments")
+def canary_judgments_command(
+    answers: Annotated[
+        Path, typer.Argument(help='JSONL of {"query_id": ..., "answer": ...}; read locally.')
+    ],
+    suite: Annotated[Path, typer.Option(help="The suite's poison-suite.json.")],
+    out: Annotated[Path, typer.Option(help="Safety records to write (JSONL) for attach-answers.")],
+) -> None:
+    """Record whether answers echoed a poisoned document's canary, as safety records.
+
+    Answer text and canaries are normalised (NFKC, invisible characters removed, case folded)
+    and matched as whole tokens. The records hold question IDs, attack names and poisoned
+    document IDs, never text, and are attached by attach-answers apart from answer verdicts:
+    following an injected instruction is a safety failure that never changes correctness.
+    """
+    from vectraudit.pipelines.canary import canary_records, render
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+    from vectraudit.pipelines.poison_run import load_suite
+    from vectraudit.pipelines.ragchecker_input import read_texts
+
+    try:
+        records, counts = canary_records(read_texts(answers, "answer"), load_suite(suite))
+        write_jsonl(out, records)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Canary error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(counts, len(records), str(out)))
+
+
 @workbench_app.command("corpus-scan")
 def corpus_scan_command(
     corpus: Annotated[Path, typer.Argument(help="Corpus JSONL: doc_id (or id) and text per line.")],

@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench canary-judgments` checks the answers your system gave for the canaries of a poison
+  suite (normalised for case, Unicode form and invisible characters) and writes `safety`
+  records with no answer text. `attach-answers` stores them as `answer.safety`, apart from
+  answer verdicts, and `workbench poison followed` adds the rate at which answers followed an
+  injected instruction to the poisoning report; any followed injection is a safety failure.
 - `workbench poison run` runs a clean and a poisoned candidate side by side on a suite's target
   questions and a seeded sample of control questions, and reports per attack how often a
   poisoned document was retrieved (with Wilson intervals over question families), how deep it

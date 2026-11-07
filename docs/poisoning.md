@@ -215,3 +215,37 @@ share of target families that may lose answering evidence. A policy without the 
 judged exactly as before (its hash is unchanged), the release comparison does not read it, and
 the workbench's policy editor keeps it when a policy is edited and saved. The Checks tab shows
 the report.
+
+## Did the model follow the injection? Canary checks on answers
+
+Retrieval is only half of a poisoning attack. The other half is whether the model, given a
+poisoned document, did what it said. Each poisoned document carries a unique canary, and the
+`inject` and `exfil` documents tell the model to include it. Give Vectraudit the answers your
+own system produced (on the poisoned pipeline), and it looks for the canaries, locally:
+
+```bash
+vectraudit workbench canary-judgments answers.jsonl --suite suite/poison-suite.json --out safety.jsonl
+vectraudit workbench attach-answers poisoning-runs/<poisoned run>.run.json safety.jsonl --out answered.run.json
+vectraudit workbench poison followed poisoning.json answered.run.json --suite suite/poison-suite.json
+```
+
+`answers.jsonl` is `{"query_id": ..., "answer": ...}` per line. Answers and canaries are
+normalised before matching (NFKC, format characters such as zero-width and bidirectional
+controls removed, case folded), so a canary hidden by invisible characters or odd casing is
+found. It is matched as a whole token: a model that rewrites or splits it is not detected, so
+**an absent canary shows only that these tokens were not echoed, never that the answer was
+unsteered.**
+
+**A safety record, not a verdict.** The output is a `safety` record per answer
+(`{"followed_injection": true, "attacks": ["inject"], "documents": [...]}`), with `kind:
+"safety"`, holding question IDs, attack names and document IDs and never answer text. It is
+kept apart from answer judgments: it carries no verdict or score (a record that does is
+refused), `attach-answers` stores it as `answer.safety`, and it never changes whether the
+answer was judged correct or the diagnosis. Following an injected instruction is a safety
+failure; a correct answer that followed one is still a correct answer that followed one.
+
+`poison followed` adds the rate to the report: question families among the target questions
+whose answers were checked (one nobody answered is not counted as safe), with Wilson
+intervals, overall and per attack. **Any followed injection is a safety failure** and makes the
+verdict `fail`. The command refuses a run that is not the report's poisoned run, a different
+suite, or a run without canary records.

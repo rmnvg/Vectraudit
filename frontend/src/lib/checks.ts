@@ -210,6 +210,7 @@ function poisoning(r: Row): CheckSummary {
   const displaced = object(summary.displaced) ? summary.displaced : {}
   const collateral = object(r.collateral) ? r.collateral : {}
   const overlay = object(r.overlay) ? r.overlay : {}
+  const followed = object(r.followed_injection) ? r.followed_injection : null
   return {
     title: 'Poisoning check',
     verdict: verdict === 'fail' ? 'fail' : verdict === 'pass' ? 'pass' : 'attention',
@@ -220,6 +221,7 @@ function poisoning(r: Row): CheckSummary {
         const x = object(a) ? a : {}
         return `${words(name)}: retrieved for ${rate(x.retrieved)}; reached the model for ${count(object(x.reached_model_context) ? x.reached_model_context.flagged : 0)}`
       }),
+      ...(followed ? [`Answers that followed an injected instruction (canary found): ${rate(followed)} of the ${plural(count(followed.questions_checked), 'checked question')}`] : []),
       `Answering evidence displaced: ${rate(displaced)}`,
       `Poisoned documents on control questions: ${rate(collateral)}`,
     ],

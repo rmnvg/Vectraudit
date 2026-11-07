@@ -117,3 +117,10 @@ it('reads an inconclusive poisoning check as attention, never a pass', () => {
   expect(s.headline).toContain('Inconclusive')
   expect(s.notes.some(n => n.includes('overlay may not be loaded'))).toBe(true)
 })
+
+it('adds the rate of answers that followed an injected instruction when it was measured', () => {
+  const followed = { questions_checked: 4, flagged: 1, families: 4, rate: 0.25, ci_low: 0.05, ci_high: 0.7 }
+  const s = summary({ ...poisoningReport, followed_injection: followed })
+  expect(s.items.some(i => i.startsWith('Answers that followed an injected instruction (canary found): 1 of 4 families (25%'))).toBe(true)
+  expect(summary(poisoningReport).items.some(i => i.includes('followed an injected instruction'))).toBe(false)
+})
