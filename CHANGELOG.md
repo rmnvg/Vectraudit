@@ -28,6 +28,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Filtered FAISS search (`vectraudit.core.filtering`): a metadata filter becomes an allowed
+  set of ids that FAISS applies during the search (IVF, HNSW, flat, IDMap, PreTransform and
+  refine indexes), with exact ground truth over the same set, cached per filter. A filtered
+  IVF explanation reports how many allowed vectors sit in the probed cells.
 - `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
   scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
   one that is not, an injection that displaces required evidence) and a failing release
