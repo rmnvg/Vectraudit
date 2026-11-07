@@ -95,6 +95,12 @@ One query per line:
 An optional first line `{"dataset": {"name": ..., "description": ..., "embedding_model": ...,
 "normalized": ..., "cohort_fields": [...]}}` holds metadata; it is part of the version.
 
+**External exact reference.** `record --reference reference.json` measures ANN recall against
+neighbours computed elsewhere (for example a VectorDBBench dataset's published neighbours,
+imported with `dataset import-vdbbench`) instead of the backend's own exact search. The run
+records the reference's source and hashes, and two runs measured against different references
+are not compared on ANN recall ([details](vectordbbench.md)).
+
 **Cohorts by filter selectivity.** `"selectivity_buckets": [0.001, 0.01, 0.1]` tags each
 filtered question with the one bucket its filter's **pass rate** falls in, named by the
 bucket's upper bound (`pass_rate<1%`), judged like any cohort. The pass rate is the fraction

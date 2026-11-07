@@ -50,6 +50,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   `prod` without `--allow-production`. Reports (`vectraudit.capacity` v1, with
   `vectraudit.selectivity_sweep`) appear in the Checks tab and compare only on matching runner
   environments. See `docs/capacity.md`.
+- `vectraudit dataset import-vdbbench DIR --distance cosine|l2|ip --out OUT` (needs
+  `vectraudit[parquet]`) converts a VectorDBBench directory into vectors, ids, queries, a
+  dataset and the published neighbours as an external exact reference (with every source
+  file's hash). `record --reference` and `sweep --reference` measure ANN recall against it and
+  record its source; runs against different references are not compared on ANN recall. Filter
+  rates are converted to pass rates, and a filtered variant whose neighbours break its filter
+  is refused. Nothing is downloaded. See `docs/vectordbbench.md`.
 - `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
   scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
   one that is not, an injection that displaces required evidence) and a failing release

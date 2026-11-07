@@ -73,6 +73,7 @@ def run_record(
     max_p95_ms: float | None = None,
     label: str | None = None,
     source: VectorSource | None = None,
+    reference: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A JSON-ready record of a finished sweep (:func:`save_run` writes it).
 
@@ -110,7 +111,14 @@ def run_record(
             "k": result.k,
             "repeats": result.repeats,
             "seed": result.seed,
-            "truth_source": "reconstructed" if result.truth_reconstructed else "raw",
+            "truth_source": (
+                "external"
+                if reference is not None
+                else "reconstructed"
+                if result.truth_reconstructed
+                else "raw"
+            ),
+            "reference": reference,
             "ground_truth_fingerprint": corpus_fingerprint(source) if source is not None else None,
         },
         "environment": dict(result.environment),
@@ -326,7 +334,13 @@ def compare_runs(
         notes.append("Different query sets (fingerprints differ): recall isn't comparable.")
         recall_ok = False
     if bs.get("truth_source") != cs.get("truth_source"):
-        notes.append("One run's ground truth used decoded vectors, the other raw vectors.")
+        notes.append(
+            "The runs used different kinds of ground truth "
+            f"({bs.get('truth_source')} vs {cs.get('truth_source')}): recall isn't comparable."
+        )
+        recall_ok = False
+    elif bs.get("reference") != cs.get("reference"):
+        notes.append("The runs used different external exact references: recall isn't comparable.")
         recall_ok = False
     base_fp, cur_fp = bs.get("ground_truth_fingerprint"), cs.get("ground_truth_fingerprint")
     if base_fp is not None and cur_fp is not None and base_fp != cur_fp:

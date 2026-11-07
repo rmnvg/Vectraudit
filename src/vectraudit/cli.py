@@ -35,6 +35,7 @@ from vectraudit.core.projection import (
 from vectraudit.core.selectivity import selectivity_sweep
 from vectraudit.core.sweep import Choice, SweepResult
 from vectraudit.core.types import LoadedIndex
+from vectraudit.evaluation.external_reference import ExternalReferenceError, load_reference
 from vectraudit.server.app import create_app
 from vectraudit.session import InputError, Session, fmt_bytes
 
@@ -471,6 +472,14 @@ def sweep(
             "A pass rate is the fraction of documents that PASS, not the fraction removed."
         ),
     ] = None,
+    reference: Annotated[
+        Path | None,
+        typer.Option(
+            help="An external exact reference (reference.json from `dataset import-vdbbench`) "
+            "used as ground truth instead of computing it. Needs --queries (the queries.npy "
+            "beside it). Runs against different references are not compared."
+        ),
+    ] = None,
 ) -> None:
     """Measure recall@k and latency across nprobe/efSearch values.
 
@@ -482,6 +491,17 @@ def sweep(
     pass -- see the printed notes), so it can gate CI.
     """
     parsed_values = _values_option(values)
+    if reference is not None and (filter_ or pass_rates is not None):
+        raise _fail(
+            "--reference cannot be combined with --filter or --pass-rates.",
+            "The published neighbours assume no filter; use the filtered reference with `record`.",
+        )
+    external = None
+    if reference is not None:
+        try:
+            external = load_reference(reference)
+        except ExternalReferenceError as e:
+            raise _fail(str(e)) from e
     if filter_ or pass_rates is not None:
         if save is not None or baseline is not None:
             raise _fail(
@@ -505,7 +525,13 @@ def sweep(
         raise _fail(f"Unknown --param {param!r}.", "Use nprobe (IVF) or efSearch (HNSW).")
     try:
         session = Session(
-            index_path, vectors=vectors, ids=ids, queries=queries, disk_cache=False, mmap=mmap
+            index_path,
+            vectors=vectors,
+            ids=ids,
+            queries=queries,
+            disk_cache=False,
+            mmap=mmap,
+            reference=external,
         )
         _, job = session.sweep_job(param, parsed_values, k, n_queries, repeats, seed)
     except FaissNotInstalledError as e:
@@ -561,7 +587,14 @@ def sweep(
                     "k": result.k,
                     "n_queries": result.n_queries,
                     "query_origin": result.query_origin,
-                    "truth_source": "reconstructed" if result.truth_reconstructed else "raw",
+                    "truth_source": (
+                        "external"
+                        if result.reference
+                        else "reconstructed"
+                        if result.truth_reconstructed
+                        else "raw"
+                    ),
+                    "reference": result.reference,
                     "target": target,
                     "max_p95_ms": max_p95_ms,
                     "status": choice.status,
@@ -756,6 +789,11 @@ def _print_sweep(result: SweepResult, choice: Choice, target: float) -> None:
         f"[bold]{result.param.value} sweep[/] · recall@{result.k} over {result.n_queries} "
         f"{origin} queries · single-threaded latency"
     )
+    if result.reference:
+        console.print(
+            f"Ground truth: the published neighbours of {escape(str(result.reference['source']))}, "
+            "not computed here. They are an ANN reference, not relevance labels."
+        )
     if result.truth_reconstructed:
         console.print(
             "[yellow]Ground truth computed on reconstructed vectors; PQ/SQ error is not "

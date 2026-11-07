@@ -47,6 +47,13 @@ An unknown pass rate is never read as high or low: the query is in no selectivit
 `search.pass_rates` in the run says how many filtered queries were counted. See
 `selectivity_buckets` in `docs/release-checks.md` for cohorts by pass rate.
 
+## Published neighbours and VectorDBBench
+
+VectorDBBench's filter rate is the fraction removed, so a 99% filter rate is a 1% pass rate;
+`vectraudit dataset import-vdbbench` converts it. Its published neighbours (including the
+filtered variants) can be the reference for `record --reference`: see
+[VectorDBBench datasets](vectordbbench.md).
+
 ## Notes
 
 - With a refine stage (`IVF..,RFlat`) FAISS honours the selector only inside the base

@@ -33,6 +33,7 @@ from vectraudit.connectors.base import (
     SearchRequest,
 )
 from vectraudit.evaluation.dataset import Dataset, DatasetQuery
+from vectraudit.evaluation.external_reference import ExternalReference, ExternalReferenceError
 from vectraudit.evaluation.families import family_count, family_id, family_mean
 from vectraudit.evaluation.metrics import (
     RANK_METRICS,
@@ -67,6 +68,9 @@ class RunOptions:
     """Provenance labels such as ``embedding_model`` or ``chunking_version``."""
     evidence: bool = True
     """Ask the connector for per-query evidence (IVF miss reasons, query plans)."""
+    reference: ExternalReference | None = None
+    """Exact neighbours computed elsewhere (e.g. a benchmark's): ANN recall is measured against
+    them instead of the backend's own exact search."""
 
     def __post_init__(self) -> None:
         if self.k < 1:
@@ -107,6 +111,9 @@ def execute_run(
             )
         record["search"]["exact_reference"] = use_exact
         record["search"]["exact_reference_note"] = caps.exact_reference_note if use_exact else None
+        if options.reference is not None:
+            _use_reference(record, options, dataset, info, use_requested=options.exact)
+            use_exact = False  # the reference replaces the backend's own exact search
         if any(q.context or q.history for q in dataset.queries):
             raise ConnectorError(
                 ErrorCode.UNSUPPORTED,
@@ -242,6 +249,51 @@ def _warm_up(
                 raise
 
 
+def _use_reference(
+    record: dict[str, Any],
+    options: RunOptions,
+    dataset: Dataset,
+    info: Any,
+    *,
+    use_requested: bool | None,
+) -> None:
+    """Check that the external reference fits this run, and record it."""
+    ref = options.reference
+    assert ref is not None
+    if use_requested:
+        raise ConnectorError(
+            ErrorCode.CONFIG,
+            "--exact and --reference are two different exact references.",
+            "Pick one: the backend's own exact search, or the external reference.",
+        )
+    if ref.distance != info.distance.value:
+        raise ConnectorError(
+            ErrorCode.CONFIG,
+            f"The reference was computed under {ref.distance} distance, the backend ranks by "
+            f"{info.distance.value}.",
+            "Neighbours under one distance are not the truth for another. Rebuild the index "
+            "with the reference's distance.",
+        )
+    if options.k > ref.k:
+        raise ConnectorError(
+            ErrorCode.CONFIG,
+            f"k={options.k} is larger than the {ref.k} neighbours the reference holds.",
+            f"Use --k {ref.k} or less.",
+        )
+    try:
+        ref.check_dataset(
+            [q.query_id for q in dataset.queries], [q.filter for q in dataset.queries]
+        )
+    except ExternalReferenceError as e:
+        raise ConnectorError(ErrorCode.CONFIG, str(e)) from e
+    record["search"]["exact_reference"] = True
+    record["search"]["reference"] = ref.identity()
+    record["search"]["exact_reference_note"] = (
+        f"External reference ({ref.source}): neighbours computed by the benchmark, not by this "
+        "backend. It is not relevance labelling."
+    )
+
+
 def _request(q: DatasetQuery, v: FloatArray, options: RunOptions, *, exact: bool) -> SearchRequest:
     return SearchRequest(
         v,
@@ -296,7 +348,10 @@ def _run_query(
         entry["latency_ms"] = statistics.median(latencies)
         entry["nondeterministic"] = any(r != ids for r in results[1:])
         exact = None
-        if use_exact:
+        if options.reference is not None:
+            exact = options.reference.neighbours(q.query_id, options.k)
+            entry["exact_ids"] = exact
+        elif use_exact:
             exact = connector.search(_request(q, v, options, exact=True))
             entry["exact_ids"] = exact
         entry.update(repeat_quality(results, q.relevant, options.k, exact))

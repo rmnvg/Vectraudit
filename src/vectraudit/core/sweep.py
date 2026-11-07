@@ -224,6 +224,8 @@ class SweepResult:
     query_seed: int | None = None
     coverage_curve: npt.NDArray[np.float64] | None = field(default=None, repr=False, compare=False)
     """IVF: probe coverage at every nprobe ``0..nlist`` (see :func:`ivf.probe_coverage`)."""
+    reference: dict[str, object] | None = None
+    """Identity of an external exact reference used as ground truth (``None`` = computed here)."""
     pass_rate: float | None = None
     """Filtered sweep: the fraction of the corpus the filter allows; ``None`` = unfiltered."""
     allowed_count: int | None = None
@@ -389,8 +391,11 @@ def sweep(
     seed: int = 0,
     assignments: ivf.Assignments | None = None,
     allowed: AllowedSet | None = None,
+    reference: dict[str, object] | None = None,
 ) -> SweepResult:
     """Measure recall@k and per-query latency at each parameter value.
+
+    ``reference`` only labels the result with the external exact reference ``truth`` came from.
 
     With ``allowed``, every search is filtered inside FAISS and ``truth`` must be the exact
     neighbours among the same ids (:func:`ground_truth_ids` with ``allowed``).
@@ -503,6 +508,7 @@ def sweep(
         environment=benchmark_environment(),
         query_seed=queries.seed,
         coverage_curve=curve,
+        reference=reference,
         pass_rate=None if allowed is None else allowed.pass_rate,
         allowed_count=None if allowed is None else len(allowed),
     )

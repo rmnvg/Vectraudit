@@ -215,6 +215,46 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+@dataset_app.command("import-vdbbench")
+def dataset_import_vdbbench(
+    source: Annotated[
+        Path, typer.Argument(help="A VectorDBBench dataset directory (fetched with VectorDBBench).")
+    ],
+    distance: Annotated[
+        str,
+        typer.Option(
+            help="cosine, l2 or ip: the distance the dataset's neighbours were computed under. "
+            "Required; it is never guessed."
+        ),
+    ],
+    out: Annotated[Path, typer.Option(help="Directory to write the converted files to.")],
+    name: Annotated[str | None, typer.Option(help="Dataset name (default: the directory).")] = None,
+) -> None:
+    """Import a VectorDBBench dataset: vectors, queries and its published exact neighbours.
+
+    Writes vectors.npy + ids.npy (the corpus), queries.npy, dataset.jsonl (and one
+    dataset-int-<p>p.jsonl per filtered variant), metadata.jsonl, and reference*.json: the
+    benchmark's neighbours as an external exact reference for `record --reference`. Needs
+    pyarrow (`pip install "vectraudit[parquet]"`). Nothing is downloaded.
+    """
+    from vectraudit.evaluation.vdbbench_import import VdbbenchImportError, import_vdbbench
+
+    try:
+        result = import_vdbbench(source, out, distance=distance, name=name)
+    except VdbbenchImportError as e:
+        raise _fail(str(e), e.hint or None) from e
+    console.print(
+        f"Imported {result.n_vectors:,} vectors (d={result.dim}), {result.n_queries:,} queries, "
+        f"{result.k} published neighbours each, {result.distance} distance → {escape(str(out))}"
+    )
+    for item in result.filters:
+        console.print(
+            f"  filter {item['field']}: removes {item['removed']:.0%}, pass rate "
+            f"{item['pass_rate']:.0%} (VectorDBBench's filter rate is the fraction removed)"
+        )
+    console.print("Reference files: " + ", ".join(result.references))
+
+
 @dataset_app.command("import")
 def dataset_import(
     source: Annotated[
@@ -497,6 +537,14 @@ def record(
         list[str] | None,
         typer.Option(help="Provenance label, e.g. embedding_model=e5-large. Repeatable."),
     ] = None,
+    reference: Annotated[
+        Path | None,
+        typer.Option(
+            help="An external exact reference (reference.json from `dataset import-vdbbench`): "
+            "ANN recall is measured against its neighbours instead of the backend's own exact "
+            "search. Runs with different references are not compared on ANN recall."
+        ),
+    ] = None,
     embedder: Annotated[
         str | None, typer.Option(help="sentence-transformers model for text-only queries.")
     ] = None,
@@ -531,6 +579,14 @@ def record(
     except ConnectorError as e:
         raise _fail(e.message, e.hint) from e
     params = {**cfg.params, **_parse_params(param or [])}
+    external = None
+    if reference is not None:
+        from vectraudit.evaluation.external_reference import ExternalReferenceError, load_reference
+
+        try:
+            external = load_reference(reference)
+        except ExternalReferenceError as e:
+            raise _fail(str(e)) from e
     options = RunOptions(
         k=k,
         params=params,
@@ -547,6 +603,7 @@ def record(
             **_parse_pairs(tag or [], "--tag"),
         },
         evidence=evidence,
+        reference=external,
     )
     client = _cloud_client(project) if upload else None  # fail on bad config before running
     dataset_model = ds.meta.get("embedding_model")
