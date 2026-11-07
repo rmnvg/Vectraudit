@@ -28,6 +28,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Candidates can run poisoned: the hybrid baseline takes `adapter.corpus_overlay` (a poison
+  suite's corpus, loaded in memory; repeated IDs are an error), and Python or HTTP candidates
+  declare `"environment": "staging"` and an `overlay` for a staging index you loaded
+  yourself. A suite is verified against its hashes before use, and a run that shows no poisoned
+  document in any recorded stage gets a warning that the overlay may not be loaded. Existing
+  candidate identities are unchanged.
 - `workbench poison generate` builds a deterministic poison suite from your corpus and
   benchmark: hijack, inject, contradict, authority and exfil documents with harmless sentinel
   claims and unique canaries, a copy of the benchmark that forbids them, and a descriptor

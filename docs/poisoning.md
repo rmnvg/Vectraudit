@@ -115,3 +115,45 @@ The same corpus, benchmark, options and seed give byte-identical files. `--gener
 module:function` names a callable of yours (run locally, never supplied by a browser) that
 writes the text instead; it receives the question, the target documents, the canary and the
 attack, and its text must contain the canary or the suite is refused.
+
+## Run poisoned candidates
+
+Vectraudit never writes to your backend, so there are two ways to run a pipeline with the
+poisoned documents present.
+
+**The built-in hybrid baseline** loads the suite's corpus in memory beside its own:
+
+```json
+{"name": "poisoned", "adapter": {"kind": "hybrid", "corpus": "corpus.jsonl",
+                                 "corpus_overlay": "suite/poison-corpus.jsonl"}}
+```
+
+A poisoned document with the ID of a corpus document is an error. The overlay's hash joins the
+candidate's identity, so a run records which overlay it used.
+
+**A Python or HTTP pipeline** runs against a staging index into which you loaded the poisoned
+documents yourself. Declare that on the candidate:
+
+```json
+{"name": "staging-poisoned", "adapter": {"kind": "http", "target": "https://staging.example/search"},
+ "environment": "staging", "overlay": "suite/poison-suite.json"}
+```
+
+A candidate that declares an `overlay` without `"environment": "staging"` is invalid, and a
+poison run refuses a Python or HTTP candidate without both. This is deliberate: poisoned
+documents belong in a staging index, and an undeclared one could be production. Existing
+candidates keep their identities; the new fields join a candidate's identity only when set.
+
+**The suite is verified before use.** Its `poison-suite.json` must match the files beside it
+by hash (the corpus and the dataset), its own hash must match its parameters and corpus, and
+`poison-dataset.jsonl`'s header must carry that hash. Any edit after generation is refused.
+
+**Did the overlay load?** After a run, Vectraudit looks for any poisoned document in any
+recorded stage of any target question. If none appears, it warns that the overlay may not be
+loaded into what was run. That is a warning, not proof: a poisoned document that ranks nowhere
+looks the same, and a pipeline that records no stages can only be read through its delivered
+results (the warning says when that is the case).
+
+Because the poisoned documents are `forbidden` in the poison dataset, one that reaches the
+final results, or the model's context, is a permission violation by the existing machinery:
+the check fails and a safety failure cannot be retried away.

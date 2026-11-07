@@ -24,9 +24,16 @@ class Adapter(Contract):
     corpus: str | None = None
     token_env: str | None = None
     timeout: float = Field(default=30, gt=0, le=300)
+    corpus_overlay: str | None = None
+    """Hybrid only: a poison suite's ``poison-corpus.jsonl``, loaded in memory beside the corpus."""
 
     @model_validator(mode="after")
     def configured(self) -> Adapter:
+        if self.corpus_overlay is not None and self.kind != "hybrid":
+            raise ValueError(
+                "corpus_overlay is for the hybrid baseline; declare a staging environment and "
+                "overlay on the candidate for other pipelines"
+            )
         if self.kind == "hybrid" and not self.corpus:
             raise ValueError("hybrid adapter requires corpus")
         if self.kind != "hybrid" and not self.target:
@@ -81,11 +88,21 @@ class Candidate(Contract):
     of this candidate reported ``cost_usd``."""
     fixes: list[Fix] = Field(default_factory=list, max_length=20)
     """Changes this pipeline supports, offered by ``workbench investigate`` and ``try-fix``."""
+    environment: Literal["staging"] | None = None
+    """Declares that this candidate runs against a staging index, not production."""
+    overlay: str | None = None
+    """A poison suite's ``poison-suite.json``, whose documents *you* loaded into the staging
+    index. Vectraudit inserts nothing; it checks the suite's hashes and reads the run."""
 
     @model_validator(mode="after")
     def unique_fixes(self) -> Candidate:
         if len({fix.name for fix in self.fixes}) != len(self.fixes):
             raise ValueError("fix names must be unique within a candidate")
+        if self.overlay is not None and self.environment != "staging":
+            raise ValueError(
+                'an overlay needs "environment": "staging": poisoned documents belong in a '
+                "staging index, never production"
+            )
         return self
 
 
@@ -107,15 +124,25 @@ def load_manifest(path: Path) -> Manifest:
     return Manifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
+def _read_corpus(path: Path) -> list[dict[str, Any]]:
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+
+
 def open_adapter(adapter: Adapter, root: Path) -> Pipeline:
     """Open an explicitly authorized local adapter; no import path is accepted via HTTP."""
     if adapter.kind == "hybrid":
-        corpus = root / str(adapter.corpus)
-        docs = [
-            json.loads(line)
-            for line in corpus.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        docs = _read_corpus(root / str(adapter.corpus))
+        if adapter.corpus_overlay is not None:
+            extra = _read_corpus(root / adapter.corpus_overlay)
+            clash = sorted({d["doc_id"] for d in docs} & {d["doc_id"] for d in extra})
+            if clash:
+                raise ValueError(
+                    f"corpus_overlay repeats {len(clash)} document IDs of the corpus "
+                    f"(first: {clash[0]!r}); overlay IDs must be new"
+                )
+            docs = [*docs, *extra]
         return hybrid_pipeline(docs)
     if adapter.kind == "http":
         token = None
@@ -152,7 +179,12 @@ def candidate_config(candidate: Candidate, root: Path) -> dict[str, Any]:
     excluded = {"concurrency", "max_rps", "cost_per_call_usd", "fixes"}
     if candidate.pipeline_version is None:
         excluded.add("pipeline_version")
-    raw = candidate.model_dump_json(exclude=excluded)
+    # Fields added later stay out of the identity while unset, so existing identities hold.
+    excluded |= {f for f in ("environment", "overlay") if getattr(candidate, f) is None}
+    exclude: dict[str, Any] = dict.fromkeys(excluded, True)
+    if candidate.adapter.corpus_overlay is None:
+        exclude["adapter"] = {"corpus_overlay"}
+    raw = candidate.model_dump_json(exclude=exclude)
     out: dict[str, Any] = {
         "name": candidate.name,
         "adapter": candidate.adapter.kind,
@@ -164,4 +196,10 @@ def candidate_config(candidate: Candidate, root: Path) -> dict[str, Any]:
         out["corpus_sha256"] = hashlib.sha256(
             (root / str(candidate.adapter.corpus)).read_bytes()
         ).hexdigest()
+        if candidate.adapter.corpus_overlay is not None:
+            out["corpus_overlay_sha256"] = hashlib.sha256(
+                (root / candidate.adapter.corpus_overlay).read_bytes()
+            ).hexdigest()
+    if candidate.overlay is not None:
+        out["overlay_sha256"] = hashlib.sha256((root / candidate.overlay).read_bytes()).hexdigest()
     return out
