@@ -28,6 +28,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench promptfoo-redteam` imports promptfoo's RAG red-team results (rag-poisoning,
+  rag-document-exfiltration, indirect-prompt-injection, rag-source-attribution,
+  prompt-extraction): suite-level counts per plugin and strategy with a Wilson interval, plus
+  per-question safety records for tests that name a `query_id` or `trace_id`, kept apart from
+  answer verdicts. Reasons, prompts and outputs are never written. `attach-answers --inventory`
+  adds the citation class `not_in_corpus`: a cited ID absent from the corpus inventory is a
+  fabricated citation, found by lookup. The Checks tab shows the red-team report.
 - `workbench canary-judgments` checks the answers your system gave for the canaries of a poison
   suite (normalised for case, Unicode form and invisible characters) and writes `safety`
   records with no answer text. `attach-answers` stores them as `answer.safety`, apart from

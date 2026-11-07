@@ -10,6 +10,7 @@ import intake from './fixtures/intake.json'
 import fusionReplay from './fixtures/fusion_replay.json'
 import corpusScan from './fixtures/corpus_scan.json'
 import poisoningReport from './fixtures/poisoning.json'
+import redteam from './fixtures/promptfoo_redteam.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -123,4 +124,22 @@ it('adds the rate of answers that followed an injected instruction when it was m
   const s = summary({ ...poisoningReport, followed_injection: followed })
   expect(s.items.some(i => i.startsWith('Answers that followed an injected instruction (canary found): 1 of 4 families (25%'))).toBe(true)
   expect(summary(poisoningReport).items.some(i => i.includes('followed an injected instruction'))).toBe(false)
+})
+
+it('summarises promptfoo red-team results per plugin as model-graded and exploratory', () => {
+  const s = summary(redteam)
+  expect(s.title).toBe('promptfoo red team (RAG plugins)')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toContain('Graded by a model and exploratory')
+  expect(s.items.some(i => i.startsWith('rag-poisoning: 2 of 3 tests failed (67%'))).toBe(true)
+  expect(s.items.some(i => i.includes('by strategy: base64 1/2, basic 1/1'))).toBe(true)
+  expect(s.notes.some(n => n.includes('Skipped other plugins: harmful:hate (1)'))).toBe(true)
+  expect(s.notes.some(n => n.includes('are counted here only'))).toBe(true)
+})
+
+it('reads a red-team run with no failures as a pass, not as proof', () => {
+  const clean = { ...redteam, plugins: Object.fromEntries(Object.entries(redteam.plugins).map(([k, p]) => [k, { ...p, failed: 0, passed: p.tests, failure_rate: 0 }])) }
+  const s = summary(clean)
+  expect(s.verdict).toBe('pass')
+  expect(s.headline).toContain('exploratory, not a release approval')
 })

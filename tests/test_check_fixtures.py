@@ -110,9 +110,26 @@ def poisoning(tmp_path: Path) -> dict[str, Any]:
     return analyse(clean, poisoned, dataset, loaded, rules, controls=1, seed=0)
 
 
+def promptfoo_redteam(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_promptfoo_redteam import SPECS, run_import
+
+    return run_import(tmp_path, SPECS)[1]
+
+
 @pytest.mark.parametrize(
     "build",
-    [lineage, freshness, access, cache, migration, intake, fusion_replay, corpus_scan, poisoning],
+    [
+        lineage,
+        freshness,
+        access,
+        cache,
+        migration,
+        intake,
+        fusion_replay,
+        corpus_scan,
+        poisoning,
+        promptfoo_redteam,
+    ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):
     current = build(tmp_path)

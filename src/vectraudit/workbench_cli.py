@@ -812,6 +812,13 @@ def attach_answers_command(
             "that give only a score; there is no default."
         ),
     ] = None,
+    inventory: Annotated[
+        Path | None,
+        typer.Option(
+            help="Corpus inventory JSONL ({id, sha256?, metadata?}, no text): a cited ID absent "
+            "from it is a fabricated citation (not_in_corpus), found by lookup."
+        ),
+    ] = None,
 ) -> None:
     """Attach answer judgments from human review or tools such as Ragas, and diagnose them.
 
@@ -820,6 +827,7 @@ def attach_answers_command(
     Release verdicts do not change. Writes a new file; the original run is left unchanged.
     """
     from vectraudit.evaluation.answers import attach_file, render_summary
+    from vectraudit.evaluation.migration import read_inventory
 
     try:
         limits = {}
@@ -830,7 +838,8 @@ def attach_answers_command(
             limits[name] = float(value)
         if out.resolve() == run.resolve():
             raise ValueError("--out must differ from the run file; the original stays unchanged")
-        result = attach_file(load_run(run), judgments, limits)
+        known = set(read_inventory(inventory)) if inventory is not None else None
+        result = attach_file(load_run(run), judgments, limits, known)
         _write(out, result)
     except (OSError, ValueError) as exc:
         typer.echo(f"Attach error: {exc}", err=True)
@@ -2609,6 +2618,42 @@ def canary_judgments_command(
         typer.echo(f"Canary error: {exc}", err=True)
         raise typer.Exit(2) from exc
     typer.echo(render(counts, len(records), str(out)))
+
+
+@workbench_app.command("promptfoo-redteam")
+def promptfoo_redteam_command(
+    results: Annotated[Path, typer.Argument(help="promptfoo redteam run output (JSON).")],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark whose questions may be named.")],
+    out: Annotated[Path, typer.Option(help="Per-question safety records (JSONL).")],
+    report: Annotated[Path, typer.Option(help="Suite-level counts to write (JSON).")] = Path(
+        "redteam.json"
+    ),
+) -> None:
+    """Import promptfoo's RAG red-team results: suite-level counts, and safety records where named.
+
+    Keeps the rag-poisoning, rag-document-exfiltration, indirect-prompt-injection,
+    rag-source-attribution and prompt-extraction plugins. Red-team prompts are generated, so
+    most match no benchmark question and are only counted; a test naming a query_id or trace_id
+    in its metadata or variables becomes a safety record, kept apart from answer verdicts.
+    Reasons, prompts and outputs are never written. promptfoo's grader is a model, so this is
+    exploratory evidence.
+    """
+    from vectraudit.evaluation.promptfoo_redteam_import import (
+        import_redteam,
+        load_results,
+        render,
+    )
+    from vectraudit.pipelines.langfuse_api import write_jsonl
+
+    try:
+        questions = {q.query_id: q.text for q in load_dataset(dataset).queries}
+        records, summary = import_redteam(load_results(results), questions)
+        write_jsonl(out, records)
+        _write(report, summary)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Import error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(summary, len(records), str(out)))
 
 
 @workbench_app.command("corpus-scan")

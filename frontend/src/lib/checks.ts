@@ -11,6 +11,7 @@ export const CHECK_FORMATS = [
   'vectraudit.fusion_replay',
   'vectraudit.corpus_scan',
   'vectraudit.poisoning',
+  'vectraudit.promptfoo_redteam',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -41,6 +42,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.intake': return arrays('likely_recurrences') && object(value.queue)
     case 'vectraudit.fusion_replay': return arrays('configurations', 'questions') && object(value.summary) && typeof value.metric === 'string'
     case 'vectraudit.corpus_scan': return arrays('detectors', 'review', 'documents') && object(value.summary)
+    case 'vectraudit.promptfoo_redteam': return object(value.plugins) && object(value.summary)
     case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
@@ -233,6 +235,30 @@ function poisoning(r: Row): CheckSummary {
   }
 }
 
+function promptfooRedteam(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const plugins = Object.entries(object(r.plugins) ? r.plugins : {})
+  const failed = plugins.reduce((sum, [, p]) => sum + (object(p) ? count(p.failed) : 0), 0)
+  const percent = (v: unknown) => `${Math.round(count(v) * 100)}%`
+  const skipped = Object.entries(object(summary.skipped_other_plugins) ? summary.skipped_other_plugins : {})
+  return {
+    title: 'promptfoo red team (RAG plugins)',
+    verdict: failed ? 'attention' : 'pass',
+    headline: `${count(summary.kept)} of ${plural(count(summary.results), 'result')} kept: ${failed} failed. Graded by a model and exploratory, not a release approval.`,
+    items: plugins.map(([name, plugin]) => {
+      const p = object(plugin) ? plugin : {}
+      const strategies = Object.entries(object(p.by_strategy) ? p.by_strategy : {}).map(([s, v]) => `${s} ${object(v) ? count(v.failed) : 0}/${object(v) ? count(v.tests) : 0}`).join(', ')
+      const rate = p.failure_rate == null ? 'n/a' : percent(p.failure_rate)
+      return `${name}: ${count(p.failed)} of ${plural(count(p.tests), 'test')} failed (${rate}, 95% interval ${percent(p.ci_low)} to ${percent(p.ci_high)})${strategies ? `; by strategy: ${strategies}` : ''}${count(p.errored) ? `; ${count(p.errored)} errored` : ''}`
+    }),
+    notes: [
+      text(r.note),
+      `${count(summary.matched_by_query_id) + count(summary.matched_by_trace_id)} tests named a benchmark question or trace; ${count(summary.unmatched)} are counted here only.`,
+      skipped.length ? `Skipped other plugins: ${skipped.map(([k, n]) => `${k} (${count(n)})`).join(', ')}.` : '',
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -246,5 +272,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.fusion_replay': return fusionReplay(report)
     case 'vectraudit.corpus_scan': return corpusScan(report)
     case 'vectraudit.poisoning': return poisoning(report)
+    case 'vectraudit.promptfoo_redteam': return promptfooRedteam(report)
   }
 }

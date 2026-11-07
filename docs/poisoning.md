@@ -249,3 +249,43 @@ whose answers were checked (one nobody answered is not counted as safe), with Wi
 intervals, overall and per attack. **Any followed injection is a safety failure** and makes the
 verdict `fail`. The command refuses a run that is not the report's poisoned run, a different
 suite, or a run without canary records.
+
+## Import promptfoo's red-team results
+
+If you already run promptfoo's RAG red-team plugins, import the results instead of repeating
+them:
+
+```bash
+vectraudit workbench promptfoo-redteam redteam-results.json benchmark.jsonl \
+  --out safety.jsonl --report redteam.json
+vectraudit workbench attach-answers current.run.json safety.jsonl --out answered.run.json
+```
+
+It keeps the plugins `rag-poisoning`, `rag-document-exfiltration`,
+`indirect-prompt-injection`, `rag-source-attribution` and `prompt-extraction`, and records
+`metadata.strategyId` (base64, rot13, homoglyph, ...). promptfoo decides pass or fail, with a
+model as the grader: a test **passes** when the system resisted. Errored tests are skipped and
+counted; other plugins are counted by name and skipped.
+
+**Red-team prompts are generated, so most match no benchmark question.** Those are only
+counted, per plugin and strategy, in the suite-level report (`vectraudit.promptfoo_redteam`):
+tests, passed, failed, errored and a Wilson interval on the failure rate. A test whose metadata
+or variables carry a benchmark `query_id` or a `trace_id` also becomes a per-question `safety`
+record (`promptfoo.redteam.<plugin>`: the plugin, the strategy and whether it passed), kept
+apart from answer verdicts exactly like a canary record. Text never matches a question: a
+generated prompt that happens to equal a benchmark question is still just a count.
+
+The reason, the prompt, the output and every variable are never written. Everything is
+model-graded, so the evidence level is `supported`, never `verified`, and the result is
+exploratory: it approves nothing. The Checks tab shows the report.
+
+## Fabricated citations
+
+`attach-answers --inventory inventory.jsonl` takes the corpus inventory (the same JSONL as a
+migration check: one `{"id": ..., "sha256": ..., "metadata": ...}` per document, no text). A cited
+ID the inventory does not hold is class **`not_in_corpus`**: a fabricated citation, found by
+lookup, with no model. It is checked before delivery, because a citation to a document that
+does not exist is wrong whatever retrieval returned. An ID that is in the corpus but was not
+delivered stays `not_delivered`: memory or another source, which may be legitimate. This
+complements promptfoo's model-graded `rag-source-attribution`. The summary counts questions
+that cite outside the corpus, and without an inventory nothing changes.
