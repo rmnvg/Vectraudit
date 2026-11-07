@@ -1,0 +1,148 @@
+{
+  "format": "vectraudit.selectivity_sweep",
+  "format_version": 1,
+  "param": "efSearch",
+  "k": 10,
+  "target": 0.95,
+  "truth_source": "raw",
+  "pass_rate_means": "fraction of the corpus that satisfies the filter",
+  "environment": {
+    "python": "3.12.14",
+    "numpy": "2.5.3",
+    "faiss": "1.15.1",
+    "system": "Darwin",
+    "machine": "arm64",
+    "processor": "arm",
+    "threads": 1
+  },
+  "runs": [
+    {
+      "filter": {
+        "kind": "all",
+        "label": "all"
+      },
+      "pass_rate": 1.0,
+      "allowed_count": 3000,
+      "status": "ok",
+      "recommended": 16,
+      "points": [
+        {
+          "value": 16,
+          "recall": 0.9733333333333333,
+          "recall_ci_low": 0.9546956546920942,
+          "recall_ci_high": 0.9919710119745724,
+          "latency_mean_ms": 0.0064222045087565975,
+          "latency_p95_ms": 0.009247961861547072,
+          "probe_coverage": null
+        },
+        {
+          "value": 32,
+          "recall": 0.9900000000000001,
+          "recall_ci_low": 0.9790811141151895,
+          "recall_ci_high": 1.0,
+          "latency_mean_ms": 0.009190505564523239,
+          "latency_p95_ms": 0.01062325609382242,
+          "probe_coverage": null
+        }
+      ],
+      "n_queries": 30,
+      "query_sha256": "a88480d4acb9734c41f5ebb7e437b822ff41934415c045cdb4ca97c331de152c"
+    },
+    {
+      "filter": {
+        "kind": "synthetic",
+        "label": "synthetic@0.01",
+        "pass_rate": 0.01
+      },
+      "pass_rate": 0.01,
+      "allowed_count": 30,
+      "status": "recall",
+      "recommended": null,
+      "points": [
+        {
+          "value": 16,
+          "recall": 0.22666666666666666,
+          "recall_ci_low": 0.171924156900682,
+          "recall_ci_high": 0.28140917643265134,
+          "latency_mean_ms": 0.0068208678082252545,
+          "latency_p95_ms": 0.00899144652066752,
+          "probe_coverage": null
+        },
+        {
+          "value": 32,
+          "recall": 0.3666666666666666,
+          "recall_ci_low": 0.30269933784102215,
+          "recall_ci_high": 0.430633995492311,
+          "latency_mean_ms": 0.009256900132944187,
+          "latency_p95_ms": 0.010318757267668843,
+          "probe_coverage": null
+        }
+      ],
+      "n_queries": 30,
+      "query_sha256": "a88480d4acb9734c41f5ebb7e437b822ff41934415c045cdb4ca97c331de152c"
+    }
+  ],
+  "suggestions": [
+    {
+      "kind": "FILTER_RECALL_SHORT",
+      "title": "At a 1.0% pass rate the 95% target was not reached",
+      "detail": "At a 1.0% pass rate, efSearch 32 reaches recall 0.37; the 0.95 target was not reached in the sweep range (30 documents pass).",
+      "evidence": [
+        {
+          "label": "Pass rate",
+          "value": "1.0%"
+        },
+        {
+          "label": "Largest efSearch tried",
+          "value": "32"
+        },
+        {
+          "label": "Best recall",
+          "value": "0.367"
+        },
+        {
+          "label": "Filter",
+          "value": "synthetic@0.01"
+        }
+      ],
+      "sweep_values": null,
+      "view": null,
+      "query_id": null,
+      "at_value": 32
+    },
+    {
+      "kind": "FILTER_RECALL_DROP",
+      "title": "Recall falls under filters at efSearch 16",
+      "detail": "Unfiltered, efSearch 16 reaches recall 0.97. With the same setting: 1.0% pass rate 0.23.",
+      "evidence": [
+        {
+          "label": "Recall at 1.0%",
+          "value": "0.227"
+        }
+      ],
+      "sweep_values": null,
+      "view": null,
+      "query_id": null,
+      "at_value": 16
+    },
+    {
+      "kind": "FILTER_UNMEASURED",
+      "title": "Not measured here",
+      "detail": "This sweep did not try: exact (brute-force) search over the allowed ids for very selective filters, or partitioning the index by the filter field. Either may behave differently; they are listed so they are not mistaken for findings.",
+      "evidence": [
+        {
+          "label": "Not measured",
+          "value": "brute force"
+        },
+        {
+          "label": "Not measured",
+          "value": "partitioning"
+        }
+      ],
+      "sweep_values": null,
+      "view": null,
+      "query_id": null,
+      "at_value": null
+    }
+  ]
+}

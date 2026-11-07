@@ -1154,6 +1154,12 @@ def _unavailable(name: str) -> str:
     return f"The policy requires {name}, which needs {need} in both runs."
 
 
+def environment_differences(a: Mapping[str, Any], b: Mapping[str, Any]) -> list[str]:
+    """The runner-environment fields (``system``, ``machine``, ``cpu_count``, ``python``) on
+    which two runners differ: timing measured on them is not comparable."""
+    return [key for key in _ENVIRONMENT_KEYS if a.get(key) != b.get(key)]
+
+
 def _environment(run: Mapping[str, Any]) -> dict[str, Any]:
     runner = (run.get("provenance") or {}).get("runner") or {}
     return {k: runner.get(k) for k in _ENVIRONMENT_KEYS}

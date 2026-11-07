@@ -43,6 +43,7 @@ class FaissConnector(Connector):
     """
 
     name = "FAISS"
+    thread_safe = True  # FAISS searches are read-only; the filter cache only ever adds entries
 
     def __init__(
         self,

@@ -212,7 +212,7 @@ def test_sweep_command_filters_and_json(tmp_path, x) -> None:
     out = _sweep(tmp_path, "--meta", meta, "--filter", "lang=de", "--pass-rates", "0.01", "--json")
     assert out.exit_code in (0, 2), out.output
     doc = json.loads(out.stdout)
-    assert doc["format"] == "vectraudit.selectivity-sweep"
+    assert doc["format"] == "vectraudit.selectivity_sweep"
     assert doc["format_version"] == 1
     labels = [r["filter"]["label"] for r in doc["runs"]]
     assert labels == ["all", "lang=de", "synthetic@0.01"]

@@ -19,7 +19,7 @@ from vectraudit.core.selectivity import (
     synthetic_spec,
 )
 
-FORMAT = "vectraudit.selectivity-sweep"
+FORMAT = "vectraudit.selectivity_sweep"
 FORMAT_VERSION = 1
 
 

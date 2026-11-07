@@ -75,7 +75,7 @@ the documents it allows, so every row is recall against the right neighbours.
 - A filter that allows fewer documents than `k` is refused (its recall would be computed over
   fewer than `k` neighbours and compare with nothing).
 - Exit code 2 when any filter, including the unfiltered run, never reaches `--target`.
-  `--json` prints `vectraudit.selectivity-sweep` v1 (no document text). `--save` and
+  `--json` prints `vectraudit.selectivity_sweep` v1 (no document text). `--save` and
   `--baseline` are not available for filtered sweeps.
 
 The Tuner has the same sweep as a card below the results: pass rates, and metadata filters when

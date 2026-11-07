@@ -119,6 +119,8 @@ def _filter(conditions: Mapping[str, FilterValue]) -> list[dict[str, Any]]:
 class ElasticsearchConnector(Connector):
     """Query one Elasticsearch or OpenSearch index by dense vector."""
 
+    thread_safe = True  # each call is an independent HTTP request
+
     name = "Elasticsearch/OpenSearch"
 
     def __init__(

@@ -119,6 +119,9 @@ class Connector(abc.ABC):
     """Base class for backend connectors. Use as a context manager to close connections."""
 
     name: str = "connector"
+    thread_safe: bool = False
+    """Whether one instance may serve several threads at once. If not, a load run opens one
+    connector per worker."""
 
     @abc.abstractmethod
     def describe(self) -> BackendInfo:

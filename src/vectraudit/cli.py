@@ -1061,6 +1061,7 @@ def cache_clear(
 # Release checks (backend-neutral): defined in release_cli to keep this module FAISS-focused.
 from vectraudit.release_cli import (  # noqa: E402
     calibrate,
+    capacity,
     check,
     cloud_app,
     dataset_app,
@@ -1075,6 +1076,7 @@ from vectraudit.experiments_cli import experiment_app  # noqa: E402
 
 app.add_typer(experiment_app, name="experiment")
 app.command()(record)
+app.command()(capacity)
 app.command()(check)
 app.command()(init)
 app.command()(calibrate)

@@ -43,6 +43,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   run records carry `pass_rate` on filtered queries and a `search.pass_rates` summary; a
   dataset header's `selectivity_buckets` opts in to cohorts such as `pass_rate<1%`. A backend
   that cannot count leaves the pass rate unknown.
+- `vectraudit capacity`: throughput, p50/p95/p99 latency, error rate and sampled recall per
+  concurrency level against a staging target, under a fixed duration (default 30 s) and a
+  global requests-per-second ceiling (default 50). It prints the most it can send, refuses
+  without `--confirm-target` matching the connection's target, and refuses a target named like
+  `prod` without `--allow-production`. Reports (`vectraudit.capacity` v1, with
+  `vectraudit.selectivity_sweep`) appear in the Checks tab and compare only on matching runner
+  environments. See `docs/capacity.md`.
 - `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
   scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
   one that is not, an injection that displaces required evidence) and a failing release

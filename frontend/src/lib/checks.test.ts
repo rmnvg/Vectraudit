@@ -11,6 +11,8 @@ import fusionReplay from './fixtures/fusion_replay.json'
 import corpusScan from './fixtures/corpus_scan.json'
 import poisoningReport from './fixtures/poisoning.json'
 import redteam from './fixtures/promptfoo_redteam.json'
+import selectivity from './fixtures/selectivity_sweep.json'
+import capacity from './fixtures/capacity.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -142,4 +144,45 @@ it('reads a red-team run with no failures as a pass, not as proof', () => {
   const s = summary(clean)
   expect(s.verdict).toBe('pass')
   expect(s.headline).toContain('exploratory, not a release approval')
+})
+
+it('shows recall by pass rate, naming what was and was not measured', () => {
+  const s = summary(selectivity)
+  expect(s.title).toBe('Recall by filter pass rate')
+  expect(s.verdict).toBe('attention')
+  expect(s.items[0].startsWith('Unfiltered: 100% of the corpus passes (3,000 documents); efSearch 16:')).toBe(true)
+  expect(s.items.some(i => i.startsWith('synthetic@0.01: 1.0% of the corpus passes (30 documents)'))).toBe(true)
+  expect(s.items.some(i => i.includes('recall 0.95 not reached'))).toBe(true)
+  expect(s.notes).toContain('Pass rate is the fraction of documents that satisfy the filter, not the fraction removed.')
+  expect(s.notes.some(n => n.includes('was not reached in the sweep range'))).toBe(true)
+  expect(s.notes[s.notes.length - 1]).toContain('brute-force')
+})
+
+it('reads a sweep where every filter reaches the target as a pass', () => {
+  const easy = { ...selectivity, runs: selectivity.runs.map(r => ({ ...r, recommended: 16 })), suggestions: [] }
+  expect(summary(easy).verdict).toBe('pass')
+})
+
+it('summarises a capacity curve per concurrency level, and says when the ceiling limited it', () => {
+  const s = summary(capacity)
+  expect(s.title).toBe('Capacity curve')
+  expect(s.verdict).toBe('pass')
+  expect(s.headline).toContain('1 concurrency level measured on qdrant target staging')
+  expect(s.headline).toContain('a probe of staging, not a load test')
+  expect(s.items[0]).toMatch(/^Concurrency 1: [\d.]+ requests\/s, p50 [\d.]+ ms, p95 [\d.]+ ms, p99 [\d.]+ ms, 0\.0% errors, recall 1\.000/)
+  expect(s.notes.some(n => n.includes('runner environments match'))).toBe(true)
+})
+
+it('does not read a failed or erroring capacity run as a pass', () => {
+  expect(summary({ ...capacity, status: 'failed', levels: [], error: { message: 'denied' } }).verdict).toBe('fail')
+  const erroring = { ...capacity, levels: capacity.levels.map(l => ({ ...l, error_rate: 0.2 })) }
+  expect(summary(erroring).verdict).toBe('attention')
+  expect(summary({ ...capacity, status: 'cancelled' }).verdict).toBe('attention')
+  const unlike = { ...capacity, comparison: { comparable: false, reasons: ['Runner environments differ in system'], levels: [] } }
+  expect(summary(unlike).notes).toContain('Not compared with the baseline: Runner environments differ in system')
+})
+
+it('only recognises the two new formats when they carry the fields the summary reads', () => {
+  expect(isCheckReport({ ...capacity, levels: undefined })).toBe(false)
+  expect(isCheckReport({ ...selectivity, runs: undefined })).toBe(false)
 })

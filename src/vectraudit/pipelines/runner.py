@@ -17,6 +17,7 @@ from typing import Any
 from vectraudit.core.jobs import JobCancelledError
 from vectraudit.evaluation.dataset import Dataset, DatasetQuery
 from vectraudit.evaluation.metrics import repeat_quality
+from vectraudit.evaluation.ratelimit import RateLimiter
 from vectraudit.evaluation.runner import RunOptions, _skeleton, summarize
 from vectraudit.labelling.storage import task_lock
 from vectraudit.pipelines.budget import usage
@@ -87,8 +88,7 @@ class _Shared:
         self.policy = policy
         self._lock = threading.Lock()
         self._retries_left = policy.max_retries
-        self._interval = 1 / max_rps if max_rps else 0.0
-        self._next_call = 0.0
+        self._limiter = RateLimiter(max_rps)
 
     def take_retry(self) -> bool:
         """Spend one retry from the run budget; False once it is exhausted."""
@@ -100,13 +100,9 @@ class _Shared:
 
     def throttle(self, alive: Callable[[], None]) -> None:
         """Reserve the next call slot under ``max_rps`` and wait for it."""
-        if not self._interval:
-            return
-        with self._lock:
-            now = time.monotonic()
-            slot = max(now, self._next_call)
-            self._next_call = slot + self._interval
-        wait(slot - now, alive)
+        delay = self._limiter.reserve()
+        if delay:
+            wait(delay, alive)
 
 
 def wait(seconds: float, alive: Callable[[], None]) -> None:

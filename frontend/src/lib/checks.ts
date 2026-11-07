@@ -12,6 +12,8 @@ export const CHECK_FORMATS = [
   'vectraudit.corpus_scan',
   'vectraudit.poisoning',
   'vectraudit.promptfoo_redteam',
+  'vectraudit.selectivity_sweep',
+  'vectraudit.capacity',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -43,6 +45,8 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.fusion_replay': return arrays('configurations', 'questions') && object(value.summary) && typeof value.metric === 'string'
     case 'vectraudit.corpus_scan': return arrays('detectors', 'review', 'documents') && object(value.summary)
     case 'vectraudit.promptfoo_redteam': return object(value.plugins) && object(value.summary)
+    case 'vectraudit.selectivity_sweep': return arrays('runs') && typeof value.param === 'string' && typeof value.target === 'number'
+    case 'vectraudit.capacity': return arrays('levels', 'notes') && object(value.plan) && typeof value.status === 'string'
     case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
@@ -259,6 +263,59 @@ function promptfooRedteam(r: Row): CheckSummary {
   }
 }
 
+function selectivitySweep(r: Row): CheckSummary {
+  const runs = rows(r.runs)
+  const target = count(r.target)
+  const param = text(r.param)
+  const percent = (v: unknown) => count(v) >= 0.1 ? `${Math.round(count(v) * 100)}%` : `${(count(v) * 100).toFixed(count(v) < 0.01 ? 2 : 1)}%`
+  const reached = runs.filter(run => run.recommended != null)
+  const missed = runs.filter(run => run.recommended == null)
+  return {
+    title: 'Recall by filter pass rate',
+    verdict: missed.length ? 'attention' : 'pass',
+    headline: `${reached.length} of ${plural(runs.length, 'filter setting')} reached recall ${target.toFixed(2)} within the ${param} range swept (exploratory, not a release approval).`,
+    items: runs.map(run => {
+      const f = object(run.filter) ? run.filter : {}
+      const points = rows(run.points).map(p => `${param} ${text(p.value)}: ${count(p.recall).toFixed(3)}`).join(', ')
+      const smallest = run.recommended == null ? `recall ${target.toFixed(2)} not reached` : `${param} ${text(run.recommended)} is the smallest that reaches ${target.toFixed(2)}`
+      return `${text(f.kind) === 'all' ? 'Unfiltered' : text(f.label)}: ${percent(run.pass_rate)} of the corpus passes (${count(run.allowed_count).toLocaleString()} documents); ${points}; ${smallest}`
+    }),
+    notes: [
+      'Pass rate is the fraction of documents that satisfy the filter, not the fraction removed.',
+      `Each filter is measured against the exact neighbours among the documents it allows (${text(r.truth_source)} vectors).`,
+      ...rows(r.suggestions).filter(x => x.kind !== 'FILTER_UNMEASURED').map(x => text(x.detail)),
+      ...rows(r.suggestions).filter(x => x.kind === 'FILTER_UNMEASURED').map(x => text(x.detail)),
+    ].filter(Boolean),
+  }
+}
+
+function capacity(r: Row): CheckSummary {
+  const levels = rows(r.levels)
+  const status = text(r.status)
+  const backend = object(r.backend) ? r.backend : {}
+  const safety = object(r.safety) ? r.safety : {}
+  const plan = object(r.plan) ? r.plan : {}
+  const comparison = object(r.comparison) ? r.comparison : null
+  const ms = (v: unknown) => v == null ? 'n/a' : `${count(v).toFixed(1)} ms`
+  const failing = levels.filter(l => count(l.error_rate) > 0)
+  const error = object(r.error) ? r.error : null
+  return {
+    title: 'Capacity curve',
+    verdict: status === 'failed' ? 'fail' : status === 'complete' && !failing.length ? 'pass' : 'attention',
+    headline: status === 'complete'
+      ? `${plural(levels.length, 'concurrency level')} measured on ${text(backend.backend)} target ${text(safety.target)} at up to ${text(plan.max_rps)} requests per second (a probe of staging, not a load test).`
+      : `${status === 'cancelled' ? 'Cancelled' : 'Failed'} after ${plural(levels.length, 'concurrency level')}${error ? `: ${text(error.message)}` : ''}.`,
+    items: levels.map(l => {
+      const recall = object(l.recall) ? l.recall : {}
+      return `Concurrency ${text(l.concurrency)}: ${l.achieved_qps == null ? 'n/a' : count(l.achieved_qps).toFixed(1)} requests/s, p50 ${ms(l.p50_ms)}, p95 ${ms(l.p95_ms)}, p99 ${ms(l.p99_ms)}, ${l.error_rate == null ? 'n/a' : `${(count(l.error_rate) * 100).toFixed(1)}%`} errors, recall ${recall.mean == null ? 'unknown' : count(recall.mean).toFixed(3)}${l.at_ceiling ? ' (reached the request ceiling)' : ''}`
+    }),
+    notes: [
+      ...(Array.isArray(r.notes) ? r.notes.map(text) : []),
+      ...(comparison && comparison.comparable === false && Array.isArray(comparison.reasons) ? comparison.reasons.map(x => `Not compared with the baseline: ${text(x)}`) : []),
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -273,5 +330,7 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.corpus_scan': return corpusScan(report)
     case 'vectraudit.poisoning': return poisoning(report)
     case 'vectraudit.promptfoo_redteam': return promptfooRedteam(report)
+    case 'vectraudit.selectivity_sweep': return selectivitySweep(report)
+    case 'vectraudit.capacity': return capacity(report)
   }
 }
