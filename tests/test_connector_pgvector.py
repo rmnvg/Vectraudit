@@ -171,6 +171,7 @@ def test_describe(pg) -> None:
     assert caps.exact_reference
     assert caps.query_plans
     assert not caps.filters
+    assert not caps.filter_count
     assert caps.tuning_params == ("hnsw.ef_search", "ivfflat.probes")
     with connect(pg["reader"], distance="cosine") as c:
         assert not c.describe().config["matching_index"]
@@ -211,6 +212,14 @@ def test_filters(pg, query) -> None:
         with pytest.raises(ConnectorError) as e:
             c.search(SearchRequest(query, 5, filter={"lang": 3}))
         assert e.value.code is ErrorCode.QUERY
+        # An exact count with the search's own condition, not the planner's estimate.
+        assert c.capabilities().filter_count
+        assert c.count({}) == N
+        assert c.count({"lang": "en"}) == N // 2
+        assert c.count({"lang": "en", "public": True}) == 50
+        with pytest.raises(ConnectorError) as e:
+            c.count({"body": "x"})
+        assert e.value.code is ErrorCode.UNSUPPORTED
     assert len(en) == 20
     assert all(int(i) % 2 == 0 for i in en)
     assert all(int(i) % 2 == 0 and int(i) < 100 for i in both)

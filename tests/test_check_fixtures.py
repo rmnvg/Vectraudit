@@ -116,6 +116,52 @@ def promptfoo_redteam(tmp_path: Path) -> dict[str, Any]:
     return run_import(tmp_path, SPECS)[1]
 
 
+def selectivity_sweep(tmp_path: Path) -> dict[str, Any]:
+    import faiss
+    import numpy as np
+
+    from vectraudit.core import vectors as V
+    from vectraudit.core.advice import advise_selectivity
+    from vectraudit.core.loader import load_index
+    from vectraudit.core.search import GroundTruth
+    from vectraudit.core.selectivity import selectivity_sweep as sweep_filters
+    from vectraudit.core.selectivity import synthetic_spec
+    from vectraudit.core.sweep import sample_queries
+    from vectraudit.selectivity_cli import result_json
+
+    x = np.random.default_rng(3).standard_normal((3000, 16)).astype("float32")
+    index = faiss.IndexHNSWFlat(16, 16)
+    index.add(x)
+    li = load_index(index)
+    gt = GroundTruth(V.from_arrays(li, x), li.metric)
+    result = sweep_filters(
+        li,
+        sample_queries(gt.source, 30, seed=0),
+        gt,
+        [synthetic_spec(0.01)],
+        values=[16, 32],
+        k=10,
+        repeats=1,
+    )
+    return result_json(result, 0.95, advise_selectivity(result, 0.95), truth_reconstructed=False)
+
+
+def capacity(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_capacity import _plan, _Stub
+    from vectraudit.evaluation.capacity import run_capacity
+    from vectraudit.evaluation.dataset import parse_dataset
+
+    rows = [{"query_id": f"q{i}", "vector": [float(i)] * 32} for i in range(5)]
+    dataset = parse_dataset("\n".join(json.dumps(r) for r in rows))
+    stub = _Stub(lambda n, request: ["1", "2"], exact=True)
+    return run_capacity(
+        dataset,
+        lambda: stub,
+        _plan(concurrency=(1,), max_rps=20.0, serial_queries=3),
+        safety={"confirmed_target": "staging", "target": "staging", "production_override": False},
+    )
+
+
 @pytest.mark.parametrize(
     "build",
     [
@@ -129,6 +175,8 @@ def promptfoo_redteam(tmp_path: Path) -> dict[str, Any]:
         corpus_scan,
         poisoning,
         promptfoo_redteam,
+        selectivity_sweep,
+        capacity,
     ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):

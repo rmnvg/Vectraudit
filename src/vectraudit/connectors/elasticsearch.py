@@ -119,6 +119,8 @@ def _filter(conditions: Mapping[str, FilterValue]) -> list[dict[str, Any]]:
 class ElasticsearchConnector(Connector):
     """Query one Elasticsearch or OpenSearch index by dense vector."""
 
+    thread_safe = True  # each call is an independent HTTP request
+
     name = "Elasticsearch/OpenSearch"
 
     def __init__(
@@ -224,6 +226,7 @@ class ElasticsearchConnector(Connector):
         return Capabilities(
             search=indexed,
             filters=True,
+            filter_count=True,
             exact_reference=True,
             config_inspection=True,
             tuning_params=("ef_search",) if self.flavor == "opensearch" else ("num_candidates",),
@@ -299,6 +302,15 @@ class ElasticsearchConnector(Connector):
             knn["filter"] = {"bool": {"filter": filters}}
         body["knn"] = knn
         return body
+
+    def _count(self, filter: Mapping[str, FilterValue]) -> int:
+        """The ``_count`` API with the search's own term filters: an exact count of matches."""
+        filters = _filter(filter)
+        query = {"bool": {"filter": filters}} if filters else {"match_all": {}}
+        response = self._call(
+            "POST", f"/{quote(self.index)}/_count", {"query": query}, what="count"
+        )
+        return int(response["count"])
 
     def _search(self, request: SearchRequest) -> list[str]:
         if not request.exact and not self.capabilities().search:

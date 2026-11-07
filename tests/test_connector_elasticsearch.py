@@ -72,7 +72,17 @@ class FakeCluster:
         if path == "docs/_mapping":
             return 200, json.dumps({"docs-v2": {"mappings": {"properties": self.mapping}}}).encode()
         if path == "docs/_count":
-            return 200, json.dumps({"count": len(self.docs)}).encode()
+            query = (payload or {}).get("query", {})
+            filters = query.get("bool", {}).get("filter", [])
+            wanted = {key: value for f in filters for key, value in f["term"].items()}
+            return 200, json.dumps(
+                {
+                    "count": sum(
+                        all(meta.get(k) == v for k, v in wanted.items())
+                        for _, meta in self.docs.values()
+                    )
+                }
+            ).encode()
         if path == "docs/_search":
             return 200, json.dumps(self._search(payload)).encode()
         return 404, json.dumps({"error": {"reason": "no such index"}}).encode()
@@ -354,3 +364,16 @@ def test_run_on_a_real_cluster(flavor, metric, distance, synthetic):
         assert c.search(SearchRequest(probe, 3, exact=True)) == expected
     finally:
         _request(base, "DELETE", f"/{index}")
+
+
+def test_count_uses_the_count_api_with_the_search_filter() -> None:
+    c, cluster = connect()
+    assert c.capabilities().filter_count
+    assert c.count({}) == 3
+    assert cluster.calls[-1][3] == {"query": {"match_all": {}}}
+    assert c.count({"tenant": "acme"}) == 2
+    assert c.count({"tenant": "nobody"}) == 0
+    method, url, _, body = cluster.calls[-1]
+    assert method == "POST"
+    assert url.endswith("/docs/_count")
+    assert body == {"query": {"bool": {"filter": [{"term": {"tenant": "nobody"}}]}}}

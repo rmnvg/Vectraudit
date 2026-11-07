@@ -28,6 +28,35 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Filtered FAISS search (`vectraudit.core.filtering`): a metadata filter becomes an allowed
+  set of ids that FAISS applies during the search (IVF, HNSW, flat, IDMap, PreTransform and
+  refine indexes), with exact ground truth over the same set, cached per filter. A filtered
+  IVF explanation reports how many allowed vectors sit in the probed cells.
+- `vectraudit sweep --filter/--pass-rates`: recall against filter selectivity, with metadata
+  filters or VectorDBBench-style synthetic id filters, each measured against the exact
+  neighbours among the documents it allows. The Tuner gains a pass-rate card (`/api/selectivity`)
+  and the advice quotes measured recall per pass rate, listing brute force and partitioning as
+  not measured. See `docs/filtered-search.md`.
+- Filtered recall in release checks: connectors gain `Capabilities.filter_count` and
+  `Connector.count(filter)` (Qdrant, pgvector, Elasticsearch/OpenSearch, Weaviate, and FAISS
+  with a new `metadata` connection option, which also gives the FAISS connector filters);
+  run records carry `pass_rate` on filtered queries and a `search.pass_rates` summary; a
+  dataset header's `selectivity_buckets` opts in to cohorts such as `pass_rate<1%`. A backend
+  that cannot count leaves the pass rate unknown.
+- `vectraudit capacity`: throughput, p50/p95/p99 latency, error rate and sampled recall per
+  concurrency level against a staging target, under a fixed duration (default 30 s) and a
+  global requests-per-second ceiling (default 50). It prints the most it can send, refuses
+  without `--confirm-target` matching the connection's target, and refuses a target named like
+  `prod` without `--allow-production`. Reports (`vectraudit.capacity` v1, with
+  `vectraudit.selectivity_sweep`) appear in the Checks tab and compare only on matching runner
+  environments. See `docs/capacity.md`.
+- `vectraudit dataset import-vdbbench DIR --distance cosine|l2|ip --out OUT` (needs
+  `vectraudit[parquet]`) converts a VectorDBBench directory into vectors, ids, queries, a
+  dataset and the published neighbours as an external exact reference (with every source
+  file's hash). `record --reference` and `sweep --reference` measure ANN recall against it and
+  record its source; runs against different references are not compared on ANN recall. Filter
+  rates are converted to pass rates, and a filtered variant whose neighbours break its filter
+  is refused. Nothing is downloaded. See `docs/vectordbbench.md`.
 - `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
   scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
   one that is not, an injection that displaces required evidence) and a failing release

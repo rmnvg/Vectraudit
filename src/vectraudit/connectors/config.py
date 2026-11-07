@@ -137,7 +137,13 @@ def _optional_path(cfg: ConnectionConfig, key: str) -> Path | None:
 
 # Shared by offline doctor and runtime opens: structural checks need no backend client.
 _OPTION_TYPES: dict[str, dict[str, type]] = {
-    "faiss": {"index": str, "vectors": str, "ids": str, "reconstructed_reference": bool},
+    "faiss": {
+        "index": str,
+        "vectors": str,
+        "ids": str,
+        "reconstructed_reference": bool,
+        "metadata": str,
+    },
     "qdrant": {
         "url": str,
         "path": str,
@@ -262,12 +268,13 @@ def validate_connection(cfg: ConnectionConfig) -> None:
 def _open_faiss(cfg: ConnectionConfig) -> Connector:
     from vectraudit.connectors.faiss_index import FaissConnector
 
-    _reject_unknown(cfg, {"index", "vectors", "ids", "reconstructed_reference"})
+    _reject_unknown(cfg, {"index", "vectors", "ids", "reconstructed_reference", "metadata"})
     return FaissConnector(
         resolve_path(cfg, require(cfg.options, "index", str)),
         vectors=_optional_path(cfg, "vectors"),
         ids=_optional_path(cfg, "ids"),
         reconstructed_reference=option(cfg.options, "reconstructed_reference", bool, False),
+        metadata=_optional_path(cfg, "metadata"),
     )
 
 

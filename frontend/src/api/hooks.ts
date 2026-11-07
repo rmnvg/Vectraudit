@@ -89,3 +89,15 @@ export function useSweepAdvice(jobId: string, target: number, confident: boolean
     placeholderData: (prev) => prev,
   })
 }
+
+/** Measured statements about recall at each pass rate of a finished filtered sweep. */
+export function useSelectivityAdvice(jobId: string | null, target: number) {
+  return useQuery({
+    queryKey: ['selectivity-advice', jobId, target],
+    queryFn: ({ signal }) => api.selectivityAdvice(jobId as string, target, signal),
+    enabled: jobId !== null,
+    staleTime: Infinity,
+    retry: false,
+    placeholderData: (prev) => prev,
+  })
+}

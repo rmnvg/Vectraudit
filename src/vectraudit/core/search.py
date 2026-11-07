@@ -13,6 +13,7 @@ import numpy.typing as npt
 
 from vectraudit.core._faiss import import_faiss
 from vectraudit.core.embed import Embedder
+from vectraudit.core.filtering import AllowedSet
 from vectraudit.core.ivf import Assignments
 from vectraudit.core.types import IndexKind, LoadedIndex, Metric
 from vectraudit.core.vectors import VectorSource
@@ -47,12 +48,16 @@ def _as_query(query: npt.ArrayLike, d: int) -> FloatArray:
 
 
 def resolve_search_params(
-    li: LoadedIndex, nprobe: int | None = None, ef_search: int | None = None
+    li: LoadedIndex,
+    nprobe: int | None = None,
+    ef_search: int | None = None,
+    sel: Any = None,
 ) -> tuple[Any, dict[str, int]]:
     """Build a FAISS ``SearchParameters`` object without mutating the shared index.
 
     Unset values fall back to what the index currently has. Returns ``(params, used)``
-    where ``used`` records the effective values for display.
+    where ``used`` records the effective values for display. ``sel`` is a FAISS
+    ``IDSelector`` (see :meth:`AllowedSet.selector`) restricting which ids may be returned.
     """
     faiss = import_faiss()
     used: dict[str, int] = {}
@@ -64,7 +69,7 @@ def resolve_search_params(
         nprobe = int(li.ivf.nprobe) if nprobe is None else int(nprobe)
         if not 1 <= nprobe <= nlist:
             raise ValueError(f"nprobe must be between 1 and nlist={nlist}, got {nprobe}.")
-        params = faiss.SearchParametersIVF(nprobe=nprobe, max_codes=int(li.ivf.max_codes))
+        params = faiss.SearchParametersIVF(nprobe=nprobe, max_codes=int(li.ivf.max_codes), sel=sel)
         used["nprobe"] = nprobe
     elif li.kind.is_hnsw:
         if nprobe is not None:
@@ -72,14 +77,17 @@ def resolve_search_params(
         ef_search = int(li.core.hnsw.efSearch) if ef_search is None else int(ef_search)
         if ef_search < 1:
             raise ValueError(f"efSearch must be >= 1, got {ef_search}.")
-        params = faiss.SearchParametersHNSW(efSearch=ef_search)
+        params = faiss.SearchParametersHNSW(efSearch=ef_search, sel=sel)
         used["efSearch"] = ef_search
     elif nprobe is not None or ef_search is not None:
         raise ValueError(f"{li.kind.value} indexes take no search parameters.")
+    elif sel is not None:
+        params = faiss.SearchParameters(sel=sel)
 
     if params is not None and li.has_refine:
         # IndexRefine rejects plain params, and its own params default k_factor to 1,
-        # so pass the index's k_factor through explicitly to keep results unchanged.
+        # so pass the index's k_factor through explicitly to keep results unchanged. The
+        # selector must sit in ``base_index_params``: set on the outer object it is ignored.
         params = faiss.IndexRefineSearchParameters(
             k_factor=li.refine_k_factor, base_index_params=params
         )
@@ -94,18 +102,23 @@ def search(
     nprobe: int | None = None,
     ef_search: int | None = None,
     exclude_id: int | None = None,
+    allowed: AllowedSet | None = None,
 ) -> SearchResult:
     """Search the index for one query vector (input space, dimension ``li.d``).
 
     ``nprobe``/``ef_search`` apply to this call only. ``exclude_id`` drops that id from the
     results (used when the query is itself a stored vector) while still returning ``k``.
+    ``allowed`` restricts the search to those ids *inside* FAISS; fewer than ``k`` results
+    come back (padded with ``-1``) when the probed cells or visited nodes hold too few of
+    them, which is the failure this exists to measure.
     """
     if not li.is_supported:
         raise ValueError(f"Cannot search: {li.unsupported_reason}")
     if k < 1:
         raise ValueError(f"k must be >= 1, got {k}.")
     q = _as_query(query, li.d)
-    params, used = resolve_search_params(li, nprobe, ef_search)
+    selector = None if allowed is None else allowed.selector()
+    params, used = resolve_search_params(li, nprobe, ef_search, selector)
     k_search = min(k + (exclude_id is not None), max(li.ntotal, 1))
 
     t0 = time.perf_counter()
@@ -140,19 +153,59 @@ class GroundTruth:
         self.metric = metric
         self.d = int(source.vectors.shape[1])
         self._faiss_metric = faiss.METRIC_L2 if metric is Metric.L2 else faiss.METRIC_INNER_PRODUCT
+        self._subsets: dict[str, tuple[IntArray, FloatArray]] = {}
+        """Source rows and vectors of recent allowed sets, keyed by fingerprint."""
 
-    def _knn(self, q: FloatArray, k: int) -> tuple[FloatArray, IntArray]:
+    _SUBSET_CACHE = 2
+
+    def _subset(self, allowed: AllowedSet) -> tuple[IntArray, FloatArray]:
+        cached = self._subsets.get(allowed.fingerprint)
+        if cached is None:
+            rows = np.flatnonzero(np.isin(self.source.ids, allowed.ids)).astype(np.int64)
+            cached = (rows, np.ascontiguousarray(self.source.vectors[rows], dtype=np.float32))
+            while len(self._subsets) >= self._SUBSET_CACHE:
+                self._subsets.pop(next(iter(self._subsets)))
+            self._subsets[allowed.fingerprint] = cached
+        return cached
+
+    def _knn(
+        self, q: FloatArray, k: int, allowed: AllowedSet | None = None
+    ) -> tuple[FloatArray, IntArray]:
+        """Exact k-NN as ``(distances, source rows)``; rows are ``-1`` for missing slots."""
         faiss = import_faiss()
-        distances, rows = faiss.knn(q, self.source.vectors, k, metric=self._faiss_metric)
-        return distances, rows
+        if allowed is None:
+            distances, rows = faiss.knn(q, self.source.vectors, k, metric=self._faiss_metric)
+            return distances, rows
+        rows, vectors = self._subset(allowed)
+        if len(rows) == 0:
+            return (
+                np.zeros((len(q), k), dtype=np.float32),
+                np.full((len(q), k), -1, dtype=np.int64),
+            )
+        distances, local = faiss.knn(q, vectors, min(k, len(rows)), metric=self._faiss_metric)
+        if local.shape[1] < k:
+            pad = k - local.shape[1]
+            distances = np.pad(distances, ((0, 0), (0, pad)))
+            local = np.pad(local, ((0, 0), (0, pad)), constant_values=-1)
+        return distances, np.where(local >= 0, rows[np.maximum(local, 0)], -1)
 
     @property
     def reconstructed(self) -> bool:
         """True when computed on vectors decoded from the index, not the raw vectors."""
         return self.source.reconstructed
 
-    def search(self, query: npt.ArrayLike, k: int, exclude_id: int | None = None) -> SearchResult:
-        """Exact top-k (user-facing ids), optionally excluding one id."""
+    def search(
+        self,
+        query: npt.ArrayLike,
+        k: int,
+        exclude_id: int | None = None,
+        allowed: AllowedSet | None = None,
+    ) -> SearchResult:
+        """Exact top-k (user-facing ids), optionally excluding one id.
+
+        With ``allowed``, the exact neighbours *among the allowed ids*: the truth a filtered
+        search is measured against.
+        """
         q = _as_query(query, self.d)
         if len(self.source) == 0:
             # Nothing stored: no neighbours (faiss.knn would report row -1, which has no id).
@@ -160,7 +213,7 @@ class GroundTruth:
             return SearchResult(empty, np.empty(0, dtype=np.float32), self.metric, 0.0)
         k_search = min(k + (exclude_id is not None), max(len(self.source), 1))
         t0 = time.perf_counter()
-        distances, rows = self._knn(q, k_search)
+        distances, rows = self._knn(q, k_search, allowed)
         latency_ms = (time.perf_counter() - t0) * 1000
         rows = rows[0]
         ids = np.where(rows >= 0, self.source.ids[np.maximum(rows, 0)], -1)
@@ -168,11 +221,16 @@ class GroundTruth:
         return SearchResult(ids, dist, self.metric, latency_ms)
 
     def search_batch(
-        self, queries: npt.ArrayLike, k: int, exclude_ids: npt.ArrayLike | None = None
+        self,
+        queries: npt.ArrayLike,
+        k: int,
+        exclude_ids: npt.ArrayLike | None = None,
+        allowed: AllowedSet | None = None,
     ) -> IntArray:
         """Exact top-k user ids for many queries, shape ``(n, k)`` (``-1`` pads short rows).
 
         ``exclude_ids[i]`` is dropped from row ``i`` (queries that are stored vectors).
+        ``allowed`` restricts the truth to those ids (the set is cached by fingerprint).
         """
         q = np.ascontiguousarray(queries, dtype=np.float32)
         if q.ndim != 2 or q.shape[1] != self.d:
@@ -184,7 +242,7 @@ class GroundTruth:
         if len(self.source) == 0 or len(q) == 0:
             return out
         k_search = min(k + (excl is not None), max(len(self.source), 1))
-        _, rows = self._knn(q, k_search)
+        _, rows = self._knn(q, k_search, allowed)
         ids = np.where(rows >= 0, self.source.ids[np.maximum(rows, 0)], -1)
         for i in range(len(q)):
             row = ids[i]
@@ -343,6 +401,11 @@ class IvfTrace:
     """Smallest nprobe whose probed lists contain every true neighbour."""
     result_list_nos: IntArray
     """List number of each approximate result (``-1`` for empty slots)."""
+    allowed_in_probed: int | None = None
+    """Filtered search only: how many allowed vectors sit in the probed lists. Fewer than
+    ``k`` means the probed cells cannot fill the result, however good the ranking."""
+    allowed_total: int | None = None
+    """Filtered search only: how many vectors the filter allows in the whole index."""
 
     @property
     def probed_lists(self) -> IntArray:
@@ -374,6 +437,7 @@ def trace_ivf(
     result: SearchResult,
     truth: SearchResult,
     assignments: Assignments,
+    allowed: AllowedSet | None = None,
 ) -> IvfTrace:
     """Explain an IVF search: the full probe order and the fate of each true neighbour.
 
@@ -413,6 +477,11 @@ def trace_ivf(
             )
         )
 
+    allowed_in_probed = None
+    if allowed is not None:
+        lists = assignments.lookup(allowed.ids)
+        allowed_in_probed = int(np.isin(lists, order[:nprobe]).sum())
+
     return IvfTrace(
         nprobe=nprobe,
         probe_order=order,
@@ -420,6 +489,8 @@ def trace_ivf(
         neighbours=neighbours,
         min_nprobe_for_all=min(nlist, max((n.probe_rank for n in neighbours), default=0) + 1),
         result_list_nos=assignments.lookup(result.ids),
+        allowed_in_probed=allowed_in_probed,
+        allowed_total=None if allowed is None else len(allowed),
     )
 
 
@@ -481,13 +552,23 @@ def explain_query(
     assignments: Assignments | None = None,
     rerank_source: VectorSource | None = None,
     candidates: int | None = None,
+    allowed: AllowedSet | None = None,
     progress: Callable[[float, str], None] | None = None,
 ) -> QueryReport:
-    """Search, compare with exact ground truth (if given) and trace IVF probing (if IVF)."""
+    """Search, compare with exact ground truth (if given) and trace IVF probing (if IVF).
+
+    With ``allowed``, both the search and the ground truth are restricted to those ids.
+    """
     report = progress or (lambda _f, _m: None)
     report(0.3, "Searching index")
     result = search(
-        li, query.vector, k, nprobe=nprobe, ef_search=ef_search, exclude_id=query.exclude_id
+        li,
+        query.vector,
+        k,
+        nprobe=nprobe,
+        ef_search=ef_search,
+        exclude_id=query.exclude_id,
+        allowed=allowed,
     )
     reranked = None
     candidate_count = None
@@ -502,6 +583,7 @@ def explain_query(
             nprobe=nprobe,
             ef_search=ef_search,
             exclude_id=query.exclude_id,
+            allowed=allowed,
         )
         report(0.5, "Reranking candidates")
         reranked = rerank(rerank_source, query.vector, pool, k)
@@ -509,11 +591,11 @@ def explain_query(
     if ground_truth is None:
         return QueryReport(query, result, reranked=reranked, candidate_count=candidate_count)
     report(0.6, "Computing exact neighbours")
-    truth = ground_truth.search(query.vector, k, exclude_id=query.exclude_id)
+    truth = ground_truth.search(query.vector, k, exclude_id=query.exclude_id, allowed=allowed)
     report(0.8, "Explaining missed neighbours")
     trace = None
     if li.kind.is_ivf and assignments is not None:
-        trace = trace_ivf(li, query.vector, result, truth, assignments)
+        trace = trace_ivf(li, query.vector, result, truth, assignments, allowed)
     return QueryReport(
         query=query,
         result=result,

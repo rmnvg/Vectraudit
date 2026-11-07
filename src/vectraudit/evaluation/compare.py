@@ -25,6 +25,7 @@ from typing import Any
 import numpy as np
 
 from vectraudit.evaluation.diagnose import diagnose
+from vectraudit.evaluation.external_reference import reference_identity
 from vectraudit.evaluation.families import family_count, family_id, family_means
 from vectraudit.evaluation.metrics import QUALITY_METRICS, SEMANTIC_METRICS
 from vectraudit.evaluation.policy import DEFAULT_POLICY, CohortRule, MetricRule, Policy
@@ -85,6 +86,7 @@ class _Check:
         self.n_bootstrap = n_bootstrap
         self.reasons: list[dict[str, Any]] = []
         self.warnings: list[str] = []
+        self.ann_blocked = _reference_mismatch(base, cand)
         self.out: dict[str, Any] = {
             "format": CHECK_FORMAT,
             "format_version": CHECK_FORMAT_VERSION,
@@ -549,7 +551,11 @@ class _Check:
 
     def _quality(self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]) -> None:
         available = {}
+        if self.ann_blocked:
+            self.warnings.append(self.ann_blocked)
         for name in QUALITY_METRICS:
+            if name == "ann_recall" and self.ann_blocked:
+                continue
             stats = self._metric_stats(pairs, name, p_value=True)
             if stats is not None:
                 available[name] = stats
@@ -583,7 +589,7 @@ class _Check:
             self.flag(
                 Verdict.NOT_COMPARABLE,
                 "No quality metric was measured in both runs: add relevance labels or an "
-                "exact reference.",
+                "exact reference." + (f" {self.ann_blocked}" if self.ann_blocked else ""),
             )
             return
         for name, stats in available.items():
@@ -601,7 +607,7 @@ class _Check:
         for name, rule in self.policy.metrics.items():
             if name not in available:
                 if rule.required:
-                    self.flag(Verdict.NOT_COMPARABLE, _unavailable(name))
+                    self.flag(Verdict.NOT_COMPARABLE, _unavailable(name, self.ann_blocked))
                 continue
             if available[name]["n_families"] < self.policy.min_queries:
                 self.flag(
@@ -730,7 +736,10 @@ class _Check:
         )
         if primary is None or primary not in available:
             if self.policy.max_regressed_queries is not None:
-                self.flag(Verdict.NOT_COMPARABLE, _unavailable(primary or "a quality metric"))
+                self.flag(
+                    Verdict.NOT_COMPARABLE,
+                    _unavailable(primary or "a quality metric", self.ann_blocked),
+                )
             return
         if (
             self.policy.max_regressed_queries is not None
@@ -820,7 +829,8 @@ class _Check:
                     if name not in metrics:
                         if metric_rule.required:
                             self.flag(
-                                Verdict.NOT_COMPARABLE, f"cohort {tag!r}: {_unavailable(name)}"
+                                Verdict.NOT_COMPARABLE,
+                                f"cohort {tag!r}: {_unavailable(name, self.ann_blocked)}",
                             )
                     elif metrics[name]["n_families"] < rule.min_queries:
                         self.warnings.append(
@@ -1149,9 +1159,38 @@ def _critical_detail(failures: Sequence[Mapping[str, Any]], total: int) -> str:
     return f"failed on {len(failures)} of {total} executions; first at {where}: {observed}"
 
 
-def _unavailable(name: str) -> str:
+def _reference_mismatch(base: Mapping[str, Any], cand: Mapping[str, Any]) -> str | None:
+    """Why ANN recall cannot be compared, when the runs used different exact references.
+
+    A run's reference is its backend's own exact search unless it recorded an external one.
+    Recall against different references answers different questions, so it is not compared.
+    """
+    b, c = reference_identity(base), reference_identity(cand)
+    if b == c:
+        return None
+
+    def describe(identity: tuple[str, str] | None) -> str:
+        if identity is None:
+            return "the backend's own exact search"
+        return f"{identity[0]} {identity[1][:12]}"
+
+    return (
+        "ANN recall is not compared: the runs used different exact references "
+        f"({describe(b)} vs {describe(c)}). Re-record both against the same reference."
+    )
+
+
+def _unavailable(name: str, ann_blocked: str | None = None) -> str:
+    if name == "ann_recall" and ann_blocked:
+        return f"The policy requires ann_recall. {ann_blocked}"
     need = "an exact reference" if name == "ann_recall" else "relevance labels"
     return f"The policy requires {name}, which needs {need} in both runs."
+
+
+def environment_differences(a: Mapping[str, Any], b: Mapping[str, Any]) -> list[str]:
+    """The runner-environment fields (``system``, ``machine``, ``cpu_count``, ``python``) on
+    which two runners differ: timing measured on them is not comparable."""
+    return [key for key in _ENVIRONMENT_KEYS if a.get(key) != b.get(key)]
 
 
 def _environment(run: Mapping[str, Any]) -> dict[str, Any]:

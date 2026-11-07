@@ -82,7 +82,10 @@ def round_coords(a: npt.NDArray[np.float32]) -> list[float]:
 
 
 def job_response(
-    body: S.SweepJobResponse | S.CompareJobResponse | S.EvaluationJobResponse,
+    body: S.SweepJobResponse
+    | S.CompareJobResponse
+    | S.EvaluationJobResponse
+    | S.SelectivityJobResponse,
 ) -> JSONResponse:
     """A background job's JSON: 202 while running, 200 once finished.
 

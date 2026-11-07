@@ -1,0 +1,103 @@
+{
+  "format": "vectraudit.capacity",
+  "format_version": 1,
+  "created_at": "2026-11-07T10:14:00+00:00",
+  "status": "complete",
+  "error": null,
+  "dataset": {
+    "sha256": "bbebc5b3cdb3bba808581b44e13e8c6bcd1aadb6bfdcc581be75d1c1e2db20fc",
+    "n_queries": 5,
+    "n_families": 5,
+    "n_labelled": 0,
+    "n_filtered": 0,
+    "dim": 32,
+    "tags": [],
+    "meta": {}
+  },
+  "connection": {},
+  "plan": {
+    "concurrency": [
+      1
+    ],
+    "duration_s": 1.0,
+    "max_rps": 20.0,
+    "k": 10,
+    "params": {},
+    "serial_queries": 3,
+    "recall_sample": 20,
+    "seed": 0
+  },
+  "embedder": null,
+  "safety": {
+    "confirmed_target": "staging",
+    "target": "staging",
+    "production_override": false
+  },
+  "runner": {
+    "vectraudit": "0.1.0",
+    "python": "3.12.14",
+    "system": "Darwin",
+    "machine": "arm64",
+    "cpu_count": 11,
+    "ci": false
+  },
+  "latency_scope": "measured by this process around the connector call (client side)",
+  "backend": {
+    "backend": "qdrant",
+    "distance": "l2",
+    "dim": 32,
+    "count": 100,
+    "target": {
+      "collection": "staging"
+    },
+    "backend_version": null,
+    "client_version": null,
+    "config": {},
+    "snapshot": null
+  },
+  "capabilities": {
+    "search": true,
+    "filters": true,
+    "filter_count": false,
+    "exact_reference": true,
+    "exact_reference_note": null,
+    "config_inspection": false,
+    "query_plans": false,
+    "vector_export": false,
+    "tuning_params": []
+  },
+  "serial": {
+    "requests": 3,
+    "errors": {},
+    "p50_ms": 0.032167008612304926,
+    "p95_ms": 0.05200479936320335,
+    "p99_ms": 0.053768158541060984,
+    "mean_ms": 0.036278002274533115
+  },
+  "levels": [
+    {
+      "concurrency": 1,
+      "duration_s": 1.0047725409967825,
+      "requests": 20,
+      "errors": {},
+      "error_rate": 0.0,
+      "achieved_qps": 19.90500255924494,
+      "attempts_per_s": 19.90500255924494,
+      "p50_ms": 0.035124990972690284,
+      "p95_ms": 0.07123990944819526,
+      "p99_ms": 0.08184798440197481,
+      "mean_ms": 0.039629249658901244,
+      "at_ceiling": true,
+      "recall": {
+        "basis": "exact reference, measured after the level, not under load",
+        "sample": 5,
+        "mean": 1.0
+      }
+    }
+  ],
+  "notes": [
+    "Client-side latency on this machine: it is comparable with another capacity report only when the runner environments match.",
+    "Levels marked at_ceiling reached the 20 requests/s ceiling: the backend kept up, so its limit is at least that high, not exactly that."
+  ],
+  "comparison": null
+}

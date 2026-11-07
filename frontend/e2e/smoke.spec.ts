@@ -131,6 +131,23 @@ test('tuner: sweep and get a recommendation', async ({ page }) => {
   await expect(trust.getByText('Recall is not relevance')).toBeVisible()
 })
 
+test('tuner: recall falls with the filter pass rate, and a bad pass rate is refused', async ({ page }) => {
+  await page.goto('/#/tuner')
+  await page.getByLabel('Pass rates (fraction that passes)').fill('0.5, 0.02')
+  await page.getByRole('button', { name: 'Run filtered sweep' }).click()
+  const table = page.locator('table', { hasText: 'Pass rate' })
+  await expect(table.locator('tbody tr')).toHaveCount(3)
+  await expect(table.locator('tbody tr').first()).toContainText('unfiltered')
+  await expect(table.locator('tbody tr').nth(2)).toContainText('2.0%')
+  // Recall at the unfiltered setting falls as the filter tightens: a measured statement.
+  await expect(page.getByRole('heading', { name: /Recall falls under filters at nprobe/ })).toBeVisible()
+  // The metadata filter field appears because the server was started with metadata.
+  await expect(page.getByLabel(/Metadata filters, one per line/)).toBeVisible()
+  await page.getByLabel('Pass rates (fraction that passes)').fill('50%')
+  await page.getByRole('button', { name: 'Run filtered sweep' }).click()
+  await expect(page.getByText(/Pass rates are fractions that pass/)).toBeVisible()
+})
+
 test('tuner: per-query recall and worst queries lead to the explorer', async ({ page }) => {
   await page.goto('/#/tuner')
   await page.getByRole('button', { name: 'Run sweep' }).click()

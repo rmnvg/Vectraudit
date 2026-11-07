@@ -105,7 +105,7 @@ def _query(
 ) -> dict[str, Any]:
     out = _scalars(
         query,
-        "query_id family_id filtered latency_ms ann_recall nondeterministic "
+        "query_id family_id filtered pass_rate latency_ms ann_recall nondeterministic "
         "no_answer_correct permission_checked abstained cost_usd memory_bytes "
         "attempt_count elapsed_ms",
     )
