@@ -2256,20 +2256,40 @@ def intake_command(
 
 @workbench_app.command("benchmark")
 def benchmark_command(
-    dataset: Path, out: Path = Path("benchmark.json"), runs: Path | None = None
+    dataset: Path,
+    out: Path = Path("benchmark.json"),
+    runs: Path | None = None,
+    corpus: Annotated[
+        Path | None,
+        typer.Option(
+            help="Corpus JSONL with vectors: also report groups of documents no exploratory "
+            "question is close to (embedding_coverage, hypotheses)."
+        ),
+    ] = None,
 ) -> None:
     """Audit coverage and duplicates; prioritize exploratory judgments from run pools."""
+    from vectraudit.core.atlas import AtlasError
+    from vectraudit.pipelines.atlas_build import read_corpus
+    from vectraudit.pipelines.benchmark import CorpusVectors
+
     try:
+        vectors = None
+        if corpus is not None:
+            ids, matrix, titles, _ = read_corpus(corpus)
+            vectors = CorpusVectors(ids, matrix, titles)
         result = audit_benchmark(
             load_dataset(dataset),
             [load_run(p) for p in sorted(runs.glob("*.run.json"))] if runs else [],
+            corpus=vectors,
         )
         _write(out, result)
         typer.echo(
             f"{result['n_labelled']}/{result['n_queries']} annotated; "
             f"{len(result['duplicates'])} duplicate groups"
         )
-    except (OSError, ValueError) as exc:
+        for finding in (result["embedding_coverage"] or {}).get("findings", []):
+            typer.echo(f"Hypothesis: {finding['message']}")
+    except (OSError, ValueError, AtlasError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
 
@@ -2976,3 +2996,103 @@ def share_command(
         message = exc.message if isinstance(exc, CloudClientError) else GENERIC_ERROR
         typer.echo(message, err=True)
         raise typer.Exit(2) from None
+
+
+@workbench_app.command("atlas")
+def atlas_command(
+    corpus: Annotated[Path, typer.Argument(help="Corpus JSONL: doc_id, text, metadata, vector.")],
+    dataset: Annotated[Path, typer.Argument(help="The benchmark (JSONL).")],
+    out: Annotated[
+        Path, typer.Option(help="Workbench artifact directory to write atlas-<name>.json/.bin to.")
+    ],
+    name: Annotated[str, typer.Option(help="Atlas name (letters, digits, . _ -).")] = "atlas",
+    run: Annotated[
+        Path | None, typer.Option(help="The run whose outcomes colour the map (JSON).")
+    ] = None,
+    baseline: Annotated[
+        Path | None,
+        typer.Option(help="An earlier run: a question worse than in it is a regression."),
+    ] = None,
+    hubness: Annotated[Path | None, typer.Option(help="A hubness report (JSON).")] = None,
+    scan: Annotated[Path | None, typer.Option(help="A corpus-scan report (JSON).")] = None,
+    poison_suite: Annotated[
+        Path | None, typer.Option(help="A poison suite's poison-suite.json.")
+    ] = None,
+    max_points: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            help="Plain documents kept (every question and flagged, lost or "
+            "relevant document is always kept).",
+        ),
+    ] = 50_000,
+    large_atlas: Annotated[
+        bool,
+        typer.Option("--large-atlas", help="Allow --max-points above 50,000, up to 1,000,000."),
+    ] = False,
+    seed: Annotated[int, typer.Option(min=0, help="Sampling seed.")] = 0,
+    show_heldout: Annotated[
+        bool,
+        typer.Option(
+            "--show-heldout",
+            help="Draw held-out questions, uncoloured. Without it they are not drawn at all.",
+        ),
+    ] = False,
+    embedder: Annotated[
+        str | None,
+        typer.Option(
+            help="sentence-transformers model for documents or questions without vectors."
+        ),
+    ] = None,
+) -> None:
+    """Build a corpus atlas: a 2D map of the corpus and the benchmark questions.
+
+    Each point is categorised from the run records: relevant, lost (never retrieved, or
+    retrieved then dropped), hub, flagged, and questions passed, failed or regressed. Held-out
+    questions are hidden unless --show-heldout, and never coloured by result. The map is
+    a PCA layout, which distorts distance: it shows where to look, not what is wrong.
+    """
+    from vectraudit.core.atlas import DEFAULT_MAX_POINTS, AtlasError
+    from vectraudit.pipelines.atlas_build import build_from_files, write_bundle
+
+    if max_points > DEFAULT_MAX_POINTS and not large_atlas:
+        typer.echo(
+            f"Atlas error: --max-points above {DEFAULT_MAX_POINTS:,} needs --large-atlas.", err=True
+        )
+        raise typer.Exit(2)
+    embed = None
+    if embedder:
+        from vectraudit.core.embed import sentence_transformer_embedder
+
+        embed = sentence_transformer_embedder(embedder, normalize=False)
+
+    def read(path: Path | None) -> dict[str, Any] | None:
+        return None if path is None else json.loads(path.read_text(encoding="utf-8"))
+
+    try:
+        ds = load_dataset(dataset)
+        built = build_from_files(
+            corpus,
+            ds,
+            selected=load_run(run) if run else None,
+            baseline=load_run(baseline) if baseline else None,
+            hubness=read(hubness),
+            scan=read(scan),
+            suite=read(poison_suite),
+            max_points=max_points,
+            seed=seed,
+            show_heldout=show_heldout,
+            name=name,
+            embed=embed,
+        )
+        sidecar, points = write_bundle(built, out, name)
+    except (OSError, ValueError, AtlasError) as exc:
+        typer.echo(f"Atlas error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    c = built.sidecar["counts"]
+    typer.echo(
+        f"Wrote {sidecar} and {points.name}: {c['documents_shown']:,} of {c['documents_total']:,} "
+        f"documents and {c['questions_shown']:,} of {c['questions_total']:,} questions."
+    )
+    if c["heldout_hidden"]:
+        typer.echo(f"{c['heldout_hidden']} held-out questions are not drawn (--show-heldout).")
