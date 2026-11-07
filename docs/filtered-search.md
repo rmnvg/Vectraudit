@@ -27,6 +27,26 @@ unfiltered truth.
 VectorDBBench quote a *filter rate*, the fraction **removed**. A 99% filter rate is a 1% pass
 rate; convert explicitly when importing.
 
+## Filtered recall in release checks
+
+A dataset query's `filter` goes to the backend with the search **and** with the exact
+reference, so ANN recall is measured against the exact neighbours *among the documents that
+pass*. Each filtered query in a run record also carries `pass_rate`, the fraction of the
+corpus its filter keeps, **counted** by the backend with the condition its search applies:
+
+| Backend | Count |
+|---|---|
+| FAISS (with `metadata`) | ids whose metadata satisfies the filter |
+| Qdrant | the count API with `exact=true` |
+| pgvector | `SELECT count(*)` with the search's own `WHERE` (not the planner's estimate) |
+| Elasticsearch, OpenSearch | the `_count` API with the search's filter |
+| Weaviate | the aggregate `total_count` with the search's filter |
+| Pinecone, Chroma | not counted: no documented exact count for a metadata filter, so `pass_rate` is `null` |
+
+An unknown pass rate is never read as high or low: the query is in no selectivity cohort, and
+`search.pass_rates` in the run says how many filtered queries were counted. See
+`selectivity_buckets` in `docs/release-checks.md` for cohorts by pass rate.
+
 ## Notes
 
 - With a refine stage (`IVF..,RFlat`) FAISS honours the selector only inside the base

@@ -41,6 +41,7 @@ from vectraudit.evaluation.metrics import (
     metric_contract,
     repeat_quality,
 )
+from vectraudit.evaluation.pass_rates import PassRates, bucket_for
 
 RUN_FORMAT = "vectraudit.run"
 RUN_FORMAT_VERSION = 1
@@ -118,10 +119,13 @@ def execute_run(
         vectors, embedding_s = _query_vectors(dataset, embed, info.dim)
         record["timing"]["embedding_s"] = embedding_s
         _warm_up(connector, dataset, vectors, options)
+        rates = PassRates(connector, dataset.meta.get("selectivity_buckets") or ())
         for n, (q, vector) in enumerate(zip(dataset.queries, vectors, strict=True)):
             if progress is not None:
                 progress(n, len(dataset))
-            record["queries"].append(_run_query(connector, q, vector, options, use_exact))
+            record["queries"].append(_run_query(connector, q, vector, options, use_exact, rates))
+        if (pass_rates := rates.summary()) is not None:
+            record["search"]["pass_rates"] = pass_rates
         if progress is not None:
             progress(len(dataset), len(dataset))
     except ConnectorError as e:
@@ -249,7 +253,12 @@ def _request(q: DatasetQuery, v: FloatArray, options: RunOptions, *, exact: bool
 
 
 def _run_query(
-    connector: Connector, q: DatasetQuery, v: FloatArray, options: RunOptions, use_exact: bool
+    connector: Connector,
+    q: DatasetQuery,
+    v: FloatArray,
+    options: RunOptions,
+    use_exact: bool,
+    rates: PassRates,
 ) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "query_id": q.query_id,
@@ -266,6 +275,12 @@ def _run_query(
         "error": None,
     }
     try:
+        if q.filter:
+            # Counted before searching, so a query-level failure below still has its rate.
+            entry["pass_rate"] = rates.of(cast(Mapping[str, FilterValue], q.filter))
+            bucket = bucket_for(entry["pass_rate"], rates.buckets)
+            if bucket is not None:
+                entry["tags"] = sorted({*entry["tags"], bucket})
         results, latencies = [], []
         for _ in range(options.repeats):
             t0 = time.perf_counter()

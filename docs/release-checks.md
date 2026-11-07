@@ -95,6 +95,15 @@ One query per line:
 An optional first line `{"dataset": {"name": ..., "description": ..., "embedding_model": ...,
 "normalized": ..., "cohort_fields": [...]}}` holds metadata; it is part of the version.
 
+**Cohorts by filter selectivity.** `"selectivity_buckets": [0.001, 0.01, 0.1]` tags each
+filtered question with the one bucket its filter's **pass rate** falls in, named by the
+bucket's upper bound (`pass_rate<1%`), judged like any cohort. The pass rate is the fraction
+of the corpus the filter keeps, and it is counted by the backend (see below), never
+estimated. A question whose backend cannot count is in no bucket and its `pass_rate` is
+`null`: unknown, not low. Buckets are exclusive, so a question is never in two of them, and a
+pass rate at or above the largest bound is in none. Give 1 to 6 distinct values above 0 and
+below 1.
+
 **Cohorts from context.** `"cohort_fields": ["tenant", "plan"]` turns those context fields
 into cohorts: a question with `"context": {"tenant": "acme"}` also belongs to cohort
 `tenant=acme` (booleans read `true`/`false`), judged by the policy's cohort rules exactly
@@ -164,7 +173,7 @@ parameters (`--param key=value` overrides them). **Secrets never go in the file:
 
 | Backend | Fields | Tuning params | Exact reference |
 |---|---|---|---|
-| `faiss` | `index`, optional `vectors` (+ `ids`), `reconstructed_reference` | `nprobe` (IVF), `ef_search` (HNSW) | Raw `vectors`, or a flat index itself. `reconstructed_reference` decodes vectors from the index and is marked as a weaker reference. |
+| `faiss` | `index`, optional `vectors` (+ `ids`), `reconstructed_reference`, optional `metadata` (a `.jsonl`/`.csv`/`.parquet` keyed by `id`: enables equality filters and pass-rate counts) | `nprobe` (IVF), `ef_search` (HNSW) | Raw `vectors`, or a flat index itself. `reconstructed_reference` decodes vectors from the index and is marked as a weaker reference. |
 | `qdrant` (`vectraudit[qdrant]`) | `url` (or `path` for embedded local mode), `collection`, optional `api_key_env`, `vector_name` (required when the collection has several named vectors), `timeout_s` | `hnsw_ef` | Qdrant's exact search over the same collection. |
 | `pgvector` (`vectraudit[pgvector]`) | `dsn_env`, `table` (`schema.table`), `id_column` (default `id`), `vector_column` (default `embedding`), `distance` (`cosine`, `l2`, `ip`: match your index's operator class), `filter_columns`, `statement_timeout_ms`, `connect_timeout_s` | `hnsw.ef_search`, `ivfflat.probes` | A sequential scan with index scans disabled for that query. |
 | `pinecone` (no extra) | `index`, `api_key_env`, optional `namespace`, `host` (private endpoint), `control_plane_url`, `timeout_s` | none | None: Pinecone is measured as a black box (no exact mode, no snapshot). |

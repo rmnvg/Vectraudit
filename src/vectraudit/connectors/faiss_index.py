@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +16,14 @@ from vectraudit.connectors.base import (
     ConnectorError,
     Distance,
     ErrorCode,
+    FilterValue,
     SearchRequest,
 )
 from vectraudit.core._faiss import FaissNotInstalledError, import_faiss
+from vectraudit.core.filtering import AllowedSet, allowed_from_metadata, filter_fingerprint
 from vectraudit.core.ivf import Assignments, assignments
 from vectraudit.core.loader import IndexLoadError, load_index
+from vectraudit.core.metadata import Metadata, MetadataError, load_metadata
 from vectraudit.core.search import GroundTruth, MissReason, probed_miss_reason, search
 from vectraudit.core.types import IndexKind, LoadedIndex, Metric
 from vectraudit.core.vectors import VectorMismatchError, VectorSource, from_arrays, reconstruct_all
@@ -32,6 +36,10 @@ class FaissConnector(Connector):
     ``i`` unless ``ids`` is given). A flat index is its own exact reference. With
     ``reconstructed_reference`` the vectors are decoded from the index instead, which
     includes any compression error, so the reference is marked as weaker.
+
+    With ``metadata`` (``.jsonl``/``.csv``/``.parquet`` keyed by id) the connector supports
+    equality filters: they are applied inside the FAISS search, the exact reference applies
+    the same filter, and ``count`` is the number of ids whose metadata satisfies it.
     """
 
     name = "FAISS"
@@ -43,6 +51,7 @@ class FaissConnector(Connector):
         vectors: str | Path | None = None,
         ids: str | Path | None = None,
         reconstructed_reference: bool = False,
+        metadata: str | Path | Metadata | None = None,
     ) -> None:
         try:
             self.li: LoadedIndex = load_index(index)
@@ -60,6 +69,13 @@ class FaissConnector(Connector):
         self._truth: GroundTruth | None = None
         self._reconstruct = False
         self._note: str | None = None
+        self._metadata: Metadata | None = None
+        self._allowed: dict[str, AllowedSet] = {}
+        if metadata is not None:
+            try:
+                self._metadata = load_metadata(metadata)
+            except MetadataError as e:
+                raise ConnectorError(ErrorCode.CONFIG, str(e), e.hint) from e
         if vectors is not None:
             self._truth = GroundTruth(self._load_vectors(Path(vectors), ids), self.li.metric)
         elif reconstructed_reference and self.li.kind is not IndexKind.FLAT:
@@ -97,7 +113,8 @@ class FaissConnector(Connector):
         elif kind.is_hnsw:
             tuning = ("ef_search",)
         return Capabilities(
-            filters=False,
+            filters=self._metadata is not None,
+            filter_count=self._metadata is not None,
             exact_reference=self._truth is not None or self._reconstruct or kind is IndexKind.FLAT,
             exact_reference_note=self._note,
             config_inspection=True,
@@ -136,18 +153,49 @@ class FaissConnector(Connector):
             self._sha256 = h.hexdigest()
         return self._sha256
 
+    def _corpus_ids(self) -> Any:
+        if self.li.ids is not None:
+            return self.li.ids
+        if self._truth is not None:
+            return self._truth.source.ids
+        return np.arange(self.li.ntotal, dtype=np.int64)
+
+    def _allowed_for(self, filter: Mapping[str, FilterValue]) -> AllowedSet | None:
+        """The ids that satisfy ``filter`` (cached per filter); ``None`` for no filter."""
+        if not filter:
+            return None
+        assert self._metadata is not None  # check_request refused filters without metadata
+        key = filter_fingerprint(filter)
+        if key not in self._allowed:
+            unknown = sorted(set(filter) - set(self._metadata.columns))
+            if unknown:
+                raise ConnectorError(
+                    ErrorCode.QUERY,
+                    f"Filter field(s) {', '.join(unknown)} are not columns of the metadata.",
+                    f"The metadata has: {', '.join(self._metadata.columns) or 'no columns'}.",
+                )
+            self._allowed[key] = allowed_from_metadata(self._metadata, filter, self._corpus_ids())
+        return self._allowed[key]
+
+    def _count(self, filter: Mapping[str, FilterValue]) -> int:
+        allowed = self._allowed_for(filter)
+        return self.li.ntotal if allowed is None else len(allowed)
+
     def _search(self, request: SearchRequest) -> list[str]:
+        allowed = self._allowed_for(request.filter)
         try:
             # A flat index has no exact helper: its own search is already exact.
             truth = self._exact() if request.exact else None
             if truth is not None:
-                return [str(i) for i in truth.search(request.vector, request.k).valid_ids]
+                found = truth.search(request.vector, request.k, allowed=allowed)
+                return [str(i) for i in found.valid_ids]
             result = search(
                 self.li,
                 request.vector,
                 request.k,
                 nprobe=_int_param(request.params, "nprobe"),
                 ef_search=_int_param(request.params, "ef_search"),
+                allowed=allowed,
             )
         except ValueError as e:
             raise ConnectorError(ErrorCode.QUERY, str(e)) from e

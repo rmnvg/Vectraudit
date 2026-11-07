@@ -187,6 +187,10 @@ def test_describe_and_search(server) -> None:
         assert len(set(found) & set(_exact(vectors, query, 10))) >= 9
         en = c.search(SearchRequest(query, 20, filter={"lang": "en"}))
         both = c.search(SearchRequest(query, 20, filter={"lang": "en", "public": True}))
+        assert c.capabilities().filter_count
+        assert c.count({}) == 300
+        assert c.count({"lang": "en"}) == 150
+        assert c.count({"lang": "en", "public": True}) == 50
         with pytest.raises(ConnectorError) as e:
             c.search(SearchRequest(query, 5, exact=True))
         assert e.value.code is ErrorCode.UNSUPPORTED

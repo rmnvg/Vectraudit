@@ -20,6 +20,10 @@ An optional first line ``{"dataset": {...}}`` holds metadata: ``name``, ``descri
 ``"cohort_fields": ["tenant"]``, a query whose context has ``"tenant": "acme"`` also belongs
 to cohort ``tenant=acme``, judged like a tag. Derived cohorts are recorded in runs (and so
 in hosted uploads) exactly like tags, which is why fields are opted in one by one.
+``selectivity_buckets`` (e.g. ``[0.001, 0.01, 0.1]``) opts in to cohorts by filter pass rate:
+a filtered query whose measured pass rate is below 1% (and not below 0.1%) belongs to
+``pass_rate<1%``. Buckets are exclusive, and a query whose pass rate the backend cannot count
+belongs to none.
 
 The dataset version is the SHA-256 of a canonical form that ignores line order and JSON
 formatting, so any change to the content (metadata included) is a new version and nothing
@@ -72,8 +76,17 @@ _KEYS = {
 }
 MAX_EVIDENCE_GROUPS = 16
 MAX_GROUP_SIZE = 32
-_META_KEYS = {"name", "description", "embedding_model", "normalized", "provenance", "cohort_fields"}
+_META_KEYS = {
+    "name",
+    "description",
+    "embedding_model",
+    "normalized",
+    "provenance",
+    "cohort_fields",
+    "selectivity_buckets",
+}
 MAX_COHORT_FIELDS = 10
+MAX_SELECTIVITY_BUCKETS = 6
 _FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
 
 
@@ -272,6 +285,19 @@ def _meta(obj: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"header cohort_fields must list 1-{MAX_COHORT_FIELDS} distinct context field names"
             )
+    if "selectivity_buckets" in meta:
+        buckets = meta["selectivity_buckets"]
+        if (
+            not isinstance(buckets, list)
+            or not 1 <= len(buckets) <= MAX_SELECTIVITY_BUCKETS
+            or any(type(b) not in (int, float) or not 0 < b < 1 for b in buckets)
+            or len(set(buckets)) != len(buckets)
+        ):
+            raise ValueError(
+                f"header selectivity_buckets must list 1-{MAX_SELECTIVITY_BUCKETS} distinct pass "
+                "rates, each above 0 and below 1 (the fraction of documents a filter keeps)"
+            )
+        meta = {**meta, "selectivity_buckets": sorted(float(b) for b in buckets)}
     return dict(meta)
 
 

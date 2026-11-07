@@ -64,6 +64,8 @@ class Capabilities:
 
     search: bool = True
     filters: bool = False
+    filter_count: bool = False
+    """Can report the exact number of documents that satisfy a filter (the pass rate)."""
     exact_reference: bool = False
     """Can run an exact (brute-force) search over the same corpus for ANN recall."""
     exact_reference_note: str | None = None
@@ -141,6 +143,27 @@ class Connector(abc.ABC):
                 seen.add(i)
                 out.append(i)
         return out[: request.k]
+
+    def count(self, filter: Mapping[str, FilterValue]) -> int:
+        """The exact number of documents that satisfy ``filter`` (an empty filter: all).
+
+        Only where the backend documents an exact count for the same filter its search
+        applies; otherwise ``UNSUPPORTED``, never an estimate.
+        """
+        if not self.capabilities().filter_count:
+            raise ConnectorError(
+                ErrorCode.UNSUPPORTED,
+                f"{self.name} cannot count the documents that match a filter.",
+                "The pass rate of filtered queries is recorded as unknown on this backend.",
+            )
+        n = self._count(filter)
+        if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+            raise ConnectorError(ErrorCode.QUERY, f"{self.name} returned an invalid count: {n!r}.")
+        return n
+
+    def _count(self, filter: Mapping[str, FilterValue]) -> int:
+        """Backend-specific exact count; implemented with ``Capabilities.filter_count``."""
+        raise ConnectorError(ErrorCode.UNSUPPORTED, f"{self.name} cannot count documents.")
 
     def check_request(self, request: SearchRequest) -> None:
         """Reject requests this connector can't honour, before touching the backend."""
