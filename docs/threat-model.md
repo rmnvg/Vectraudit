@@ -50,6 +50,10 @@ new kind of data, actor or integration is added.
 | Vulnerable dependency | `pip-audit` and `npm audit` in CI (Phase 17) | CI |
 | Webhooks used to reach internal services (SSRF) or exfiltrate data | Owner-only management, audited; https only; every resolved address must be public, checked at registration and before each send; redirects never followed; response bodies discarded; payload limited to headline, verdict, IDs and a link | `test_cloud_webhooks` |
 | Forged or replayed webhook events at the receiver | HMAC-SHA256 over timestamp and body with a per-webhook secret shown once and rotatable; receivers reject stale timestamps and dedupe on the event key | `test_cloud_webhooks` |
+| Poisoned documents end up in a customer's production index | Vectraudit never writes to a backend (connectors are read-only). A poison suite is generated locally from fixed templates (no network, no model) with harmless sentinel claims. It runs either in memory beside the corpus or against a staging index the customer loaded; a candidate with an `overlay` must declare `"environment": "staging"`, and a poison run refuses one that does not | `test_poison`, `test_poison_run`, `test_poisoning` |
+| Document or answer text leaks through a poisoning report | Suites, reports, safety records and red-team imports hold IDs, canary tokens, offsets, counts and flags only; the corpus scan, canary check and red-team import never write a document, prompt, answer or reason; excerpts print to the terminal only | `test_corpus_scan`, `test_canary`, `test_promptfoo_redteam`, `test_poisoning_demo` |
+| Hostile document text attacks the operator's terminal (escape sequences, bidirectional controls) | `--show-excerpts` prints at most 120 characters with every non-printable character escaped; excerpts never enter a file | `test_corpus_scan` |
+| A held-out question is tuned against by a poisoning check | Poison suites, controls, review queues and claim exports use exploratory questions only; held-out questions are refused by name and never sampled, and a held-out question repeated under a new ID refuses the check | `test_poison`, `test_poisoning` |
 | Data retained after a customer leaves | Workspace export and deletion; retention purge; backup expiry documented (Phase 17) | `test_cloud_deletion` |
 
 ## Residual risks and assumptions
@@ -67,6 +71,13 @@ new kind of data, actor or integration is added.
   database provider.
 - **Run files can contain identifiers** a customer considers sensitive (document ids,
   backend names, commit SHAs). Documented; customers control what ids they use.
+- **A poisoning check shows only what its attacks did.** Templates are fixed and public, so
+  a pass does not mean a pipeline resists a tailored attack, and an absent canary shows only
+  that these tokens were not echoed. Findings are labelled hypothesis, supported or verified,
+  and a poisoning check never approves a release.
+- **The corpus scan is a set of known patterns.** It can miss a hijack or a paraphrased
+  instruction, and ordinary text can trip its weak detectors; findings mark documents for a
+  person to read.
 - **GitHub OAuth** trusts GitHub's verified-email claim.
 - **Webhook DNS rebinding.** A host can resolve to a public address when checked and a
   private one when connected. The window is one request, and the response is discarded,

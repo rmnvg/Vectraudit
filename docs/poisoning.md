@@ -11,6 +11,23 @@ The attack families follow [promptfoo](https://github.com/promptfoo/promptfoo)'s
 red-team plugins (`rag-poisoning`, `indirect-prompt-injection`, `rag-document-exfiltration`;
 MIT) and its encoding strategies, reimplemented here without its code.
 
+## Try it
+
+`examples/poisoning_demo.py` builds a small synthetic corpus and shows the whole loop, offline:
+
+```bash
+uv run python examples/poisoning_demo.py --out poisoning-demo
+```
+
+On the BM25 baseline with two tenants it shows: a clean corpus the scan does not flag, while
+eleven synthetic injections trip all eleven detectors; the poison suite's own documents are
+invisible to the scan (a hijack reads like any other document); a **hijack that succeeds
+without a tenant filter and is blocked with one**; a hijack that copies the tenant's metadata
+and gets past the filter anyway (`--match-filters`); an **injected near-copy of a relevant
+document that displaces required evidence** from the top results; and a release comparison that
+fails with a safety reason because a poisoned document reached the model's context. It writes
+its reports and run files, which hold no poisoned or corpus text.
+
 ## Scan a corpus
 
 ```bash

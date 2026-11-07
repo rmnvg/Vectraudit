@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
+  scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
+  one that is not, an injection that displaces required evidence) and a failing release
+  comparison. The threat model covers poisoning (local generation, staging only, no writes).
+
 - `workbench promptfoo-redteam` imports promptfoo's RAG red-team results (rag-poisoning,
   rag-document-exfiltration, indirect-prompt-injection, rag-source-attribution,
   prompt-extraction): suite-level counts per plugin and strategy with a Wilson interval, plus
