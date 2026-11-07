@@ -93,7 +93,7 @@ export function formFromPolicy(raw: RawPolicy): PolicyForm {
     cohortMinQueries: text(cohorts.min_queries ?? 10),
     cohortMetrics: Object.fromEntries(METRICS.map(m => [m, { enabled: m in cohortMetrics, maxDrop: text(object(cohortMetrics[m]).max_drop) }])) as PolicyForm['cohortMetrics'],
     cohortControl: cohorts.control === 'bonferroni' || cohorts.control === 'holm' ? cohorts.control : 'none',
-    preserved: Object.fromEntries((['exceptions', 'forbidden_stages', 'prompt_changes'] as const).filter(key => key in raw).map(key => [key, raw[key]])),
+    preserved: Object.fromEntries((['exceptions', 'forbidden_stages', 'prompt_changes', 'robustness'] as const).filter(key => key in raw).map(key => [key, raw[key]])),
     p95Pct: text(latency.p95_max_increase_pct),
     p50Pct: text(latency.p50_max_increase_pct),
     p95Ms: text(latency.p95_max_ms),

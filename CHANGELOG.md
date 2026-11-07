@@ -28,6 +28,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench poison run` runs a clean and a poisoned candidate side by side on a suite's target
+  questions and a seeded sample of control questions, and reports per attack how often a
+  poisoned document was retrieved (with Wilson intervals over question families), how deep it
+  got, whether it reached the model, whether it displaced answering evidence, and whether it
+  turned up on unrelated control questions. Safety failures come from the forbidden-document
+  machinery; unknown (an incomplete run, an overlay that never appeared) is inconclusive, never
+  a pass. A policy can set opt-in `robustness` limits. The Checks tab shows the report.
 - Candidates can run poisoned: the hybrid baseline takes `adapter.corpus_overlay` (a poison
   suite's corpus, loaded in memory; repeated IDs are an error), and Python or HTTP candidates
   declare `"environment": "staging"` and an `overlay` for a staging index you loaded

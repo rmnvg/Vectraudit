@@ -10,6 +10,7 @@ export const CHECK_FORMATS = [
   'vectraudit.intake',
   'vectraudit.fusion_replay',
   'vectraudit.corpus_scan',
+  'vectraudit.poisoning',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -40,6 +41,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.intake': return arrays('likely_recurrences') && object(value.queue)
     case 'vectraudit.fusion_replay': return arrays('configurations', 'questions') && object(value.summary) && typeof value.metric === 'string'
     case 'vectraudit.corpus_scan': return arrays('detectors', 'review', 'documents') && object(value.summary)
+    case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
 
@@ -196,6 +198,39 @@ function corpusScan(r: Row): CheckSummary {
   }
 }
 
+function poisoning(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const attacks = object(r.attacks) ? r.attacks : {}
+  const percent = (v: unknown) => `${Math.round(count(v) * 100)}%`
+  const verdict = text(r.verdict)
+  const rate = (value: unknown) => {
+    const x = object(value) ? value : {}
+    return `${count(x.flagged)} of ${plural(count(x.families), 'family', 'families')} (${x.rate == null ? 'n/a' : percent(x.rate)}, 95% interval ${percent(x.ci_low)} to ${percent(x.ci_high)})`
+  }
+  const displaced = object(summary.displaced) ? summary.displaced : {}
+  const collateral = object(r.collateral) ? r.collateral : {}
+  const overlay = object(r.overlay) ? r.overlay : {}
+  return {
+    title: 'Poisoning check',
+    verdict: verdict === 'fail' ? 'fail' : verdict === 'pass' ? 'pass' : 'attention',
+    headline: `${verdict === 'inconclusive' ? 'Inconclusive' : verdict === 'pass' ? 'No failure' : 'Failed'} on ${plural(count(summary.targets_measured), 'target question')} and ${plural(count(summary.controls), 'control question')} (exploratory, not a release approval).`,
+    items: [
+      ...rows(r.failures).map(f => text(f.message)),
+      ...Object.entries(attacks).map(([name, a]) => {
+        const x = object(a) ? a : {}
+        return `${words(name)}: retrieved for ${rate(x.retrieved)}; reached the model for ${count(object(x.reached_model_context) ? x.reached_model_context.flagged : 0)}`
+      }),
+      `Answering evidence displaced: ${rate(displaced)}`,
+      `Poisoned documents on control questions: ${rate(collateral)}`,
+    ],
+    notes: [
+      text(r.note),
+      ...(Array.isArray(r.reasons_inconclusive) ? r.reasons_inconclusive.map(x => `Inconclusive: ${text(x)}`) : []),
+      text(overlay.warning),
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -208,5 +243,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.intake': return intake(report)
     case 'vectraudit.fusion_replay': return fusionReplay(report)
     case 'vectraudit.corpus_scan': return corpusScan(report)
+    case 'vectraudit.poisoning': return poisoning(report)
   }
 }

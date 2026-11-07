@@ -195,6 +195,25 @@ def hsd_for_runs(
     return result
 
 
+def wilson_interval(successes: int, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
+    """The Wilson score interval for a rate of ``successes`` in ``n`` (95% by default).
+
+    Better behaved than the normal interval at small ``n`` and rates near 0 or 1, which is where
+    a rate of poisoned documents retrieved usually sits. With no observations it is the whole
+    range, never a made-up point.
+    """
+    if n < 0 or not 0 <= successes <= n:
+        raise ValueError("successes must be between 0 and n")
+    if n == 0:
+        return 0.0, 1.0
+    p = successes / n
+    denominator = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denominator
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator
+    # The interval always contains the observed rate; floating point must not say otherwise.
+    return min(p, max(0.0, centre - half)), max(p, min(1.0, centre + half))
+
+
 def holm_adjust(p_values: Sequence[float]) -> list[float]:
     """Holm's step-down adjusted p-values, in the order given.
 

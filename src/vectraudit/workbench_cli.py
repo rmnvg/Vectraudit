@@ -2423,6 +2423,136 @@ def poison_generate_command(
     typer.echo(render(descriptor, str(out)))
 
 
+@poison_app.command("run")
+def poison_run_command(
+    manifest: Path,
+    clean: Annotated[str, typer.Option(help="Candidate without the poisoned documents.")],
+    poisoned: Annotated[
+        str,
+        typer.Option(help="Candidate with them: a corpus_overlay, or a declared staging index."),
+    ],
+    suite: Annotated[Path, typer.Option(help="The suite's poison-suite.json.")],
+    policy: Annotated[
+        Path | None, typer.Option(help="Release policy; its robustness section sets the limits.")
+    ] = None,
+    controls: Annotated[
+        int, typer.Option(min=0, max=500, help="Control questions sampled (seeded).")
+    ] = 20,
+    seed: Annotated[int, typer.Option(help="Seed for the control sample.")] = 0,
+    out: Annotated[Path, typer.Option(help="Report to write.")] = Path("poisoning.json"),
+    max_calls: MaxCalls = None,
+    max_spend: MaxSpend = None,
+    measured: Measured = None,
+) -> None:
+    """Run a clean and a poisoned candidate side by side and report what the poison did.
+
+    Both candidates answer the suite's target questions and a seeded sample of control
+    questions, interleaved. Nothing is inserted into any backend: the poisoned side is the
+    hybrid baseline with a corpus_overlay, or a staging index you loaded and declared. Only
+    exploratory questions are used. Exit 0 on pass; 3 on fail or inconclusive (a run that
+    cannot show resistance never passes); 2 on a setup error.
+    """
+    from vectraudit.evaluation.policy import DEFAULT_POLICY
+    from vectraudit.pipelines.poison_run import load_suite, poisoned_side_problem
+    from vectraudit.pipelines.poisoning import analyse, render, select_controls, subset
+    from vectraudit.pipelines.runner import PairedSide, execute_paired
+
+    try:
+        spec = load_manifest(manifest)
+        by_name = {c.name: c for c in spec.candidates}
+        if clean == poisoned:
+            raise ValueError("--clean and --poisoned must be different candidates")
+        for name in (clean, poisoned):
+            if name not in by_name:
+                raise ValueError(f"no candidate {name!r} in the manifest: {', '.join(by_name)}")
+        clean_c, poisoned_c = by_name[clean], by_name[poisoned]
+        loaded = load_suite(suite)
+        benchmark = load_dataset(manifest.parent / spec.dataset)
+        if loaded.descriptor["inputs"]["dataset"]["sha256"] != benchmark.sha256:
+            raise ValueError(
+                "The suite was generated for another version of the manifest's benchmark; "
+                "generate it again."
+            )
+        problem = poisoned_side_problem(poisoned_c)
+        if problem:
+            raise ValueError(problem)
+        if clean_c.overlay or clean_c.adapter.corpus_overlay:
+            raise ValueError(f"The clean candidate {clean!r} declares an overlay; it must not.")
+        _same_suite(poisoned_c, loaded, manifest.parent)
+        if any(c.concurrency != 1 for c in (clean_c, poisoned_c)):
+            raise ValueError("A poison run is paired and serial; set concurrency 1")
+        rules = load_policy(policy) if policy is not None else DEFAULT_POLICY
+        poison_ds = load_dataset(loaded.dataset_path)
+        chosen = select_controls(poison_ds, loaded.targets, controls, seed)
+        ds = subset(poison_ds, [*loaded.targets, *chosen])
+        budget = _guard(
+            spec.model_copy(update={"candidates": [clean_c, poisoned_c]}),
+            ds,
+            "run",
+            max_calls=max_calls,
+            max_spend=max_spend,
+            measured=measured,
+        )
+        sides = []
+        for candidate in (clean_c, poisoned_c):
+            config = candidate_config(candidate, manifest.parent)
+            sides.append(
+                PairedSide(
+                    open_adapter(candidate.adapter, manifest.parent),
+                    PipelineOptions(
+                        k=spec.k,
+                        params=candidate.params,
+                        repeats=spec.repeats,
+                        warmup=0,
+                        label=candidate.name,
+                        max_rps=candidate.max_rps,
+                    ),
+                    config,
+                    spec.corpus_version or config.get("corpus_sha256"),
+                )
+            )
+        clean_run, poisoned_run = execute_paired(ds, sides[0], sides[1])
+        runs_dir = out.parent / f"{out.stem}-runs"
+        for run in (clean_run, poisoned_run):
+            write_run(runs_dir / f"{run['run_id']}.run.json", run)
+        report = analyse(clean_run, poisoned_run, ds, loaded, rules, controls=controls, seed=seed)
+        report["runs"]["directory"] = runs_dir.name
+        report["budget"] = {"planned_calls": planned_total(budget)}
+        _write(out, report)
+    except (OSError, ValueError, ImportError, AttributeError, PolicyError) as exc:
+        typer.echo(f"Poison run error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
+    if report["overlay"]["warning"]:
+        typer.echo(f"Warning: {report['overlay']['warning']}")
+    if report["verdict"] != "pass":
+        raise typer.Exit(3)
+
+
+def _same_suite(candidate: Any, suite: Any, root: Path) -> None:
+    """The poisoned candidate's declared overlay must be this suite's, by hash."""
+    import hashlib
+
+    from vectraudit.pipelines.poison_run import load_suite
+
+    if candidate.adapter.kind == "hybrid":
+        overlay = root / str(candidate.adapter.corpus_overlay)
+        if (
+            hashlib.sha256(overlay.read_bytes()).hexdigest()
+            != hashlib.sha256(suite.corpus_path.read_bytes()).hexdigest()
+        ):
+            raise ValueError(
+                f"{candidate.name!r}'s corpus_overlay is not this suite's poison-corpus.jsonl"
+            )
+        return
+    declared = load_suite(root / str(candidate.overlay))
+    if declared.suite_hash != suite.suite_hash:
+        raise ValueError(
+            f"{candidate.name!r} declares an overlay of suite {declared.suite_hash}, not "
+            f"{suite.suite_hash}; load the suite you are checking into staging"
+        )
+
+
 @workbench_app.command("corpus-scan")
 def corpus_scan_command(
     corpus: Annotated[Path, typer.Argument(help="Corpus JSONL: doc_id (or id) and text per line.")],

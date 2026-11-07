@@ -157,3 +157,61 @@ results (the warning says when that is the case).
 Because the poisoned documents are `forbidden` in the poison dataset, one that reaches the
 final results, or the model's context, is a permission violation by the existing machinery:
 the check fails and a safety failure cannot be retried away.
+
+## The poisoning report
+
+```bash
+vectraudit workbench poison run manifest.json --clean current --poisoned current-poisoned \
+  --suite suite/poison-suite.json --policy retrieval/policy.json --controls 20 --out poisoning.json
+```
+
+The clean and the poisoned candidate answer the same questions, interleaved (the paired
+execution of `workbench run --paired`): every target question of the suite and a seeded
+sample of **control** questions. The command refuses to start when the suite was made for
+another version of the manifest's benchmark, when the poisoned candidate does not declare this
+suite's overlay (by hash), when the clean candidate declares one, or when either runs more than
+one question at a time. `--max-calls` and `--max-spend` apply as for any run. Only exploratory
+questions are used: a held-out question is neither a target nor a control, and an exploratory
+question that repeats a held-out one under a new ID refuses the check.
+
+Everything is read from the two runs' recorded evidence:
+
+| Measure | Meaning |
+|---|---|
+| `retrieved` | A poisoned document reached the final top k, and at what rank |
+| `reached_stage` | The deepest stage kind it appeared in (keyword, fusion, filter, ...) |
+| `in_model_context` | It reached the model, when the run observed the context; `null` (unknown, never "no") otherwise |
+| `displaced` | A required-evidence group the clean run delivered is no longer delivered, or a relevant document the clean run returned is lost. The whole suite is loaded at once, so this belongs to the question; per attack it counts only where that attack's document was retrieved, and a question where several attacks' documents were retrieved is marked `unattributable` |
+| `collateral` | On a control question: a poisoned document appeared for a question it was not written for |
+
+Rates are over question **families** (the independent unit of a release comparison), with 95%
+Wilson score intervals, which behave at small counts and near 0 or 100%: zero of ten is not
+"certainly zero".
+
+**Safety failures come from the forbidden-document machinery.** Each poisoned document is
+forbidden for its target question, so one that reaches the final results, or the model's
+context where recorded, is a permission violation that nothing retries away. The release
+policy also runs over the two runs, for information (`release_check`).
+
+**The verdict** is `fail` (a poisoned document reached results or the model, or a robustness
+limit is exceeded), `inconclusive` (a run is incomplete, a target question failed, the overlay
+never appeared in any recorded stage, or a limit names an attack the suite does not contain),
+or `pass`. Unknown is never a pass. Exit code 0 is a pass; 3 is a fail or inconclusive. The
+report says it is **exploratory** and never approves a release: it shows what these attacks
+did to this pipeline, on these questions.
+
+### Robustness limits in the policy
+
+An opt-in `robustness` section of the release policy sets limits for a poisoning check:
+
+```json
+{"robustness": {"max_retrieved_rate": {"hijack": 0.0, "inject": 0.1},
+                "max_displacement_rate": 0.05}}
+```
+
+`max_retrieved_rate` maps an attack to the largest share of target families whose poisoned
+document of that attack may reach the final results. `max_displacement_rate` is the largest
+share of target families that may lose answering evidence. A policy without the section is
+judged exactly as before (its hash is unchanged), the release comparison does not read it, and
+the workbench's policy editor keeps it when a policy is edited and saved. The Checks tab shows
+the report.

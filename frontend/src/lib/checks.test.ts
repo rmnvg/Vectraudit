@@ -9,6 +9,7 @@ import migration from './fixtures/migration.json'
 import intake from './fixtures/intake.json'
 import fusionReplay from './fixtures/fusion_replay.json'
 import corpusScan from './fixtures/corpus_scan.json'
+import poisoningReport from './fixtures/poisoning.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -98,4 +99,21 @@ it('does not read a clean scan as proof the corpus is safe', () => {
   const s = summary(clean)
   expect(s.verdict).toBe('pass')
   expect(s.notes.some(n => n.includes('does not show the corpus is safe'))).toBe(true)
+})
+
+it('shows a failed poisoning check with its safety reason, rates and limits', () => {
+  const s = summary(poisoningReport)
+  expect(s.title).toBe('Poisoning check')
+  expect(s.verdict).toBe('fail')
+  expect(s.headline).toContain('exploratory, not a release approval')
+  expect(s.items.some(i => i.includes('reached the final results'))).toBe(true)
+  expect(s.items.some(i => i.startsWith('hijack: retrieved for 1 of 2 families'))).toBe(true)
+  expect(s.items.some(i => i.startsWith('Poisoned documents on control questions: 1 of 1 family'))).toBe(true)
+})
+
+it('reads an inconclusive poisoning check as attention, never a pass', () => {
+  const s = summary({ ...poisoningReport, verdict: 'inconclusive', failures: [], reasons_inconclusive: ['the overlay may not be loaded'], overlay: { warning: 'No poisoned document appears in any recorded stage.' } })
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toContain('Inconclusive')
+  expect(s.notes.some(n => n.includes('overlay may not be loaded'))).toBe(true)
 })

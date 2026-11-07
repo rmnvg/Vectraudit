@@ -10,6 +10,7 @@ from vectraudit.evaluation.significance import (
     hsd_for_runs,
     paired_randomization,
     randomized_tukey_hsd,
+    wilson_interval,
 )
 
 
@@ -180,3 +181,23 @@ def test_hsd_for_runs_needs_three_runs_and_a_shared_question():
     assert hsd_for_runs(two, "ndcg") is None
     disjoint = {"a": _run([0.5, None]), "b": _run([None, 0.5]), "c": _run([0.5, 0.5])}
     assert hsd_for_runs(disjoint, "ndcg") is None
+
+
+def test_wilson_interval_matches_hand_computed_values_and_stays_in_range():
+    low, high = wilson_interval(5, 10)
+    assert (low, high) == pytest.approx((0.2366, 0.7634), abs=1e-3)
+    low, high = wilson_interval(0, 10)
+    assert low == 0.0
+    assert high == pytest.approx(0.2775, abs=1e-3)  # zero of ten is not "certainly zero"
+    assert wilson_interval(10, 10)[1] == 1.0
+    assert wilson_interval(0, 0) == (0.0, 1.0)
+    for n in (1, 2, 7, 40, 500):
+        for k in range(n + 1):
+            lo, hi = wilson_interval(k, n)
+            assert 0 <= lo <= k / n <= hi <= 1
+    narrow = wilson_interval(50, 100)
+    wide = wilson_interval(5, 10)
+    assert narrow[1] - narrow[0] < wide[1] - wide[0]
+    for k, n in [(-1, 5), (6, 5), (0, -1)]:
+        with pytest.raises(ValueError, match="between 0 and n"):
+            wilson_interval(k, n)
