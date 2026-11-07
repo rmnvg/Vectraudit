@@ -21,6 +21,9 @@ such: a run limited by ``max_rps`` shows the backend kept up, not its limit.
 Recall is not measured under load (an exact search would distort it). The answers to a
 fixed sample of queries are kept during each level and compared, afterwards, with the exact
 reference for those queries. Without an exact reference the recall is ``null``.
+
+Credit: measuring throughput and latency under concurrent search follows VectorDBBench (Zilliz).
+Our own bounded implementation; nothing from it runs here. See docs/credits.md.
 """
 
 from __future__ import annotations

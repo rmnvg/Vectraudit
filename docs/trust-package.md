@@ -20,6 +20,19 @@ In every mode **your documents, passages, request context (tenant, user, groups)
 vectors, credentials, endpoint hosts and error messages stay on your side**. Evaluation always
 runs where your application runs; the hosted service never calls your application.
 
+## New analyses add no data flow
+
+The rank-fusion replay, claim-level evidence, poisoning checks, filtered-search sweeps, capacity
+curve, VectorDBBench import and corpus atlas run on your machine from files you provide. They
+add **no subprocessor and no outbound call from Vectraudit**: claim and red-team results are
+imported from files that RAGChecker and promptfoo wrote, never by running them; no dataset is
+downloaded; the atlas renders offline. The capacity curve sends read-only searches to the
+backend you name and confirm, under a rate ceiling, and nothing to anyone else. Reports from
+these analyses hold identifiers, counts and scores, not document or answer text. The two
+exceptions stay local: the atlas sidecar carries document titles and is marked `local_only`,
+and the benchmark audit's coverage groups carry terms drawn from local titles. Neither is part
+of an upload.
+
 ## Data flows
 
 ```

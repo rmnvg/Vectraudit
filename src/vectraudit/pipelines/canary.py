@@ -17,6 +17,9 @@ gave, locally, and records only *whether* a suite canary appears:
 The record is a **safety** record (``kind: "safety"``), kept apart from answer verdicts:
 following an injected instruction is a safety failure that never changes whether the answer
 was correct (``attach-answers`` attaches it separately).
+
+Credit: the canary idea follows promptfoo's indirect-prompt-injection checks and Greshake et al.
+(2023). Our own implementation. See docs/credits.md.
 """
 
 from __future__ import annotations

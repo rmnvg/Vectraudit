@@ -14,6 +14,9 @@ document) from the local titles and first lines, so a finding says what the docu
 without carrying their text anywhere. Held-out questions never count as covering a group.
 
 Pure numpy; imports nothing web-related.
+
+Credit: k-means (Lloyd 1982) with k-means++ seeding (Arthur and Vassilvitskii, SODA 2007) and
+TF-IDF term weighting (Sparck Jones 1972), implemented here in numpy. See docs/credits.md.
 """
 
 from __future__ import annotations
