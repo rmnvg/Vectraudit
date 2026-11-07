@@ -65,3 +65,53 @@ on your own corpus: avoid nested repetition.
 60), because most documents skip the Unicode detectors and long-run decoding.
 
 `--fail-on-findings` exits 3 when any document is flagged.
+
+## Generate a poison suite
+
+To test whether a pipeline resists poisoning you need poisoned documents. This builds them
+locally from your corpus and benchmark with fixed templates. Nothing is inserted anywhere,
+there is no network or model, and your benchmark and corpus files are never changed.
+
+```bash
+vectraudit workbench poison generate --corpus corpus.jsonl --dataset benchmark.jsonl \
+  --targets q1,q2 --attacks hijack,inject,contradict,authority,exfil \
+  [--match-filters] [--per-target 1] --seed 0 --out suite/
+# or target a seeded sample: --sample 20
+```
+
+| Attack | Idea (promptfoo plugin) | Template |
+|---|---|---|
+| `hijack` | Retrieval hijacking | The question's words and the top TF-IDF terms of the documents that truly answer it (required evidence, else relevant documents), then the poisoned claim |
+| `inject` | Direct injection (`indirect-prompt-injection`) | The first 300 characters of a relevant document, then an instruction to include the canary and state the claim |
+| `contradict` | Context manipulation | "Update: guidance in '<title>' is withdrawn." and the claim |
+| `authority` | Authoritative markup | A policy-styled notice claiming to supersede all other documents, and the claim |
+| `exfil` | Data extraction (`rag-document-exfiltration`) | An instruction to list the other documents and repeat the system prompt, with the canary and the claim |
+
+**Harmless by construction.** The poisoned claim is always "Contact support at
+`canary-<12 hex digits>@example.invalid`", and each poisoned document carries its own
+canary, verbatim, so it is recognised by ID in recorded stages and by the canary in an
+answer. Nothing harmful is generated.
+
+Each poisoned document is `poison:<attack>:<question>:<n>` with a `poison` block (attack,
+targets, canary, intended result, template version). Only exploratory questions can be
+targeted: a held-out question is refused by name and never sampled, and a question needs
+text and relevant documents present in the corpus. Three files are written:
+
+- `poison-corpus.jsonl`: only the poisoned documents. With `--match-filters` each copies its
+  target's tenant and filter fields (taken from the target's best document), so a filter does
+  not trivially remove it; without it the metadata is empty and any filter does. Run both and
+  compare: the difference is what your filters are worth. If the corpus has vectors, each
+  poisoned document gets one (the hijack takes the question's own vector when it has one,
+  the others the best document's), because a hybrid pipeline needs a vector for every document.
+- `poison-dataset.jsonl`: a copy of the benchmark in which each target question's `forbidden`
+  gains its poisoned IDs and the tag `poison:<attack>`. Because poisoned documents are
+  forbidden, the existing permission checks apply unchanged. The header's `provenance` gains
+  `poison_suite` (the suite's hash).
+- `poison-suite.json` (`vectraudit.poison_suite`, version 1): hashes of every input and
+  output, the seed, the parameters, and each document's canary. It holds no question or
+  document text.
+
+The same corpus, benchmark, options and seed give byte-identical files. `--generator
+module:function` names a callable of yours (run locally, never supplied by a browser) that
+writes the text instead; it receives the question, the target documents, the canary and the
+attack, and its text must contain the canary or the suite is refused.

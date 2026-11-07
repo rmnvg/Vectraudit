@@ -2329,6 +2329,100 @@ def ragchecker_input_command(
     typer.echo(render(counts, str(out)))
 
 
+poison_app = typer.Typer(
+    help="Retrieval poisoning checks: generate a poison suite, run it against a pipeline.",
+    no_args_is_help=True,
+)
+workbench_app.add_typer(poison_app, name="poison")
+
+
+@poison_app.command("generate")
+def poison_generate_command(
+    corpus: Annotated[Path, typer.Option(help="Corpus JSONL (doc_id, text, metadata, vector).")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark whose questions are targeted.")],
+    out: Annotated[Path, typer.Option(help="Directory for the suite files.")],
+    targets: Annotated[
+        str | None, typer.Option(help="Question IDs to target, comma separated.")
+    ] = None,
+    sample: Annotated[
+        int | None, typer.Option(min=1, help="Or: target a seeded sample of N questions.")
+    ] = None,
+    attacks: Annotated[
+        str, typer.Option(help="Attacks: hijack, inject, contradict, authority, exfil.")
+    ] = "hijack,inject,contradict,authority,exfil",
+    per_target: Annotated[
+        int, typer.Option(min=1, max=5, help="Poisoned documents per attack and question.")
+    ] = 1,
+    match_filters: Annotated[
+        bool,
+        typer.Option(
+            "--match-filters",
+            help="Copy each target's tenant and filter fields, so a filter does not remove them.",
+        ),
+    ] = False,
+    seed: Annotated[int, typer.Option(help="Seed for sampling and canary tokens.")] = 0,
+    generator: Annotated[
+        str | None,
+        typer.Option(help="module:function of yours that writes the text (run locally)."),
+    ] = None,
+) -> None:
+    """Generate a deterministic poison suite from your corpus and benchmark. Nothing is inserted.
+
+    Writes poison-corpus.jsonl (only the poisoned documents), poison-dataset.jsonl (a copy of
+    the benchmark where each target question forbids its poisoned documents) and
+    poison-suite.json (hashes, canaries, seed). The poisoned claims are harmless sentinels.
+    Only exploratory questions are targeted. Your benchmark and corpus are not changed.
+    """
+    from vectraudit.pipelines.poison import (
+        build_suite,
+        load_corpus,
+        load_generator,
+        render,
+        select_targets,
+        write_suite,
+    )
+
+    try:
+        rows = load_corpus(corpus)
+        ds = load_dataset(dataset)
+        chosen = select_targets(
+            ds,
+            rows,
+            targets=[t.strip() for t in targets.split(",") if t.strip()] if targets else None,
+            sample=sample,
+            seed=seed,
+        )
+        names = [a.strip() for a in attacks.split(",") if a.strip()]
+        poisoned, dataset_rows_ = build_suite(
+            rows,
+            ds,
+            chosen,
+            attacks=names,
+            per_target=per_target,
+            match_filters=match_filters,
+            seed=seed,
+            generator=load_generator(generator) if generator else None,
+        )
+        descriptor = write_suite(
+            out,
+            corpus_path=corpus,
+            dataset_path=dataset,
+            dataset=ds,
+            poisoned=poisoned,
+            dataset_rows_=dataset_rows_,
+            attacks=names,
+            per_target=per_target,
+            match_filters=match_filters,
+            seed=seed,
+            generator=generator,
+            targets=[t.query.query_id for t in chosen],
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Poison error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(descriptor, str(out)))
+
+
 @workbench_app.command("corpus-scan")
 def corpus_scan_command(
     corpus: Annotated[Path, typer.Argument(help="Corpus JSONL: doc_id (or id) and text per line.")],

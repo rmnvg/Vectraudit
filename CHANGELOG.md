@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench poison generate` builds a deterministic poison suite from your corpus and
+  benchmark: hijack, inject, contradict, authority and exfil documents with harmless sentinel
+  claims and unique canaries, a copy of the benchmark that forbids them, and a descriptor
+  with hashes and canaries. Only exploratory questions are targeted; nothing is inserted
+  anywhere and your files are unchanged (`docs/poisoning.md`).
 - `workbench corpus-scan` looks through a corpus for text that tries to instruct a model:
   override and role phrases, chat-template markers, zero-width and bidirectional characters,
   hidden HTML, exfiltration beacons, encoded instructions and homoglyph words, with
