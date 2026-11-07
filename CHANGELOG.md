@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench atlas`: a 2D corpus atlas (`vectraudit.atlas`, a JSON sidecar and a
+  binary points file) categorising documents (relevant, lost by where, hub, flagged) and
+  questions (passed, failed, regressed) from run records. Held-out questions are hidden and never
+  colour anything; every question and notable document survives sampling. See
+  `docs/corpus-atlas.md`.
 - Filtered FAISS search (`vectraudit.core.filtering`): a metadata filter becomes an allowed
   set of ids that FAISS applies during the search (IVF, HNSW, flat, IDMap, PreTransform and
   refine indexes), with exact ground truth over the same set, cached per filter. A filtered

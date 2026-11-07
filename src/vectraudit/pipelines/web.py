@@ -18,6 +18,8 @@ from vectraudit.labelling.storage import TaskBusy
 from vectraudit.pipelines.guided import MAX_BODY, MAX_RUN_BYTES, GuidedWorkspace, guided_router
 from vectraudit.server.app import STATIC_DIR, _mount_frontend
 
+MAX_ATLAS_BYTES = 64 * 1024 * 1024
+
 
 def create_workbench(
     directory: Path,
@@ -113,6 +115,27 @@ def create_workbench(
         except (ValueError, UnicodeError) as exc:
             raise HTTPException(422, "Invalid workbench artifact") from exc
         return result
+
+    @app.get("/api/workbench/atlas/{name}")
+    def atlas_points(name: str) -> Response:
+        """The binary points of ``atlas-<name>.bin`` (layout: ``vectraudit.atlas`` sidecar)."""
+        from vectraudit.pipelines.atlas_build import NAME
+
+        path = root / f"atlas-{name}.bin"
+        if (
+            not NAME.match(name)
+            or path.is_symlink()
+            or path.resolve().parent != root
+            or not path.is_file()
+        ):
+            raise HTTPException(404, "Atlas not found")
+        if path.stat().st_size > MAX_ATLAS_BYTES:
+            raise HTTPException(413, "Atlas is larger than 64 MiB")
+        return Response(
+            path.read_bytes(),
+            media_type="application/octet-stream",
+            headers={"Cache-Control": "no-store"},
+        )
 
     # Let the common shell load without an index; no index APIs are enabled.
     @app.get("/api/info")
