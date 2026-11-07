@@ -16,6 +16,7 @@ const QueryExplorer = lazy(() => import('./views/QueryExplorer'))
 const Tuner = lazy(() => import('./views/Tuner'))
 const Compare = lazy(() => import('./views/Compare'))
 const Hnsw = lazy(() => import('./views/Hnsw'))
+const AtlasSpike = lazy(() => import('./views/AtlasSpike'))
 const Quantization = lazy(() => import('./views/Quantization'))
 
 export default function App() {
@@ -154,6 +155,7 @@ export default function App() {
               {view === 'tuner' && <Tuner info={info.data} params={route.params} />}
               {view === 'compare' && <Compare info={info.data} params={route.params} />}
               {view === 'hnsw' && <Hnsw info={info.data} params={route.params} mode={mode} />}
+              {view === 'atlas-spike' && <AtlasSpike />}
               {view === 'quantization' && <Quantization info={info.data} />}
               {view === 'query' && (
                 <QueryExplorer info={info.data} params={route.params} mode={mode} />
