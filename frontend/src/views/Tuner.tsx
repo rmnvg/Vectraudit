@@ -40,6 +40,7 @@ import {
 import { RecallBreakdown, WorstQueries } from './TunerDiagnostics'
 import { BaselineCompare, SaveRunButton } from './TunerBaseline'
 import { NextSteps } from './TunerNextSteps'
+import { TunerSelectivity } from './TunerSelectivity'
 
 const AXIS = { fill: 'var(--muted)', fontSize: 11 }
 
@@ -198,6 +199,16 @@ export default function Tuner({ info, params }: { info: Info; params: URLSearchP
           sweeping={start.isPending}
         />
       )}
+      <TunerSelectivity
+        info={info}
+        param={param}
+        values={parseValues(valuesText, defaults.max_value)}
+        k={k}
+        nQueries={nQueries}
+        repeats={repeats}
+        seed={seed}
+        target={target}
+      />
     </div>
   )
 }

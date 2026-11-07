@@ -20,10 +20,11 @@ from rich.markup import escape
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from vectraudit import __version__
+from vectraudit import __version__, selectivity_cli
 from vectraudit.core import runs
 from vectraudit.core._faiss import FaissNotInstalledError
-from vectraudit.core.advice import Suggestion
+from vectraudit.core.advice import Suggestion, advise_selectivity
+from vectraudit.core.filtering import FilterError
 from vectraudit.core.loader import IndexLoadError, load_index
 from vectraudit.core.projection import (
     DEFAULT_MAX_POINTS,
@@ -31,6 +32,7 @@ from vectraudit.core.projection import (
     clear_cache,
     default_cache_root,
 )
+from vectraudit.core.selectivity import selectivity_sweep
 from vectraudit.core.sweep import Choice, SweepResult
 from vectraudit.core.types import LoadedIndex
 from vectraudit.server.app import create_app
@@ -450,14 +452,49 @@ def sweep(
             "with rows sorted by id).",
         ),
     ] = False,
+    meta: Annotated[
+        Path | None,
+        typer.Option(help="Metadata (.jsonl/.csv/.parquet, an 'id' column) for --filter."),
+    ] = None,
+    filter_: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--filter",
+            help="Also sweep with this metadata filter, e.g. 'lang=de' or "
+            "'lang=de;year={\"gte\":2020}' (';' ANDs conditions). Repeatable. Needs --meta.",
+        ),
+    ] = None,
+    pass_rates: Annotated[
+        str | None,
+        typer.Option(
+            help="Also sweep with synthetic id filters at these pass rates, e.g. 0.001,0.01,0.1. "
+            "A pass rate is the fraction of documents that PASS, not the fraction removed."
+        ),
+    ] = None,
 ) -> None:
     """Measure recall@k and latency across nprobe/efSearch values.
+
+    With --filter or --pass-rates, the sweep is repeated for each filter (and unfiltered),
+    each against the exact neighbours among the documents that filter allows.
 
     Exits with code 2 if no value reaches --target (within --max-p95-ms, if given), 3 if
     --baseline shows a regression, or 4 if --baseline couldn't be compared at all (not a
     pass -- see the printed notes), so it can gate CI.
     """
     parsed_values = _values_option(values)
+    if filter_ or pass_rates is not None:
+        if save is not None or baseline is not None:
+            raise _fail(
+                "--save and --baseline do not apply to a filtered sweep.",
+                "Run the filtered sweep on its own; --json prints the full result.",
+            )
+        _filtered_sweep(
+            index_path, vectors, ids, queries, meta, param, parsed_values, k, n_queries,
+            repeats, seed, target, max_p95_ms, filter_ or [], pass_rates, as_json, mmap,
+        )  # fmt: skip
+        return
+    if meta is not None:
+        raise _fail("--meta is only used with --filter.", "Add --filter 'key=value'.")
     base_run = None
     if baseline is not None:
         try:
@@ -553,6 +590,102 @@ def sweep(
         raise typer.Exit(code=3)
     if comparison is not None and not comparison.comparable:
         raise typer.Exit(code=4)
+
+
+def _filtered_sweep(
+    index_path: Path,
+    vectors: Path | None,
+    ids: Path | None,
+    queries: Path | None,
+    meta: Path | None,
+    param: str | None,
+    values: list[int] | None,
+    k: int,
+    n_queries: int,
+    repeats: int,
+    seed: int,
+    target: float,
+    max_p95_ms: float | None,
+    filters: list[str],
+    pass_rates: str | None,
+    as_json: bool,
+    mmap: bool,
+) -> None:
+    """``sweep`` with filters: the unfiltered sweep plus one per filter; exit 2 if any misses."""
+    if param is not None and param not in ("nprobe", "efSearch"):
+        raise _fail(f"Unknown --param {param!r}.", "Use nprobe (IVF) or efSearch (HNSW).")
+    try:
+        specs = [selectivity_cli.parse_filter(f) for f in filters]
+        if pass_rates is not None:
+            specs += selectivity_cli.parse_pass_rates(pass_rates)
+        if specs and any(s.kind == "metadata" for s in specs) and meta is None:
+            raise FilterError("--filter needs --meta.", "Pass --meta with a file keyed by id.")
+        session = Session(
+            index_path,
+            vectors=vectors,
+            ids=ids,
+            queries=queries,
+            metadata=meta,
+            disk_cache=False,
+            mmap=mmap,
+        )
+        if not session.li.is_supported:
+            raise ValueError(f"Cannot sweep: {session.li.unsupported_reason}")
+        sweep_values = values
+        qs = session.sweep_queries(n_queries, seed)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            BarColumn(),
+            console=err_console,
+            transient=True,
+            disable=as_json,
+        ) as bar:
+            task = bar.add_task("Sweeping", total=1.0)
+            result = selectivity_sweep(
+                session.li,
+                qs,
+                session.ground_truth,
+                specs,
+                metadata=session.metadata,
+                param=param,
+                values=sweep_values,
+                k=k,
+                repeats=repeats,
+                seed=seed,
+                assignments=session.assignments if session.li.kind.is_ivf else None,
+                progress=lambda f, m: bar.update(task, completed=f, description=m),
+            )
+    except FaissNotInstalledError as e:
+        raise _fail("FAISS is not installed.", e.hint) from e
+    except (FileNotFoundError, IndexLoadError) as e:
+        raise _fail(str(e)) from e
+    except InputError as e:
+        raise _fail(str(e), e.hint) from e
+    except FilterError as e:
+        raise _fail(str(e), e.hint) from e
+    except ValueError as e:
+        raise _fail(str(e)) from e
+    suggestions = advise_selectivity(result, target, max_p95_ms=max_p95_ms)
+    if as_json:
+        typer.echo(
+            json.dumps(
+                selectivity_cli.result_json(
+                    result, target, suggestions, truth_reconstructed=not session.has_raw_vectors
+                ),
+                indent=2,
+            )
+        )
+    else:
+        if not session.has_raw_vectors:
+            console.print(
+                "[yellow]Ground truth computed on reconstructed vectors; PQ/SQ error is not "
+                "measured.[/] Pass --vectors for exact ground truth."
+            )
+        selectivity_cli.print_table(console, result, target)
+        _print_suggestions(suggestions)
+    if any(choice.by_recall is None for _, choice in result.choose(target, max_p95_ms=max_p95_ms)):
+        raise typer.Exit(code=2)
 
 
 def _comparison_json(cmp: runs.RunComparison) -> dict[str, object]:

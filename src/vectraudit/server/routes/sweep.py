@@ -9,7 +9,9 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from vectraudit.core import runs
+from vectraudit.core.filtering import FilterError
 from vectraudit.core.jobs import Job
+from vectraudit.core.selectivity import SelectivityResult
 from vectraudit.core.sweep import SweepResult, default_values, param_for
 from vectraudit.server import schemas as S
 from vectraudit.server.routes.common import (
@@ -219,3 +221,124 @@ def cancel_sweep(job_id: str, session: SessionDep) -> JSONResponse:
         raise ApiError(404, "NOT_FOUND", f"No sweep with id {job_id}.")
     session.jobs.cancel(job.key)
     return _sweep_response(job_id, job, session)
+
+
+# --- filtered sweeps ---------------------------------------------------------------------
+
+
+def _selectivity_response(
+    job_id: str, job: Job[SelectivityResult], session: Session
+) -> JSONResponse:
+    snapshot = job.as_dict()
+    result = None
+    if snapshot["status"] == "done" and job.result is not None:
+        r = job.result
+        base = r.baseline.sweep
+        result = S.SelectivityResultOut(
+            param=r.param.value,
+            k=r.k,
+            n_queries=base.n_queries,
+            query_origin=base.query_origin,
+            truth_source="reconstructed" if base.truth_reconstructed else "raw",
+            repeats=base.repeats,
+            seed=base.seed,
+            runs=[
+                S.SelectivityRunOut(
+                    label=run.spec.label,
+                    kind=run.spec.kind,
+                    pass_rate=run.pass_rate,
+                    allowed_count=run.allowed_count,
+                    points=[
+                        S.SelectivityPointOut(
+                            value=p.value,
+                            recall=p.recall,
+                            recall_ci_low=p.recall_ci_low,
+                            recall_ci_high=p.recall_ci_high,
+                            latency_mean_ms=p.latency_mean_ms,
+                            latency_p95_ms=p.latency_p95_ms,
+                            probe_coverage=p.probe_coverage,
+                        )
+                        for p in run.sweep.points
+                    ],
+                )
+                for run in sorted(r.runs, key=lambda x: (x is not r.baseline, -x.pass_rate))
+            ],
+        )
+    return job_response(S.SelectivityJobResponse(job_id=job_id, result=result, **snapshot))
+
+
+@router.post(
+    "/selectivity",
+    response_model=S.SelectivityJobResponse,
+    responses={202: {"model": S.SelectivityJobResponse}},
+)
+def start_selectivity(req: S.SelectivityRequest, session: SupportedDep) -> JSONResponse:
+    """Start (or reuse) a sweep at several pass rates; poll ``GET /selectivity/{job_id}``."""
+    try:
+        job_id, job = session.selectivity_job(
+            req.param,
+            req.values,
+            req.k,
+            req.n_queries,
+            req.repeats,
+            req.seed,
+            req.pass_rates,
+            req.filters,
+        )
+    except FilterError as e:
+        raise ApiError(422, "BAD_FILTER", str(e), e.hint) from e
+    return _selectivity_response(job_id, job, session)
+
+
+def _selectivity_job(session: Session, job_id: str) -> Job[SelectivityResult]:
+    job = session.get_selectivity_job(job_id)
+    if job is None:
+        raise ApiError(
+            404,
+            "NOT_FOUND",
+            f"No filtered sweep with id {job_id}.",
+            "Start one with POST /api/selectivity.",
+        )
+    return job
+
+
+@router.get(
+    "/selectivity/{job_id}",
+    response_model=S.SelectivityJobResponse,
+    responses={202: {"model": S.SelectivityJobResponse}},
+)
+def get_selectivity(job_id: str, session: SessionDep) -> JSONResponse:
+    return _selectivity_response(job_id, _selectivity_job(session, job_id), session)
+
+
+@router.delete("/selectivity/{job_id}", response_model=S.SelectivityJobResponse)
+def cancel_selectivity(job_id: str, session: SessionDep) -> JSONResponse:
+    """Stop a filtered sweep at its next progress checkpoint."""
+    job = _selectivity_job(session, job_id)
+    session.jobs.cancel(job.key)
+    return _selectivity_response(job_id, job, session)
+
+
+@router.get("/selectivity/{job_id}/advice", response_model=S.SweepAdviceResponse)
+def selectivity_advice(
+    job_id: str,
+    session: SessionDep,
+    target: Annotated[float, Query(ge=0.0, le=1.0, description="Target recall@k.")] = 0.95,
+) -> S.SweepAdviceResponse:
+    """Measured statements about recall at each pass rate of a finished filtered sweep."""
+    job = _selectivity_job(session, job_id)
+    if not job.is_done or job.result is None:
+        raise ApiError(
+            409,
+            "NOT_READY",
+            "This filtered sweep hasn't finished.",
+            "Poll GET /api/selectivity/{job_id} first.",
+        )
+    suggestions = session.selectivity_advice(job.result, target)
+    return S.SweepAdviceResponse(
+        target_recall=target,
+        confident=False,
+        suggestions=[
+            S.SuggestionOut.model_validate({**asdict(s), "kind": s.kind.value}) for s in suggestions
+        ],
+    )

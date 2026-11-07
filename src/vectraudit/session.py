@@ -21,7 +21,7 @@ from vectraudit.core import comparison as comparison_mod
 from vectraudit.core import hnsw as hnsw_mod
 from vectraudit.core import hnsw_trace, ivf, runs
 from vectraudit.core import pq as pq_mod
-from vectraudit.core.advice import Suggestion, advise
+from vectraudit.core.advice import Suggestion, advise, advise_selectivity
 from vectraudit.core.embed import (
     Embedder,
     EmbedderUnavailableError,
@@ -52,6 +52,12 @@ from vectraudit.core.search import (
     explain_query,
     resolve_query,
     resolve_search_params,
+)
+from vectraudit.core.selectivity import (
+    SelectivityResult,
+    metadata_spec,
+    selectivity_sweep,
+    synthetic_spec,
 )
 from vectraudit.core.sweep import (
     DEFAULT_N_QUERIES,
@@ -755,16 +761,16 @@ class Session:
                     self._sweep_inputs.popitem(last=False)
         return data
 
-    def sweep_job(
+    def _check_sweep_request(
         self,
-        param: SweepParam | str | None = None,
-        values: list[int] | None = None,
-        k: int = 10,
-        n_queries: int = DEFAULT_N_QUERIES,
-        repeats: int = 3,
-        seed: int = 0,
-    ) -> tuple[str, Job[SweepResult]]:
-        """Validate, then start (or return) the background sweep. Returns ``(job_id, job)``."""
+        param: SweepParam | str | None,
+        values: list[int] | None,
+        k: int,
+        n_queries: int,
+        repeats: int,
+        seed: int,
+    ) -> tuple[SweepParam, list[int]]:
+        """Validate sweep settings (and demo limits); returns the parameter and its values."""
         if not self.li.is_supported:
             raise ValueError(f"Cannot sweep: {self.li.unsupported_reason}")
         if k < 1 or n_queries < 1:
@@ -786,6 +792,19 @@ class Session:
                 raise DemoLimitError(f"Sweeps use k <= {lim.max_sweep_k} here.")
             if p is SweepParam.EF_SEARCH and max(vals) > lim.max_ef_search:
                 raise DemoLimitError(f"efSearch is capped at {lim.max_ef_search} in this demo.")
+        return p, vals
+
+    def sweep_job(
+        self,
+        param: SweepParam | str | None = None,
+        values: list[int] | None = None,
+        k: int = 10,
+        n_queries: int = DEFAULT_N_QUERIES,
+        repeats: int = 3,
+        seed: int = 0,
+    ) -> tuple[str, Job[SweepResult]]:
+        """Validate, then start (or return) the background sweep. Returns ``(job_id, job)``."""
+        p, vals = self._check_sweep_request(param, values, k, n_queries, repeats, seed)
         key = ("sweep", p.value, tuple(vals), k, n_queries, repeats, seed)
         job_id = hashlib.sha1(repr(key).encode()).hexdigest()[:12]
 
@@ -830,6 +849,82 @@ class Session:
         with self._lock:
             key = self._lazy.get("sweep_ids", {}).get(job_id)
         return self.jobs.get(key) if key is not None else None
+
+    def selectivity_job(
+        self,
+        param: SweepParam | str | None,
+        values: list[int] | None,
+        k: int,
+        n_queries: int,
+        repeats: int,
+        seed: int,
+        pass_rates: list[float],
+        filters: list[dict[str, Any]],
+    ) -> tuple[str, Job[SelectivityResult]]:
+        """Start (or return) a sweep repeated at each filter, plus unfiltered.
+
+        ``pass_rates`` are synthetic id filters; ``filters`` are metadata filters and need
+        ``--meta``. Not archived in run history: that record has one sweep per run.
+        """
+        p, vals = self._check_sweep_request(param, values, k, n_queries, repeats, seed)
+        specs = [synthetic_spec(r) for r in pass_rates] + [metadata_spec(f) for f in filters]
+        if not specs:
+            raise ValueError("Give at least one pass rate or metadata filter.")
+        if filters and self.metadata is None:
+            raise InputError(
+                "NO_METADATA",
+                "Metadata filters need metadata.",
+                "Start the server with --meta, or use pass rates.",
+            )
+        if self.demo_limits is not None and len(specs) > 3:
+            raise DemoLimitError("Filtered sweeps use at most 3 filters here.")
+        key = (
+            "selectivity",
+            p.value,
+            tuple(vals),
+            k,
+            n_queries,
+            repeats,
+            seed,
+            tuple(sp.label for sp in specs),
+        )
+        job_id = hashlib.sha1(repr(key).encode()).hexdigest()[:12]
+
+        def work(progress: Callable[[float, str], None]) -> SelectivityResult:
+            return selectivity_sweep(
+                self.li,
+                self.sweep_queries(n_queries, seed),
+                self.ground_truth,
+                specs,
+                metadata=self.metadata,
+                param=p,
+                values=vals,
+                k=k,
+                repeats=repeats,
+                seed=seed,
+                assignments=self.assignments if self.li.kind.is_ivf else None,
+                progress=progress,
+            )
+
+        job = self.jobs.get_or_start(key, work, retry=True)
+        with self._lock:
+            mappings = self._lazy.setdefault("selectivity_ids", {})
+            for old_id, old_key in list(mappings.items()):
+                if self.jobs.get(old_key) is None:
+                    del mappings[old_id]
+            mappings[job_id] = key
+        return job_id, job
+
+    def get_selectivity_job(self, job_id: str) -> Job[SelectivityResult] | None:
+        with self._lock:
+            key = self._lazy.get("selectivity_ids", {}).get(job_id)
+        return self.jobs.get(key) if key is not None else None
+
+    def selectivity_advice(
+        self, result: SelectivityResult, target_recall: float, *, max_p95_ms: float | None = None
+    ) -> list[Suggestion]:
+        """Measured statements about recall at each pass rate of a finished sweep."""
+        return advise_selectivity(result, target_recall, max_p95_ms=max_p95_ms)
 
     def sweep_advice(
         self,

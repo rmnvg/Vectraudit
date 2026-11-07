@@ -32,6 +32,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   set of ids that FAISS applies during the search (IVF, HNSW, flat, IDMap, PreTransform and
   refine indexes), with exact ground truth over the same set, cached per filter. A filtered
   IVF explanation reports how many allowed vectors sit in the probed cells.
+- `vectraudit sweep --filter/--pass-rates`: recall against filter selectivity, with metadata
+  filters or VectorDBBench-style synthetic id filters, each measured against the exact
+  neighbours among the documents it allows. The Tuner gains a pass-rate card (`/api/selectivity`)
+  and the advice quotes measured recall per pass rate, listing brute force and partitioning as
+  not measured. See `docs/filtered-search.md`.
 - `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
   scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
   one that is not, an injection that displaces required evidence) and a failing release

@@ -33,3 +33,40 @@ rate; convert explicitly when importing.
   parameters; the search code sets it there.
 - A flat index under any filter has recall 1.0 by construction, which makes it a check on the
   ground truth itself.
+
+## Selectivity sweep: recall by pass rate
+
+```bash
+vectraudit sweep INDEX --vectors x.npy --meta meta.jsonl \
+  --filter 'lang=de' --filter 'lang=de;year={"gte":2020}' \
+  --pass-rates 0.001,0.01,0.1,0.5 --target 0.95
+```
+
+The sweep runs once unfiltered and once per filter. Each filter has its own exact truth over
+the documents it allows, so every row is recall against the right neighbours.
+
+- `--filter` is a metadata filter (needs `--meta`). `;` ANDs conditions; a value that is valid
+  JSON is read as JSON (numbers, lists, `{"gte": 2020}` ranges), anything else is a string.
+  Repeat the option for several filters.
+- `--pass-rates` adds synthetic id filters, like VectorDBBench's integer filter: the highest
+  `round(n * rate)` ids pass, so the rate is exact whatever the corpus. The filter is
+  deliberately unrelated to the vectors, which isolates selectivity from correlation; a
+  metadata filter measures your real correlation.
+- A filter that allows fewer documents than `k` is refused (its recall would be computed over
+  fewer than `k` neighbours and compare with nothing).
+- Exit code 2 when any filter, including the unfiltered run, never reaches `--target`.
+  `--json` prints `vectraudit.selectivity-sweep` v1 (no document text). `--save` and
+  `--baseline` are not available for filtered sweeps.
+
+The Tuner has the same sweep as a card below the results: pass rates, and metadata filters when
+the server was started with `--meta`, a recall-versus-parameter line per pass rate, a table of
+the same numbers, and the advice below.
+
+### What the advice says
+
+Only measured statements. For a pass rate that never reaches the target: "At a 1% pass rate,
+efSearch 512 reaches recall 0.93; the 0.95 target was not reached in the sweep range." When the
+unfiltered recommendation loses recall under a filter: the recall at each pass rate at that
+setting. Brute-force search over the allowed ids and partitioning the index by the filter
+field are listed as *not measured*: they may help very selective filters, but this sweep did
+not try them.

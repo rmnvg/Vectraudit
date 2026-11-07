@@ -16,6 +16,7 @@ import numpy.typing as npt
 
 from vectraudit.core import ivf
 from vectraudit.core._faiss import import_faiss
+from vectraudit.core.filtering import AllowedSet
 from vectraudit.core.search import GroundTruth, resolve_search_params
 from vectraudit.core.types import LoadedIndex
 from vectraudit.core.vectors import VectorSource
@@ -223,6 +224,9 @@ class SweepResult:
     query_seed: int | None = None
     coverage_curve: npt.NDArray[np.float64] | None = field(default=None, repr=False, compare=False)
     """IVF: probe coverage at every nprobe ``0..nlist`` (see :func:`ivf.probe_coverage`)."""
+    pass_rate: float | None = None
+    """Filtered sweep: the fraction of the corpus the filter allows; ``None`` = unfiltered."""
+    allowed_count: int | None = None
 
     def coverage_at(self, nprobe: int) -> float | None:
         """Probe coverage at any nprobe, measured or not; ``None`` without IVF data."""
@@ -328,9 +332,15 @@ QUERY_BATCH = 256
 
 
 def ground_truth_ids(
-    gt: GroundTruth, queries: QuerySet, k: int, progress: ProgressFn | None = None
+    gt: GroundTruth,
+    queries: QuerySet,
+    k: int,
+    progress: ProgressFn | None = None,
+    allowed: AllowedSet | None = None,
 ) -> IntArray:
     """Exact top-k ids for every query (self excluded for sampled queries).
+
+    With ``allowed``, the exact neighbours among those ids only.
 
     Runs in batches of :data:`QUERY_BATCH` queries, calling ``progress`` (fraction done,
     message) before each, which is where a background job can be cancelled.
@@ -342,7 +352,8 @@ def ground_truth_ids(
         report(start / n, f"Exact ground truth: {start}/{n} queries")
         stop = start + QUERY_BATCH
         excl = queries.exclude_ids[start:stop] if queries.exclude_ids is not None else None
-        parts.append(gt.search_batch(queries.vectors[start:stop], k, excl))
+        extra = {} if allowed is None else {"allowed": allowed}  # unfiltered calls unchanged
+        parts.append(gt.search_batch(queries.vectors[start:stop], k, excl, **extra))
     if not parts:
         return np.empty((0, k), dtype=np.int64)
     return np.concatenate(parts)
@@ -377,8 +388,12 @@ def sweep(
     repeats: int = 3,
     seed: int = 0,
     assignments: ivf.Assignments | None = None,
+    allowed: AllowedSet | None = None,
 ) -> SweepResult:
     """Measure recall@k and per-query latency at each parameter value.
+
+    With ``allowed``, every search is filtered inside FAISS and ``truth`` must be the exact
+    neighbours among the same ids (:func:`ground_truth_ids` with ``allowed``).
 
     Queries run one at a time on a single FAISS thread (restored afterwards), after an
     untimed warm-up pass, so latencies are stable and comparable across values. For an
@@ -397,10 +412,12 @@ def sweep(
         raise ValueError(f"truth must have shape ({len(queries)}, {k}), got {truth.shape}.")
     report = progress or (lambda frac, msg: None)
 
+    selector = None if allowed is None else allowed.selector()  # keep alive: params borrow it
+
     def params_for(v: int) -> object:
         if param is SweepParam.NPROBE:
-            return resolve_search_params(li, nprobe=v)[0]
-        return resolve_search_params(li, ef_search=v)[0]
+            return resolve_search_params(li, nprobe=v, sel=selector)[0]
+        return resolve_search_params(li, ef_search=v, sel=selector)[0]
 
     all_params = [params_for(v) for v in vals]
     excl = queries.exclude_ids
@@ -486,6 +503,8 @@ def sweep(
         environment=benchmark_environment(),
         query_seed=queries.seed,
         coverage_curve=curve,
+        pass_rate=None if allowed is None else allowed.pass_rate,
+        allowed_count=None if allowed is None else len(allowed),
     )
 
 

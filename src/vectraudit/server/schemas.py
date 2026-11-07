@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, Field, PlainSerializer, WithJsonSchema, model_validator
 
+from vectraudit.contracts import Filters
 from vectraudit.core.search import MissReason
 
 
@@ -369,6 +370,61 @@ class SweepJobResponse(BaseModel):
     result: SweepResultOut | None = None
 
 
+class SelectivityRequest(SweepRequest):
+    """A sweep repeated at each filter (and unfiltered)."""
+
+    pass_rates: list[float] = Field(default_factory=list, max_length=8)
+    """Synthetic id filters: each the fraction of the corpus that PASSES, in (0, 1]."""
+    filters: list[Filters] = Field(default_factory=list, max_length=4)
+    """Metadata filters (need the server started with metadata)."""
+
+    @model_validator(mode="after")
+    def _non_empty(self) -> SelectivityRequest:
+        if not self.pass_rates and not self.filters:
+            raise ValueError("Give at least one pass rate or metadata filter.")
+        return self
+
+
+class SelectivityPointOut(BaseModel):
+    value: int
+    recall: float
+    recall_ci_low: float | None
+    recall_ci_high: float | None
+    latency_mean_ms: float
+    latency_p95_ms: float
+    probe_coverage: float | None = None
+
+
+class SelectivityRunOut(BaseModel):
+    label: str
+    kind: Literal["all", "metadata", "synthetic"]
+    pass_rate: float
+    """Fraction of the corpus that satisfies the filter (1 = unfiltered)."""
+    allowed_count: int
+    points: list[SelectivityPointOut]
+
+
+class SelectivityResultOut(BaseModel):
+    param: Literal["nprobe", "efSearch"]
+    k: int
+    n_queries: int
+    query_origin: Literal["given", "sampled"]
+    truth_source: Literal["raw", "reconstructed"]
+    repeats: int
+    seed: int
+    runs: list[SelectivityRunOut]
+    """The unfiltered run first, then by descending pass rate."""
+
+
+class SelectivityJobResponse(BaseModel):
+    job_id: str
+    status: Literal["running", "done", "failed", "cancelled"]
+    progress: float
+    message: str
+    error: str | None = None
+    result: SelectivityResultOut | None = None
+
+
 class EvidenceOut(BaseModel):
     label: str
     value: str
@@ -383,6 +439,9 @@ class SuggestionOut(BaseModel):
         "FAILING_QUERIES",
         "LIST_IMBALANCE",
         "LATENCY_BUDGET",
+        "FILTER_RECALL_SHORT",
+        "FILTER_RECALL_DROP",
+        "FILTER_UNMEASURED",
     ]
     title: str
     detail: str
