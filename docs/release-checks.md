@@ -101,6 +101,8 @@ imported with `dataset import-vdbbench`) instead of the backend's own exact sear
 records the reference's source and hashes, and two runs measured against different references
 are not compared on ANN recall ([details](vectordbbench.md)).
 
+**Judge-corrected change in correct answers.** When baseline and candidate carry answer estimates from the same review sample, the report shows the corrected change as information; the verdict does not use it ([details](judge-corrected-estimates.md)).
+
 **Capacity.** `vectraudit capacity` measures throughput, latency percentiles, errors and sampled recall per concurrency level against a staging target, under a rate ceiling and with an explicit target confirmation; see [capacity](capacity.md). Its report is not a release verdict.
 
 **Cohorts by filter selectivity.** `"selectivity_buckets": [0.001, 0.01, 0.1]` tags each
