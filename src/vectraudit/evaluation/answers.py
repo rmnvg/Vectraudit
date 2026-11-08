@@ -55,6 +55,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from vectraudit.evaluation.answer_estimates import estimate_rates
+from vectraudit.evaluation.review_sample import ReviewSample, ReviewSampleError, read_sample
+
 ANSWERS_FORMAT_VERSION = 1
 VERDICTS = ("correct", "partial", "incorrect")
 OUTCOMES = ("answered", "abstained", "handoff")
@@ -809,11 +812,14 @@ def attach_answers(
     *,
     source_sha256: str | None = None,
     inventory: AbstractSet[str] | None = None,
+    sample: ReviewSample | None = None,
 ) -> dict[str, Any]:
     """A copy of the run with ``answer`` on each judged question and an ``answers`` summary.
 
     ``inventory`` is the corpus's document IDs; with it, a cited ID outside it is a fabricated
-    citation (``not_in_corpus``).
+    citation (``not_in_corpus``). ``sample`` is the random review sample (see
+    :mod:`vectraudit.evaluation.review_sample`): with it, ``answers.estimates`` gives a
+    judge-corrected correct rate per model evaluator, or says why it cannot.
 
     Judgments for questions the run does not contain are counted, never attached. Failed
     questions keep their judgments but get no diagnosis: there is no evidence to read.
@@ -964,6 +970,11 @@ def attach_answers(
             "findings": dict(sorted(finding_counts.items())),
             "meta_evaluation": _meta_evaluation({qid: by_query[qid]["answer"] for qid in grouped}),
         },
+        "estimates": estimate_rates(
+            out,
+            {qid: [(j.evaluator, j.kind, j.verdict) for j in js] for qid, js in grouped.items()},
+            sample,
+        ),
         "agreement_with_human": {
             name: {
                 "questions": len(results),
@@ -981,11 +992,40 @@ def attach_file(
     path: str | Path,
     thresholds: Mapping[str, float] | None = None,
     inventory: AbstractSet[str] | None = None,
+    sample_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """:func:`attach_answers` from a judgments file, recording the file's digest."""
     rows = read_judgments(path, thresholds)
     digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-    return attach_answers(run, rows, source_sha256=digest, inventory=inventory)
+    try:
+        sample = None if sample_path is None else read_sample(sample_path)
+    except ReviewSampleError as exc:
+        raise AnswerJudgmentError(f"{exc} {exc.hint}".strip()) from exc
+    return attach_answers(run, rows, source_sha256=digest, inventory=inventory, sample=sample)
+
+
+def _pct(value: float) -> str:
+    return f"{value:.0%}"
+
+
+def _estimate_lines(block: Mapping[str, Any] | None) -> list[str]:
+    """Terminal lines for the judge-corrected rates (judge only, human only, corrected)."""
+    lines = []
+    for name, row in ((block or {}).get("by_evaluator") or {}).items():
+        if row["status"] != "ok":
+            lines.append(f"{name}: no corrected estimate. {row['reason']}")
+            continue
+        human, corrected = row["human_only"], row["corrected"]
+        lines.append(
+            f"{name} correct rate: judge only {_pct(row['judge_only']['estimate'])} (biased by the "
+            f"judge's errors), people only {_pct(human['estimate'])} "
+            f"({_pct(human['ci_low'])}-{_pct(human['ci_high'])}), corrected "
+            f"{_pct(corrected['estimate'])} ({_pct(corrected['ci_low'])}-"
+            f"{_pct(corrected['ci_high'])}, 95%); {row['sample_families']} of "
+            f"{row['frame_families']} families reviewed, the judge agreed with people on "
+            f"{_pct(row['agreement_on_sample'])} of them."
+        )
+    return lines
 
 
 def render_summary(run: Mapping[str, Any]) -> str:
@@ -1014,6 +1054,7 @@ def render_summary(run: Mapping[str, Any]) -> str:
             f"  {key}: " + ", ".join(f"{n} {c.replace('_', ' ')}" for c, n in counts.items())
             for key, counts in by_prompt.items()
         ]
+    lines += _estimate_lines(answers.get("estimates"))
     for name, stats in answers["agreement_with_human"].items():
         lines.append(
             f"{name} agrees with human review on {stats['agreed']} of {stats['questions']} "

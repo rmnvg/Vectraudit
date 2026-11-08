@@ -35,6 +35,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 - `vectraudit workbench review-sample` draws a reproducible uniform random sample of question
   families for human review (the precondition for judge-corrected estimates): hash-ordered by seed,
   held-out and errored families excluded, identifiers only, and refused on read if edited.
+- `attach-answers --sample` adds `answers.estimates`: a judge-corrected correct rate per model
+  evaluator beside the judge-only and people-only rates, or the reason there is none (no sample,
+  judge skipped questions, review incomplete). It never changes a verdict or diagnosis. The
+  workbench run view shows the three numbers.
 - `docs/credits.md` credits every reimplemented method (ranx, RAGChecker, promptfoo,
   VectorDBBench, embedding-atlas and the papers behind the statistics) and states that none of
   them runs inside Vectraudit; module docstrings carry the same credit, and a test keeps the

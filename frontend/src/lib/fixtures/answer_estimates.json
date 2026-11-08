@@ -1,0 +1,63 @@
+{
+ "ok": {
+  "metric": "correct_rate",
+  "definition": "Share of question families whose questions were all judged correct (a family's value is the mean over its questions). Partial and incorrect count as not correct.",
+  "sample": {
+   "sha256": "7c7721dbd3b0aa77c377c26e88fbd1e275004d847f0364fc3fe24d2a5d15b3d0",
+   "size": 40,
+   "frame": 100
+  },
+  "by_evaluator": {
+   "ragas.correctness": {
+    "status": "ok",
+    "reason": null,
+    "judge_only": {
+     "estimate": 0.535,
+     "n": 100,
+     "note": "The judge's mean over every unit; biased by the judge's own error.",
+     "families": 100
+    },
+    "human_only": {
+     "estimate": 0.475,
+     "ci_low": 0.38249542838077427,
+     "ci_high": 0.5675045716192256,
+     "n": 40,
+     "method": "human-only"
+    },
+    "corrected": {
+     "estimate": 0.47398056616490675,
+     "ci_low": 0.3875410523802558,
+     "ci_high": 0.5604200799495577,
+     "n": 40,
+     "method": "ppi++",
+     "n_unlabelled": 60,
+     "lambda": 0.24466412042237706,
+     "alpha": 0.05,
+     "clipped": false,
+     "warnings": [
+      "Only 40 human-reviewed units: the interval is approximate below 100."
+     ]
+    },
+    "agreement_on_sample": 0.85,
+    "sample_families": 40,
+    "frame_families": 100
+   }
+  }
+ },
+ "absent": {
+  "metric": "correct_rate",
+  "definition": "Share of question families whose questions were all judged correct (a family's value is the mean over its questions). Partial and incorrect count as not correct.",
+  "sample": null,
+  "by_evaluator": {
+   "ragas.correctness": {
+    "status": "absent",
+    "reason": "No review sample was given. Draw one with `workbench review-sample`, have people review exactly those questions, and pass it with --sample.",
+    "judge_only": {
+     "estimate": 0.535,
+     "families": 100,
+     "note": "The judge's rate over the families it judged completely; biased by the judge's own error, and silent about families it did not judge."
+    }
+   }
+  }
+ }
+}

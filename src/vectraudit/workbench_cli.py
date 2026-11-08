@@ -819,6 +819,13 @@ def attach_answers_command(
             "from it is a fabricated citation (not_in_corpus), found by lookup."
         ),
     ] = None,
+    sample: Annotated[
+        Path | None,
+        typer.Option(
+            help="The review sample (`workbench review-sample`) people reviewed: with it the "
+            "summary gives a judge-corrected correct rate per model evaluator, or says why not."
+        ),
+    ] = None,
 ) -> None:
     """Attach answer judgments from human review or tools such as Ragas, and diagnose them.
 
@@ -839,7 +846,7 @@ def attach_answers_command(
         if out.resolve() == run.resolve():
             raise ValueError("--out must differ from the run file; the original stays unchanged")
         known = set(read_inventory(inventory)) if inventory is not None else None
-        result = attach_file(load_run(run), judgments, limits, known)
+        result = attach_file(load_run(run), judgments, limits, known, sample)
         _write(out, result)
     except (OSError, ValueError) as exc:
         typer.echo(f"Attach error: {exc}", err=True)
