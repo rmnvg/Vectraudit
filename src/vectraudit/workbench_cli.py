@@ -3096,3 +3096,41 @@ def atlas_command(
     )
     if c["heldout_hidden"]:
         typer.echo(f"{c['heldout_hidden']} held-out questions are not drawn (--show-heldout).")
+
+
+@workbench_app.command("review-sample")
+def review_sample_command(
+    run: Annotated[Path, typer.Argument(help="The run whose answers a model judged.")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the run was recorded on.")],
+    size: Annotated[int, typer.Option(min=1, help="Question families to review (100+ is best).")],
+    out: Annotated[Path, typer.Option(help="Where to write the sample (JSON).")],
+    seed: Annotated[int, typer.Option(min=0, help="Seed of the draw.")] = 0,
+) -> None:
+    """Draw a random sample of question families for human review.
+
+    Judge-corrected estimates are valid only when the human-reviewed questions are a uniform
+    random sample of the judged ones, so draw the sample here, have people review exactly
+    these questions, and pass the file to `attach-answers --sample`. Held-out questions, and
+    families with an errored or missing question, are never in the frame. The file holds IDs
+    only.
+    """
+    from vectraudit.evaluation.review_sample import (
+        ReviewSampleError,
+        build_sample,
+        write_sample,
+    )
+
+    try:
+        content = build_sample(load_run(run), load_dataset(dataset), size, seed)
+        write_sample(content, out)
+    except ReviewSampleError as exc:
+        typer.echo(f"Review sample error: {exc} {exc.hint}".rstrip(), err=True)
+        raise typer.Exit(2) from exc
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Review sample error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    questions = sum(len(v) for v in content["questions"].values())
+    typer.echo(
+        f"Drew {content['size']} of {len(content['frame'])} families ({questions} questions) "
+        f"with seed {seed} → {out}. Have people review exactly these questions."
+    )
