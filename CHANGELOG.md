@@ -28,6 +28,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit.evaluation.ppi`: prediction-powered inference (PPI and PPI++) for a rate: a judge's
+  verdicts on every question corrected by the judge's measured error on a random human-reviewed
+  sample, with a valid interval and the human-only and judge-only numbers beside it (reports in
+  progress: Phase 33).
 - `docs/credits.md` credits every reimplemented method (ranx, RAGChecker, promptfoo,
   VectorDBBench, embedding-atlas and the papers behind the statistics) and states that none of
   them runs inside Vectraudit; module docstrings carry the same credit, and a test keeps the
