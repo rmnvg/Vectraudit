@@ -39,6 +39,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   evaluator beside the judge-only and people-only rates, or the reason there is none (no sample,
   judge skipped questions, review incomplete). It never changes a verdict or diagnosis. The
   workbench run view shows the three numbers.
+- The release check adds `judge_corrected`: the change in correct-answer rate between baseline and
+  candidate, judge-corrected from the same random review sample, shown in the Markdown, job
+  summary and HTML reports as information only. The verdict does not use it.
 - `docs/credits.md` credits every reimplemented method (ranx, RAGChecker, promptfoo,
   VectorDBBench, embedding-atlas and the papers behind the statistics) and states that none of
   them runs inside Vectraudit; module docstrings carry the same credit, and a test keeps the

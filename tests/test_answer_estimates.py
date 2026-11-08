@@ -321,3 +321,25 @@ def test_the_frontend_fixture_matches_what_the_code_writes(tmp_path, monkeypatch
         ok["by_evaluator"][EVALUATOR]["corrected"]
     )
     assert set(fixture["absent"]["by_evaluator"][EVALUATOR]) == set(none["by_evaluator"][EVALUATOR])
+
+
+def test_phase_acceptance_a_biased_judge_on_two_thousand_questions(tmp_path) -> None:
+    """2,000 model-judged questions, a judge about 10 points too lenient, 150 random reviews."""
+    rng = np.random.default_rng(2026)
+    ds = dataset(2000, per_family=1)
+    run = run_for(ds)
+    truth = {q.query_id: bool(rng.random() < 0.5) for q in ds.queries}
+    # Right whenever the answer is correct; calls 20% of wrong answers correct: +10 points.
+    model = {qid: ok or bool(rng.random() < 0.20) for qid, ok in truth.items()}
+    sample = sample_for(ds, run, tmp_path, size=150, seed=1)
+    out = attach_answers(run, rows(truth, model, sample), sample=sample)
+    row = out["answers"]["estimates"]["by_evaluator"][EVALUATOR]
+    t = float(np.mean(list(truth.values())))
+    assert row["status"] == "ok", row["reason"]
+    assert row["corrected"]["ci_low"] <= t <= row["corrected"]["ci_high"]
+    assert not row["human_only"]["ci_low"] > t  # sanity: the people-only interval is also sound
+    assert abs(row["judge_only"]["estimate"] - t) > 0.07  # the judge alone is clearly off
+    assert (
+        row["corrected"]["ci_high"] - row["corrected"]["ci_low"]
+        < row["human_only"]["ci_high"] - row["human_only"]["ci_low"]
+    )
