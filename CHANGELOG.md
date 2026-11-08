@@ -28,6 +28,23 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit.evaluation.ppi`: prediction-powered inference (PPI and PPI++) for a rate: a judge's
+  verdicts on every question corrected by the judge's measured error on a random human-reviewed
+  sample, with a valid interval and the human-only and judge-only numbers beside it (reports in
+  progress: Phase 33).
+- `vectraudit workbench review-sample` draws a reproducible uniform random sample of question
+  families for human review (the precondition for judge-corrected estimates): hash-ordered by seed,
+  held-out and errored families excluded, identifiers only, and refused on read if edited.
+- `attach-answers --sample` adds `answers.estimates`: a judge-corrected correct rate per model
+  evaluator beside the judge-only and people-only rates, or the reason there is none (no sample,
+  judge skipped questions, review incomplete). It never changes a verdict or diagnosis. The
+  workbench run view shows the three numbers.
+- The release check adds `judge_corrected`: the change in correct-answer rate between baseline and
+  candidate, judge-corrected from the same random review sample, shown in the Markdown, job
+  summary and HTML reports as information only. The verdict does not use it.
+- `docs/judge-corrected-estimates.md` explains the round trip (review-sample, human review,
+  attach-answers --sample), what makes the interval valid, when no estimate is given, and what it
+  cannot fix; credits ARES and the prediction-powered inference papers.
 - `docs/credits.md` credits every reimplemented method (ranx, RAGChecker, promptfoo,
   VectorDBBench, embedding-atlas and the papers behind the statistics) and states that none of
   them runs inside Vectraudit; module docstrings carry the same credit, and a test keeps the

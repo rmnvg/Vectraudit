@@ -78,6 +78,41 @@ P_NOTE = (
     "the rules above, not p."
 )
 
+JUDGE_NOTE = (
+    "Judge-corrected change in the correct-answer rate: the judge's change corrected by what "
+    "people found on the same random sample of question families in both runs. Information "
+    "only; the verdict does not use it."
+)
+
+
+def _pct(x: float) -> str:
+    return f"{x * 100:+.1f} pts"
+
+
+def judge_corrected_rows(result: Mapping[str, Any]) -> list[list[str]]:
+    """Rows (evaluator, judge only, people only, corrected, reviewed) for the change in rate."""
+    block = result.get("judge_corrected") or {}
+    rows = []
+    for name, row in (block.get("by_evaluator") or {}).items():
+        if row["status"] != "ok":
+            rows.append([name, "", "", "no corrected estimate: " + str(row["reason"]), ""])
+            continue
+        human, corrected = row["human_only"], row["corrected"]
+        rows.append(
+            [
+                name,
+                _pct(row["judge_only"]["estimate"]),
+                f"{_pct(human['estimate'])} ({_pct(human['ci_low'])} to {_pct(human['ci_high'])})",
+                f"{_pct(corrected['estimate'])} "
+                f"({_pct(corrected['ci_low'])} to {_pct(corrected['ci_high'])})",
+                f"{row['sample_families']} of {row['frame_families']} families",
+            ]
+        )
+    return rows
+
+
+JUDGE_HEADER = ["Judge", "Judge only (biased)", "People only", "Corrected (95%)", "Reviewed"]
+
 PAIRED_NOTE = (
     "Latency recorded interleaved (paired execution): each question ran on both sides back to "
     "back, alternating which went first, so drift during the run affected both alike."
@@ -207,6 +242,10 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         ]
         if any("p_value" in m for m in result["metrics"].values()):
             out += [P_NOTE, ""]
+    if judge_rows := judge_corrected_rows(result):
+        out += [_md_table(JUDGE_HEADER, judge_rows), "", JUDGE_NOTE, ""]
+    elif (result.get("judge_corrected") or {}).get("note"):
+        out += [str(result["judge_corrected"]["note"]), ""]
     latency = _latency_rows(result["latency"])
     if latency:
         out += [_md_table(["Latency", "Baseline", "Candidate", "Change"], latency), ""]
@@ -477,6 +516,12 @@ def render_html(result: Mapping[str, Any]) -> str:
         )
         if any("p_value" in m for m in result["metrics"].values()):
             parts.append(f'<p class="muted">{html.escape(P_NOTE)}</p>')
+    if judge_rows := judge_corrected_rows(result):
+        parts.append("<h2>Judge-corrected change in correct answers</h2>")
+        parts.append(_html_table(JUDGE_HEADER, judge_rows))
+        parts.append(f'<p class="muted">{html.escape(JUDGE_NOTE)}</p>')
+    elif (result.get("judge_corrected") or {}).get("note"):
+        parts.append(f'<p class="muted">{html.escape(str(result["judge_corrected"]["note"]))}</p>')
     latency = result.get("latency")
     if latency:
         note = "" if latency["compared"] else " (not compared; see warnings)"

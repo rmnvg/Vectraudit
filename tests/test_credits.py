@@ -27,6 +27,7 @@ REIMPLEMENTS = {
     "src/vectraudit/evaluation/external_reference.py": ("VectorDBBench",),
     "src/vectraudit/core/atlas.py": ("embedding-atlas",),
     "src/vectraudit/core/coverage.py": ("k-means++",),
+    "src/vectraudit/evaluation/ppi.py": ("ARES", "PPI++"),
 }
 
 

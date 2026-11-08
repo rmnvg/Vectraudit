@@ -24,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from vectraudit.evaluation.answer_estimates import compare_estimates
 from vectraudit.evaluation.diagnose import diagnose
 from vectraudit.evaluation.external_reference import reference_identity
 from vectraudit.evaluation.families import family_count, family_id, family_means
@@ -126,6 +127,9 @@ class _Check:
             self._critical_queries()
             self._critical_context()
             self._quality(pairs)
+            # Information only: nothing here is a reason or changes the verdict.
+            if (corrected := compare_estimates(self.base, self.cand)) is not None:
+                self.out["judge_corrected"] = corrected
             self._cohorts(pairs)
             self._latency()
             self._prompt_rule()
