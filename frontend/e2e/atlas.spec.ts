@@ -38,12 +38,16 @@ test('atlas: loads quickly, finds the uncovered group and locates failing questi
   const box = (await canvas.boundingBox())!
   const panel = page.getByLabel('Selection')
   await page.getByTitle(/Toggle rectangle selection mode/).click()
-  await page.mouse.move(box.x + 20, box.y + 20)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 })
-  await page.mouse.move(box.x + box.width - 20, box.y + box.height - 60, { steps: 6 })
-  await page.mouse.up()
-  await expect(panel.locator('.font-mono').first()).toBeVisible()
+  // CI renders WebGL in software, so the view can still be settling when the first drag lands;
+  // draw the rectangle again until the selection panel lists something.
+  await expect(async () => {
+    await page.mouse.move(box.x + 20, box.y + 20)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 })
+    await page.mouse.move(box.x + box.width - 20, box.y + box.height - 60, { steps: 6 })
+    await page.mouse.up()
+    await expect(panel.locator('.font-mono').first()).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(panel).toContainText('more not listed')
   await expect(panel.getByRole('button', { name: /Grade in the Guided workflow|Investigate in Pipeline runs/ }).first()).toBeVisible()
 })
