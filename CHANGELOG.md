@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- The six label metrics are now also checked against `trec_eval` (through pytrec_eval 0.5) on
+  200 seeded queries beside ranx; they agree to 1e-9, and the one difference (tie order) is
+  documented in `docs/release-checks.md`.
 - `vectraudit.evaluation.ppi`: prediction-powered inference (PPI and PPI++) for a rate: a judge's
   verdicts on every question corrected by the judge's measured error on a random human-reviewed
   sample, with a valid interval and the human-only and judge-only numbers beside it (reports in

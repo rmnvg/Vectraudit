@@ -237,6 +237,14 @@ never an empty result.
   Vectraudit keeps the backend's order, so the fixture fixes one order before both sides
   score it. ranx runs cannot repeat a document, so the no-extra-credit rule for duplicates
   is tested separately.
+- **trec_eval parity.** The same six metrics also agree with the NIST `trec_eval` (through
+  [pytrec_eval](https://github.com/cvangysel/pytrec_eval) 0.5) to within 1e-9 on the same
+  200 queries: `recall_k`, `P_k` (which divides by k when fewer documents come back),
+  `ndcg_cut_k`, `map_cut_k`, `success_k` and `recip_rank` on the ranking cut to k, at relevance
+  level 1. The one behaviour to know: trec_eval breaks equal scores by document id, descending,
+  while Vectraudit keeps the order the backend returned, so a run with tied scores can score
+  differently in the two tools. Export a run with distinct scores (or ranks) to compare them
+  (`vectraudit runs export-trec` writes ranks).
 - **ANN recall@k** (needs an exact reference): overlap with an exact search over the same
   corpus and distance. It measures approximation loss, **not** whether the results answer the
   query, so it can't choose between embedding models.
