@@ -274,6 +274,12 @@ never an empty result.
   while Vectraudit keeps the order the backend returned, so a run with tied scores can score
   differently in the two tools. Export a run with distinct scores (or ranks) to compare them
   (`vectraudit runs export-trec` writes ranks).
+- **Names in other tools' notation.** Reports show each metric in [ir-measures](https://ir-measur.es)
+  notation at the run's `k`, beside Vectraudit's key: `nDCG@10 (ndcg)`, `P@10 (precision)`,
+  `R@10 (recall)`, `RR@10 (mrr)` (ir-measures calls MRR an alias of RR), `AP@10 (map)` and
+  `Success@10 (hit_rate)`. A label of 1 or more counts as relevant, which is ir-measures' default
+  `rel=1` for integer grades. This is display only: policy keys and run files keep Vectraudit's
+  names, and the check JSON adds a `metric_notation` map.
 - **ANN recall@k** (needs an exact reference): overlap with an exact search over the same
   corpus and distance. It measures approximation loss, **not** whether the results answer the
   query, so it can't choose between embedding models.

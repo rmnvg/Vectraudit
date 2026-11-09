@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Reports show metrics in ir-measures notation at the run's k beside Vectraudit's own names
+  (`nDCG@10 (ndcg)`, `P@10 (precision)`, `Success@10 (hit_rate)`); policy keys and verdicts are
+  unchanged, and the check JSON adds `metric_notation`.
 - TREC interchange: `vectraudit runs export-trec`, `vectraudit dataset export-qrels` and
   `vectraudit runs import-trec` move runs and labels to and from trec_eval, ranx and ir-measures.
   An imported run computes quality here from your labels, is marked `external:trec`, and its

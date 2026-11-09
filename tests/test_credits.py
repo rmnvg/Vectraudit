@@ -29,6 +29,7 @@ REIMPLEMENTS = {
     "src/vectraudit/core/coverage.py": ("k-means++",),
     "src/vectraudit/evaluation/ppi.py": ("ARES", "PPI++"),
     "src/vectraudit/evaluation/trec.py": ("ir-measures", "pytrec_eval"),
+    "src/vectraudit/evaluation/measure_names.py": ("ir-measures",),
 }
 
 

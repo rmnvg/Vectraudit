@@ -36,7 +36,7 @@ def test_html_report_contents_and_escaping() -> None:
     assert "&lt;script&gt;" in page
     assert "Content-Security-Policy" in page
     assert '<span class="badge fail">Fail</span>' in page
-    for section in ("Why", "Quality", "Latency", "Queries by nDCG@k", "Cohorts", "What changed"):
+    for section in ("Why", "Quality", "Latency", "Queries by nDCG@", "Cohorts", "What changed"):
         assert f">{section}" in page
     assert "search.params.nprobe" in page
     assert "pr-12" in page
@@ -58,7 +58,8 @@ def test_markdown_summary() -> None:
     result = _failing_result()
     md = render_markdown(result, report_url="https://ci.example/report.html")
     assert md.startswith("## ❌ Retrieval check: Fail")
-    assert "| nDCG@k |" in md
+    assert "| nDCG@" in md  # ir-measures notation at the run's k, beside the key
+    assert " (ndcg) |" in md
     assert "<script>" not in md
     assert "&lt;script&gt;" in md
     assert "\\|\\`tick\\`" in md

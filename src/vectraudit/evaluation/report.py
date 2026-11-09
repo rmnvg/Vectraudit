@@ -14,6 +14,8 @@ from typing import Any
 from vectraudit import __version__
 from vectraudit.evaluation.compare import execution_label
 from vectraudit.evaluation.evidence import describe_evidence
+from vectraudit.evaluation.measure_names import label as measure_label
+from vectraudit.evaluation.measure_names import notation
 
 NONE = "\u2013"  # en dash for missing values
 
@@ -31,13 +33,16 @@ _VERDICT_EMOJI = {
     "not_comparable": "⏸️",
     "accepted": "🟡",
 }
-_METRIC_NAMES = {
-    "recall": "Recall@k",
-    "precision": "Precision@k",
-    "mrr": "MRR@k",
-    "ndcg": "nDCG@k",
-    "ann_recall": "ANN recall@k",
-}
+_METRIC_NAMES = {"ann_recall": "ANN recall@k"}
+
+
+def _name(result: Mapping[str, Any], metric: str, *, key: bool = True) -> str:
+    """A metric's display name: ir-measures notation at this run's k (``nDCG@10``), with
+    Vectraudit's key beside it in tables (``nDCG@10 (ndcg)``)."""
+    k = (result.get("candidate") or {}).get("k")
+    if isinstance(k, int) and metric not in _METRIC_NAMES:
+        return measure_label(metric, k) if key else (notation(metric, k) or metric)
+    return _METRIC_NAMES.get(metric, metric)
 
 
 def _num(x: Any, digits: int = 4, signed: bool = False) -> str:
@@ -51,10 +56,10 @@ def _ids(ids: Sequence[str], limit: int = 5) -> str:
     return shown + (f" … (+{len(ids) - limit})" if len(ids) > limit else "")
 
 
-def _metric_rows(metrics: Mapping[str, Any]) -> list[list[str]]:
+def _metric_rows(result: Mapping[str, Any]) -> list[list[str]]:
     return [
         [
-            _METRIC_NAMES.get(name, name),
+            _name(result, name),
             _num(m["baseline"]),
             _num(m["candidate"]),
             _num(m["delta"], signed=True),
@@ -63,7 +68,7 @@ def _metric_rows(metrics: Mapping[str, Any]) -> list[list[str]]:
             str(m["n"]),
             str(m.get("n_families", m["n"])),
         ]
-        for name, m in metrics.items()
+        for name, m in result["metrics"].items()
     ]
 
 
@@ -172,7 +177,7 @@ _TOLERANCE = {
 def tolerance_line(result: Mapping[str, Any]) -> str | None:
     """``Non-inferiority: nDCG shown within tolerance; recall inconclusive (...).``"""
     parts = [
-        f"{_METRIC_NAMES.get(name, name)} {_TOLERANCE[m['tolerance']['decision']]}"
+        f"{_name(result, name, key=False)} {_TOLERANCE[m['tolerance']['decision']]}"
         for name, m in (result.get("metrics") or {}).items()
         if m.get("tolerance")
     ]
@@ -236,7 +241,7 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         out += [
             _md_table(
                 ["Metric", "Baseline", "Candidate", "Change", "95% CI", "p", "Rows", "Families"],
-                _metric_rows(result["metrics"]),
+                _metric_rows(result),
             ),
             "",
         ]
@@ -259,7 +264,7 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     if queries and queries["regressed"]:
         out += [
             f"**{queries['regressed_count']} regressed, {queries['improved_count']} improved** "
-            f"on {_METRIC_NAMES.get(queries['primary_metric'], queries['primary_metric'])}. "
+            f"on {_name(result, queries['primary_metric'], key=False)}. "
             "Worst:",
             "",
             _md_table(
@@ -511,7 +516,7 @@ def render_html(result: Mapping[str, Any]) -> str:
                     "Rows",
                     "Families",
                 ],
-                _metric_rows(result["metrics"]),
+                _metric_rows(result),
             )
         )
         if any("p_value" in m for m in result["metrics"].values()):
@@ -533,7 +538,7 @@ def render_html(result: Mapping[str, Any]) -> str:
             parts.append(f"<p>{_e(PAIRED_NOTE)}</p>")
     queries = result.get("queries")
     if queries:
-        metric = _METRIC_NAMES.get(queries["primary_metric"], queries["primary_metric"])
+        metric = _name(result, queries["primary_metric"], key=False)
         parts.append(
             f"<h2>Queries by {_e(metric)}</h2><p>{queries['regressed_count']} regressed · "
             f"{queries['improved_count']} improved · {queries['unchanged_count']} unchanged</p>"
@@ -577,7 +582,7 @@ def render_html(result: Mapping[str, Any]) -> str:
                         str(cohort["n"]),
                         str(cohort.get("n_families", cohort["n"])),
                         "yes" if cohort["judged"] else "no (too few measured families)",
-                        _METRIC_NAMES.get(name, name),
+                        _name(result, name),
                         _num(m["baseline"]),
                         _num(m["candidate"]),
                         _num(m["delta"], signed=True),
