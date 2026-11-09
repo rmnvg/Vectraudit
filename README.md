@@ -33,10 +33,15 @@ from a checkout with `uv sync --all-extras` and prefix the commands below with `
 pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
 ```
 
-Extras install only the backends you use: `[faiss-cpu]`, `[qdrant]`, `[pgvector]`, `[weaviate]`.
-Pinecone needs no extra. `[text]` adds sentence-transformers for text queries, and `[cloud]`
-adds the hosted control plane's dependencies. `[all]` includes everything except the
-optional LLM labelling helper (`[label-llm]`).
+Extras install only what you use: the backends `[faiss-cpu]`, `[qdrant]`, `[pgvector]` and
+`[weaviate]` (Pinecone, Elasticsearch, OpenSearch and Chroma need none), `[text]` for
+sentence-transformers text queries, `[umap]` for the cluster map, `[parquet]` for Parquet
+inputs and `[cloud]` for the hosted control plane. `[all]` includes all of these except the
+optional LLM labelling helper (`[label-llm]`). Python 3.10 to 3.13 is tested in CI.
+
+Nothing runs from the open-source projects Vectraudit learns from (ranx, trec_eval, MTEB,
+RAGChecker and others): the methods are reimplemented and credited in
+[docs/credits.md](docs/credits.md), and no dataset is ever downloaded for you.
 
 ## Retrieval workbench
 
@@ -187,11 +192,19 @@ def test_retrieval_release():
 
 Already have a benchmark? `vectraudit dataset import` reads BEIR, TREC qrels, Ragas test
 sets, DeepEval goldens and LangSmith/Langfuse exports ([formats](docs/release-checks.md#bringing-labels-you-already-have)).
+Already have other tooling? Runs and labels move in and out in the TREC formats that
+`trec_eval`, pytrec_eval, ir-measures and ranx read: `vectraudit runs export-trec`,
+`runs import-trec` (an imported run says it is external and is never judged on latency it
+did not measure) and `dataset export-qrels`. Every quality metric is tested to equal
+trec_eval's, and reports show each metric's ir-measures name (`nDCG@10`, `RR@10`) beside
+Vectraudit's ([details](docs/release-checks.md#moving-runs-and-labels-to-and-from-other-ir-tools-trec)).
 No labels yet? The [local labelling assistant](docs/labelling.md) (`vectraudit label`)
 pools candidate documents from your questions and source corpus, then supports blind
 second passes, agreement and reviewer resolution before export. Choosing a setup
 before you guard it? [Experiments](docs/experiments.md) (`vectraudit experiment`) compare
-embedding models, chunkings and indexes on one labelled set.
+embedding models, chunkings and indexes on one labelled set, from your own corpus or a BEIR
+folder you have downloaded, and `experiment export-mteb` writes each candidate in MTEB's
+result layout, clearly marked as not like for like with leaderboard scores.
 
 - [Your first release check in 15 minutes](docs/first-check.md)
 - [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
