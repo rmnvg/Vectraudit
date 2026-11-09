@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -85,4 +86,37 @@ def experiment_run(
     console.print(verdict_sentence(ranked))
     console.print(
         f"Report: {escape(str(out / 'report.html'))}; runs in {escape(str(out / 'runs'))}/"
+    )
+
+
+@experiment_app.command("export-mteb")
+def experiment_export_mteb(
+    result: Annotated[
+        Path, typer.Argument(help="An experiment result directory (or result.json).")
+    ],
+    out: Annotated[Path, typer.Option(help="Directory to write <candidate>/<task>.json into.")],
+    task_name: Annotated[
+        str, typer.Option("--task", help="Name for the task (your corpus and labels).")
+    ],
+    split: Annotated[str, typer.Option(help="Split name to record (MTEB uses test).")] = "test",
+) -> None:
+    """Write each candidate's result in the MTEB result layout, to sit beside public scores.
+
+    Not like for like with leaderboard tasks: it is your corpus and labels, averaged over question
+    families at the experiment's k. Each file says so, and mteb_version is null.
+    """
+    from vectraudit.experiments.mteb_export import export_experiment
+
+    path = result / "result.json" if result.is_dir() else result
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        written = export_experiment(data, out, task_name=task_name, split=split)
+    except (OSError, ValueError) as e:  # MtebExportError is a ValueError
+        err_console.print(f"[bold red]Error:[/] {escape(str(e))}")
+        raise typer.Exit(code=1) from e
+    for p in written:
+        console.print(escape(str(p)))
+    console.print(
+        "[dim]Not like for like with leaderboard scores: your corpus, your labels, "
+        "family-weighted.[/]"
     )

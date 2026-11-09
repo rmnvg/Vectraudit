@@ -14,6 +14,10 @@
         "index": {"factory": "HNSW32", "params": {"ef_search": 64}}}
      ]}
 
+A BEIR (or MTEB retrieval) folder can stand in for ``corpus`` and ``queries``::
+
+    {"beir": {"path": "nfcorpus", "split": "test"}, "candidates": [...]}
+
 Paths are relative to the manifest. ``index.factory`` is a FAISS factory string (default
 ``Flat``: exact search); ``index.metric`` is ``ip`` (default, for normalised embeddings) or
 ``l2``.
@@ -87,6 +91,8 @@ class Manifest:
     candidates: tuple[CandidateSpec, ...]
     id_field: str = "doc_id"
     text_field: str = "text"
+    beir_split: str | None = None
+    """When set, ``corpus_path`` and ``queries_path`` are one BEIR folder, read for this split."""
 
 
 def _obj(raw: Any, where: str) -> dict[str, Any]:
@@ -139,16 +145,26 @@ def _candidate(raw: Any, n: int) -> CandidateSpec:
 
 def parse_manifest(raw: Any, base_dir: Path = Path()) -> Manifest:
     raw = _obj(raw, "The manifest")
-    _known(raw, {"name", "corpus", "queries", "k", "candidates"}, "manifest")
+    _known(raw, {"name", "corpus", "queries", "beir", "k", "candidates"}, "manifest")
     name = raw.get("name", "experiment")
     if not isinstance(name, str) or not NAME.fullmatch(name):
         raise ExperimentError("name must be 1-64 letters, digits, '.', '_' or '-'.")
-    corpus = raw.get("corpus")
-    if isinstance(corpus, str):
-        corpus = {"path": corpus}
-    corpus = _obj(corpus, "corpus")
-    _known(corpus, {"path", "id_field", "text_field"}, "corpus")
-    queries = raw.get("queries")
+    beir = raw.get("beir")
+    if beir is not None:
+        if "corpus" in raw or "queries" in raw:
+            raise ExperimentError('Give "beir" or "corpus" and "queries", not both.')
+        beir = _obj(beir, "beir")
+        _known(beir, {"path", "split"}, "beir")
+        if not isinstance(beir.get("path"), str) or not isinstance(beir.get("split", "test"), str):
+            raise ExperimentError("beir.path must be a folder and beir.split a split name.")
+        corpus, queries = {"path": beir["path"]}, beir["path"]
+    else:
+        corpus = raw.get("corpus")
+        if isinstance(corpus, str):
+            corpus = {"path": corpus}
+        corpus = _obj(corpus, "corpus")
+        _known(corpus, {"path", "id_field", "text_field"}, "corpus")
+        queries = raw.get("queries")
     if not isinstance(corpus.get("path"), str) or not isinstance(queries, str):
         raise ExperimentError("corpus.path and queries must be file paths.")
     k = raw.get("k", 10)
@@ -174,6 +190,7 @@ def parse_manifest(raw: Any, base_dir: Path = Path()) -> Manifest:
         candidates=specs,
         id_field=str(corpus.get("id_field", "doc_id")),
         text_field=str(corpus.get("text_field", "text")),
+        beir_split=str(beir.get("split", "test")) if beir is not None else None,
     )
 
 

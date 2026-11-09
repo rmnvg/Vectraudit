@@ -35,6 +35,7 @@ from vectraudit.evaluation.runner import (
     provenance,
     summarize,
 )
+from vectraudit.experiments.beir import load_beir
 from vectraudit.experiments.chunking import Chunk, chunk_corpus
 from vectraudit.experiments.corpus import Corpus, CorpusError, load_corpus
 from vectraudit.experiments.embedders import Embedder, EmbeddingCache, FloatArray, make_embedder
@@ -56,10 +57,13 @@ class CandidateResult:
 
 def _load_inputs(manifest: Manifest) -> tuple[Corpus, Dataset]:
     try:
-        corpus = load_corpus(
-            manifest.corpus_path, id_field=manifest.id_field, text_field=manifest.text_field
-        )
-        dataset = load_dataset(manifest.queries_path)
+        if manifest.beir_split is not None:
+            corpus, dataset = load_beir(manifest.corpus_path, manifest.beir_split)
+        else:
+            corpus = load_corpus(
+                manifest.corpus_path, id_field=manifest.id_field, text_field=manifest.text_field
+            )
+            dataset = load_dataset(manifest.queries_path)
     except (CorpusError, ValueError) as e:
         raise ExperimentError(str(e)) from e
     missing = [q.query_id for q in dataset.queries if not q.text]

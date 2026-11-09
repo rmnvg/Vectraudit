@@ -59,6 +59,43 @@ For finer evaluation, label the exact passage with character offsets in the sour
 | `chunking` | `method`: `words` (`size`, `overlap`), `paragraphs` (merged up to `size` words), `document`. |
 | `index` | `factory`: any FAISS factory string (default `Flat`: exact); `metric`: `ip` (default) or `l2`; `params`: `nprobe`, `ef_search`. |
 
+### A BEIR or MTEB retrieval folder as the corpus and queries
+
+A folder in the BEIR layout (the layout public retrieval benchmarks and MTEB's retrieval tasks are
+distributed in) can stand in for `corpus` and `queries`:
+
+```json
+{"name": "nfcorpus-bakeoff", "beir": {"path": "nfcorpus", "split": "test"}, "k": 10,
+ "candidates": [{"name": "lexical", "embedder": {"type": "hashing"}}]}
+```
+
+The folder holds `corpus.jsonl` (`_id`, `title`, `text`), `queries.jsonl` (`_id`, `text`) and
+`qrels/<split>.tsv` (a header row, then `query-id`, `corpus-id`, `score`). Queries and labels go
+through the same importer as `dataset import --format beir`. A document is embedded as its title
+and text on two lines (or whichever it has) with the title kept as metadata; a document with
+neither is refused, not dropped, because dropping it would change the corpus being scored. Nothing
+is downloaded: fetch the dataset yourself, and mind its licence.
+
+## Putting your numbers beside public scores (MTEB layout)
+
+```bash
+vectraudit experiment export-mteb experiment-results --out mteb-results --task OurDocs
+```
+
+writes `mteb-results/<candidate>/OurDocs.json` for every candidate in the layout of a published MTEB
+result: `dataset_revision`, `evaluation_time`, `kg_co2_emissions`, `mteb_version`, `task_name`, and
+`scores` split to a list of subset dicts with `main_score` and `ndcg_at_k`, `map_at_k`, `mrr_at_k`,
+`precision_at_k` and `recall_at_k` at the experiment's `k`.
+
+**These numbers are not like for like with the leaderboard.** They are your corpus and your labels,
+a different task from any public one; they are averaged with equal weight over question families;
+and they use the experiment's `k` (MTEB's retrieval default is 10, so use `"k": 10` to line up).
+Each file says so under `vectraudit.not_like_for_like`, `mteb_version` is `null` (MTEB did not
+produce the file), languages are left empty, and `main_score` is nDCG at the experiment's `k`
+(`vectraudit.main_score_metric` names the key). A candidate with failed questions, or with no
+label metrics, is not exported. Use the files to see where your own corpus ranks models differently
+from the leaderboard, not to rank yours against it.
+
 ## How candidates are compared fairly
 
 - **Document level.** Retrieved chunks map to their source documents (first occurrence

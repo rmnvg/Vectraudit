@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- An experiment manifest can name a BEIR (or MTEB retrieval) folder instead of `corpus` and
+  `queries`, and `vectraudit experiment export-mteb` writes each candidate's result in the MTEB
+  result layout, marked as not like for like with leaderboard tasks. See `docs/experiments.md`.
 - Reports show metrics in ir-measures notation at the run's k beside Vectraudit's own names
   (`nDCG@10 (ndcg)`, `P@10 (precision)`, `Success@10 (hit_rate)`); policy keys and verdicts are
   unchanged, and the check JSON adds `metric_notation`.
