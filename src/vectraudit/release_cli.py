@@ -215,6 +215,33 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+@dataset_app.command("export-qrels")
+def dataset_export_qrels(
+    dataset: Annotated[Path, typer.Argument(help="The benchmark (JSONL).")],
+    out: Annotated[Path, typer.Option(help="TREC qrels file to write (qid 0 docno grade).")],
+    include_heldout: Annotated[
+        bool,
+        typer.Option("--include-heldout", help="Also export held-out questions' labels."),
+    ] = False,
+) -> None:
+    """Write the benchmark's relevance labels as TREC qrels, for trec_eval, ranx and the like.
+
+    Graded labels keep their grades (they must be integers); documents that only appear as
+    relevant spans get grade 1. Held-out questions are left out unless asked for.
+    """
+    from vectraudit.evaluation.trec import TrecError, export_qrels
+
+    try:
+        ds = load_dataset(dataset)
+        lines, held = export_qrels(ds, include_heldout=include_heldout)
+        _write_text(out, "\n".join(lines) + ("\n" if lines else ""))
+    except (DatasetError, TrecError) as e:
+        raise _fail(str(e)) from e
+    console.print(f"Wrote {len(lines):,} judgments to {escape(str(out))}.")
+    if held:
+        console.print(f"{held} held-out questions left out (--include-heldout).")
+
+
 @dataset_app.command("import-vdbbench")
 def dataset_import_vdbbench(
     source: Annotated[

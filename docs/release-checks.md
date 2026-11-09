@@ -170,6 +170,35 @@ matter). Runs on different versions are never compared. Label documents by stabl
 survive re-chunking; if chunk ids change between baseline and candidate, map the labels to
 each chunk version first, or the comparison is meaningless.
 
+### Moving runs and labels to and from other IR tools (TREC)
+
+The TREC run format (`qid Q0 docno rank score tag`) and qrels format (`qid 0 docno grade`) are
+what `trec_eval`, pytrec_eval, ir-measures and ranx read, so existing tooling works without a
+converter:
+
+```bash
+vectraudit runs export-trec current.run.json --dataset benchmark.jsonl --out current.trec
+vectraudit dataset export-qrels benchmark.jsonl --out benchmark.qrels
+vectraudit runs import-trec other_system.trec --dataset benchmark.jsonl --label other \
+  --out other.run.json
+```
+
+*Export* writes each question's first-repeat ranking. A Vectraudit run records ranks, not
+scores, so the score column holds descending ranks (the tag says nothing about this; use the rank
+column, as trec_eval's tie rule never applies to distinct scores). Held-out questions are left
+out unless you pass `--include-heldout`, an errored question is left out rather than written as an
+empty answer, and an identifier with whitespace is refused, never altered. Qrels keep integer
+grades and judged zeros; documents that only appear as relevant spans get grade 1.
+
+*Import* builds a run from another system's file on your benchmark, with quality metrics computed
+here from your labels, so it compares with any other run on quality (same dataset version, same
+`k`). It is marked `source: external:trec`: rankings only. Latency, stage evidence and permission
+checks are **not measured**, and a comparison says so instead of passing them. A question the
+file does not rank is an error and the run is partial; `--missing-as-empty` counts it as
+retrieving nothing, the TREC convention, as an explicit choice. The rank column orders the
+results (trec_eval would use the scores); questions where the two disagree are counted in the
+run's `import` block.
+
 ## Connections (JSON)
 
 ```json

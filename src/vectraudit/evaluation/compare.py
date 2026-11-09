@@ -992,6 +992,18 @@ class _Check:
     # --- latency ---------------------------------------------------------------------
 
     def _latency(self) -> None:
+        imported = [
+            role
+            for role, run in (("baseline", self.base), ("candidate", self.cand))
+            if str((run.get("timing") or {}).get("source") or "").startswith("external:")
+        ]
+        if imported:
+            self.warnings.append(
+                f"Latency was not judged: the {' and '.join(imported)} run"
+                f"{'s are' if len(imported) > 1 else ' is'} imported from another tool "
+                "(external:trec) and has no measured latency."
+            )
+            return
         bl = self.base["summary"].get("latency_ms") if self.base.get("summary") else None
         cl = self.cand["summary"].get("latency_ms") if self.cand.get("summary") else None
         if not bl or not cl:

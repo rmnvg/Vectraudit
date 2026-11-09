@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- TREC interchange: `vectraudit runs export-trec`, `vectraudit dataset export-qrels` and
+  `vectraudit runs import-trec` move runs and labels to and from trec_eval, ranx and ir-measures.
+  An imported run computes quality here from your labels, is marked `external:trec`, and its
+  latency, evidence and permission data are not measured (comparisons say so). A question missing
+  from the file is an error unless `--missing-as-empty`. See `docs/release-checks.md`.
 - The six label metrics are now also checked against `trec_eval` (through pytrec_eval 0.5) on
   200 seeded queries beside ranx; they agree to 1e-9, and the one difference (tie order) is
   documented in `docs/release-checks.md`.
