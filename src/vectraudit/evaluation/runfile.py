@@ -81,10 +81,12 @@ def check_run(data: Any) -> dict[str, Any]:
     _expect(data["status"] == "failed" or isinstance(data.get("backend"), dict), "missing backend")
     queries = data.get("queries")
     _expect(isinstance(queries, list), "queries must be a list")
+    # A run imported from another tool (external:trec) has no latency: it is null, not measured.
+    external = str((timing or {}).get("source") or "").startswith("external:")
     seen: set[str] = set()
     for n, q in enumerate(queries):
         try:
-            _check_query(q, search["k"])
+            _check_query(q, search["k"], latency_measured=not external)
             if contract["version"] == 2 and q.get("error") is None:
                 _check_repeat_quality(q, repeats)
         except RunFileError as e:
@@ -194,7 +196,7 @@ def _check_repeat_quality(q: dict[str, Any], repeats: int) -> None:
         )
 
 
-def _check_query(q: Any, k: int) -> None:
+def _check_query(q: Any, k: int, *, latency_measured: bool = True) -> None:
     _expect(isinstance(q, dict), "must be an object")
     _expect(isinstance(q.get("query_id"), str), "query_id must be a string")
     if "family_id" in q:
@@ -303,7 +305,10 @@ def _check_query(q: Any, k: int) -> None:
         "exact_ids must be strings or null",
     )
     latency = q.get("latency_ms")
-    _expect(_number(latency) and latency >= 0, "latency_ms must be a non-negative number")
+    if latency_measured:
+        _expect(_number(latency) and latency >= 0, "latency_ms must be a non-negative number")
+    else:
+        _expect(latency is None, "an imported run has no latency: latency_ms must be null")
     metrics = q.get("metrics")
     if metrics is not None:
         _expect(isinstance(metrics, dict), "metrics must be an object")

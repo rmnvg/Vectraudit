@@ -1120,7 +1120,9 @@ app.command()(init)
 app.command()(calibrate)
 
 runs_app = typer.Typer(
-    help="Compare saved sweep runs (vectraudit sweep --save).", no_args_is_help=True
+    help="Compare saved sweep runs (vectraudit sweep --save), and move release runs to and from "
+    "the TREC run format.",
+    no_args_is_help=True,
 )
 app.add_typer(runs_app, name="runs")
 
@@ -1165,6 +1167,94 @@ def runs_diff(
         raise typer.Exit(code=3)
     if not cmp.comparable:
         raise typer.Exit(code=4)
+
+
+@runs_app.command("export-trec")
+def runs_export_trec(
+    run: Annotated[Path, typer.Argument(help="A release run (JSON from `vectraudit record`).")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the run was recorded on.")],
+    out: Annotated[
+        Path, typer.Option(help="TREC run file to write (qid Q0 docno rank score tag).")
+    ],
+    include_heldout: Annotated[
+        bool,
+        typer.Option(
+            "--include-heldout", help="Also export held-out questions (left out by default)."
+        ),
+    ] = False,
+    tag: Annotated[str | None, typer.Option(help="Run tag (default: the run's label).")] = None,
+) -> None:
+    """Write a release run as a TREC run file for trec_eval, ranx, ir-measures and the like.
+
+    Uses each question's first-repeat ranking. A Vectraudit run records ranks, not scores, so
+    the score column holds descending ranks. Errored questions are left out, never written as
+    empty answers.
+    """
+    from vectraudit.evaluation.dataset import DatasetError, load_dataset
+    from vectraudit.evaluation.runfile import RunFileError, load_run
+    from vectraudit.evaluation.trec import TrecError, export_run
+
+    try:
+        done = export_run(
+            load_run(run), load_dataset(dataset), include_heldout=include_heldout, tag=tag
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(done.lines) + ("\n" if done.lines else ""), encoding="utf-8")
+    except (OSError, DatasetError, RunFileError, TrecError) as e:
+        raise _fail(str(e)) from e
+    console.print(
+        f"Wrote {done.queries} questions ({len(done.lines)} lines) to {escape(str(out))}."
+    )
+    if done.heldout_left_out:
+        console.print(f"{done.heldout_left_out} held-out questions left out (--include-heldout).")
+    if done.errored_left_out:
+        console.print(f"{done.errored_left_out} errored questions left out: not written as empty.")
+
+
+@runs_app.command("import-trec")
+def runs_import_trec(
+    trec_file: Annotated[Path, typer.Argument(help="Another system's TREC run file.")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark that system was run on.")],
+    out: Annotated[Path, typer.Option(help="Release run to write (JSON).")],
+    k: Annotated[int, typer.Option(min=1, help="Rankings are cut to k results.")] = 10,
+    label: Annotated[
+        str | None, typer.Option(help="Display name (default: the file's tag).")
+    ] = None,
+    missing_as_empty: Annotated[
+        bool,
+        typer.Option(
+            "--missing-as-empty",
+            help="Count a question absent from the file as retrieving nothing (the TREC "
+            "convention). Without it, such a question is an error and the run is partial.",
+        ),
+    ] = False,
+) -> None:
+    """Import another system's TREC run as a release run, to compare it on quality.
+
+    Quality metrics are computed here from the dataset's labels, so the run compares with any
+    other on quality. Latency, stage evidence and permission checks are not measured for an
+    imported run, and the run says so (source external:trec).
+    """
+    from vectraudit.evaluation.dataset import DatasetError, load_dataset
+    from vectraudit.evaluation.runfile import save_run
+    from vectraudit.evaluation.trec import TrecError, import_notes, import_run
+
+    try:
+        record = import_run(
+            trec_file, load_dataset(dataset), k=k, label=label, missing_as_empty=missing_as_empty
+        )
+        save_run(record, out)
+    except (OSError, DatasetError, TrecError) as e:
+        raise _fail(str(e)) from e
+    s = record["summary"]
+    console.print(
+        f"{escape(record['status'])}: {s['n_ok']:,} of {s['n_queries']:,} questions ranked "
+        f"by {escape(trec_file.name)} → {escape(str(out))}"
+    )
+    for note in import_notes(record):
+        console.print(f"[dim]{escape(note)}[/]")
+    if record["status"] != "complete":
+        raise typer.Exit(code=1)
 
 
 from vectraudit.labelling_cli import label_app  # noqa: E402

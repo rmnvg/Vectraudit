@@ -28,6 +28,20 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- An experiment manifest can name a BEIR (or MTEB retrieval) folder instead of `corpus` and
+  `queries`, and `vectraudit experiment export-mteb` writes each candidate's result in the MTEB
+  result layout, marked as not like for like with leaderboard tasks. See `docs/experiments.md`.
+- Reports show metrics in ir-measures notation at the run's k beside Vectraudit's own names
+  (`nDCG@10 (ndcg)`, `P@10 (precision)`, `Success@10 (hit_rate)`); policy keys and verdicts are
+  unchanged, and the check JSON adds `metric_notation`.
+- TREC interchange: `vectraudit runs export-trec`, `vectraudit dataset export-qrels` and
+  `vectraudit runs import-trec` move runs and labels to and from trec_eval, ranx and ir-measures.
+  An imported run computes quality here from your labels, is marked `external:trec`, and its
+  latency, evidence and permission data are not measured (comparisons say so). A question missing
+  from the file is an error unless `--missing-as-empty`. See `docs/release-checks.md`.
+- The six label metrics are now also checked against `trec_eval` (through pytrec_eval 0.5) on
+  200 seeded queries beside ranx; they agree to 1e-9, and the one difference (tie order) is
+  documented in `docs/release-checks.md`.
 - `vectraudit.evaluation.ppi`: prediction-powered inference (PPI and PPI++) for a rate: a judge's
   verdicts on every question corrected by the judge's measured error on a random human-reviewed
   sample, with a valid interval and the human-only and judge-only numbers beside it (reports in

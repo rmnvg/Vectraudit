@@ -170,6 +170,35 @@ matter). Runs on different versions are never compared. Label documents by stabl
 survive re-chunking; if chunk ids change between baseline and candidate, map the labels to
 each chunk version first, or the comparison is meaningless.
 
+### Moving runs and labels to and from other IR tools (TREC)
+
+The TREC run format (`qid Q0 docno rank score tag`) and qrels format (`qid 0 docno grade`) are
+what `trec_eval`, pytrec_eval, ir-measures and ranx read, so existing tooling works without a
+converter:
+
+```bash
+vectraudit runs export-trec current.run.json --dataset benchmark.jsonl --out current.trec
+vectraudit dataset export-qrels benchmark.jsonl --out benchmark.qrels
+vectraudit runs import-trec other_system.trec --dataset benchmark.jsonl --label other \
+  --out other.run.json
+```
+
+*Export* writes each question's first-repeat ranking. A Vectraudit run records ranks, not
+scores, so the score column holds descending ranks (the tag says nothing about this; use the rank
+column, as trec_eval's tie rule never applies to distinct scores). Held-out questions are left
+out unless you pass `--include-heldout`, an errored question is left out rather than written as an
+empty answer, and an identifier with whitespace is refused, never altered. Qrels keep integer
+grades and judged zeros; documents that only appear as relevant spans get grade 1.
+
+*Import* builds a run from another system's file on your benchmark, with quality metrics computed
+here from your labels, so it compares with any other run on quality (same dataset version, same
+`k`). It is marked `source: external:trec`: rankings only. Latency, stage evidence and permission
+checks are **not measured**, and a comparison says so instead of passing them. A question the
+file does not rank is an error and the run is partial; `--missing-as-empty` counts it as
+retrieving nothing, the TREC convention, as an explicit choice. The rank column orders the
+results (trec_eval would use the scores); questions where the two disagree are counted in the
+run's `import` block.
+
 ## Connections (JSON)
 
 ```json
@@ -237,6 +266,20 @@ never an empty result.
   Vectraudit keeps the backend's order, so the fixture fixes one order before both sides
   score it. ranx runs cannot repeat a document, so the no-extra-credit rule for duplicates
   is tested separately.
+- **trec_eval parity.** The same six metrics also agree with the NIST `trec_eval` (through
+  [pytrec_eval](https://github.com/cvangysel/pytrec_eval) 0.5) to within 1e-9 on the same
+  200 queries: `recall_k`, `P_k` (which divides by k when fewer documents come back),
+  `ndcg_cut_k`, `map_cut_k`, `success_k` and `recip_rank` on the ranking cut to k, at relevance
+  level 1. The one behaviour to know: trec_eval breaks equal scores by document id, descending,
+  while Vectraudit keeps the order the backend returned, so a run with tied scores can score
+  differently in the two tools. Export a run with distinct scores (or ranks) to compare them
+  (`vectraudit runs export-trec` writes ranks).
+- **Names in other tools' notation.** Reports show each metric in [ir-measures](https://ir-measur.es)
+  notation at the run's `k`, beside Vectraudit's key: `nDCG@10 (ndcg)`, `P@10 (precision)`,
+  `R@10 (recall)`, `RR@10 (mrr)` (ir-measures calls MRR an alias of RR), `AP@10 (map)` and
+  `Success@10 (hit_rate)`. A label of 1 or more counts as relevant, which is ir-measures' default
+  `rel=1` for integer grades. This is display only: policy keys and run files keep Vectraudit's
+  names, and the check JSON adds a `metric_notation` map.
 - **ANN recall@k** (needs an exact reference): overlap with an exact search over the same
   corpus and distance. It measures approximation loss, **not** whether the results answer the
   query, so it can't choose between embedding models.
