@@ -25,7 +25,9 @@
   "updated": 2,
   "promoted_now": 0,
   "independent_sample": 0,
-  "unassigned": 2
+  "unassigned": 2,
+  "new_topic": 0,
+  "new_topic_now": 0
  },
  "cursor": {
   "after": "1970-02-16T07:06:40+00:00"

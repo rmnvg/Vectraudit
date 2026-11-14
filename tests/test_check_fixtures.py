@@ -170,6 +170,17 @@ def label_audit(tmp_path: Path) -> dict[str, Any]:
     return audit_labels(ds, two_runs(ds))
 
 
+def embedding_drift(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_embedding_drift import BILLING, CRYPTO, bench_rows, hashed
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.evaluation.dataset_tools import render_dataset
+    from vectraudit.pipelines.embedding_drift import benchmark_drift
+
+    ds = parse_dataset(render_dataset(bench_rows()))
+    production = [(f"t{i}", text) for i, text in enumerate(CRYPTO[:40] + BILLING[:20])]
+    return benchmark_drift(ds, production, hashed, model="hash", source="traces.jsonl")
+
+
 @pytest.mark.parametrize(
     "build",
     [
@@ -186,6 +197,7 @@ def label_audit(tmp_path: Path) -> dict[str, Any]:
         selectivity_sweep,
         capacity,
         label_audit,
+        embedding_drift,
     ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):

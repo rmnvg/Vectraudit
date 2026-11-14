@@ -15,6 +15,7 @@ export const CHECK_FORMATS = [
   'vectraudit.selectivity_sweep',
   'vectraudit.capacity',
   'vectraudit.label_audit',
+  'vectraudit.embedding_drift',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -49,6 +50,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.selectivity_sweep': return arrays('runs') && typeof value.param === 'string' && typeof value.target === 'number'
     case 'vectraudit.capacity': return arrays('levels', 'notes') && object(value.plan) && typeof value.status === 'string'
     case 'vectraudit.label_audit': return arrays('suspects') && object(value.signals) && object(value.summary)
+    case 'vectraudit.embedding_drift': return object(value.result) && object(value.reference) && object(value.current) && typeof value.status === 'string'
     case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
@@ -149,7 +151,10 @@ function intake(r: Row): CheckSummary {
       const reopen = Array.isArray(x.reopen) && x.reopen.length ? `; reopen verified case ${list(x.reopen)}` : ''
       return `${text(x.query_id)} at ${text(x.at)} delivered none of its labelled documents${reopen}`
     }),
-    notes: count(queue.unassigned) ? [`${plural(count(queue.unassigned), 'question')} without a reviewer.`] : [],
+    notes: [
+      count(queue.unassigned) ? `${plural(count(queue.unassigned), 'question')} without a reviewer.` : '',
+      count(queue.new_topic) ? `${plural(count(queue.new_topic), 'pending question')} from a new topic (embedding drift), raised for review.` : '',
+    ].filter(Boolean),
   }
 }
 
@@ -343,6 +348,29 @@ function labelAudit(r: Row): CheckSummary {
   }
 }
 
+function embeddingDrift(r: Row): CheckSummary {
+  const result = object(r.result) ? r.result : {}
+  const reference = object(r.reference) ? r.reference : {}
+  const current = object(r.current) ? r.current : {}
+  const where = object(r.where) ? r.where : {}
+  const sampled = object(result.sampled) ? result.sampled : null
+  const drift = r.status === 'drift'
+  const noun = r.kind === 'corpus' ? 'documents' : 'questions'
+  const value = `${text(result.statistic)} ${text(result.value)}${result.p_value == null ? '' : ` (p = ${text(result.p_value)})`}`
+  return {
+    title: 'Embedding drift',
+    verdict: drift ? 'attention' : 'pass',
+    headline: `${drift ? 'Drift' : 'No drift'}: ${count(result.n_current)} ${text(current.label)} ${noun} against ${count(result.n_reference)} ${text(reference.label)} ${noun}; ${value}, ${text(result.rule)}.`,
+    items: rows(where.groups).slice(0, LIMIT).map(g => `${text(g.message)} (hypothesis)`),
+    notes: [
+      ...(Array.isArray(result.warnings) ? result.warnings.map(text) : []),
+      sampled ? `Sampled ${text(sampled.reference)} and ${text(sampled.current)} vectors (seed ${text(result.seed)}).` : '',
+      text(where.note),
+      text(r.note),
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -360,5 +388,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.selectivity_sweep': return selectivitySweep(report)
     case 'vectraudit.capacity': return capacity(report)
     case 'vectraudit.label_audit': return labelAudit(report)
+    case 'vectraudit.embedding_drift': return embeddingDrift(report)
   }
 }

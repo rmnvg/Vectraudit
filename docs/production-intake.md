@@ -223,6 +223,64 @@ vectraudit workbench drift traces-2026-10-19.jsonl questions.jsonl \
 - `--fail-on-drift` exits 3, for a scheduled job. Below about 30 questions on either side,
   the report warns that the tests have little power.
 
+### Did the questions move in meaning? (embedding drift)
+
+A new topic asked in ordinary words changes none of the descriptors above, but it moves the
+questions' embeddings. `--embeddings` compares those too and writes a
+`vectraudit.embedding_drift` report, which the workbench Checks tab opens:
+
+```bash
+vectraudit workbench drift traces-2026-10-19.jsonl questions.jsonl --embeddings embedding-drift.json
+vectraudit workbench embedding-drift traces-2026-10-12.jsonl traces-2026-10-19.jsonl \
+  --embedder sentence-transformers/all-MiniLM-L6-v2 --out windows.json
+vectraudit workbench embedding-drift corpus-2026-10-12.jsonl corpus-2026-10-19.jsonl --corpus \
+  --out corpus-drift.json
+```
+
+- **What is compared:** the benchmark's exploratory questions against production questions
+  (held-out questions stay out), two windows of production questions, or with `--corpus` the
+  earlier corpus export against the documents the later one added or changed (their `vector`
+  fields, or embedded with `--embedder`). Unchanged documents are the same in both exports
+  and would only dilute the comparison; fewer than 10 added or changed is an error, not a
+  pass. A question asked verbatim on both sides is kept on one side of the classifier's
+  train/test split, so repeats cannot hide drift.
+- **Embedding:** traces hold question text, so questions are embedded locally with
+  sentence-transformers (`vectraudit[text]`): by default with the benchmark's own
+  `embedding_model`, matching its normalisation. Another model is refused when the benchmark
+  already has vectors, because comparing two models measures the models.
+- **Method:** the default is Evidently's (read in Evidently 0.7.22): a classifier is trained
+  to tell the two sets apart on half the vectors and scored by ROC AUC on the other half.
+  With fewer than 1,000 benchmark vectors, drift is an AUC above the 95th percentile of 100
+  AUCs of random scores (a test at about the 5% level); with more, an AUC above 0.55.
+  `--embedding-method` (or `--method` on `embedding-drift`) picks `mmd` (maximum mean
+  discrepancy with a permutation p-value, drift at p < 0.05), `ratio` (share of components
+  that moved) or `distance` (between the means).
+- **Measured on synthetic questions** (eight topics; a ninth makes up 20% of production;
+  40 seeded repeats): with 300 benchmark questions against 3,000 production ones, the default
+  found the new topic in all 40 repeats, with at most 1 false alarm in 40 on unchanged
+  traffic. With only 100 benchmark questions it found it in 19 to 29 of 40, where `mmd` found
+  it in 35 to 40, so prefer `mmd` for a small benchmark. Evidently's `ratio` defaults flagged
+  every unchanged window of 300 vectors (the report warns below 1,000), and the fixed
+  `distance` threshold of 0.2 never fired on unit-length vectors (the report warns; its
+  bootstrap compares with resamples instead).
+- **Where it moved:** when drift is found, the benchmark and production questions are
+  grouped together (k-means on the full vectors) and any group of production questions no
+  benchmark question is close to is named by its terms: "About 20% of the production
+  questions form a group no benchmark question is close to (about: wallet, seed, phrase)".
+  Each group lists its trace IDs. A small benchmark (under 200 questions) gets a warning that
+  the default has little power there, with `mmd` suggested.
+- **Into the review queue:** pass the report to intake, and the pending questions from those
+  traces are tagged `new_topic` (with the terms) and raised, like feedback; the review export
+  tags them `new-topic`. They are candidates for the benchmark, never labels:
+
+  ```bash
+  vectraudit workbench intake traces-2026-10-19.jsonl questions.jsonl --embedding-drift embedding-drift.json
+  ```
+
+- **What it means:** drift is a hypothesis that the questions differ, not proof that
+  retrieval got worse. `--fail-on-drift` exits 3 when the descriptors or the embeddings
+  drifted.
+
 ### Did the retriever change?
 
 `workbench score-drift EARLIER LATER` compares two windows of production traces: the

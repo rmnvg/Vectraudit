@@ -125,8 +125,9 @@ vectraudit workbench phoenix-push current.judged.run.json --send   # or langfuse
   compared between runs, and a release policy can fail on a changed prompt.
 - **Keeping the benchmark current:** `intake` turns each new trace export into a
   de-duplicated review queue and flags likely recurrences. `drift` checks whether
-  production questions still look like the benchmark's, and `score-drift` whether the
-  retriever's scores moved between two windows
+  production questions still look like the benchmark's, in their descriptors and, with
+  `--embeddings`, in embedding space; `embedding-drift` compares two windows or two corpus
+  exports; and `score-drift` whether the retriever's scores moved between two windows
   ([drift reports](docs/production-intake.md#is-the-benchmark-still-representative)).
 
 ### Investigate deeper
