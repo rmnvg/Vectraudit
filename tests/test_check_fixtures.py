@@ -162,6 +162,14 @@ def capacity(tmp_path: Path) -> dict[str, Any]:
     )
 
 
+def label_audit(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_label_audit import ROWS, dataset, two_runs
+    from vectraudit.evaluation.label_audit import audit_labels
+
+    ds = dataset(ROWS)
+    return audit_labels(ds, two_runs(ds))
+
+
 @pytest.mark.parametrize(
     "build",
     [
@@ -177,6 +185,7 @@ def capacity(tmp_path: Path) -> dict[str, Any]:
         promptfoo_redteam,
         selectivity_sweep,
         capacity,
+        label_audit,
     ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):

@@ -13,6 +13,7 @@ import poisoningReport from './fixtures/poisoning.json'
 import redteam from './fixtures/promptfoo_redteam.json'
 import selectivity from './fixtures/selectivity_sweep.json'
 import capacity from './fixtures/capacity.json'
+import labelAudit from './fixtures/label_audit.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -185,4 +186,20 @@ it('does not read a failed or erroring capacity run as a pass', () => {
 it('only recognises the two new formats when they carry the fields the summary reads', () => {
   expect(isCheckReport({ ...capacity, levels: undefined })).toBe(false)
   expect(isCheckReport({ ...selectivity, runs: undefined })).toBe(false)
+})
+
+it('lists suspect labels as hypotheses and says which signals were not measured', () => {
+  const s = summary(labelAudit)
+  expect(s.title).toBe('Label audit')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toBe('2 labels to review on 1 question, from rank. Suspects are hypotheses for a reviewer; nothing was changed.')
+  expect(s.items).toContain('q1 / z: labelled relevant (grade 1), label may be wrong; rank')
+  expect(s.items).toContain('q1 / m: unjudged, label may be missing; rank')
+  expect(s.notes).toContain('near duplicate not measured: No corpus vectors given.')
+})
+
+it('does not read an audit without suspects as proof the labels are right', () => {
+  const s = summary({ ...labelAudit, suspects: [], summary: { ...labelAudit.summary, suspects: 0, questions: 0 } })
+  expect(s.verdict).toBe('pass')
+  expect(s.notes.some(n => n.includes('does not show the labels are right'))).toBe(true)
 })

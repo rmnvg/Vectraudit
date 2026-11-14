@@ -28,6 +28,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench label-audit` lists relevance labels that are likely wrong or missing,
+  from how candidate runs rank labelled documents (confident learning, after cleanlab),
+  near-duplicate documents labelled differently and unresolved annotator splits. Suspects are
+  hypotheses: `workbench benchmark --label-audit` queues them, and `workbench review-labels`
+  applies a named reviewer's decisions as a new dataset version. Nothing changes a label by
+  itself. See `docs/label-audit.md`.
 - An experiment manifest can name a BEIR (or MTEB retrieval) folder instead of `corpus` and
   `queries`, and `vectraudit experiment export-mteb` writes each candidate's result in the MTEB
   result layout, marked as not like for like with leaderboard tasks. See `docs/experiments.md`.
