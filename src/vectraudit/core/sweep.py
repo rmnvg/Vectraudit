@@ -1,4 +1,10 @@
-"""Recall@k and latency across nprobe / efSearch values, for picking a search setting."""
+"""Recall@k and latency across nprobe / efSearch values, for picking a search setting.
+
+Latency is measured one query per call on one thread. Batch mode adds a throughput with every
+query in one call, recorded apart and never compared with latency, as ann-benchmarks separates
+its single-query and batch modes (Aumüller, Bernhardsson and Faithfull, Information Systems
+2020). See docs/credits.md.
+"""
 
 from __future__ import annotations
 
@@ -168,6 +174,14 @@ class SweepPoint:
     ``probe_coverage - recall`` is the share lost inside probed lists (compression,
     transforms, ties); ``1 - probe_coverage`` is the share in lists that weren't probed.
     """
+    batch_qps: float | None = None
+    """Batch mode only: queries per second with every query submitted in one call, on
+    ``SweepResult.batch_threads`` threads (best of the repeats). A throughput, not a latency:
+    never compare it with the single-query latency columns."""
+    batch_seconds: float | None = None
+    """Batch mode only: the best wall-clock time of one call with every query."""
+    batch_recall: float | None = None
+    """Batch mode only: mean recall@k of the batch call's results."""
 
     def fraction_below(self, target_recall: float) -> float | None:
         """Share of queries whose own recall is below ``target_recall`` (None if unknown)."""
@@ -229,6 +243,8 @@ class SweepResult:
     pass_rate: float | None = None
     """Filtered sweep: the fraction of the corpus the filter allows; ``None`` = unfiltered."""
     allowed_count: int | None = None
+    batch_threads: int | None = None
+    """Batch mode only: the FAISS threads the batch calls used (``None``: not measured)."""
 
     def coverage_at(self, nprobe: int) -> float | None:
         """Probe coverage at any nprobe, measured or not; ``None`` without IVF data."""
@@ -392,8 +408,15 @@ def sweep(
     assignments: ivf.Assignments | None = None,
     allowed: AllowedSet | None = None,
     reference: dict[str, object] | None = None,
+    batch: bool = False,
 ) -> SweepResult:
     """Measure recall@k and per-query latency at each parameter value.
+
+    With ``batch``, each value is also measured the way ann-benchmarks' batch mode does: every
+    query submitted in one search call on FAISS's usual threads, untimed once, then timed
+    ``repeats`` times, keeping the best. That gives a throughput (``batch_qps``), recorded apart
+    from the single-query latency: a batch time divided by the number of queries is an
+    amortised cost no single caller waits for, so the two are never compared.
 
     ``reference`` only labels the result with the external exact reference ``truth`` came from.
 
@@ -443,6 +466,7 @@ def sweep(
         ranks = np.concatenate(parts)
         curve = ivf.probe_coverage(ranks, int(li.ivf.nlist))
 
+    batch_threads: int | None = None
     with _TIMING_LOCK:
         prev_threads = faiss.omp_get_max_threads()
         faiss.omp_set_num_threads(1)
@@ -477,6 +501,16 @@ def sweep(
                                 row = row[row != excl[i]]
                             true_row = truth[i][truth[i] >= 0]
                             recalls[i] = np.isin(true_row, row[:k]).mean() if len(true_row) else 1.0
+                batch_measure = None
+                if batch:
+                    report(
+                        (step + 1) / len(vals),
+                        f"{param.value}={v}: all {n} queries at once",
+                    )
+                    faiss.omp_set_num_threads(prev_threads)
+                    batch_threads = int(faiss.omp_get_max_threads())
+                    batch_measure = _batch(li, queries, truth, k, k_search, sp, repeats)
+                    faiss.omp_set_num_threads(1)
                 coverage = ivf.query_probe_coverage(ranks, v) if ranks is not None else None
                 low, high, distribution, worst = summarize_recalls(recalls, excl, coverage)
                 points.append(
@@ -490,6 +524,9 @@ def sweep(
                         recall_distribution=distribution,
                         worst_queries=worst,
                         probe_coverage=float(coverage.mean()) if coverage is not None else None,
+                        batch_qps=n / batch_measure[0] if batch_measure else None,
+                        batch_seconds=batch_measure[0] if batch_measure else None,
+                        batch_recall=batch_measure[1] if batch_measure else None,
                     )
                 )
         finally:
@@ -511,7 +548,36 @@ def sweep(
         reference=reference,
         pass_rate=None if allowed is None else allowed.pass_rate,
         allowed_count=None if allowed is None else len(allowed),
+        batch_threads=batch_threads,
     )
+
+
+def _batch(
+    li: LoadedIndex,
+    queries: QuerySet,
+    truth: IntArray,
+    k: int,
+    k_search: int,
+    params: object,
+    repeats: int,
+) -> tuple[float, float]:
+    """``(best seconds, mean recall@k)`` of one search call with every query."""
+    li.index.search(queries.vectors, k_search, params=params)  # untimed: start the threads
+    best = float("inf")
+    found = None
+    for _ in range(repeats):
+        t0 = time.perf_counter()
+        _, found = li.index.search(queries.vectors, k_search, params=params)
+        best = min(best, time.perf_counter() - t0)
+    assert found is not None
+    excl = queries.exclude_ids
+    recalls = []
+    for i, row in enumerate(found):
+        if excl is not None:
+            row = row[row != excl[i]]
+        true_row = truth[i][truth[i] >= 0]
+        recalls.append(np.isin(true_row, row[:k]).mean() if len(true_row) else 1.0)
+    return max(best, 1e-9), float(np.mean(recalls))
 
 
 def query_fingerprint(queries: QuerySet) -> str:

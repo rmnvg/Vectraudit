@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit sweep --batch` measures throughput with every query in one call (ann-benchmarks'
+  batch mode), reported as batch queries per second beside single-query latency and never
+  compared with it. See `docs/faiss-debugger.md`.
 - `vectraudit dataset import-annb` imports an ann-benchmarks HDF5 dataset (vectors, queries and
   its published neighbours as an external exact reference), checking the file's recorded
   distance against the data; `--normalize` lets an inner-product index be scored against an

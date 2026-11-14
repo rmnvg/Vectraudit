@@ -854,10 +854,14 @@ class Session:
         n_queries: int = DEFAULT_N_QUERIES,
         repeats: int = 3,
         seed: int = 0,
+        batch: bool = False,
     ) -> tuple[str, Job[SweepResult]]:
-        """Validate, then start (or return) the background sweep. Returns ``(job_id, job)``."""
+        """Validate, then start (or return) the background sweep. Returns ``(job_id, job)``.
+
+        ``batch`` also measures batch throughput (see :func:`vectraudit.core.sweep.sweep`).
+        """
         p, vals = self._check_sweep_request(param, values, k, n_queries, repeats, seed)
-        key = ("sweep", p.value, tuple(vals), k, n_queries, repeats, seed)
+        key = ("sweep", p.value, tuple(vals), k, n_queries, repeats, seed, batch)
         job_id = hashlib.sha1(repr(key).encode()).hexdigest()[:12]
 
         def work(progress: Callable[[float, str], None]) -> SweepResult:
@@ -876,6 +880,7 @@ class Session:
                 seed=seed,
                 assignments=self.assignments if p is SweepParam.NPROBE else None,
                 reference=self.reference.identity() if self.reference is not None else None,
+                batch=batch,
             )
 
             progress(1.0, "Saving completed sweep")

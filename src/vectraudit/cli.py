@@ -475,11 +475,19 @@ def sweep(
     reference: Annotated[
         Path | None,
         typer.Option(
-            help="An external exact reference (reference.json from `dataset import-vdbbench`) "
-            "used as ground truth instead of computing it. Needs --queries (the queries.npy "
-            "beside it). Runs against different references are not compared."
+            help="An external exact reference (reference.json from `dataset import-vdbbench` "
+            "or `import-annb`) used as ground truth instead of computing it. Needs --queries "
+            "(the queries.npy beside it). Runs against different references are not compared."
         ),
     ] = None,
+    batch: Annotated[
+        bool,
+        typer.Option(
+            "--batch",
+            help="Also measure throughput with every query in one call on all FAISS threads "
+            "(ann-benchmarks' batch mode). Reported apart from single-query latency.",
+        ),
+    ] = False,
 ) -> None:
     """Measure recall@k and latency across nprobe/efSearch values.
 
@@ -503,6 +511,8 @@ def sweep(
         except ExternalReferenceError as e:
             raise _fail(str(e)) from e
     if filter_ or pass_rates is not None:
+        if batch:
+            raise _fail("--batch applies to the unfiltered sweep.", "Run --batch without --filter.")
         if save is not None or baseline is not None:
             raise _fail(
                 "--save and --baseline do not apply to a filtered sweep.",
@@ -533,7 +543,7 @@ def sweep(
             mmap=mmap,
             reference=external,
         )
-        _, job = session.sweep_job(param, parsed_values, k, n_queries, repeats, seed)
+        _, job = session.sweep_job(param, parsed_values, k, n_queries, repeats, seed, batch)
     except FaissNotInstalledError as e:
         raise _fail("FAISS is not installed.", e.hint) from e
     except (FileNotFoundError, IndexLoadError) as e:
@@ -603,9 +613,28 @@ def sweep(
                     "query_sha256": result.query_sha256,
                     "query_seed": result.query_seed,
                     "environment": result.environment,
+                    "modes": {
+                        "latency_mean_ms, latency_p95_ms": "one query per call, one thread",
+                        **(
+                            {
+                                "batch_qps": f"every query in one call, "
+                                f"{result.batch_threads} threads: a throughput, not a latency"
+                            }
+                            if result.batch_threads is not None
+                            else {}
+                        ),
+                    },
+                    "batch_threads": result.batch_threads,
                     "recommended": rec.value if rec else None,
                     "fastest_meeting_target": fastest.value if fastest else None,
-                    "points": [asdict(p) for p in result.points],
+                    "points": [
+                        {
+                            key: value
+                            for key, value in asdict(p).items()
+                            if result.batch_threads is not None or not key.startswith("batch_")
+                        }
+                        for p in result.points
+                    ],
                     "suggestions": [{**asdict(s), "kind": s.kind.value} for s in suggestions],
                     "baseline": _comparison_json(comparison) if comparison else None,
                 },
@@ -785,9 +814,15 @@ def _print_comparison(cmp: runs.RunComparison, param: str) -> None:
 def _print_sweep(result: SweepResult, choice: Choice, target: float) -> None:
     rec, budget = choice.point, choice.max_p95_ms
     origin = "given" if result.query_origin == "given" else "sampled stored-vector"
+    modes = (
+        f"latency: one query per call, 1 thread · batch q/s: every query in one call, "
+        f"{result.batch_threads} threads"
+        if result.batch_threads is not None
+        else "single-threaded latency"
+    )
     console.print(
         f"[bold]{result.param.value} sweep[/] · recall@{result.k} over {result.n_queries} "
-        f"{origin} queries · single-threaded latency"
+        f"{origin} queries · {modes}"
     )
     if result.reference:
         console.print(
@@ -814,6 +849,9 @@ def _print_sweep(result: SweepResult, choice: Choice, target: float) -> None:
         table.add_column("in probed lists", justify="right")
     table.add_column("mean ms", justify="right")
     table.add_column("p95 ms", justify="right")
+    batch = result.batch_threads is not None
+    if batch:
+        table.add_column("batch q/s", justify="right")
     table.add_column("")
     for p in result.points:
         mark = (
@@ -837,9 +875,15 @@ def _print_sweep(result: SweepResult, choice: Choice, target: float) -> None:
             *(coverage if has_coverage else []),
             f"{p.latency_mean_ms:.3f}",
             f"{p.latency_p95_ms:.3f}",
+            *([f"{p.batch_qps:,.0f}" if p.batch_qps is not None else ""] if batch else []),
             mark,
         )
     console.print(table)
+    if batch:
+        console.print(
+            "Batch q/s is a throughput, not a latency: recommendations and budgets use the "
+            "single-query columns only."
+        )
     name = result.param.value
     if choice.status == "latency":
         over = choice.by_recall
