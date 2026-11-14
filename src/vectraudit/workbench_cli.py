@@ -2273,6 +2273,10 @@ def benchmark_command(
             "question is close to (embedding_coverage, hypotheses)."
         ),
     ] = None,
+    label_audit: Annotated[
+        Path | None,
+        typer.Option(help="Label audit (workbench label-audit): queue its suspect labels."),
+    ] = None,
 ) -> None:
     """Audit coverage and duplicates; prioritize exploratory judgments from run pools."""
     from vectraudit.core.atlas import AtlasError
@@ -2288,6 +2292,9 @@ def benchmark_command(
             load_dataset(dataset),
             [load_run(p) for p in sorted(runs.glob("*.run.json"))] if runs else [],
             corpus=vectors,
+            label_audit=json.loads(label_audit.read_text(encoding="utf-8"))
+            if label_audit is not None
+            else None,
         )
         _write(out, result)
         typer.echo(
@@ -3140,4 +3147,129 @@ def review_sample_command(
     typer.echo(
         f"Drew {content['size']} of {len(content['frame'])} families ({questions} questions) "
         f"with seed {seed} → {out}. Have people review exactly these questions."
+    )
+
+
+@workbench_app.command("label-audit")
+def label_audit_command(
+    dataset: Annotated[Path, typer.Argument(help="The benchmark whose labels to audit.")],
+    out: Annotated[Path, typer.Option(help="Where to write the label audit (JSON).")],
+    runs: Annotated[
+        Path | None,
+        typer.Option(help="Folder of candidate runs (*.run.json) on this benchmark version."),
+    ] = None,
+    corpus: Annotated[
+        Path | None,
+        typer.Option(help="Corpus JSONL with vectors: also look for near-duplicates."),
+    ] = None,
+    labels: Annotated[
+        Path | None,
+        typer.Option(help="Labelling task (vectraudit label): also look for annotator splits."),
+    ] = None,
+    include_heldout: Annotated[
+        bool, typer.Option("--include-heldout", help="Audit held-out questions too.")
+    ] = False,
+    min_runs: Annotated[
+        int, typer.Option(min=2, help="Runs a question needs before ranks are compared.")
+    ] = 2,
+    duplicate_cosine: Annotated[
+        float, typer.Option(min=0.5, max=1.0, help="Cosine at which documents are duplicates.")
+    ] = 0.995,
+    recheck_reviewed: Annotated[
+        bool,
+        typer.Option("--recheck-reviewed", help="Raise pairs a reviewer already decided on."),
+    ] = False,
+) -> None:
+    """List relevance labels that are likely wrong or missing, for a reviewer to check.
+
+    Compares how candidate runs rank each labelled document (confident learning, after
+    cleanlab), documents that are near-duplicates but labelled differently, and items
+    annotators split on. Every suspect is a hypothesis: nothing is changed. Review them with
+    `workbench review-labels`, or queue them with `workbench benchmark --label-audit`.
+    """
+    from vectraudit.core.atlas import AtlasError
+    from vectraudit.evaluation.label_audit import CorpusVectors, audit_labels
+    from vectraudit.labelling.task import load_task
+
+    try:
+        vectors = None
+        if corpus is not None:
+            from vectraudit.pipelines.atlas_build import read_corpus
+
+            ids, matrix, _, _ = read_corpus(corpus)
+            vectors = CorpusVectors(ids, matrix)
+        report = audit_labels(
+            load_dataset(dataset),
+            [load_run(p) for p in sorted(runs.glob("*.run.json"))] if runs else [],
+            corpus=vectors,
+            task=load_task(labels) if labels is not None else None,
+            include_heldout=include_heldout,
+            min_runs=min_runs,
+            duplicate_cosine=duplicate_cosine,
+            recheck_reviewed=recheck_reviewed,
+        )
+        _write(out, report)
+    except (OSError, ValueError, AtlasError) as exc:
+        typer.echo(f"Label audit error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    summary = report["summary"]
+    typer.echo(
+        f"{summary['suspects']} labels to review on {summary['questions']} questions "
+        f"(hypotheses; nothing was changed) → {out}"
+    )
+    for name, signal in report["signals"].items():
+        if signal["status"] == "measured":
+            typer.echo(f"  {name.replace('_', ' ')}: {signal['flagged']} flagged")
+        else:
+            typer.echo(f"  {name.replace('_', ' ')}: not measured. {signal['reason']}")
+    if report["runs_ignored"]:
+        typer.echo(f"  {report['runs_ignored']} runs of another benchmark version were ignored.")
+
+
+@workbench_app.command("review-labels")
+def review_labels_command(
+    dataset: Annotated[Path, typer.Argument(help="The benchmark the audit was made for.")],
+    audit: Annotated[Path, typer.Argument(help="Label audit (workbench label-audit).")],
+    decisions: Annotated[
+        Path,
+        typer.Option(
+            help='JSONL, one decision per suspect: {"query_id", "doc_id", "decision": 0-3 or '
+            '"keep"}.'
+        ),
+    ],
+    reviewer: Annotated[str, typer.Option(help="Who made the decisions (recorded).")],
+    out: Annotated[Path, typer.Option(help="New dataset version to write.")],
+) -> None:
+    """Apply a reviewer's decisions on suspect labels, as a new dataset version.
+
+    Only suspects from this audit of this exact version can be decided, each one explicitly.
+    Every decision, including "keep", is recorded under provenance.label_review so later
+    audits do not raise it again. The original file is untouched.
+    """
+    from vectraudit.evaluation.dataset_tools import diff_datasets
+    from vectraudit.evaluation.label_audit import apply_label_decisions
+
+    try:
+        if out.resolve() == dataset.resolve():
+            raise ValueError("--out must differ from the dataset; the original stays unchanged")
+        current = load_dataset(dataset)
+        report = json.loads(audit.read_text(encoding="utf-8"))
+        rows = []
+        for n, line in enumerate(decisions.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError(f"{decisions.name} line {n} is not a JSON object.")
+            rows.append(row)
+        text, recorded = apply_label_decisions(current, report, rows, reviewer=reviewer)
+        atomic_write(out, text)
+        diff = diff_datasets(current, load_dataset(out))
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Review error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    changed = sum(1 for r in recorded if r["decision"] == "changed")
+    typer.echo(
+        f"{changed} labels changed and {len(recorded) - changed} kept by {reviewer.strip()}. "
+        f"New dataset version {diff['to'][:12]} written to {out} ({diff['from'][:12]} before)."
     )

@@ -32,6 +32,7 @@ REIMPLEMENTS = {
     "src/vectraudit/experiments/mteb_export.py": ("MTEB",),
     "src/vectraudit/experiments/beir.py": ("BEIR",),
     "src/vectraudit/evaluation/measure_names.py": ("ir-measures",),
+    "src/vectraudit/evaluation/label_audit.py": ("cleanlab", "Northcutt"),
 }
 
 

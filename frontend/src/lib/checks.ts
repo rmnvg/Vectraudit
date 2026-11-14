@@ -14,6 +14,7 @@ export const CHECK_FORMATS = [
   'vectraudit.promptfoo_redteam',
   'vectraudit.selectivity_sweep',
   'vectraudit.capacity',
+  'vectraudit.label_audit',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -47,6 +48,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.promptfoo_redteam': return object(value.plugins) && object(value.summary)
     case 'vectraudit.selectivity_sweep': return arrays('runs') && typeof value.param === 'string' && typeof value.target === 'number'
     case 'vectraudit.capacity': return arrays('levels', 'notes') && object(value.plan) && typeof value.status === 'string'
+    case 'vectraudit.label_audit': return arrays('suspects') && object(value.signals) && object(value.summary)
     case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
@@ -316,6 +318,31 @@ function capacity(r: Row): CheckSummary {
   }
 }
 
+const LABEL_STATES: Record<string, string> = { relevant: 'labelled relevant', judged_not_relevant: 'judged not relevant', unjudged: 'unjudged' }
+
+function labelAudit(r: Row): CheckSummary {
+  const summary = object(r.summary) ? r.summary : {}
+  const suspects = rows(r.suspects)
+  const signals = Object.entries(object(r.signals) ? r.signals : {}).filter((entry): entry is [string, Row] => object(entry[1]))
+  const measured = signals.filter(([, s]) => s.status === 'measured').map(([name]) => words(name))
+  return {
+    title: 'Label audit',
+    verdict: suspects.length ? 'attention' : 'pass',
+    headline: `${plural(count(summary.suspects), 'label')} to review on ${plural(count(summary.questions), 'question')}, from ${measured.join(', ') || 'no signal'}. Suspects are hypotheses for a reviewer; nothing was changed.`,
+    items: suspects.slice(0, LIMIT).map(s => {
+      const label = object(s.label) ? s.label : {}
+      const grade = label.grade == null ? '' : ` (grade ${text(label.grade)})`
+      return `${text(s.query_id)} / ${text(s.doc_id)}: ${LABEL_STATES[text(label.state)] ?? words(label.state)}${grade}, ${words(s.kind)}; ${rows(s.signals).map(x => words(x.signal)).join(', ')}`
+    }),
+    notes: [
+      ...signals.filter(([, s]) => s.status !== 'measured').map(([name, s]) => `${words(name)} not measured: ${text(s.reason)}`),
+      suspects.length > LIMIT ? `${suspects.length - LIMIT} more suspects in the file.` : '',
+      suspects.length ? '' : 'No suspects does not show the labels are right: these signals only catch labels that disagree with the runs, duplicates or annotators.',
+      text(r.note),
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -332,5 +359,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.promptfoo_redteam': return promptfooRedteam(report)
     case 'vectraudit.selectivity_sweep': return selectivitySweep(report)
     case 'vectraudit.capacity': return capacity(report)
+    case 'vectraudit.label_audit': return labelAudit(report)
   }
 }

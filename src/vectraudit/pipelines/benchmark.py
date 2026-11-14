@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +12,7 @@ import numpy.typing as npt
 
 from vectraudit.core.coverage import coverage, public
 from vectraudit.evaluation.dataset import Dataset
+from vectraudit.evaluation.label_audit import queue_items
 from vectraudit.pipelines.claim_review import claim_review
 
 SUITE_TAGS = (
@@ -56,11 +57,14 @@ def audit_benchmark(
     *,
     irrelevant: dict[str, list[str]] | None = None,
     corpus: CorpusVectors | None = None,
+    label_audit: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Suggest human review; never infer relevance or modify a frozen benchmark.
 
     With ``corpus`` (document IDs, vectors, and titles) the report gains ``embedding_coverage``:
-    groups of documents no exploratory question is close to, as hypotheses to look at.
+    groups of documents no exploratory question is close to, as hypotheses to look at. With
+    ``label_audit`` (a ``vectraudit.label_audit`` report of this dataset version), its suspect
+    labels join the judgment queue with their reasons.
     """
     groups: dict[str, list[str]] = defaultdict(list)
     tags: Counter[str] = Counter()
@@ -103,7 +107,8 @@ def audit_benchmark(
     # to recheck; they merge with what the pool already queued, never become labels.
     claim_items, proposals = claim_review(dataset, runs or [], judged_extra=irrelevant)
     queued = {(j["query_id"], j["doc_id"]): j for j in judgments}
-    for item in claim_items:
+    audit_items = queue_items(label_audit, dataset) if label_audit is not None else []
+    for item in [*claim_items, *audit_items]:
         key = (item["query_id"], item["doc_id"])
         if key in queued:
             queued[key].update({**item, "priority": max(queued[key]["priority"], item["priority"])})
