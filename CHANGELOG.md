@@ -28,6 +28,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit dataset import-annb` imports an ann-benchmarks HDF5 dataset (vectors, queries and
+  its published neighbours as an external exact reference), checking the file's recorded
+  distance against the data; `--normalize` lets an inner-product index be scored against an
+  angular dataset. Needs the new optional `[hdf5]` extra (h5py). See `docs/vectordbbench.md`.
 - Large runs: `vectraudit runs summary` validates a run of any size one question at a time
   and shows its summary in a few MiB of memory, and `vectraudit runs table` writes runs as one
   row per question and repeat (CSV, or Parquet with `vectraudit[parquet]`; no text) for your

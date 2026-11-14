@@ -36,7 +36,7 @@ pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
 Extras install only what you use: the backends `[faiss-cpu]`, `[qdrant]`, `[pgvector]` and
 `[weaviate]` (Pinecone, Elasticsearch, OpenSearch and Chroma need none), `[text]` for
 sentence-transformers text queries, `[umap]` for the cluster map, `[parquet]` for Parquet
-inputs and `[cloud]` for the hosted control plane. `[all]` includes all of these except the
+inputs, `[hdf5]` for ann-benchmarks datasets and `[cloud]` for the hosted control plane. `[all]` includes all of these except the
 optional LLM labelling helper (`[label-llm]`). Python 3.10 to 3.13 is tested in CI.
 
 Nothing runs from the open-source projects Vectraudit learns from (ranx, trec_eval, MTEB,
@@ -143,7 +143,7 @@ vectraudit workbench phoenix-push current.judged.run.json --send   # or langfuse
 | `label-audit`, `review-labels` | Which of the benchmark's relevance labels are likely wrong or missing, so reviewers check those first? | [Label audit](docs/label-audit.md) |
 | `review-sample`, `attach-answers --sample` | What is the true rate of correct answers when a model judged every question and people reviewed a random few, with an honest interval? | [Judge-corrected estimates](docs/judge-corrected-estimates.md) |
 | `ragchecker-input`, `ragchecker-judgments`, `attach-answers` | Which claims in an answer are unsupported by the context, and which retrieved documents does that point to? | [Claim-level evidence](docs/claim-evidence.md) |
-| `workbench atlas`, `workbench benchmark --corpus`, `dataset import-vdbbench`, `sweep --filter`, `sweep --pass-rates`, `capacity` | How does recall fall as a metadata filter keeps fewer documents? How do throughput, latency and errors change as concurrent load grows on a staging target? | [Corpus atlas](docs/corpus-atlas.md), [VectorDBBench datasets](docs/vectordbbench.md), [Filtered search](docs/filtered-search.md), [Capacity](docs/capacity.md) |
+| `workbench atlas`, `workbench benchmark --corpus`, `dataset import-vdbbench`, `dataset import-annb`, `sweep --filter`, `sweep --pass-rates`, `capacity` | How does recall fall as a metadata filter keeps fewer documents? How do throughput, latency and errors change as concurrent load grows on a staging target? | [Corpus atlas](docs/corpus-atlas.md), [VectorDBBench and ann-benchmarks datasets](docs/vectordbbench.md), [Filtered search](docs/filtered-search.md), [Capacity](docs/capacity.md) |
 | `corpus-scan`, `poison generate`, `poison run`, `canary-judgments`, `promptfoo-redteam` | Does the corpus hold text that tries to instruct a model? When poisoned documents are present, are they retrieved, do they reach the model, do they push out the right answer, and did the answer follow them? | [Poisoning checks](docs/poisoning.md) |
 
 ## Release checks

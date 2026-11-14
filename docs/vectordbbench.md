@@ -1,4 +1,4 @@
-# VectorDBBench datasets and external exact references
+# VectorDBBench and ann-benchmarks datasets: external exact references
 
 [VectorDBBench](https://github.com/zilliztech/VectorDBBench) ships public vector datasets with
 the **exact nearest neighbours** of their test queries already computed. Vectraudit can use
@@ -65,6 +65,39 @@ vectraudit record --connection connection.json --dataset cohere/dataset-int-99p.
   --reference cohere/reference-int-99p.json --out run.json
 ```
 
+## ann-benchmarks datasets
+
+[ann-benchmarks](https://github.com/erikbern/ann-benchmarks) publishes each dataset (for
+example `glove-100-angular.hdf5` or `sift-128-euclidean.hdf5`) as one HDF5 file with the train
+vectors, the test queries and each query's 100 exact neighbours. Reading it needs the optional
+`[hdf5]` extra (h5py); without it the command says how to install it or convert the file.
+
+```bash
+vectraudit dataset import-annb sift-128-euclidean.hdf5 --out sift
+vectraudit dataset import-annb glove-100-angular.hdf5 --out glove --normalize
+```
+
+- **Layout and distances**, read in ann-benchmarks' own source: attributes `distance`,
+  `type`, `dimension`, `point_type`; datasets `train`, `test`, `neighbors`, `distances`.
+  `euclidean` becomes `l2` and `angular` (1 − cosine) becomes `cosine`. `hamming` (bit
+  vectors) and `jaccard` (sparse sets) have no Vectraudit distance and are refused, as are
+  sparse files. The distance is read from the file; `--distance` is only a check.
+- **Checked against the data:** for 20 seeded test queries, the published distances must
+  equal the distances recomputed from the vectors under the file's metric, or the import is
+  refused. A file whose recorded metric does not describe its neighbours is never guessed at.
+- **Outputs** are those of `import-vdbbench`: `vectors.npy`, `ids.npy` (train row `i` has id
+  `i`, the ids the neighbours use), `queries.npy`, `dataset.jsonl` and `reference.json`
+  (`external:annb`, with the file's hash).
+- **Angular files and FAISS:** an angular file's vectors are not unit length, and a FAISS
+  index ranks only by L2 or inner product, so a FAISS index cannot be checked against a cosine
+  reference as such. `--normalize` writes unit-length vectors and queries; the angular
+  neighbours are unchanged, an inner-product index (`IndexFlatIP`) then ranks exactly as
+  cosine does, and `record` accepts it against that reference. Backends with a cosine distance
+  (Qdrant, pgvector, ...) need no `--normalize`.
+- **Recall definition:** ann-benchmarks counts a returned neighbour as found when its distance
+  is within the k-th true distance plus 1e-3, so near-ties count; Vectraudit matches neighbour
+  ids. On data with many exact ties the two can differ slightly.
+
 ## Use the reference
 
 ```bash
@@ -77,7 +110,8 @@ vectraudit sweep index.faiss --queries cohere/queries.npy --reference cohere/ref
 for its own exact search, and records the reference's source and hashes in the run. It
 refuses, naming the cause, when:
 
-- the backend's distance differs from the reference's;
+- the backend's distance differs from the reference's (an inner-product backend is accepted
+  for a cosine reference only when the reference was imported with `--normalize`);
 - `k` is larger than the number of neighbours the reference holds (whatever the file
   contains, often 100);
 - the dataset has queries the reference does not cover, or carries a different filter from

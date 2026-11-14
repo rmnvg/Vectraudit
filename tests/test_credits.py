@@ -36,6 +36,7 @@ REIMPLEMENTS = {
     "src/vectraudit/pipelines/embedding_drift.py": ("Evidently", "Gretton"),
     "src/vectraudit/evaluation/components.py": ("Giskard", "RAGET"),
     "src/vectraudit/evaluation/run_table.py": ("Inspect",),
+    "src/vectraudit/evaluation/annb_import.py": ("ann-benchmarks",),
     "src/vectraudit/evaluation/runfile.py": ("Inspect",),
 }
 
