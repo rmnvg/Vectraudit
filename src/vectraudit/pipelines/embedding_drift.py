@@ -73,6 +73,7 @@ MMD_ALPHA = 0.05
 MMD_MAX_ROWS = 1000
 MAX_ROWS = 10_000
 MIN_ROWS = 10
+SMALL_REFERENCE = 200  # below this the classifier test misses a topic a fifth of the traffic
 RIDGE = 1.0
 ITERATIONS = 200
 
@@ -155,6 +156,27 @@ def _logistic(x: FloatMatrix, y: npt.NDArray[np.float64], rng: np.random.Generat
     return w
 
 
+def _grouped_halves(
+    x: FloatMatrix, rng: np.random.Generator
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64]]:
+    """A seeded half/half split that keeps identical vectors on the same side.
+
+    A question asked verbatim in both sets (or a document unchanged between two exports)
+    would otherwise be learned from one copy and scored on the other, pulling the held-out AUC
+    below 0.5 and hiding real drift. Kept together, the copies tie and count as 0.5.
+    """
+    _, group = np.unique(x, axis=0, return_inverse=True)
+    group = group.reshape(-1)
+    order = rng.permutation(int(group.max()) + 1)
+    rank = np.empty_like(order)
+    rank[order] = np.arange(len(order))
+    rows = np.argsort(rank[group], kind="stable")
+    sizes = np.bincount(group)[order]
+    cut = int(np.searchsorted(np.cumsum(sizes), len(x) / 2))
+    first = int(np.sum(sizes[: cut + 1]))
+    return rows[:first].astype(np.int64), rows[first:].astype(np.int64)
+
+
 def domain_classifier(
     reference: FloatMatrix, current: FloatMatrix, *, bootstrap: bool, seed: int
 ) -> dict[str, Any]:
@@ -162,8 +184,7 @@ def domain_classifier(
     rng = np.random.default_rng(seed)
     x = np.vstack([reference, current])
     y = np.concatenate([np.ones(len(reference)), np.zeros(len(current))])
-    order = rng.permutation(len(x))
-    train, test = order[: len(x) // 2], order[len(x) // 2 :]
+    train, test = _grouped_halves(x, rng)
     mean, std = x[train].mean(axis=0), x[train].std(axis=0)
     std[std < 1e-12] = 1.0
     z = (x - mean) / std
@@ -331,6 +352,14 @@ def embedding_drift(
         result = mmd(ref, cur, seed=seed)
     sampled = len(ref) < n_ref or len(cur) < n_cur
     warnings = []
+    if method == "model" and n_ref < SMALL_REFERENCE:
+        warnings.append(
+            f"With fewer than {SMALL_REFERENCE} reference vectors the classifier test has little "
+            "power: when the rest of the traffic is unchanged, a new topic must be a large share "
+            "of it to show (a perfect classifier reaches only 0.5 + share / 2). On synthetic "
+            "questions mmd found a topic making up a fifth of the traffic far more often; "
+            "consider --method mmd."
+        )
     if method == "ratio" and n_ref < BOOTSTRAP_BELOW:
         warnings.append(
             "With fewer than 1,000 reference vectors the per-component distances are noisy: "
@@ -409,6 +438,76 @@ def render(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def where_drift(
+    reference: npt.ArrayLike,
+    current: npt.ArrayLike,
+    current_ids: Sequence[str],
+    current_texts: Sequence[str | None] | None,
+    *,
+    reference_texts: Sequence[str | None] | None = None,
+    nouns: tuple[str, str] = ("production questions", "benchmark question"),
+    seed: int = 0,
+    listed: int = 1000,
+) -> dict[str, Any]:
+    """Where the current set moved: groups of it far from every reference vector.
+
+    Clusters the reference and current vectors together by k-means and keeps the groups no
+    reference vector is near, by the coverage rule of :func:`vectraudit.core.coverage.coverage`
+    (the reference vectors play the questions). Pooling keeps the rule meaningful when every
+    current item is new, as with the documents a corpus export added. Groups are labelled with
+    their most characteristic terms (texts only label groups and are not kept); each lists up to
+    ``listed`` of its current identifiers, so its items can be queued for review.
+    """
+    from vectraudit.core.coverage import coverage
+
+    ref = np.asarray(reference, dtype=np.float32)
+    cur = np.asarray(current, dtype=np.float32)
+    n_ref = len(ref)
+    texts: list[str | None] = [
+        *(reference_texts or [None] * n_ref),
+        *(current_texts or [None] * len(cur)),
+    ]
+    found = coverage(
+        [f"r{i}" for i in range(n_ref)] + [f"c{i}" for i in range(len(cur))],
+        np.vstack([ref, cur]),
+        ref,
+        frozenset(),
+        texts,
+        seed=seed,
+    )
+    rows = {r["cluster"]: r["member_rows"] for r in found["regions"]}
+    groups = []
+    for finding in found["findings"]:
+        members = np.sort(np.concatenate([rows[c] for c in finding["clusters"]]))
+        members = members[members >= n_ref] - n_ref
+        if not len(members):
+            continue
+        share = len(members) / len(cur)
+        about = f" (about: {', '.join(finding['terms'])})" if finding["terms"] else ""
+        groups.append(
+            {
+                "share": round(share, 4),
+                "items": len(members),
+                "terms": finding["terms"],
+                "distance_ratio": finding["distance_ratio"],
+                "ids": [current_ids[int(i)] for i in members[:listed]],
+                "evidence": "hypothesis",
+                "message": f"About {round(share * 100)}% of the {nouns[0]} form a group no "
+                f"{nouns[1]} is close to{about}.",
+            }
+        )
+    return {
+        "method": "k-means on the reference and current vectors together",
+        "k": found["k"],
+        "seed": seed,
+        "groups": groups,
+        "note": None
+        if groups
+        else f"No group of the {nouns[0]} stands apart from every {nouns[1]}; the drift is "
+        "spread out rather than one new topic.",
+    }
+
+
 # --- inputs ---------------------------------------------------------------------------------
 
 Embed = Callable[[str], npt.ArrayLike]
@@ -480,6 +579,16 @@ def benchmark_drift(
     if not len(current):
         raise EmbeddingDriftError("No production question text to compare.")
     result = embedding_drift(reference, current, method=method, seed=seed)
+    where = None
+    if result["drift"]:
+        where = where_drift(
+            reference,
+            current,
+            [trace_id for trace_id, _ in production],
+            [text for _, text in production],
+            reference_texts=[q.text for q in explore],
+            seed=seed,
+        )
     return drift_report(
         result,
         kind="questions",
@@ -497,7 +606,9 @@ def benchmark_drift(
             "count": len(production),
             "embedded_here": len(production),
             "model": model,
+            "ids": "trace",
         },
+        where=where,
     )
 
 
@@ -514,17 +625,31 @@ def window_drift(
     """Two windows of production questions (``(trace ID, text)``), both embedded locally."""
     if not earlier or not later:
         raise EmbeddingDriftError("Both windows need production questions with text.")
-    result = embedding_drift(
-        _embed([t for _, t in earlier], embed),
-        _embed([t for _, t in later], embed),
-        method=method,
-        seed=seed,
-    )
+    old, new = _embed([t for _, t in earlier], embed), _embed([t for _, t in later], embed)
+    result = embedding_drift(old, new, method=method, seed=seed)
+    where = None
+    if result["drift"]:
+        where = where_drift(
+            old,
+            new,
+            [trace_id for trace_id, _ in later],
+            [t for _, t in later],
+            reference_texts=[t for _, t in earlier],
+            nouns=("later questions", "earlier question"),
+            seed=seed,
+        )
     return drift_report(
         result,
         kind="questions",
         reference={"label": "earlier", "source": sources[0], "count": len(earlier), "model": model},
-        current={"label": "later", "source": sources[1], "count": len(later), "model": model},
+        current={
+            "label": "later",
+            "source": sources[1],
+            "count": len(later),
+            "model": model,
+            "ids": "trace",
+        },
+        where=where,
     )
 
 
@@ -535,20 +660,70 @@ def corpus_drift(
     method: str = DEFAULT_METHOD,
     seed: int = 0,
     sources: tuple[str, str] = ("earlier corpus", "later corpus"),
+    later_texts: Sequence[str | None] | None = None,
 ) -> dict[str, Any]:
-    """Two exports of the corpus, as ``(document IDs, vectors)``."""
+    """Two exports of the corpus, as ``(document IDs, vectors)``.
+
+    The earlier export is compared with the documents the later one **added or changed**
+    (a new ID, or a new vector under an old ID): unchanged documents are the same in both and
+    would only dilute the comparison. ``later_texts`` (titles or first lines) only label the
+    groups of new content.
+    """
     (old_ids, old_vectors), (new_ids, new_vectors) = earlier, later
-    result = embedding_drift(old_vectors, new_vectors, method=method, seed=seed)
+    old_matrix = np.asarray(old_vectors, dtype=np.float64)
+    new_matrix = np.asarray(new_vectors, dtype=np.float64)
+    before = {d: old_matrix[i] for i, d in enumerate(old_ids)}
+    fresh = [
+        i
+        for i, d in enumerate(new_ids)
+        if d not in before or not np.array_equal(before[d], new_matrix[i])
+    ]
+    if len(fresh) < MIN_ROWS:
+        raise EmbeddingDriftError(
+            f"Only {len(fresh)} documents were added or changed between the exports; at least "
+            f"{MIN_ROWS} are needed to compare."
+        )
+    added = new_matrix[fresh]
+    result = embedding_drift(old_matrix, added, method=method, seed=seed)
+    where = None
+    if result["drift"]:
+        where = where_drift(
+            old_matrix,
+            added,
+            [str(new_ids[i]) for i in fresh],
+            [later_texts[i] for i in fresh] if later_texts is not None else None,
+            nouns=("added or changed documents", "earlier document"),
+            seed=seed,
+        )
     old, new = set(old_ids), set(new_ids)
     return drift_report(
         result,
         kind="corpus",
         reference={"label": "earlier", "source": sources[0], "count": len(old_ids)},
         current={
-            "label": "later",
+            "label": "added or changed",
             "source": sources[1],
             "count": len(new_ids),
+            "compared": "documents added or changed",
             "documents_added": len(new - old),
+            "documents_changed": len(fresh) - len(new - old),
             "documents_removed": len(old - new),
+            "ids": "document",
         },
+        where=where,
     )
+
+
+def new_topics(report: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Trace ID -> the new-topic group it is in, from an embedding drift report of questions."""
+    if report.get("format") != FORMAT:
+        raise EmbeddingDriftError("The file is not an embedding drift report.")
+    if report.get("kind") != "questions" or (report.get("current") or {}).get("ids") != "trace":
+        raise EmbeddingDriftError(
+            "Only an embedding drift report of production questions names traces."
+        )
+    out: dict[str, dict[str, Any]] = {}
+    for group in (report.get("where") or {}).get("groups") or []:
+        for trace_id in group["ids"]:
+            out[str(trace_id)] = {"terms": list(group["terms"]), "share": group["share"]}
+    return out

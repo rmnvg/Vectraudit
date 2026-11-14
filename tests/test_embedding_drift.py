@@ -166,11 +166,14 @@ def test_bad_inputs_are_refused_with_reasons():
 # --- inputs ----------------------------------------------------------------------------------
 
 
+HASH_DIM = 256
+
+
 def hashed(text: str) -> np.ndarray:
     """A bag of hashed words, unit length: different topics land on different coordinates."""
-    v = np.zeros(DIM)
+    v = np.zeros(HASH_DIM)
     for word in re.findall(r"\w+", text.lower()):
-        v[int(hashlib.sha1(word.encode()).hexdigest(), 16) % DIM] += 1
+        v[int(hashlib.sha1(word.encode()).hexdigest(), 16) % HASH_DIM] += 1
     return v / max(np.linalg.norm(v), 1e-9)
 
 
@@ -186,6 +189,40 @@ CRYPTO = [
     for coin in ("bitcoin", "ethereum", "solana", "token")
     for detail in ("ledger", "metamask", "phantom", "exchange", "hardware")
 ]
+
+
+BILLING_MANY = [
+    f"{verb} the {thing} for {account} {channel}"
+    for verb in ("pay", "change", "download", "dispute", "split", "print", "email", "cancel")
+    for thing in ("invoice", "bill", "statement", "receipt", "charge", "payment")
+    for account in ("my account", "the team", "a client", "our office", "the company", "my plan")
+    for channel in ("online", "by phone", "in the app")
+]
+CRYPTO_MANY = [
+    f"{verb} {coin} wallet {where} seed phrase"
+    for verb in ("restore", "connect", "stake", "bridge", "recover")
+    for coin in ("bitcoin", "ethereum", "solana", "token", "stablecoin")
+    for where in ("ledger", "metamask", "phantom", "exchange", "hardware")
+]
+# The benchmark and production ask different billing questions from the same templates:
+# production repeating the benchmark verbatim would be matched by intake, not drift.
+_SPLIT = np.random.default_rng(0).permutation(len(BILLING_MANY))
+BENCH_BILLING = [BILLING_MANY[i] for i in sorted(_SPLIT[::2])]
+PROD_BILLING = [BILLING_MANY[i] for i in sorted(_SPLIT[1::2])]
+
+
+def many_rows():
+    return [
+        {"query_id": f"q{i}", "text": t, "relevant": {"d1": 1}} for i, t in enumerate(BENCH_BILLING)
+    ]
+
+
+def a_fifth_new():
+    """Production: other billing questions plus a fifth from a topic the benchmark never asks."""
+    k = len(PROD_BILLING) // 4
+    return [(f"b{i}", t) for i, t in enumerate(PROD_BILLING)] + [
+        (f"c{i}", t) for i, t in enumerate(CRYPTO_MANY[:k])
+    ]
 
 
 def bench_rows(vectors=False, **extra):
@@ -318,22 +355,164 @@ def test_embedding_drift_command_for_windows_and_corpus(tmp_path, fake_embedder)
     assert result.exit_code == 3, result.output
     assert "80 later vs 60 earlier questions" in result.output
     old, new = tmp_path / "old.jsonl", tmp_path / "new.jsonl"
-    old.write_text(
-        "".join(
-            json.dumps({"doc_id": f"d{i}", "vector": hashed(t).tolist()}) + "\n"
-            for i, t in enumerate(BILLING)
+
+    def export(path, texts):
+        path.write_text(
+            "".join(
+                json.dumps({"doc_id": f"d{abs(hash(t)) % 10**9}", "vector": hashed(t).tolist()})
+                + "\n"
+                for t in texts
+            )
         )
-    )
-    new.write_text(
-        "".join(
-            json.dumps({"doc_id": f"d{i}", "vector": hashed(t).tolist()}) + "\n"
-            for i, t in enumerate(BILLING[::-1])
-        )
-    )
+
     corpus = tmp_path / "corpus.json"
-    calm = runner.invoke(
-        app, ["workbench", "embedding-drift", str(old), str(new), "--corpus", "--out", str(corpus)]
-    )
+    command = ["workbench", "embedding-drift", str(old), str(new), "--corpus", "--out", str(corpus)]
+    export(old, BENCH_BILLING)
+    export(new, BENCH_BILLING[::-1])  # the same documents in another order
+    unchanged = runner.invoke(app, command)
+    assert unchanged.exit_code == 2
+    assert "Only 0 documents were added or changed" in unchanged.output
+    more = [PROD_BILLING[i] for i in np.random.default_rng(1).permutation(len(PROD_BILLING))[:120]]
+    export(new, BENCH_BILLING + more)  # more of the same kind of content
+    calm = runner.invoke(app, command)
     assert calm.exit_code == 0, calm.output
     assert json.loads(corpus.read_text())["status"] == "no_drift"
-    assert "documents, method model" in calm.output
+    assert "120 added or changed vs 432 earlier documents" in calm.output
+
+
+# --- where the drift is (36.2) ----------------------------------------------------------------
+
+
+def test_a_new_topic_in_a_fifth_of_production_is_found_and_named():
+    ds = parse_dataset(render_dataset(many_rows()))
+    production = a_fifth_new()
+    report = benchmark_drift(ds, production, hashed, model="hash")
+    assert report["status"] == "drift"
+    assert report["result"]["warnings"] == []  # a benchmark of this size is not small
+    (group,) = report["where"]["groups"]
+    assert {"seed", "phrase", "wallet"} & set(group["terms"])
+    assert 0.15 <= group["share"] <= 0.25
+    assert {i[0] for i in group["ids"]} == {"c"}  # only the new topic's traces
+    assert group["evidence"] == "hypothesis"
+    assert group["message"].startswith("About 20% of the production questions form a group")
+    assert "Hypothesis: About 20% of the production questions" in E.render(report)
+
+
+def test_a_small_benchmark_is_warned_that_the_default_has_little_power():
+    ds = parse_dataset(render_dataset(bench_rows()))
+    production = [(f"b{i}", t) for i, t in enumerate(BILLING * 4)]
+    production += [(f"c{i}", t) for i, t in enumerate(CRYPTO[:60])]
+    default = benchmark_drift(ds, production, hashed, model="hash")
+    assert "consider --method mmd" in default["result"]["warnings"][0]
+    assert benchmark_drift(ds, production, hashed, model="hash", method="mmd")["status"] == "drift"
+
+
+def test_the_new_topic_is_named_from_vectors_that_are_not_bags_of_words():
+    rng = np.random.default_rng(11)
+    topics = centres(rng)
+    benchmark = draw(rng, topics[:8], 200, 0.15)
+    production = np.vstack([draw(rng, topics[:8], 800, 0.15), draw(rng, topics[8:], 200, 0.15)])
+    words = ["refund invoice"] * 800 + ["crypto wallet custody"] * 200
+    result = embedding_drift(benchmark, production)
+    assert result["drift"] is True
+    where = E.where_drift(benchmark, production, [f"t{i}" for i in range(1000)], words)
+    (group,) = where["groups"]
+    assert set(group["terms"]) >= {"crypto", "wallet"}
+    assert len(group["ids"]) == group["items"] == 200
+
+
+def test_no_drift_means_nothing_to_locate_and_spread_drift_says_so():
+    ds = parse_dataset(render_dataset(bench_rows()))
+    calm = benchmark_drift(ds, [(f"t{i}", t) for i, t in enumerate(BILLING)], hashed, model="h")
+    assert calm["where"] is None
+    rng = np.random.default_rng(12)
+    topics = centres(rng)
+    spread = E.where_drift(
+        draw(rng, topics, 300), draw(rng, topics, 300), [f"t{i}" for i in range(300)], None
+    )
+    assert spread["groups"] == []
+    assert "spread out" in spread["note"]
+
+
+def test_new_corpus_content_is_located_by_document():
+    old_ids = [f"d{i}" for i in range(len(BILLING))]
+    new_ids = old_ids + [f"n{i}" for i in range(20)]
+    vectors = [hashed(t) for t in BILLING + CRYPTO[:20]]
+    titles = BILLING + CRYPTO[:20]
+    report = corpus_drift(
+        (old_ids, [hashed(t) for t in BILLING]), (new_ids, vectors), later_texts=titles
+    )
+    assert report["status"] == "drift"
+    (group,) = report["where"]["groups"]
+    assert {i[0] for i in group["ids"]} == {"n"}
+    assert "of the added or changed documents form a group" in group["message"]
+    assert "seed phrase" not in json.dumps(report)  # titles label groups; they are not kept
+
+
+def test_new_topics_map_traces_and_refuse_other_reports():
+    ds = parse_dataset(render_dataset(many_rows()))
+    topics = E.new_topics(benchmark_drift(ds, a_fifth_new(), hashed, model="hash"))
+    assert set(topics) == {f"c{i}" for i in range(len(PROD_BILLING) // 4)}
+    assert topics["c0"]["share"] == pytest.approx(0.2, abs=0.05)
+    old = ([f"d{i}" for i in range(20)], [hashed(t) for t in BILLING[:20]])
+    new = ([*old[0], *(f"n{i}" for i in range(20))], [*old[1], *(hashed(t) for t in CRYPTO[:20])])
+    corpus = corpus_drift(old, new)
+    with pytest.raises(EmbeddingDriftError, match="names traces"):
+        E.new_topics(corpus)
+    with pytest.raises(EmbeddingDriftError, match="not an embedding drift report"):
+        E.new_topics({"format": "vectraudit.intake"})
+
+
+def test_drift_then_intake_raises_and_tags_the_new_topic(tmp_path, fake_embedder):
+    data = tmp_path / "questions.jsonl"
+    data.write_text(render_dataset(many_rows(), {"embedding_model": "mini"}))
+    traces = write_traces(tmp_path, [text for _, text in a_fifth_new()])
+    drift = tmp_path / "embedding-drift.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        app, ["workbench", "drift", str(traces), str(data), "--embeddings", str(drift)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Hypothesis: About 20% of the production questions form a group" in result.output
+    state, review = tmp_path / "state", tmp_path / "review.jsonl"
+    args = ["workbench", "intake", str(traces), str(data), "--state", str(state)]
+    taken = runner.invoke(
+        app, [*args, "--embedding-drift", str(drift), "--export-review", str(review)]
+    )
+    assert taken.exit_code == 0, taken.output
+    new = len(PROD_BILLING) // 4
+    assert f"New topics: {new} pending questions are in a group no benchmark question" in (
+        taken.output
+    )
+    rows = [json.loads(line) for line in (state / "queue.jsonl").read_text().splitlines()]
+    crypto = [r for r in rows if "new_topic" in r]
+    assert len(crypto) == new
+    assert all(r["signals"]["new_topic"] == 1 for r in crypto)
+    assert rows[0] in crypto  # raised to the top
+    assert all(
+        "new-topic" in q.tags
+        for q in parse_dataset(review.read_text()).queries
+        if "seed" in (q.text or "")
+    )
+    assert all(not q.relevant for q in parse_dataset(review.read_text()).queries)  # never labels
+    wrong = runner.invoke(app, [*args, "--embedding-drift", str(data)])
+    assert wrong.exit_code == 2
+
+
+def test_verbatim_repeats_do_not_hide_drift():
+    """Production often repeats benchmark questions verbatim; the split keeps copies together."""
+    ds = parse_dataset(render_dataset(many_rows()))
+    repeated = [(f"b{i}", t) for i, t in enumerate(BENCH_BILLING)]
+    repeated += [(f"c{i}", t) for i, t in enumerate(CRYPTO_MANY[: len(BENCH_BILLING) // 4])]
+    assert benchmark_drift(ds, repeated, hashed, model="hash")["status"] == "drift"
+    same = [(f"b{i}", t) for i, t in enumerate(BENCH_BILLING)]
+    assert benchmark_drift(ds, same, hashed, model="hash")["status"] == "no_drift"
+
+
+def test_the_grouped_split_keeps_copies_together_and_halves_the_rows():
+    x = np.repeat(np.eye(6), [1, 5, 2, 2, 3, 7], axis=0)
+    train, test = E._grouped_halves(x, np.random.default_rng(0))
+    assert sorted(np.r_[train, test].tolist()) == list(range(len(x)))
+    train_rows = {tuple(r) for r in x[train]}
+    assert not train_rows & {tuple(r) for r in x[test]}
+    assert abs(len(train) - len(x) / 2) <= 7

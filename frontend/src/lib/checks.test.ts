@@ -211,6 +211,12 @@ it('reads embedding drift as a hypothesis to look into, with the rule that decid
   expect(s.verdict).toBe('attention')
   expect(s.headline).toMatch(/^Drift: 60 production questions against 60 benchmark questions; domain classifier ROC AUC [0-9.]+, drift when the ROC AUC is above the 95% quantile/)
   expect(s.notes.some(n => n.includes('not that retrieval got worse'))).toBe(true)
+  expect(s.items[0]).toMatch(/production questions form a group no benchmark question is close to \(about: .*wallet.*\)\. \(hypothesis\)$/)
+})
+
+it('says when intake raised questions from a new topic', () => {
+  const s = summary({ ...intake, queue: { ...intake.queue, new_topic: 3 } })
+  expect(s.notes).toContain('3 pending questions from a new topic (embedding drift), raised for review.')
 })
 
 it('shows a calm comparison as no drift', () => {

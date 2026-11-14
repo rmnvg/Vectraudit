@@ -2098,6 +2098,7 @@ def embedding_drift_command(
                 (new[0], new[1]),
                 method=method,
                 sources=(earlier.name, later.name),
+                later_texts=new[2],
             )
         else:
             from vectraudit.pipelines.drift import production_question_rows
@@ -2340,6 +2341,13 @@ def intake_command(
         ),
     ] = None,
     json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    embedding_drift: Annotated[
+        Path | None,
+        typer.Option(
+            help="Embedding drift report (workbench drift --embeddings): raise and tag "
+            "questions from a new topic."
+        ),
+    ] = None,
     fail_on_recurrence: Annotated[
         bool,
         typer.Option("--fail-on-recurrence", help="Exit 3 when a likely recurrence is found."),
@@ -2361,6 +2369,11 @@ def intake_command(
     from vectraudit.pipelines.traces import Settings
 
     try:
+        topics = None
+        if embedding_drift is not None:
+            from vectraudit.pipelines.embedding_drift import new_topics
+
+            topics = new_topics(json.loads(embedding_drift.read_text(encoding="utf-8")))
         report = intake(
             traces,
             load_dataset(dataset),
@@ -2373,6 +2386,7 @@ def intake_command(
             routes=read_routes(routes) if routes else (),
             sample_rate=sample_rate,
             workspace=workspace,
+            new_topics=topics,
         )
         if export_review is not None:
             text = review_dataset(state, reviewer=reviewer)

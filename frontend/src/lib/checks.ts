@@ -151,7 +151,10 @@ function intake(r: Row): CheckSummary {
       const reopen = Array.isArray(x.reopen) && x.reopen.length ? `; reopen verified case ${list(x.reopen)}` : ''
       return `${text(x.query_id)} at ${text(x.at)} delivered none of its labelled documents${reopen}`
     }),
-    notes: count(queue.unassigned) ? [`${plural(count(queue.unassigned), 'question')} without a reviewer.`] : [],
+    notes: [
+      count(queue.unassigned) ? `${plural(count(queue.unassigned), 'question')} without a reviewer.` : '',
+      count(queue.new_topic) ? `${plural(count(queue.new_topic), 'pending question')} from a new topic (embedding drift), raised for review.` : '',
+    ].filter(Boolean),
   }
 }
 
@@ -357,7 +360,7 @@ function embeddingDrift(r: Row): CheckSummary {
   return {
     title: 'Embedding drift',
     verdict: drift ? 'attention' : 'pass',
-    headline: `${drift ? 'Drift' : 'No drift'}: ${count(current.count)} ${text(current.label)} ${noun} against ${count(reference.count)} ${text(reference.label)} ${noun}; ${value}, ${text(result.rule)}.`,
+    headline: `${drift ? 'Drift' : 'No drift'}: ${count(result.n_current)} ${text(current.label)} ${noun} against ${count(result.n_reference)} ${text(reference.label)} ${noun}; ${value}, ${text(result.rule)}.`,
     items: rows(where.groups).slice(0, LIMIT).map(g => `${text(g.message)} (hypothesis)`),
     notes: [
       ...(Array.isArray(result.warnings) ? result.warnings.map(text) : []),
