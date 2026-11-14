@@ -16,6 +16,7 @@ const reports = {
   'capacity.json': /Capacity curve/,
   'label_audit.json': /Label audit/,
   'embedding_drift.json': /Embedding drift/,
+  'component_scoreboard.json': /Component scoreboard/,
 }
 const dir = await mkdtemp(join(tmpdir(), 'vectraudit-checks-'))
 for (const name of Object.keys(reports)) await copyFile(join(fixtures, name), join(dir, name))

@@ -124,6 +124,13 @@ explicitly). Derived cohorts are not written back into the benchmark. They are r
 run files and hosted uploads like tags, so declare only fields whose values you are willing
 to share as cohort names. `vectraudit dataset stats` counts them with the other cohorts.
 
+**Tags meant for a component.** `"component_tags": {"multi_hop": ["retrieve", "rerank"]}`
+says which pipeline components a tag's questions are meant to exercise (`retrieve`,
+`filter`, `fusion`, `rerank`, `truncate`, `custom`, `context`, `answer`). The component
+scoreboard then reports each such cohort on its own; it is information and no policy rule
+reads it. A query rewriter records no stage, so `rewrite` is refused rather than reported
+as if it could be observed.
+
 Building one:
 
 ```bash
