@@ -111,6 +111,7 @@ def run_record(
             "k": result.k,
             "repeats": result.repeats,
             "seed": result.seed,
+            "batch_threads": result.batch_threads,
             "truth_source": (
                 "external"
                 if reference is not None
@@ -138,6 +139,11 @@ def run_record(
                 "latency_mean_ms": p.latency_mean_ms,
                 "latency_p95_ms": p.latency_p95_ms,
                 "probe_coverage": p.probe_coverage,
+                **(
+                    {"batch_qps": p.batch_qps, "batch_recall": p.batch_recall}
+                    if p.batch_qps is not None
+                    else {}
+                ),
                 "recall_distribution": [list(pair) for pair in p.recall_distribution],
                 "worst_queries": [
                     {"query_no": w.query_no, "id": w.id, "recall": w.recall}
@@ -235,6 +241,9 @@ def check_run(data: Any) -> dict[str, Any]:
                 _nonneg(p["latency_mean_ms"])
             if p.get("probe_coverage") is not None:
                 _fraction(p["probe_coverage"])
+            if p.get("batch_qps") is not None:
+                _nonneg(p["batch_qps"])
+                _fraction(p["batch_recall"])
             lo, hi = p.get("recall_ci_low"), p.get("recall_ci_high")
             if lo is not None and hi is not None and _fraction(lo) > _fraction(hi) + 1e-9:
                 raise ValueError("recall_ci_low > recall_ci_high")

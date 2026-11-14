@@ -282,6 +282,54 @@ def dataset_import_vdbbench(
     console.print("Reference files: " + ", ".join(result.references))
 
 
+@dataset_app.command("import-annb")
+def dataset_import_annb(
+    source: Annotated[
+        Path, typer.Argument(help="An ann-benchmarks HDF5 file (e.g. glove-100-angular.hdf5).")
+    ],
+    out: Annotated[Path, typer.Option(help="Directory to write the converted files to.")],
+    distance: Annotated[
+        str | None,
+        typer.Option(
+            help="l2 or cosine, only as a check: the distance is read from the file and a "
+            "different one is refused."
+        ),
+    ] = None,
+    normalize: Annotated[
+        bool,
+        typer.Option(
+            "--normalize",
+            help="Angular files: write unit-length vectors and queries, so an inner-product "
+            "index (FAISS IndexFlatIP) ranks exactly as cosine and can be scored.",
+        ),
+    ] = False,
+    name: Annotated[str | None, typer.Option(help="Dataset name (default: the file name).")] = None,
+) -> None:
+    """Import an ann-benchmarks dataset: vectors, queries and its published exact neighbours.
+
+    Reads the HDF5 file's train vectors, test queries and top-100 neighbours, checks its
+    recorded distance (euclidean or angular; hamming and jaccard are refused) against the
+    data, and writes vectors.npy + ids.npy, queries.npy, dataset.jsonl and reference.json for
+    `record --reference` and `sweep --reference`. Needs h5py (`pip install "vectraudit[hdf5]"`).
+    Nothing is downloaded.
+    """
+    from vectraudit.evaluation.annb_import import AnnbImportError, import_annb
+
+    try:
+        result = import_annb(source, out, distance=distance, normalize=normalize, name=name)
+    except AnnbImportError as e:
+        raise _fail(str(e), e.hint or None) from e
+    console.print(
+        f"Imported {result.n_vectors:,} vectors (d={result.dim}), {result.n_queries:,} queries, "
+        f"{result.k} published neighbours each, {result.source_distance} → {result.distance}"
+        f"{' (normalised)' if result.normalized else ''} → {escape(str(out))}"
+    )
+    console.print(
+        f"Checked the published distances of {result.checked_queries} queries against the "
+        "vectors. Reference file: reference.json"
+    )
+
+
 @dataset_app.command("import")
 def dataset_import(
     source: Annotated[

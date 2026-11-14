@@ -90,6 +90,19 @@ class ExternalReference:
             object.__setattr__(self, "_row_cache", cached)
         return cached
 
+    def ranks_as(self, distance: str) -> bool:
+        """Whether a backend ranking by ``distance`` ranks exactly as this reference does.
+
+        The same distance does; so does inner product for a cosine reference whose vectors
+        and queries were written at unit length (``corpus.normalized``), since the dot product
+        of unit vectors is their cosine.
+        """
+        if distance == self.distance:
+            return True
+        return (
+            distance == "ip" and self.distance == "cosine" and self.corpus.get("normalized") is True
+        )
+
     def identity(self) -> dict[str, Any]:
         """What a run records about its reference, and what comparisons check."""
         return {

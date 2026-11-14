@@ -266,13 +266,14 @@ def _use_reference(
             "--exact and --reference are two different exact references.",
             "Pick one: the backend's own exact search, or the external reference.",
         )
-    if ref.distance != info.distance.value:
+    if not ref.ranks_as(info.distance.value):
         raise ConnectorError(
             ErrorCode.CONFIG,
             f"The reference was computed under {ref.distance} distance, the backend ranks by "
             f"{info.distance.value}.",
             "Neighbours under one distance are not the truth for another. Rebuild the index "
-            "with the reference's distance.",
+            "with the reference's distance (for cosine, an inner-product index over vectors "
+            "imported with --normalize also ranks the same).",
         )
     if options.k > ref.k:
         raise ConnectorError(

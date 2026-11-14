@@ -140,6 +140,28 @@ fastest measured setting, since that gap is usually timing noise. A p95 latency 
 reachable but not within the budget, the result says so, with the setting recall needs and
 the best recall the budget allows, instead of reporting "not reached".
 
+### Single-query latency and batch throughput
+
+`--batch` also measures each setting the way ann-benchmarks' batch mode does: every query in
+one search call, on FAISS's usual thread pool, untimed once and then timed `--repeats` times,
+keeping the best. It is reported as **batch q/s**, with the thread count, beside the
+single-query latency columns:
+
+```bash
+vectraudit sweep index.faiss --vectors v.npy --queries eval.npy --batch
+```
+
+The two answer different questions and are never compared or merged. Single-query latency
+(one query per call, one thread) is what one caller waits for; a batch time divided by the
+number of queries is an amortised cost across many cores that no single caller waits for. It
+can come out faster or slower per query than the single-query figures (thread start-up
+dominates small batches), which is why neither stands in for the other. ann-benchmarks makes the same
+split: it runs single queries on one CPU by default, offers batch mode as a separate setting,
+and keeps batch results in separate files and plots. Recommendations, the p95 budget and saved
+baselines (`runs diff`) use the single-query columns only. The batch call's recall is recorded
+too (`batch_recall`), and `--json` labels each number's mode under `modes`. `--batch` applies
+to the unfiltered sweep.
+
 ### Suggested next steps
 
 The Tuner, `vectraudit sweep` and `GET /api/sweep/{job_id}/advice?target=0.95` turn a sweep
@@ -219,10 +241,10 @@ The Tuner has the same sweep as a pass-rate card. A pass rate is the fraction of
 ## An external exact reference
 
 `vectraudit sweep ... --queries queries.npy --reference reference.json` uses published exact
-neighbours (for example from a VectorDBBench dataset imported with `dataset import-vdbbench`)
-as ground truth instead of computing it, and records where they came from. Sweeps measured
-against different ground truth are not compared on recall. See
-[VectorDBBench datasets](vectordbbench.md).
+neighbours (for example from a VectorDBBench dataset imported with `dataset import-vdbbench`
+or an ann-benchmarks file imported with `dataset import-annb`) as ground truth instead of
+computing it, and records where they came from. Sweeps measured against different ground truth
+are not compared on recall. See [VectorDBBench and ann-benchmarks datasets](vectordbbench.md).
 
 ## How it compares
 
