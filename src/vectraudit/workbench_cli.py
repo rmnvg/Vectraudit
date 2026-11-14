@@ -2224,6 +2224,31 @@ def hubs_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("components")
+def components_command(
+    run: Annotated[Path, typer.Argument(help="Pipeline run recorded with stage evidence.")],
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Also write the scoreboard (JSON).")
+    ] = None,
+) -> None:
+    """Where along the pipeline each question first lost its required evidence.
+
+    One row per component the run recorded (retrieval, filter, fusion, rerank, cut-off,
+    context packing, answer), with family-weighted rates and Wilson intervals. Questions the
+    run cannot place are not observed, never assigned. Information only.
+    """
+    from vectraudit.evaluation.components import component_scoreboard, render
+
+    try:
+        board = component_scoreboard(load_run(run))
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Components error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(board))
+    if json_out is not None:
+        _write(json_out, board)
+
+
 @workbench_app.command("fusion-replay")
 def fusion_replay_command(
     run: Annotated[Path, typer.Argument(help="Complete run file recorded with stage traces.")],

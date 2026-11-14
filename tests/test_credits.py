@@ -34,6 +34,7 @@ REIMPLEMENTS = {
     "src/vectraudit/evaluation/measure_names.py": ("ir-measures",),
     "src/vectraudit/evaluation/label_audit.py": ("cleanlab", "Northcutt"),
     "src/vectraudit/pipelines/embedding_drift.py": ("Evidently", "Gretton"),
+    "src/vectraudit/evaluation/components.py": ("Giskard", "RAGET"),
 }
 
 

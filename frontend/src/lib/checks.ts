@@ -16,6 +16,7 @@ export const CHECK_FORMATS = [
   'vectraudit.capacity',
   'vectraudit.label_audit',
   'vectraudit.embedding_drift',
+  'vectraudit.component_scoreboard',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -51,6 +52,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.capacity': return arrays('levels', 'notes') && object(value.plan) && typeof value.status === 'string'
     case 'vectraudit.label_audit': return arrays('suspects') && object(value.signals) && object(value.summary)
     case 'vectraudit.embedding_drift': return object(value.result) && object(value.reference) && object(value.current) && typeof value.status === 'string'
+    case 'vectraudit.component_scoreboard': return arrays('components', 'declared', 'cohorts') && object(value.observed) && object(value.kept)
     case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
@@ -371,6 +373,32 @@ function embeddingDrift(r: Row): CheckSummary {
   }
 }
 
+function componentScoreboard(r: Row): CheckSummary {
+  const observed = object(r.observed) ? r.observed : {}
+  const components = rows(r.components)
+  const kept = object(r.kept) ? r.kept : {}
+  const applicable = object(r.not_applicable) ? r.not_applicable : {}
+  const lost = components.reduce((sum, c) => sum + count(c.questions), 0)
+  const worst = components.reduce<Row | null>((a, c) => count(c.rate) > count(a?.rate) ? c : a, null)
+  const pct = (v: unknown) => `${(count(v) * 100).toFixed(1)}%`
+  return {
+    title: 'Component scoreboard',
+    verdict: lost ? 'attention' : 'pass',
+    headline: Array.isArray(r.declared) && r.declared.length
+      ? `${plural(count(observed.questions), 'observed question')} in ${plural(count(observed.families), 'family', 'families')}; ${lost} lost their required evidence${worst && count(worst.questions) ? `, most at ${text(worst.component)} (${pct(worst.rate)})` : ''}. Information only.`
+      : 'The run recorded no stages, model context or answer diagnosis, so no loss can be placed.',
+    items: [
+      ...components.map(c => `${text(c.component)}: ${pct(c.rate)} (95% interval ${pct(c.ci_low)} to ${pct(c.ci_high)}), ${plural(count(c.questions), 'question')}`),
+      `kept: ${pct(kept.rate)}, ${plural(count(kept.questions), 'question')}`,
+      ...rows(r.cohorts).map(c => `Cohort ${text(c.tag)} (meant to exercise ${list(c.targets)}): ${count(c.lost_at_targets)} of ${count((object(c.observed) ? c.observed : {}).questions)} observed questions lost their evidence there`),
+    ],
+    notes: [
+      `Not observed (never assigned): ${count(r.not_observed)}; not applicable: ${count(applicable.unlabelled)} unlabelled, ${count(applicable.no_answer)} no-answer; errored: ${count(r.errored)}.`,
+      text(r.note),
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -389,5 +417,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.capacity': return capacity(report)
     case 'vectraudit.label_audit': return labelAudit(report)
     case 'vectraudit.embedding_drift': return embeddingDrift(report)
+    case 'vectraudit.component_scoreboard': return componentScoreboard(report)
   }
 }

@@ -1,0 +1,99 @@
+{
+  "format": "vectraudit.component_scoreboard",
+  "format_version": 1,
+  "run_id": "fb50ab490c91428a82213daff5ae5aca",
+  "label": null,
+  "evidence": "supported",
+  "declared": [
+    "retrieve",
+    "rerank"
+  ],
+  "observed": {
+    "questions": 8,
+    "families": 7
+  },
+  "components": [
+    {
+      "component": "retrieve",
+      "questions": 1,
+      "families": 1.0,
+      "rate": 0.1429,
+      "ci_low": 0.0257,
+      "ci_high": 0.5131
+    },
+    {
+      "component": "rerank",
+      "questions": 6,
+      "families": 5.0,
+      "rate": 0.7143,
+      "ci_low": 0.3589,
+      "ci_high": 0.9178
+    }
+  ],
+  "kept": {
+    "questions": 1,
+    "families": 1.0,
+    "rate": 0.1429,
+    "ci_low": 0.0257,
+    "ci_high": 0.5131
+  },
+  "not_observed": 2,
+  "not_applicable": {
+    "unlabelled": 1,
+    "no_answer": 1
+  },
+  "errored": 0,
+  "by_stage_kind": {
+    "rerank": 6
+  },
+  "cohorts": [
+    {
+      "tag": "multi_hop",
+      "targets": [
+        "retrieve",
+        "rerank"
+      ],
+      "observable": [
+        "retrieve",
+        "rerank"
+      ],
+      "lost_at_targets": 1,
+      "observed": {
+        "questions": 2,
+        "families": 2
+      },
+      "components": [
+        {
+          "component": "retrieve",
+          "questions": 1,
+          "families": 1.0,
+          "rate": 0.5,
+          "ci_low": 0.0945,
+          "ci_high": 0.9055
+        },
+        {
+          "component": "rerank",
+          "questions": 0,
+          "families": 0,
+          "rate": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.6576
+        }
+      ],
+      "kept": {
+        "questions": 1,
+        "families": 1.0,
+        "rate": 0.5,
+        "ci_low": 0.0945,
+        "ci_high": 0.9055
+      },
+      "not_observed": 0,
+      "not_applicable": {
+        "unlabelled": 0,
+        "no_answer": 0
+      },
+      "errored": 0
+    }
+  ],
+  "note": "Where each question first lost its required evidence, from the stages, context and answer judgments the run recorded. A document no recorded stage returned counts at retrieve, though the corpus, the index or query rewriting may be the cause. Questions whose loss the run cannot place are not observed, never assigned. Information only; it does not change a verdict."
+}

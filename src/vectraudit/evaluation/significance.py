@@ -195,8 +195,11 @@ def hsd_for_runs(
     return result
 
 
-def wilson_interval(successes: int, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
+def wilson_interval(successes: float, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
     """The Wilson score interval for a rate of ``successes`` in ``n`` (95% by default).
+
+    ``successes`` may be fractional, for a family-weighted count where each family is split
+    across outcomes.
 
     Better behaved than the normal interval at small ``n`` and rates near 0 or 1, which is where
     a rate of poisoned documents retrieved usually sits. With no observations it is the whole

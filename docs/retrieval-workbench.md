@@ -805,6 +805,42 @@ The command writes a new run file and leaves the original unchanged. Comparisons
 incorrect in the candidate, with the candidate's diagnosis. Answers do not change release
 verdicts yet, and none of this is uploaded.
 
+### Component scoreboard: where questions lose their evidence
+
+The diagnosis above is per question. The scoreboard adds them up per component, so a team
+sees whether its losses sit at retrieval, a filter, fusion, the reranker, the cut-off,
+context packing or the answer. The workbench run view shows it for every pipeline run that
+recorded stages, the release report shows both runs' rows as information, and the command
+prints it (with `--json` for the Checks tab):
+
+```bash
+vectraudit workbench components current.run.json --json components.json
+```
+
+- **Lost** means the question's required evidence (any one complete group) or, without
+  groups, every relevant document, did not survive. A group breaks at the first drop of any
+  of its documents; the question is lost where its last group broke.
+- **Components** are the stage kinds the pipeline recorded (`keyword` and `vector` count as
+  `retrieve`), then `context` and `answer` (after `attach-answers`). A document no recorded
+  stage returned counts at `retrieve`, though the corpus, the index or query rewriting (which
+  no stage records) may be the cause.
+- **Not observed, never assigned:** a question whose evidence was not delivered and whose
+  stages were not recorded, or whose context or answer would place it but was not recorded.
+  Unlabelled and no-answer questions are not applicable; errored ones are counted apart.
+- **Rates** are family-weighted (each paraphrase family counts once, split across the
+  components its questions lost at) with Wilson 95% intervals.
+- **Cohorts meant for a component:** the benchmark header can map your own tags to the
+  components they exercise, and each such cohort gets its own rows, for example "multi_hop
+  (meant to exercise retrieve, rerank): 9 of 40 observed questions lost their evidence there":
+
+  ```json
+  {"dataset": {"component_tags": {"multi_hop": ["retrieve", "rerank"], "long_policy": ["context"]}}}
+  ```
+
+The scoreboard never changes a verdict. The idea of a score per component comes from
+Giskard's RAG evaluation toolkit; here the attribution comes from recorded evidence, not
+generated questions or a model grader.
+
 ### Show the diagnosis in Langfuse
 
 For a run imported from Langfuse (a `langfuse-pull` or export), `workbench langfuse-push`

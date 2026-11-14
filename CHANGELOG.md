@@ -28,6 +28,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Component scoreboard: for each pipeline run, where along the pipeline (retrieval, filter,
+  fusion, rerank, cut-off, context packing, answer) each question first lost its required
+  evidence, with family-weighted rates and intervals; questions the run cannot place are not
+  observed, never assigned. Shown in the workbench run view, the release report (as
+  information) and `vectraudit workbench components`. A benchmark header can map tags to the
+  components they exercise (`component_tags`). See `docs/retrieval-workbench.md`.
 - Embedding drift: `vectraudit workbench drift --embeddings` compares the benchmark's questions
   with production questions in embedding space, and `workbench embedding-drift` compares two
   windows of production questions or two corpus exports. The default is Evidently's classifier

@@ -23,7 +23,9 @@ in hosted uploads) exactly like tags, which is why fields are opted in one by on
 ``selectivity_buckets`` (e.g. ``[0.001, 0.01, 0.1]``) opts in to cohorts by filter pass rate:
 a filtered query whose measured pass rate is below 1% (and not below 0.1%) belongs to
 ``pass_rate<1%``. Buckets are exclusive, and a query whose pass rate the backend cannot count
-belongs to none.
+belongs to none. ``component_tags`` (e.g. ``{"multi_hop": ["retrieve", "rerank"]}``) maps tags
+to the pipeline components they are meant to exercise, for the component scoreboard
+(:mod:`vectraudit.evaluation.components`).
 
 The dataset version is the SHA-256 of a canonical form that ignores line order and JSON
 formatting, so any change to the content (metadata included) is a new version and nothing
@@ -84,7 +86,9 @@ _META_KEYS = {
     "provenance",
     "cohort_fields",
     "selectivity_buckets",
+    "component_tags",
 }
+MAX_COMPONENT_TAGS = 50
 MAX_COHORT_FIELDS = 10
 MAX_SELECTIVITY_BUCKETS = 6
 _FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
@@ -298,7 +302,36 @@ def _meta(obj: dict[str, Any]) -> dict[str, Any]:
                 "rates, each above 0 and below 1 (the fraction of documents a filter keeps)"
             )
         meta = {**meta, "selectivity_buckets": sorted(float(b) for b in buckets)}
+    if "component_tags" in meta:
+        meta = {**meta, "component_tags": _component_tags(meta["component_tags"])}
     return dict(meta)
+
+
+def _component_tags(value: Any) -> dict[str, list[str]]:
+    from vectraudit.evaluation.components import COMPONENTS
+
+    if not isinstance(value, dict) or not 1 <= len(value) <= MAX_COMPONENT_TAGS:
+        raise ValueError(
+            f"header component_tags must map 1-{MAX_COMPONENT_TAGS} tags to the components "
+            "they exercise"
+        )
+    out = {}
+    for tag, components in value.items():
+        if (
+            not isinstance(tag, str)
+            or not tag
+            or not isinstance(components, list)
+            or not components
+            or len(set(components)) != len(components)
+            or any(c not in COMPONENTS for c in components)
+        ):
+            raise ValueError(
+                f"header component_tags[{tag!r}] must list distinct components from "
+                f"{', '.join(COMPONENTS)} (a query rewriter records no stage, so it cannot be "
+                "observed on its own)"
+            )
+        out[tag] = list(components)
+    return out
 
 
 def _reject_constant(token: str) -> float:

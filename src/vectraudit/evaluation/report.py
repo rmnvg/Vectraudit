@@ -118,6 +118,38 @@ def judge_corrected_rows(result: Mapping[str, Any]) -> list[list[str]]:
 
 JUDGE_HEADER = ["Judge", "Judge only (biased)", "People only", "Corrected (95%)", "Reviewed"]
 
+
+def component_rows(result: Mapping[str, Any]) -> list[list[str]]:
+    """Rows (component, baseline, candidate): where questions first lost their evidence."""
+    block = result.get("components") or {}
+
+    def cell(side: str, name: str) -> str:
+        row = (block.get(side) or {}).get(name)
+        if not row or row["rate"] is None:
+            return "not observed"
+        return (
+            f"{row['rate'] * 100:.1f}% ({row['ci_low'] * 100:.1f} to {row['ci_high'] * 100:.1f}), "
+            f"{row['questions']} questions"
+        )
+
+    rows = [
+        [name, cell("baseline", name), cell("candidate", name)]
+        for name in block.get("components") or []
+    ]
+    if rows:
+        missing = block["not_observed"]
+        rows.append(["not observed", str(missing["baseline"]), str(missing["candidate"])])
+    return rows
+
+
+COMPONENT_HEADER = ["Component", "Baseline: lost first here (95%)", "Candidate"]
+COMPONENT_NOTE = (
+    "Information only: the share of observed question families whose required evidence was "
+    "first lost at each component, from the stages, context and answer judgments each run "
+    "recorded. A document no recorded stage returned counts at retrieve. Questions a run "
+    "cannot place are not observed, never assigned."
+)
+
 PAIRED_NOTE = (
     "Latency recorded interleaved (paired execution): each question ran on both sides back to "
     "back, alternating which went first, so drift during the run affected both alike."
@@ -251,6 +283,8 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         out += [_md_table(JUDGE_HEADER, judge_rows), "", JUDGE_NOTE, ""]
     elif (result.get("judge_corrected") or {}).get("note"):
         out += [str(result["judge_corrected"]["note"]), ""]
+    if components := component_rows(result):
+        out += [_md_table(COMPONENT_HEADER, components), "", COMPONENT_NOTE, ""]
     latency = _latency_rows(result["latency"])
     if latency:
         out += [_md_table(["Latency", "Baseline", "Candidate", "Change"], latency), ""]
@@ -527,6 +561,10 @@ def render_html(result: Mapping[str, Any]) -> str:
         parts.append(f'<p class="muted">{html.escape(JUDGE_NOTE)}</p>')
     elif (result.get("judge_corrected") or {}).get("note"):
         parts.append(f'<p class="muted">{html.escape(str(result["judge_corrected"]["note"]))}</p>')
+    if components := component_rows(result):
+        parts.append("<h2>Where questions first lost their evidence</h2>")
+        parts.append(_html_table(COMPONENT_HEADER, components))
+        parts.append(f'<p class="muted">{html.escape(COMPONENT_NOTE)}</p>')
     latency = result.get("latency")
     if latency:
         note = "" if latency["compared"] else " (not compared; see warnings)"

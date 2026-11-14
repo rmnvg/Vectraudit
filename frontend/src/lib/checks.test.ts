@@ -15,6 +15,7 @@ import selectivity from './fixtures/selectivity_sweep.json'
 import capacity from './fixtures/capacity.json'
 import labelAudit from './fixtures/label_audit.json'
 import embeddingDrift from './fixtures/embedding_drift.json'
+import componentBoard from './fixtures/component_scoreboard.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -223,4 +224,13 @@ it('shows a calm comparison as no drift', () => {
   const s = summary({ ...embeddingDrift, status: 'no_drift', result: { ...embeddingDrift.result, drift: false } })
   expect(s.verdict).toBe('pass')
   expect(s.headline.startsWith('No drift: ')).toBe(true)
+})
+
+it('summarises a component scoreboard as information, worst component first', () => {
+  const s = summary(componentBoard)
+  expect(s.title).toBe('Component scoreboard')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toBe('8 observed questions in 7 families; 7 lost their required evidence, most at rerank (71.4%). Information only.')
+  expect(s.items).toContain('Cohort multi_hop (meant to exercise retrieve, rerank): 1 of 2 observed questions lost their evidence there')
+  expect(s.notes[0]).toBe('Not observed (never assigned): 2; not applicable: 1 unlabelled, 1 no-answer; errored: 0.')
 })

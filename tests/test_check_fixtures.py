@@ -181,6 +181,13 @@ def embedding_drift(tmp_path: Path) -> dict[str, Any]:
     return benchmark_drift(ds, production, hashed, model="hash", source="traces.jsonl")
 
 
+def component_scoreboard(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_components import broken_run
+    from vectraudit.evaluation.components import component_scoreboard as board
+
+    return board(broken_run({"multi_hop": ["retrieve", "rerank"]}))
+
+
 @pytest.mark.parametrize(
     "build",
     [
@@ -198,6 +205,7 @@ def embedding_drift(tmp_path: Path) -> dict[str, Any]:
         capacity,
         label_audit,
         embedding_drift,
+        component_scoreboard,
     ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):
