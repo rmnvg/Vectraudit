@@ -432,6 +432,14 @@ def production_questions(
     traces: str | Path, settings: Any, context_fields: Sequence[str] = ()
 ) -> tuple[list[tuple[str, dict[str, Any]]], int]:
     """``(question text, context)`` per trace, and how many traces had no readable question."""
+    rows, unreadable = production_question_rows(traces, settings, context_fields)
+    return [(text, context) for _, text, context in rows], unreadable
+
+
+def production_question_rows(
+    traces: str | Path, settings: Any, context_fields: Sequence[str] = ()
+) -> tuple[list[tuple[str, str, dict[str, Any]]], int]:
+    """``(trace ID, question text, context)`` per trace, and traces without a readable question."""
     from vectraudit.pipelines.intake import _context as trace_context
     from vectraudit.pipelines.traces import read_spans, view_trace
 
@@ -440,12 +448,12 @@ def production_questions(
     for span in spans:
         grouped[span.trace_id].append(span)
     out, unreadable = [], 0
-    for group in grouped.values():
+    for trace_id, group in grouped.items():
         text = next(iter(view_trace(group, settings).query_texts), None)
         if not text:
             unreadable += 1
             continue
-        out.append((text, trace_context(group, context_fields)))
+        out.append((trace_id, text, trace_context(group, context_fields)))
     return out, unreadable
 
 

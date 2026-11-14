@@ -1,0 +1,43 @@
+{
+  "format": "vectraudit.embedding_drift",
+  "format_version": 1,
+  "kind": "questions",
+  "status": "drift",
+  "evidence": "hypothesis",
+  "reference": {
+    "label": "benchmark",
+    "source": "exploratory benchmark questions",
+    "dataset_sha256": "4ebdc50ece63146faefccf823682958e34512fbcb200582934c3cf1272576f84",
+    "count": 60,
+    "embedded_here": 60,
+    "model": "hash"
+  },
+  "current": {
+    "label": "production",
+    "source": "traces.jsonl",
+    "count": 60,
+    "embedded_here": 60,
+    "model": "hash"
+  },
+  "result": {
+    "method": "model",
+    "evidently_default": true,
+    "statistic": "domain classifier ROC AUC",
+    "value": 0.8821,
+    "threshold": 0.612,
+    "p_value": null,
+    "drift": true,
+    "rule": "drift when the ROC AUC is above the 95% quantile of 100 AUCs of random scores (0.612)",
+    "held_out": 60,
+    "n_reference": 60,
+    "n_current": 60,
+    "dimensions": 32,
+    "pca_components": null,
+    "sampled": null,
+    "seed": 0,
+    "warnings": []
+  },
+  "where": null,
+  "method_source": "Evidently 0.7.22 (commit 34771fe41c08); see docs/production-intake.md",
+  "note": "Drift says the two sets of vectors differ, not that retrieval got worse. Compare the release check on the new traffic before acting on it. Local only."
+}

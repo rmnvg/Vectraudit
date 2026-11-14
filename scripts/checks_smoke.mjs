@@ -15,6 +15,7 @@ const reports = {
   'selectivity_sweep.json': /Recall by filter pass rate/,
   'capacity.json': /Capacity curve/,
   'label_audit.json': /Label audit/,
+  'embedding_drift.json': /Embedding drift/,
 }
 const dir = await mkdtemp(join(tmpdir(), 'vectraudit-checks-'))
 for (const name of Object.keys(reports)) await copyFile(join(fixtures, name), join(dir, name))

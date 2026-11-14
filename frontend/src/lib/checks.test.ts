@@ -14,6 +14,7 @@ import redteam from './fixtures/promptfoo_redteam.json'
 import selectivity from './fixtures/selectivity_sweep.json'
 import capacity from './fixtures/capacity.json'
 import labelAudit from './fixtures/label_audit.json'
+import embeddingDrift from './fixtures/embedding_drift.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -202,4 +203,18 @@ it('does not read an audit without suspects as proof the labels are right', () =
   const s = summary({ ...labelAudit, suspects: [], summary: { ...labelAudit.summary, suspects: 0, questions: 0 } })
   expect(s.verdict).toBe('pass')
   expect(s.notes.some(n => n.includes('does not show the labels are right'))).toBe(true)
+})
+
+it('reads embedding drift as a hypothesis to look into, with the rule that decided it', () => {
+  const s = summary(embeddingDrift)
+  expect(s.title).toBe('Embedding drift')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toMatch(/^Drift: 60 production questions against 60 benchmark questions; domain classifier ROC AUC [0-9.]+, drift when the ROC AUC is above the 95% quantile/)
+  expect(s.notes.some(n => n.includes('not that retrieval got worse'))).toBe(true)
+})
+
+it('shows a calm comparison as no drift', () => {
+  const s = summary({ ...embeddingDrift, status: 'no_drift', result: { ...embeddingDrift.result, drift: false } })
+  expect(s.verdict).toBe('pass')
+  expect(s.headline.startsWith('No drift: ')).toBe(true)
 })

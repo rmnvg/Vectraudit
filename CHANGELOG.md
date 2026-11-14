@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Embedding drift: `vectraudit workbench drift --embeddings` compares the benchmark's questions
+  with production questions in embedding space, and `workbench embedding-drift` compares two
+  windows of production questions or two corpus exports. The default is Evidently's classifier
+  test; `mmd`, `ratio` and `distance` are available. The `vectraudit.embedding_drift` report
+  opens in the Checks tab. See `docs/production-intake.md`.
 - `vectraudit workbench label-audit` lists relevance labels that are likely wrong or missing,
   from how candidate runs rank labelled documents (confident learning, after cleanlab),
   near-duplicate documents labelled differently and unresolved annotator splits. Suspects are

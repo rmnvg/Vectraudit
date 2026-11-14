@@ -1958,35 +1958,73 @@ def drift_command(
         ),
     ] = "auto",
     json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+    embeddings: Annotated[
+        Path | None,
+        typer.Option(
+            help="Also compare the questions' embeddings and write the embedding drift report "
+            "here (embeds locally; needs vectraudit[text])."
+        ),
+    ] = None,
+    embedder: Annotated[
+        str | None,
+        typer.Option(help="sentence-transformers model (default: the benchmark's own)."),
+    ] = None,
+    embedding_method: Annotated[
+        str,
+        typer.Option(help="model (Evidently's default), ratio, distance or mmd."),
+    ] = "model",
     fail_on_drift: Annotated[
-        bool, typer.Option("--fail-on-drift", help="Exit 3 when any descriptor drifted.")
+        bool,
+        typer.Option(
+            "--fail-on-drift", help="Exit 3 when any descriptor, or the embeddings, drifted."
+        ),
     ] = False,
 ) -> None:
     """Is the benchmark still representative of production questions?
 
     Compares production questions from traces with the benchmark's on word count, script,
     digits, question form, unseen terms and declared context fields, with the tests
-    Evidently selects by default (--method psi for the population stability index).
-    Local only.
+    Evidently selects by default (--method psi for the population stability index). With
+    --embeddings, also compares the questions' embeddings (Evidently's embedding drift
+    methods). Local only.
     """
-    from vectraudit.pipelines.drift import production_questions, query_drift, render
+    from vectraudit.pipelines.drift import production_question_rows, query_drift, render
     from vectraudit.pipelines.traces import Settings
 
     fields = context_field or []
+    embedded = None
     try:
         bench = load_dataset(dataset)
-        current, unreadable = production_questions(
+        rows, unreadable = production_question_rows(
             traces, Settings(stage_kinds=_stage_kinds(stage_kind)), fields
         )
         report = query_drift(
             [(q.text or "", dict(q.context)) for q in bench.queries],
-            current,
+            [(text, context) for _, text, context in rows],
             context_fields=fields,
             top=top,
             method=method,
         )
         report["unreadable_traces"] = unreadable
-    except (OSError, ValueError) as exc:
+        if embeddings is not None:
+            from vectraudit.core.embed import sentence_transformer_embedder
+            from vectraudit.pipelines.embedding_drift import (
+                benchmark_drift,
+                question_model,
+                wants_normalized,
+            )
+
+            model = question_model(bench, embedder)
+            embed = sentence_transformer_embedder(model, normalize=wants_normalized(bench))
+            embedded = benchmark_drift(
+                bench,
+                [(trace_id, text) for trace_id, text, _ in rows],
+                embed,
+                model=model,
+                method=embedding_method,
+                source=traces.name,
+            )
+    except (OSError, ValueError, ImportError) as exc:
         typer.echo(f"Drift error: {exc}", err=True)
         raise typer.Exit(2) from exc
     typer.echo(render(report))
@@ -1994,6 +2032,96 @@ def drift_command(
         typer.echo(f"{unreadable} traces had no readable question and were not counted.")
     if json_out is not None:
         _write(json_out, report)
+    if embedded is not None and embeddings is not None:
+        from vectraudit.pipelines.embedding_drift import render as render_embeddings
+
+        typer.echo(render_embeddings(embedded))
+        _write(embeddings, embedded)
+    drifted = report["status"] == "drift" or (embedded or {}).get("status") == "drift"
+    if fail_on_drift and drifted:
+        raise typer.Exit(3)
+
+
+@workbench_app.command("embedding-drift")
+def embedding_drift_command(
+    earlier: Annotated[
+        Path, typer.Argument(help="Earlier traces, or with --corpus an earlier corpus export.")
+    ],
+    later: Annotated[
+        Path, typer.Argument(help="Later traces, or with --corpus a later corpus export.")
+    ],
+    out: Annotated[Path, typer.Option(help="Where to write the embedding drift report.")],
+    corpus: Annotated[
+        bool,
+        typer.Option("--corpus", help="Compare two corpus JSONL exports instead of traces."),
+    ] = False,
+    embedder: Annotated[
+        str | None,
+        typer.Option(help="sentence-transformers model for texts without vectors."),
+    ] = None,
+    method: Annotated[
+        str, typer.Option(help="model (Evidently's default), ratio, distance or mmd.")
+    ] = "model",
+    stage_kind: Annotated[
+        list[str] | None, typer.Option(help="SPAN=KIND, as in import-traces.")
+    ] = None,
+    fail_on_drift: Annotated[
+        bool, typer.Option("--fail-on-drift", help="Exit 3 when the embeddings drifted.")
+    ] = False,
+) -> None:
+    """Did production questions, or the corpus, move between two windows?
+
+    Compares the embeddings of two windows of production questions (embedded locally with
+    --embedder) or, with --corpus, of two corpus exports (their vectors, or embedded). Uses
+    Evidently's embedding drift methods; the default is its classifier test. Local only.
+    """
+    from vectraudit.pipelines.embedding_drift import (
+        EmbeddingDriftError,
+        corpus_drift,
+        render,
+        window_drift,
+    )
+
+    try:
+        embed = None
+        if embedder:
+            from vectraudit.core.embed import sentence_transformer_embedder
+
+            embed = sentence_transformer_embedder(embedder, normalize=False)
+        if corpus:
+            from vectraudit.pipelines.atlas_build import read_corpus
+
+            old = read_corpus(earlier, embed)
+            new = read_corpus(later, embed)
+            report = corpus_drift(
+                (old[0], old[1]),
+                (new[0], new[1]),
+                method=method,
+                sources=(earlier.name, later.name),
+            )
+        else:
+            from vectraudit.pipelines.drift import production_question_rows
+            from vectraudit.pipelines.traces import Settings
+
+            if embed is None or embedder is None:
+                raise EmbeddingDriftError(
+                    "Traces hold question text, not vectors: name the model with --embedder."
+                )
+            settings = Settings(stage_kinds=_stage_kinds(stage_kind))
+            windows = [production_question_rows(p, settings)[0] for p in (earlier, later)]
+            report = window_drift(
+                [(t, q) for t, q, _ in windows[0]],
+                [(t, q) for t, q, _ in windows[1]],
+                embed,
+                model=embedder,
+                method=method,
+                sources=(earlier.name, later.name),
+            )
+        _write(out, report)
+    except (OSError, ValueError, ImportError) as exc:
+        typer.echo(f"Embedding drift error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(render(report))
     if fail_on_drift and report["status"] == "drift":
         raise typer.Exit(3)
 
