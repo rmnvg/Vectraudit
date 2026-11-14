@@ -536,6 +536,34 @@ timing protocol, metric contract, provenance (commit SHA, CI run URL, runner env
 `--tag key=value` labels such as embedding model or chunking version) and per-query ranked
 ids, latency, metrics and errors.
 
+### Large runs: summaries and tables
+
+A run with many questions, repeats and stage evidence can reach hundreds of MiB. Two commands
+read a run one question at a time, validating each exactly as `check` does and keeping only
+the top-level fields, so its size does not matter:
+
+```bash
+vectraudit runs summary nightly.run.json --json summary.json
+vectraudit runs table baseline.run.json candidate.run.json --out runs.parquet
+```
+
+- **`runs summary`** validates every question and prints the status, question count, size,
+  dataset version, nDCG and p95 latency; it exits 1 if a run is invalid. On a synthetic 200 MiB
+  run it took about 2 seconds with a peak of 13 MiB of Python allocations (the documented bound
+  is 32 MiB); loading the same file whole took 1.3 GiB.
+- **`runs table`** writes one row per question and repeat to CSV, or Parquet with
+  `vectraudit[parquet]`, for analysis in your own notebook: the run's ID, label, status and
+  dataset version on every row; the question's ID, family, tags (a JSON list), error code and
+  retries; per repeat, each metric (`metric_ndcg`, ...), ANN recall, latency, how many results
+  came back, forbidden results and the no-answer check; per question, sufficiency, the answer
+  verdict and diagnosis, cost, and `component` (where it first lost its evidence; repeat 1 only).
+  IDs, numbers and flags only: no question, document or answer text. The layout follows
+  Inspect's log dataframes.
+- **The workbench** lists a run above its 64 MiB limit for opening files as "summary only";
+  choosing it shows the validated summary in the Checks tab instead of loading the questions.
+
+`check` itself still loads both runs whole, because it compares them question by question.
+
 
 Policy `min_queries` counts independent query families, both for the suite and for the paired
 measurements of each judged quality metric. Forty permission scenarios from one question count

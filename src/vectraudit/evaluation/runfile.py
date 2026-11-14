@@ -2,15 +2,23 @@
 
 Run files travel between CI jobs and may be edited by hand, so loading validates the
 structure the comparison relies on and rejects anything else with a clear message.
+
+:func:`read_run_header` reads a run of any size in bounded memory: it decodes the file in
+chunks, validates each question as it passes and keeps only the top-level fields, so a run too
+large to load can still be listed, summarised and validated (the idea of Inspect's
+incrementally read logs; standard library only).
 """
 
 from __future__ import annotations
 
+import codecs
 import json
 import math
+import re
 import statistics
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from vectraudit.evaluation.metrics import RANK_METRICS, SEMANTIC_METRICS, ann_recall
 from vectraudit.evaluation.runner import RUN_FORMAT, RUN_FORMAT_VERSION
@@ -52,61 +60,267 @@ def _reject_constant(token: str) -> float:
 def check_run(data: Any) -> dict[str, Any]:
     """Validate the parts of a run record that comparisons read."""
     _expect(isinstance(data, dict), "a run must be a JSON object")
-    _expect(data.get("format") == RUN_FORMAT, "not a vectraudit run file")
-    version = data.get("format_version")
-    _expect(
-        version == RUN_FORMAT_VERSION,
-        f"run format version {version!r} is not supported (expected {RUN_FORMAT_VERSION})",
-    )
-    _expect(data.get("status") in RUN_STATUSES, f"status must be one of {sorted(RUN_STATUSES)}")
-    _expect(isinstance(data.get("run_id"), str), "run_id must be a string")
-    dataset = _dict(data, "dataset")
-    _expect(isinstance(dataset.get("sha256"), str), "dataset.sha256 must be a string")
-    _expect(_count(dataset.get("n_queries")), "dataset.n_queries must be a count")
-    search = _dict(data, "search")
-    _expect(_count(search.get("k")) and search["k"] >= 1, "search.k must be >= 1")
-    _expect(isinstance(search.get("params"), dict), "search.params must be an object")
-    contract = _dict(data, "metric_contract")
-    _expect(_count(contract.get("version")), "metric_contract.version must be an integer")
-    timing = data.get("timing")
-    _expect(timing is None or isinstance(timing, dict), "timing must be an object or null")
-    repeats: Any = (timing or {}).get("repeats")
-    if contract["version"] == 2:
-        _expect(
-            contract.get("repeat_aggregation") == "mean_per_query", "unknown repeat aggregation"
-        )
-        _expect(_count(repeats) and repeats >= 1, "repeat-quality contract requires timing.repeats")
-    for key in ("backend", "capabilities"):
-        _expect(data.get(key) is None or isinstance(data[key], dict), f"{key} must be an object")
-    _expect(data["status"] == "failed" or isinstance(data.get("backend"), dict), "missing backend")
+    checks = _Checks(data)
     queries = data.get("queries")
     _expect(isinstance(queries, list), "queries must be a list")
-    # A run imported from another tool (external:trec) has no latency: it is null, not measured.
-    external = str((timing or {}).get("source") or "").startswith("external:")
-    seen: set[str] = set()
-    for n, q in enumerate(queries):
-        try:
-            _check_query(q, search["k"], latency_measured=not external)
-            if contract["version"] == 2 and q.get("error") is None:
-                _check_repeat_quality(q, repeats)
-        except RunFileError as e:
-            raise RunFileError(f"queries[{n}]: {e}") from e
-        _expect(q["query_id"] not in seen, f"duplicate query_id {q['query_id']!r}")
-        seen.add(q["query_id"])
-    _expect(len(queries) <= dataset["n_queries"], "more queries than the dataset has")
-    if data["status"] == "complete":
-        # "Complete" is what lets a run be judged at all, so it must mean what it says.
-        _expect(
-            not any(q.get("error") for q in queries),
-            "a complete run cannot contain failed queries; mark it partial",
-        )
-        _expect(
-            len(queries) == dataset["n_queries"],
-            f"a complete run must measure every dataset query ({len(queries)} of "
-            f"{dataset['n_queries']})",
-        )
+    for q in queries:
+        checks.query(q)
+    checks.finish()
     record: dict[str, Any] = data
     return record
+
+
+class _Checks:
+    """A run's validation, split so its questions can be checked one at a time as they stream."""
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        _expect(data.get("format") == RUN_FORMAT, "not a vectraudit run file")
+        version = data.get("format_version")
+        _expect(
+            version == RUN_FORMAT_VERSION,
+            f"run format version {version!r} is not supported (expected {RUN_FORMAT_VERSION})",
+        )
+        _expect(data.get("status") in RUN_STATUSES, f"status must be one of {sorted(RUN_STATUSES)}")
+        _expect(isinstance(data.get("run_id"), str), "run_id must be a string")
+        dataset = _dict(data, "dataset")
+        _expect(isinstance(dataset.get("sha256"), str), "dataset.sha256 must be a string")
+        _expect(_count(dataset.get("n_queries")), "dataset.n_queries must be a count")
+        search = _dict(data, "search")
+        _expect(_count(search.get("k")) and search["k"] >= 1, "search.k must be >= 1")
+        _expect(isinstance(search.get("params"), dict), "search.params must be an object")
+        contract = _dict(data, "metric_contract")
+        _expect(_count(contract.get("version")), "metric_contract.version must be an integer")
+        timing = data.get("timing")
+        _expect(timing is None or isinstance(timing, dict), "timing must be an object or null")
+        repeats: Any = (timing or {}).get("repeats")
+        if contract["version"] == 2:
+            _expect(
+                contract.get("repeat_aggregation") == "mean_per_query",
+                "unknown repeat aggregation",
+            )
+            _expect(
+                _count(repeats) and repeats >= 1, "repeat-quality contract requires timing.repeats"
+            )
+        for key in ("backend", "capabilities"):
+            _expect(
+                data.get(key) is None or isinstance(data[key], dict), f"{key} must be an object"
+            )
+        _expect(
+            data["status"] == "failed" or isinstance(data.get("backend"), dict), "missing backend"
+        )
+        self.status = data["status"]
+        self.k: int = search["k"]
+        self.repeats: Any = repeats
+        self.contract: int = contract["version"]
+        self.n_dataset: int = dataset["n_queries"]
+        # A run imported from another tool (external:trec) has no latency: null, not measured.
+        self.external = str((timing or {}).get("source") or "").startswith("external:")
+        self.seen: set[str] = set()
+        self.count = 0
+        self.failed = False
+
+    def query(self, q: Any) -> None:
+        try:
+            _check_query(q, self.k, latency_measured=not self.external)
+            if self.contract == 2 and q.get("error") is None:
+                _check_repeat_quality(q, self.repeats)
+        except RunFileError as e:
+            raise RunFileError(f"queries[{self.count}]: {e}") from e
+        _expect(q["query_id"] not in self.seen, f"duplicate query_id {q['query_id']!r}")
+        self.seen.add(q["query_id"])
+        self.count += 1
+        self.failed = self.failed or bool(q.get("error"))
+
+    def finish(self) -> None:
+        _expect(self.count <= self.n_dataset, "more queries than the dataset has")
+        if self.status == "complete":
+            # "Complete" is what lets a run be judged at all, so it must mean what it says.
+            _expect(
+                not self.failed, "a complete run cannot contain failed queries; mark it partial"
+            )
+            _expect(
+                self.count == self.n_dataset,
+                f"a complete run must measure every dataset query ({self.count} of "
+                f"{self.n_dataset})",
+            )
+
+
+# --- reading a run of any size ---------------------------------------------------------------
+
+CHUNK_BYTES = 1 << 20
+_WS = re.compile(r"[ \t\n\r]*")
+_DECODER = json.JSONDecoder(parse_constant=lambda token: _reject_constant(token))
+# Validating a question needs these; a file that puts its questions first is read whole instead.
+_BEFORE_QUERIES = (
+    *("format", "format_version", "status", "run_id"),
+    *("dataset", "search", "metric_contract", "backend"),
+)
+
+
+class _Reader:
+    """JSON values from a file, decoded one at a time over a bounded buffer."""
+
+    def __init__(self, stream: IO[bytes]) -> None:
+        self.stream = stream
+        self.decoder = codecs.getincrementaldecoder("utf-8")()
+        self.buf = ""
+        self.pos = 0
+        self.eof = False
+
+    def more(self) -> bool:
+        """Read the next chunk, dropping what was consumed; ``False`` at the end of the file."""
+        if self.eof:
+            return False
+        chunk = self.stream.read(CHUNK_BYTES)
+        try:
+            text = self.decoder.decode(chunk, final=not chunk)
+        except UnicodeDecodeError as e:
+            raise RunFileError(f"not valid UTF-8: {e.reason}") from e
+        self.buf = self.buf[self.pos :] + text
+        self.pos = 0
+        self.eof = not chunk
+        return bool(chunk)
+
+    def peek(self) -> str:
+        """The next non-blank character (not consumed), or "" at the end."""
+        while True:
+            match = _WS.match(self.buf, self.pos)
+            self.pos = match.end() if match else self.pos
+            if self.pos < len(self.buf):
+                return self.buf[self.pos]
+            if not self.more():
+                return ""
+
+    def take(self, char: str) -> None:
+        _expect(self.peek() == char, f"not valid JSON: expected {char!r}")
+        self.pos += 1
+
+    def value(self) -> Any:
+        self.peek()
+        while True:
+            try:
+                obj, end = _DECODER.raw_decode(self.buf, self.pos)
+            except json.JSONDecodeError as e:
+                if self.more():
+                    continue
+                raise RunFileError(f"not valid JSON: {e.msg}") from e
+            except ValueError as e:
+                raise RunFileError(f"not valid JSON: {e}") from e
+            if end == len(self.buf) and self.more():
+                continue  # a number may go on in the next chunk
+            self.pos = end
+            return obj
+
+
+def read_run_header(
+    path: str | Path,
+    *,
+    on_query: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """A run's top-level fields, validated with all of its questions, without keeping them.
+
+    Each question is decoded, validated exactly as :func:`load_run` validates it, passed to
+    ``on_query(header, question)`` when given (the header holds the fields read so far, which in
+    a file Vectraudit wrote is everything but the closing summary) and dropped. Memory stays
+    near one chunk plus the largest question. ``queries_omitted`` counts the questions.
+    """
+    p = Path(path)
+    try:
+        with p.open("rb") as stream:
+            header = _stream(_Reader(stream), on_query)
+    except FileNotFoundError as e:
+        raise RunFileError(f"Run file not found: {p}") from e
+    except RunFileError as e:
+        raise RunFileError(f"{p}: {e}") from e
+    if header is None:  # questions before the header: validate the whole file instead
+        run = load_run(p)
+        for q in run["queries"]:
+            if on_query is not None:
+                on_query(run, q)
+        header = {k: v for k, v in run.items() if k != "queries"}
+        header["queries_omitted"] = len(run["queries"])
+    return header
+
+
+HEADER_FORMAT = "vectraudit.run_header"
+
+
+def run_header_report(path: str | Path) -> dict[str, Any]:
+    """A ``vectraudit.run_header`` report: a validated run's top-level fields, without questions.
+
+    What the workbench shows for a run too large to open, and what ``vectraudit runs summary``
+    writes. The run is validated in full; only its questions are left out (and counted).
+    """
+    p = Path(path)
+    header = read_run_header(p)
+    questions = header.pop("queries_omitted")
+    return {
+        "format": HEADER_FORMAT,
+        "format_version": 1,
+        "file": p.name,
+        "bytes": p.stat().st_size,
+        "questions": questions,
+        "run": header,
+    }
+
+
+def _stream(
+    reader: _Reader, on_query: Callable[[dict[str, Any], dict[str, Any]], None] | None
+) -> dict[str, Any] | None:
+    _expect(reader.peek() == "{", "a run must be a JSON object")
+    reader.pos += 1
+    header: dict[str, Any] = {}
+    checks: _Checks | None = None
+    if reader.peek() == "}":
+        reader.pos += 1
+    else:
+        while True:
+            key = reader.value()
+            _expect(isinstance(key, str), "not valid JSON: object keys must be strings")
+            reader.take(":")
+            if key == "queries" and reader.peek() == "[":
+                _expect(checks is None, "queries appears twice")
+                if any(k not in header for k in _BEFORE_QUERIES):
+                    return None
+                checks = _Checks(header)
+                _array(reader, checks, header, on_query)
+            else:
+                header[key] = reader.value()
+            separator = reader.peek()
+            reader.pos += 1
+            if separator == "}":
+                break
+            _expect(separator == ",", "not valid JSON: expected ',' or '}'")
+    _expect(reader.peek() == "", "not valid JSON: data after the run object")
+    if checks is None:
+        _Checks(header)
+        _expect(False, "queries must be a list")
+    assert checks is not None
+    checks.finish()
+    header["queries_omitted"] = checks.count
+    return header
+
+
+def _array(
+    reader: _Reader,
+    checks: _Checks,
+    header: dict[str, Any],
+    on_query: Callable[[dict[str, Any], dict[str, Any]], None] | None,
+) -> None:
+    reader.pos += 1
+    if reader.peek() == "]":
+        reader.pos += 1
+        return
+    while True:
+        q = reader.value()
+        checks.query(q)
+        if on_query is not None:
+            on_query(header, q)
+        separator = reader.peek()
+        reader.pos += 1
+        if separator == "]":
+            return
+        _expect(separator == ",", "not valid JSON: expected ',' or ']'")
 
 
 def _check_repeat_quality(q: dict[str, Any], repeats: int) -> None:

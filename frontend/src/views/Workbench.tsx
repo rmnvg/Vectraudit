@@ -26,13 +26,18 @@ export default function Workbench() {
   const [atlases, setAtlases] = useState<AtlasSidecar[]>([])
   const [checks, setChecks] = useState<{ report: CheckReport; name: string }[]>([])
   const [files, setFiles] = useState<string[]>([])
+  const [large, setLarge] = useState<Record<string, number>>({})
   const [error, setError] = useState('')
   const [focus, setFocus] = useState<{ run: string; query: string; doc: string } | null>(null)
   const [active, setActive] = useState(0)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     fetch('api/workbench').then(r => r.ok ? r.json() : null).then(data => {
-      if (data?.artifacts) setFiles(data.artifacts.map((f: { name: string }) => f.name))
+      if (data?.artifacts) {
+        const entries = data.artifacts as { name: string; bytes: number; too_large?: boolean }[]
+        setFiles(entries.map(f => f.name))
+        setLarge(Object.fromEntries(entries.filter(f => f.too_large).map(f => [f.name, f.bytes])))
+      }
     }).catch(() => { /* File import also works in the index UI. */ })
   }, [])
   const accept = (raw: unknown, name = '') => {
@@ -89,7 +94,7 @@ export default function Workbench() {
     </div>
     <nav aria-label="Workbench" className="flex gap-2 overflow-x-auto border-b border-line">{tabs.map(t => <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm ${tab === t ? 'border-teal-500 font-semibold text-teal-600' : 'border-transparent text-muted hover:text-ink'}`}>{t}</button>)}</nav>
     {error && <div role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-600">{error}</div>}
-    {files.length > 0 && <label className="flex flex-col items-start gap-2 text-sm text-muted sm:flex-row sm:items-center">Open local artifact<select aria-label="Open local artifact" className={`${button} w-full min-w-0 max-w-md bg-surface`} disabled={busy} value="" onChange={e => void load(e.target.value)}><option value="">{busy ? 'Loading…' : 'Choose a recorded result'}</option>{files.map(name => <option key={name}>{name}</option>)}</select></label>}
+    {files.length > 0 && <label className="flex flex-col items-start gap-2 text-sm text-muted sm:flex-row sm:items-center">Open local artifact<select aria-label="Open local artifact" className={`${button} w-full min-w-0 max-w-md bg-surface`} disabled={busy} value="" onChange={e => void load(e.target.value)}><option value="">{busy ? 'Loading…' : 'Choose a recorded result'}</option>{files.map(name => <option key={name} value={name}>{name in large ? `${name} (summary only: ${(large[name] / 2 ** 20).toFixed(0)} MiB)` : name}</option>)}</select></label>}
     <div hidden={tab !== 'Guided workflow'}><GuidedWorkflow onInspect={(run, at) => { accept(run); setFocus({ run: run.run_id, ...at }) }} /></div>
     {tab === 'Pipeline runs' && (selected ? <>
       <div className="flex flex-wrap gap-2">{runs.map((run, i) => <button className={`${button} ${active === i ? 'border-teal-500 text-teal-600' : ''}`} key={`${run.run_id}-${i}`} onClick={() => setActive(i)}>{run.label || run.run_id.slice(0, 12)}</button>)}</div>

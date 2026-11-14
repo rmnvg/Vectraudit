@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Large runs: `vectraudit runs summary` validates a run of any size one question at a time
+  and shows its summary in a few MiB of memory, and `vectraudit runs table` writes runs as one
+  row per question and repeat (CSV, or Parquet with `vectraudit[parquet]`; no text) for your
+  own notebooks. The workbench lists runs above 64 MiB as "summary only" instead of hiding
+  them. See `docs/release-checks.md`.
 - Component scoreboard: for each pipeline run, where along the pipeline (retrieval, filter,
   fusion, rerank, cut-off, context packing, answer) each question first lost its required
   evidence, with family-weighted rates and intervals; questions the run cannot place are not
