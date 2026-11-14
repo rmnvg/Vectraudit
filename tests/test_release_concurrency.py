@@ -154,7 +154,10 @@ def test_run_size_limit_applies_to_listing_and_loading(tmp_path, monkeypatch):
         run = record(client, draft, label="Baseline")
         monkeypatch.setattr("vectraudit.pipelines.guided.MAX_RUN_BYTES", 1000)
         assert client.get(f"/api/guided/runs/{run['run_id']}").status_code == 413
-        assert client.get("/api/guided/runs").json() == []
+        # Listed from its validated header, marked as too large to open.
+        (listed,) = client.get("/api/guided/runs").json()
+        assert (listed["run_id"], listed["too_large"]) == (run["run_id"], True)
+        assert "queries" not in listed
     finally:
         client.__exit__(None, None, None)
 

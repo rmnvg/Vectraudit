@@ -17,6 +17,7 @@ export const CHECK_FORMATS = [
   'vectraudit.label_audit',
   'vectraudit.embedding_drift',
   'vectraudit.component_scoreboard',
+  'vectraudit.run_header',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -53,6 +54,7 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.label_audit': return arrays('suspects') && object(value.signals) && object(value.summary)
     case 'vectraudit.embedding_drift': return object(value.result) && object(value.reference) && object(value.current) && typeof value.status === 'string'
     case 'vectraudit.component_scoreboard': return arrays('components', 'declared', 'cohorts') && object(value.observed) && object(value.kept)
+    case 'vectraudit.run_header': return object(value.run) && typeof value.questions === 'number' && typeof value.file === 'string'
     case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
@@ -399,6 +401,29 @@ function componentScoreboard(r: Row): CheckSummary {
   }
 }
 
+function runHeader(r: Row): CheckSummary {
+  const run = object(r.run) ? r.run : {}
+  const summary = object(run.summary) ? run.summary : {}
+  const metrics = object(summary.metrics) ? summary.metrics : {}
+  const latency = object(summary.latency_ms) ? summary.latency_ms : {}
+  const dataset = object(run.dataset) ? run.dataset : {}
+  const status = text(run.status)
+  const mib = (count(r.bytes) / 2 ** 20).toFixed(1)
+  return {
+    title: `Run summary: ${text(run.label) || text(r.file)}`,
+    verdict: status === 'complete' ? 'pass' : status === 'failed' ? 'fail' : 'attention',
+    headline: `${text(r.file)}: ${status}, ${plural(count(r.questions), 'question')} (${mib} MiB), every one validated without loading the run.${typeof latency.p95 === 'number' ? ` p95 latency ${latency.p95.toFixed(1)} ms.` : ''}`,
+    items: [
+      ...Object.entries(metrics).filter(([, v]) => typeof v === 'number').map(([name, v]) => `${words(name)}: ${(v as number).toFixed(3)}`),
+      `Dataset ${text(dataset.sha256).slice(0, 12)}, k = ${text(object(run.search) ? run.search.k : '')}`,
+    ],
+    notes: [
+      'Too large to open here, so only its summary is shown. Analyse every question in a notebook with `vectraudit runs table`.',
+      status === 'complete' ? '' : 'An incomplete run is never a pass in a release check.',
+    ].filter(Boolean),
+  }
+}
+
 /** The verdict, headline and findings of one check report. */
 export function summarizeCheck(report: CheckReport): CheckSummary {
   switch (report.format) {
@@ -418,5 +443,6 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.label_audit': return labelAudit(report)
     case 'vectraudit.embedding_drift': return embeddingDrift(report)
     case 'vectraudit.component_scoreboard': return componentScoreboard(report)
+    case 'vectraudit.run_header': return runHeader(report)
   }
 }

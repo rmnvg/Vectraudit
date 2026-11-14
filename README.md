@@ -201,6 +201,9 @@ Already have other tooling? Runs and labels move in and out in the TREC formats 
 did not measure) and `dataset export-qrels`. Every quality metric is tested to equal
 trec_eval's, and reports show each metric's ir-measures name (`nDCG@10`, `RR@10`) beside
 Vectraudit's ([details](docs/release-checks.md#moving-runs-and-labels-to-and-from-other-ir-tools-trec)).
+`vectraudit runs table` writes runs as one row per question and repeat (CSV or Parquet, no
+text) for your own notebooks, and `runs summary` validates runs of any size in a few MiB of
+memory ([large runs](docs/release-checks.md#large-runs-summaries-and-tables)).
 No labels yet? The [local labelling assistant](docs/labelling.md) (`vectraudit label`)
 pools candidate documents from your questions and source corpus, then supports blind
 second passes, agreement and reviewer resolution before export. Choosing a setup

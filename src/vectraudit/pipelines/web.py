@@ -89,9 +89,12 @@ def create_workbench(
         for path in sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[
             :200
         ]:
-            if path.is_symlink() or path.stat().st_size > MAX_RUN_BYTES:
+            size = path.stat().st_size
+            large_run = size > MAX_RUN_BYTES and path.name.endswith(".run.json")
+            if path.is_symlink() or (size > MAX_RUN_BYTES and not large_run):
                 continue
-            entries.append({"name": path.name, "bytes": path.stat().st_size})
+            # A run too large to open is still listed: opening it shows its validated summary.
+            entries.append({"name": path.name, "bytes": size, "too_large": large_run})
         return {"local": True, "artifacts": entries}
 
     @app.get("/api/workbench/{name}")
@@ -105,7 +108,14 @@ def create_workbench(
         ):
             raise HTTPException(404, "Artifact not found")
         if path.stat().st_size > MAX_RUN_BYTES:
-            raise HTTPException(413, "Artifact is larger than 64 MiB")
+            if not path.name.endswith(".run.json"):
+                raise HTTPException(413, "Artifact is larger than 64 MiB")
+            from vectraudit.evaluation.runfile import RunFileError, run_header_report
+
+            try:
+                return run_header_report(path)
+            except RunFileError as exc:
+                raise HTTPException(422, "Invalid workbench artifact") from exc
         try:
             result = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(result, dict) or not str(result.get("format", "")).startswith(

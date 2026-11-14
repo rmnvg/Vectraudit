@@ -16,6 +16,7 @@ import capacity from './fixtures/capacity.json'
 import labelAudit from './fixtures/label_audit.json'
 import embeddingDrift from './fixtures/embedding_drift.json'
 import componentBoard from './fixtures/component_scoreboard.json'
+import runHeader from './fixtures/run_header.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -233,4 +234,14 @@ it('summarises a component scoreboard as information, worst component first', ()
   expect(s.headline).toBe('8 observed questions in 7 families; 7 lost their required evidence, most at rerank (71.4%). Information only.')
   expect(s.items).toContain('Cohort multi_hop (meant to exercise retrieve, rerank): 1 of 2 observed questions lost their evidence there')
   expect(s.notes[0]).toBe('Not observed (never assigned): 2; not applicable: 1 unlabelled, 1 no-answer; errored: 0.')
+})
+
+it('summarises a run too large to open from its validated header', () => {
+  const s = summary(runHeader)
+  expect(s.title).toBe('Run summary: nightly')
+  expect(s.verdict).toBe('pass')
+  expect(s.headline).toMatch(/^large\.run\.json: complete, 12 questions \([0-9.]+ MiB\), every one validated without loading the run\./)
+  expect(s.items.some(i => i.startsWith('ndcg: '))).toBe(true)
+  expect(s.notes[0]).toContain('vectraudit runs table')
+  expect(summary({ ...runHeader, run: { ...runHeader.run, status: 'partial' } }).verdict).toBe('attention')
 })

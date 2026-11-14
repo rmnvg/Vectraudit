@@ -8,7 +8,7 @@ export type ClaimFinding = { finding: string; count: number; points_to: string; 
 export type Query = { answer?: Answer; query_id: string; ids: string[] | null; latency_ms: number | null; tags: string[]; metrics: Record<string, number> | null; no_answer_correct?: boolean | null; forbidden_ids?: string[]; error?: unknown; evidence?: Evidence | null; repeat_ids?: string[][] | null; repeat_metrics?: (Record<string, number> | null)[]; repeat_ann_recall?: (number | null)[]; repeat_evidence?: Record<string, Evidence> }
 export type Run = { answers?: unknown; metric_contract?: { version: number; repeat_aggregation?: string }; format: 'vectraudit.run'; run_id: string; created_at: string; status: string; label?: string; queries: Query[]; backend?: { config?: Record<string, unknown> } | null; benchmark_source?: { split: string } | null; summary: { n_queries: number; n_ok: number; metrics: Record<string, number> | null; latency_ms: { p95: number } | null; permissions?: { violations: number }; no_answer?: { n: number; accuracy: number | null } } }
 /** A run as listed by the guided workspace: per-query records load on demand. */
-export type RunListing = Omit<Run, 'queries'> & { queries?: Query[]; queries_omitted?: number }
+export type RunListing = Omit<Run, 'queries'> & { queries?: Query[]; queries_omitted?: number; too_large?: boolean }
 export type PolicyScreen = { verdict: string; failing_rules: string[]; reasons: string[] }
 export type Candidate = { name: string; ndcg: number | null; p95_ms: number | null; cost_usd: number | null; memory_bytes: number | null; feasible: boolean; reasons: string[]; run: Run; policy_screen?: PolicyScreen | null; check?: PolicyScreen | null; hsd_group?: string; p_vs_leader_adjusted?: number | null }
 export type Optimization = {

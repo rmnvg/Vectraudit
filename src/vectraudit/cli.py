@@ -1120,8 +1120,8 @@ app.command()(init)
 app.command()(calibrate)
 
 runs_app = typer.Typer(
-    help="Compare saved sweep runs (vectraudit sweep --save), and move release runs to and from "
-    "the TREC run format.",
+    help="Compare saved sweep runs (vectraudit sweep --save); summarise, tabulate and move "
+    "release runs to and from the TREC run format.",
     no_args_is_help=True,
 )
 app.add_typer(runs_app, name="runs")
@@ -1255,6 +1255,69 @@ def runs_import_trec(
         console.print(f"[dim]{escape(note)}[/]")
     if record["status"] != "complete":
         raise typer.Exit(code=1)
+
+
+@runs_app.command("summary")
+def runs_summary(
+    runs: Annotated[list[Path], typer.Argument(help="Release or pipeline run files (any size).")],
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Also write the summaries (JSON).")
+    ] = None,
+) -> None:
+    """Validate runs and show their summaries without loading their questions.
+
+    Each question is read, validated and dropped one at a time, so a run of hundreds of MiB
+    is checked in a few MiB of memory. Exits 1 if any run is invalid.
+    """
+    from vectraudit.evaluation.runfile import RunFileError, run_header_report
+
+    out, failed = [], False
+    for path in runs:
+        try:
+            report = run_header_report(path)
+        except (OSError, RunFileError) as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            failed = True
+            continue
+        out.append(report)
+        header = report["run"]
+        summary = header.get("summary") or {}
+        metrics = summary.get("metrics") or {}
+        latency = summary.get("latency_ms") or {}
+        console.print(
+            f"{escape(path.name)}: {header['status']}, {report['questions']} questions, "
+            f"{report['bytes'] / 2**20:.1f} MiB (dataset {header['dataset']['sha256'][:12]}, "
+            f"k={header['search']['k']})"
+            + (f", nDCG {metrics['ndcg']:.3f}" if isinstance(metrics.get("ndcg"), float) else "")
+            + (f", p95 {latency['p95']:.1f} ms" if isinstance(latency.get("p95"), float) else "")
+            + (f", label {escape(str(header['label']))}" if header.get("label") else "")
+        )
+    if json_out is not None:
+        json_out.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@runs_app.command("table")
+def runs_table(
+    runs: Annotated[list[Path], typer.Argument(help="Release or pipeline run files (any size).")],
+    out: Annotated[
+        Path, typer.Option(help="Table to write: .csv, or .parquet (vectraudit[parquet]).")
+    ],
+) -> None:
+    """One row per question and repeat, with metrics, verdicts, latency and flags.
+
+    For analysis in your own notebook. IDs, numbers and flags only: no question, document or
+    answer text. Runs are read one question at a time, so large runs export in bounded memory.
+    """
+    from vectraudit.evaluation.run_table import RunTableError, write_table
+    from vectraudit.evaluation.runfile import RunFileError
+
+    try:
+        done = write_table(runs, out)
+    except (OSError, RunFileError, RunTableError) as e:
+        raise _fail(str(e)) from e
+    console.print(f"Wrote {done['rows']} rows from {done['runs']} runs to {escape(str(out))}.")
 
 
 from vectraudit.labelling_cli import label_app  # noqa: E402

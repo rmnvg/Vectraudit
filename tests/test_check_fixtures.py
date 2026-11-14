@@ -188,6 +188,17 @@ def component_scoreboard(tmp_path: Path) -> dict[str, Any]:
     return board(broken_run({"multi_hop": ["retrieve", "rerank"]}))
 
 
+def run_header(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_components import broken_run
+    from vectraudit.evaluation.runfile import run_header_report
+
+    path = tmp_path / "large.run.json"
+    run = broken_run()
+    run["label"] = "nightly"
+    path.write_text(json.dumps(run))
+    return run_header_report(path)
+
+
 @pytest.mark.parametrize(
     "build",
     [
@@ -206,6 +217,7 @@ def component_scoreboard(tmp_path: Path) -> dict[str, Any]:
         label_audit,
         embedding_drift,
         component_scoreboard,
+        run_header,
     ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):

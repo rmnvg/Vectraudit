@@ -20,7 +20,7 @@ from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
 from vectraudit.evaluation.exceptions import acceptance
-from vectraudit.evaluation.runfile import load_run
+from vectraudit.evaluation.runfile import load_run, read_run_header
 from vectraudit.evaluation.triage import triage
 from vectraudit.labelling.storage import TaskBusy, task_lock
 from vectraudit.labelling.task import atomic_write
@@ -191,15 +191,20 @@ class GuidedWorkspace:
         self._run_summaries: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
 
     def run_summary(self, identifier: str) -> dict[str, Any]:
-        """A validated run without its per-query records, cached by file size and mtime."""
-        path = self.run_path(identifier)
+        """A validated run without its per-query records, cached by file size and mtime.
+
+        Read one question at a time (:func:`read_run_header`), so a run of any size is listed;
+        ``too_large`` says it is above the limit for opening it whole.
+        """
+        path = self.root / f"{_identifier(identifier)}.run.json"
+        if path.is_symlink() or not path.is_file():
+            raise HTTPException(404, "Run not found in this workspace")
         stat = path.stat()
         key = (stat.st_size, stat.st_mtime_ns)
         cached = self._run_summaries.get(identifier)
         if cached is None or cached[0] != key:
-            run = load_run(path)
-            summary = {k: v for k, v in run.items() if k != "queries"}
-            summary["queries_omitted"] = len(run["queries"])
+            summary = read_run_header(path)
+            summary["too_large"] = stat.st_size > MAX_RUN_BYTES
             cached = (key, summary)
             self._run_summaries[identifier] = cached
         return cached[1]
