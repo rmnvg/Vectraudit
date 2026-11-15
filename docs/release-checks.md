@@ -151,6 +151,7 @@ only translate your labels; they never invent questions or judgments.
 | Source | Command | What becomes the label |
 |---|---|---|
 | BEIR folder | `dataset import ./fiqa --format beir [--split test]` | `qrels/<split>.tsv` grades by corpus id |
+| MTCB folder | `dataset import ./gacha --format mtcb --out q.jsonl --corpus-out corpus.jsonl` | each `chunk-must-contain` passage located exactly as a relevant span ([details](experiments.md#an-mtcb-chunking-benchmark-as-the-corpus-and-queries)) |
 | TREC | `dataset import topics.tsv --format trec --qrels qrels.txt` | `qid iter docno grade` lines; the query file is `qid<TAB>text` or JSONL |
 | Ragas test set | `dataset import testset.jsonl --format ragas --corpus chunks.jsonl` | `reference_context_ids`, or `reference_contexts` located in the corpus |
 | DeepEval goldens | `dataset import goldens.json --format deepeval --corpus chunks.jsonl` | `context` located in the corpus (`retrieval_context` is never a label) |

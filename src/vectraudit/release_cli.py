@@ -337,7 +337,7 @@ def dataset_import(
         typer.Argument(
             help=(
                 "CSV (with a header row), JSON array or JSONL file. JSON columns may be dotted "
-                "paths (inputs.question). With --format: a BEIR folder, a TREC query file "
+                "paths (inputs.question). With --format: a BEIR or MTCB folder, a TREC query file "
                 "(qid<TAB>text or JSONL), or a Ragas/DeepEval test set."
             )
         ),
@@ -347,7 +347,7 @@ def dataset_import(
         str | None,
         typer.Option(
             "--format",
-            help="beir, trec, ragas or deepeval. Omit for CSV/JSON with column mapping.",
+            help="beir, trec, mtcb, ragas or deepeval. Omit for CSV/JSON with column mapping.",
         ),
     ] = None,
     qrels: Annotated[
@@ -393,6 +393,13 @@ def dataset_import(
         ),
     ] = None,
     name: Annotated[str | None, typer.Option(help="Dataset name for the header.")] = None,
+    corpus_out: Annotated[
+        Path | None,
+        typer.Option(
+            help="--format mtcb: where to write the documents with the IDs the spans refer to "
+            "(the corpus for `vectraudit experiment`)."
+        ),
+    ] = None,
 ) -> None:
     """Convert queries and relevance labels you already have into a dataset."""
     from vectraudit.evaluation.dataset_formats import import_format
@@ -405,6 +412,12 @@ def dataset_import(
 
     meta: dict[str, Any] = {"name": name} if name else {}
     warnings: list[str] = []
+    documents = None
+    if (source_format or "").lower() == "mtcb" and corpus_out is None:
+        raise _fail(
+            "--format mtcb needs --corpus-out.",
+            "MTCB documents have no IDs; the importer assigns them and writes the corpus there.",
+        )
     try:
         if source_format:
             imported = import_format(
@@ -419,6 +432,7 @@ def dataset_import(
             )
             rows, warnings = imported.rows, imported.warnings
             meta["provenance"] = imported.provenance
+            documents = imported.corpus
         else:
             filters = {}
             for spec in filter_column or []:
@@ -437,6 +451,14 @@ def dataset_import(
     except DatasetError as e:
         raise _fail(str(e)) from e
     _write_text(out, text)
+    if documents is not None and corpus_out is not None:
+        _write_text(
+            corpus_out, "".join(json.dumps(d, ensure_ascii=False) + "\n" for d in documents)
+        )
+        console.print(
+            f"Wrote {len(documents):,} documents to {escape(str(corpus_out))} (contains document "
+            "text; kept local)."
+        )
     ds = load_dataset(out)
     for warning in warnings:
         err_console.print(f"[yellow]Warning:[/] {escape(warning)}")

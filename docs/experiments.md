@@ -76,6 +76,34 @@ and text on two lines (or whichever it has) with the title kept as metadata; a d
 neither is refused, not dropped, because dropping it would change the corpus being scored. Nothing
 is downloaded: fetch the dataset yourself, and mind its licence.
 
+### An MTCB chunking benchmark as the corpus and queries
+
+[MTCB](https://github.com/chonkie-inc/mtcb) (the Massive Text Chunking Benchmark) publishes each
+dataset as a `corpus` of documents (`text`) and `questions` (`question` and
+`chunk-must-contain`, the passage a retrieved chunk has to contain). Import a folder you have
+downloaded; each MTCB domain comes from a source with its own licence, so check it first:
+
+```bash
+vectraudit dataset import ./gacha --format mtcb --out queries.jsonl --corpus-out corpus.jsonl
+```
+
+The folder holds `corpus.jsonl` and `questions.jsonl` (or `.json`, `.csv`, `.parquet`, or the
+hub's `corpus/*.parquet` and `questions/*.parquet`; the generator's `document`,
+`chunk_must_contain` and `qa` spellings are read too). MTCB documents have no IDs, so the
+importer assigns `doc-0`, `doc-1`, ... and writes them to `--corpus-out` (with their text, so
+keep it local); use both files in the experiment manifest. Every exact occurrence of a passage
+becomes a relevant span, in any document it occurs in, because MTCB accepts a chunk from
+anywhere that contains it. A passage that occurs nowhere exactly (or more than 100 times) is
+skipped and counted, never matched loosely.
+
+Reports then show **Passage recall (MTCB)** beside span recall. They differ on purpose: span
+recall counts a chunk that *overlaps* a labelled span; MTCB's recall@k counts a question as
+found only when one of the top k chunks *contains* the passage whole, so a chunker that cuts
+the passage in two scores 0 on it. `result.json` records it under each candidate's
+`span_summary.passage_containment` with MTCB's MRR, nDCG and precision at k (rank of the first
+containing chunk; precision is 1/k when found). To line up with MTCB's published numbers, use
+the same embedding model, chunker and k; the three built-in chunkers are not MTCB's.
+
 ## Putting your numbers beside public scores (MTEB layout)
 
 ```bash
