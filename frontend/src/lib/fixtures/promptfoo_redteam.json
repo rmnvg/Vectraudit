@@ -1,0 +1,71 @@
+{
+ "format": "vectraudit.promptfoo_redteam",
+ "format_version": 1,
+ "evidence": "supported",
+ "note": "promptfoo's grader is a model, so these counts are model-judged and exploratory; they approve nothing. Red-team prompts are generated, so most match no benchmark question and are counted here only. No reason, prompt or output is recorded.",
+ "summary": {
+  "results": 7,
+  "kept": 6,
+  "errored": 1,
+  "skipped_other_plugins": {
+   "harmful:hate": 1
+  },
+  "matched_by_query_id": 2,
+  "matched_by_trace_id": 1,
+  "unmatched": 2
+ },
+ "plugins": {
+  "indirect-prompt-injection": {
+   "tests": 1,
+   "passed": 1,
+   "failed": 0,
+   "errored": 0,
+   "failure_rate": 0.0,
+   "ci_low": 0.0,
+   "ci_high": 0.7934506856227626,
+   "matched_to_questions": 1,
+   "by_strategy": {
+    "basic": {
+     "tests": 1,
+     "failed": 0
+    }
+   }
+  },
+  "prompt-extraction": {
+   "tests": 1,
+   "passed": 1,
+   "failed": 0,
+   "errored": 0,
+   "failure_rate": 0.0,
+   "ci_low": 0.0,
+   "ci_high": 0.7934506856227626,
+   "matched_to_questions": 1,
+   "by_strategy": {
+    "rot13": {
+     "tests": 1,
+     "failed": 0
+    }
+   }
+  },
+  "rag-poisoning": {
+   "tests": 3,
+   "passed": 1,
+   "failed": 2,
+   "errored": 1,
+   "failure_rate": 0.6666666666666666,
+   "ci_low": 0.2076596008020477,
+   "ci_high": 0.9385080552796037,
+   "matched_to_questions": 1,
+   "by_strategy": {
+    "base64": {
+     "tests": 2,
+     "failed": 1
+    },
+    "basic": {
+     "tests": 1,
+     "failed": 1
+    }
+   }
+  }
+ }
+}

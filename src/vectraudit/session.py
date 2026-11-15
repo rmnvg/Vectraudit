@@ -21,7 +21,7 @@ from vectraudit.core import comparison as comparison_mod
 from vectraudit.core import hnsw as hnsw_mod
 from vectraudit.core import hnsw_trace, ivf, runs
 from vectraudit.core import pq as pq_mod
-from vectraudit.core.advice import Suggestion, advise
+from vectraudit.core.advice import Suggestion, advise, advise_selectivity
 from vectraudit.core.embed import (
     Embedder,
     EmbedderUnavailableError,
@@ -53,6 +53,12 @@ from vectraudit.core.search import (
     resolve_query,
     resolve_search_params,
 )
+from vectraudit.core.selectivity import (
+    SelectivityResult,
+    metadata_spec,
+    selectivity_sweep,
+    synthetic_spec,
+)
 from vectraudit.core.sweep import (
     DEFAULT_N_QUERIES,
     QuerySet,
@@ -72,6 +78,7 @@ from vectraudit.core.vectors import (
     reconstruct_all,
     validate_ids,
 )
+from vectraudit.evaluation.external_reference import ExternalReference
 
 T = TypeVar("T")
 log = logging.getLogger("vectraudit")
@@ -208,6 +215,7 @@ class Session:
         demo_mode: bool = False,
         compare: list[Any] | None = None,
         mmap: bool = False,
+        reference: ExternalReference | None = None,
     ) -> None:
         self.li: LoadedIndex = load_index(index)
         self.jobs = JobRunner()
@@ -262,6 +270,10 @@ class Session:
                     "Queries contain NaN or infinite values.",
                     "Pass finite query vectors.",
                 )
+
+        self.reference = reference
+        if reference is not None:
+            self._check_reference(reference)
 
         try:
             self.metadata: Metadata | None = (
@@ -345,6 +357,39 @@ class Session:
     @property
     def has_raw_vectors(self) -> bool:
         return self._raw is not None
+
+    def _check_reference(self, ref: ExternalReference) -> None:
+        """An external reference is ground truth for exactly the queries it was built for."""
+        expected = {Metric.L2: ("l2",), Metric.IP: ("ip", "cosine")}.get(self.li.metric, ())
+        if ref.distance not in expected:
+            raise InputError(
+                "REFERENCE_MISMATCH",
+                f"The reference was computed under {ref.distance} distance; this index uses "
+                f"{self.li.metric.value}.",
+                "Neighbours under one distance are not the truth for another.",
+            )
+        if ref.filter is not None:
+            raise InputError(
+                "REFERENCE_MISMATCH",
+                "This reference assumes a metadata filter.",
+                "Use `vectraudit sweep --filter/--pass-rates` for filtered recall, or "
+                "`record --reference` with the filtered dataset.",
+            )
+        if self.queries is None:
+            raise InputError(
+                "REFERENCE_NEEDS_QUERIES",
+                "An external reference needs the queries it was built for.",
+                "Pass --queries (the queries.npy written beside the reference).",
+            )
+        digest = hashlib.sha256(
+            np.ascontiguousarray(self.queries, dtype="<f4").tobytes()
+        ).hexdigest()
+        if digest != ref.corpus.get("queries_array_sha256"):
+            raise InputError(
+                "REFERENCE_MISMATCH",
+                "These queries are not the ones the reference was built for.",
+                "Pass the queries.npy written beside the reference, unchanged.",
+            )
 
     @property
     def source(self) -> VectorSource:
@@ -731,9 +776,12 @@ class Session:
                 self._sweep_inputs.move_to_end(key)
                 return self._sweep_inputs[key]
         qs = self.sweep_queries(n_queries, seed)
-        # Ground truth is the first phase of the job: report it without advancing the bar.
-        report = (lambda _f, msg: progress(0.0, msg)) if progress is not None else None
-        truth = ground_truth_ids(self.ground_truth, qs, k, report)
+        if self.reference is not None:
+            truth = self._reference_truth(qs, k)
+        else:
+            # Ground truth is the first phase of the job: report it without advancing the bar.
+            report = (lambda _f, msg: progress(0.0, msg)) if progress is not None else None
+            truth = ground_truth_ids(self.ground_truth, qs, k, report)
 
         def size(data: tuple[QuerySet, npt.NDArray[np.int64]]) -> int:
             q, t = data
@@ -755,16 +803,16 @@ class Session:
                     self._sweep_inputs.popitem(last=False)
         return data
 
-    def sweep_job(
+    def _check_sweep_request(
         self,
-        param: SweepParam | str | None = None,
-        values: list[int] | None = None,
-        k: int = 10,
-        n_queries: int = DEFAULT_N_QUERIES,
-        repeats: int = 3,
-        seed: int = 0,
-    ) -> tuple[str, Job[SweepResult]]:
-        """Validate, then start (or return) the background sweep. Returns ``(job_id, job)``."""
+        param: SweepParam | str | None,
+        values: list[int] | None,
+        k: int,
+        n_queries: int,
+        repeats: int,
+        seed: int,
+    ) -> tuple[SweepParam, list[int]]:
+        """Validate sweep settings (and demo limits); returns the parameter and its values."""
         if not self.li.is_supported:
             raise ValueError(f"Cannot sweep: {self.li.unsupported_reason}")
         if k < 1 or n_queries < 1:
@@ -786,7 +834,34 @@ class Session:
                 raise DemoLimitError(f"Sweeps use k <= {lim.max_sweep_k} here.")
             if p is SweepParam.EF_SEARCH and max(vals) > lim.max_ef_search:
                 raise DemoLimitError(f"efSearch is capped at {lim.max_ef_search} in this demo.")
-        key = ("sweep", p.value, tuple(vals), k, n_queries, repeats, seed)
+        return p, vals
+
+    def _reference_truth(self, qs: QuerySet, k: int) -> npt.NDArray[np.int64]:
+        """The reference's first ``k`` neighbours for the (given) queries in ``qs``."""
+        ref = self.reference
+        assert ref is not None
+        if k > ref.k:
+            raise ValueError(f"k={k} is larger than the {ref.k} neighbours the reference holds.")
+        if len(qs) > len(ref.query_ids):
+            raise ValueError(f"The reference covers {len(ref.query_ids)} queries, not {len(qs)}.")
+        return np.ascontiguousarray(ref.ids[: len(qs), :k])
+
+    def sweep_job(
+        self,
+        param: SweepParam | str | None = None,
+        values: list[int] | None = None,
+        k: int = 10,
+        n_queries: int = DEFAULT_N_QUERIES,
+        repeats: int = 3,
+        seed: int = 0,
+        batch: bool = False,
+    ) -> tuple[str, Job[SweepResult]]:
+        """Validate, then start (or return) the background sweep. Returns ``(job_id, job)``.
+
+        ``batch`` also measures batch throughput (see :func:`vectraudit.core.sweep.sweep`).
+        """
+        p, vals = self._check_sweep_request(param, values, k, n_queries, repeats, seed)
+        key = ("sweep", p.value, tuple(vals), k, n_queries, repeats, seed, batch)
         job_id = hashlib.sha1(repr(key).encode()).hexdigest()[:12]
 
         def work(progress: Callable[[float, str], None]) -> SweepResult:
@@ -799,11 +874,13 @@ class Session:
                 param=p,
                 values=vals,
                 k=k,
-                truth_reconstructed=not self.has_raw_vectors,
+                truth_reconstructed=self.reference is None and not self.has_raw_vectors,
                 progress=progress,
                 repeats=repeats,
                 seed=seed,
                 assignments=self.assignments if p is SweepParam.NPROBE else None,
+                reference=self.reference.identity() if self.reference is not None else None,
+                batch=batch,
             )
 
             progress(1.0, "Saving completed sweep")
@@ -830,6 +907,82 @@ class Session:
         with self._lock:
             key = self._lazy.get("sweep_ids", {}).get(job_id)
         return self.jobs.get(key) if key is not None else None
+
+    def selectivity_job(
+        self,
+        param: SweepParam | str | None,
+        values: list[int] | None,
+        k: int,
+        n_queries: int,
+        repeats: int,
+        seed: int,
+        pass_rates: list[float],
+        filters: list[dict[str, Any]],
+    ) -> tuple[str, Job[SelectivityResult]]:
+        """Start (or return) a sweep repeated at each filter, plus unfiltered.
+
+        ``pass_rates`` are synthetic id filters; ``filters`` are metadata filters and need
+        ``--meta``. Not archived in run history: that record has one sweep per run.
+        """
+        p, vals = self._check_sweep_request(param, values, k, n_queries, repeats, seed)
+        specs = [synthetic_spec(r) for r in pass_rates] + [metadata_spec(f) for f in filters]
+        if not specs:
+            raise ValueError("Give at least one pass rate or metadata filter.")
+        if filters and self.metadata is None:
+            raise InputError(
+                "NO_METADATA",
+                "Metadata filters need metadata.",
+                "Start the server with --meta, or use pass rates.",
+            )
+        if self.demo_limits is not None and len(specs) > 3:
+            raise DemoLimitError("Filtered sweeps use at most 3 filters here.")
+        key = (
+            "selectivity",
+            p.value,
+            tuple(vals),
+            k,
+            n_queries,
+            repeats,
+            seed,
+            tuple(sp.label for sp in specs),
+        )
+        job_id = hashlib.sha1(repr(key).encode()).hexdigest()[:12]
+
+        def work(progress: Callable[[float, str], None]) -> SelectivityResult:
+            return selectivity_sweep(
+                self.li,
+                self.sweep_queries(n_queries, seed),
+                self.ground_truth,
+                specs,
+                metadata=self.metadata,
+                param=p,
+                values=vals,
+                k=k,
+                repeats=repeats,
+                seed=seed,
+                assignments=self.assignments if self.li.kind.is_ivf else None,
+                progress=progress,
+            )
+
+        job = self.jobs.get_or_start(key, work, retry=True)
+        with self._lock:
+            mappings = self._lazy.setdefault("selectivity_ids", {})
+            for old_id, old_key in list(mappings.items()):
+                if self.jobs.get(old_key) is None:
+                    del mappings[old_id]
+            mappings[job_id] = key
+        return job_id, job
+
+    def get_selectivity_job(self, job_id: str) -> Job[SelectivityResult] | None:
+        with self._lock:
+            key = self._lazy.get("selectivity_ids", {}).get(job_id)
+        return self.jobs.get(key) if key is not None else None
+
+    def selectivity_advice(
+        self, result: SelectivityResult, target_recall: float, *, max_p95_ms: float | None = None
+    ) -> list[Suggestion]:
+        """Measured statements about recall at each pass rate of a finished sweep."""
+        return advise_selectivity(result, target_recall, max_p95_ms=max_p95_ms)
 
     def sweep_advice(
         self,
@@ -877,7 +1030,8 @@ class Session:
             # Only when ground truth used raw vectors: for reconstructed ground truth the
             # index itself is the corpus, already covered by index_sha1, and fingerprinting
             # would mean decoding it just to hash it.
-            source=self._raw if not result.truth_reconstructed else None,
+            source=self._raw if not result.truth_reconstructed and self.reference is None else None,
+            reference=result.reference,
         )
 
     # --- index comparison -----------------------------------------------------------------

@@ -59,6 +59,71 @@ For finer evaluation, label the exact passage with character offsets in the sour
 | `chunking` | `method`: `words` (`size`, `overlap`), `paragraphs` (merged up to `size` words), `document`. |
 | `index` | `factory`: any FAISS factory string (default `Flat`: exact); `metric`: `ip` (default) or `l2`; `params`: `nprobe`, `ef_search`. |
 
+### A BEIR or MTEB retrieval folder as the corpus and queries
+
+A folder in the BEIR layout (the layout public retrieval benchmarks and MTEB's retrieval tasks are
+distributed in) can stand in for `corpus` and `queries`:
+
+```json
+{"name": "nfcorpus-bakeoff", "beir": {"path": "nfcorpus", "split": "test"}, "k": 10,
+ "candidates": [{"name": "lexical", "embedder": {"type": "hashing"}}]}
+```
+
+The folder holds `corpus.jsonl` (`_id`, `title`, `text`), `queries.jsonl` (`_id`, `text`) and
+`qrels/<split>.tsv` (a header row, then `query-id`, `corpus-id`, `score`). Queries and labels go
+through the same importer as `dataset import --format beir`. A document is embedded as its title
+and text on two lines (or whichever it has) with the title kept as metadata; a document with
+neither is refused, not dropped, because dropping it would change the corpus being scored. Nothing
+is downloaded: fetch the dataset yourself, and mind its licence.
+
+### An MTCB chunking benchmark as the corpus and queries
+
+[MTCB](https://github.com/chonkie-inc/mtcb) (the Massive Text Chunking Benchmark) publishes each
+dataset as a `corpus` of documents (`text`) and `questions` (`question` and
+`chunk-must-contain`, the passage a retrieved chunk has to contain). Import a folder you have
+downloaded; each MTCB domain comes from a source with its own licence, so check it first:
+
+```bash
+vectraudit dataset import ./gacha --format mtcb --out queries.jsonl --corpus-out corpus.jsonl
+```
+
+The folder holds `corpus.jsonl` and `questions.jsonl` (or `.json`, `.csv`, `.parquet`, or the
+hub's `corpus/*.parquet` and `questions/*.parquet`; the generator's `document`,
+`chunk_must_contain` and `qa` spellings are read too). MTCB documents have no IDs, so the
+importer assigns `doc-0`, `doc-1`, ... and writes them to `--corpus-out` (with their text, so
+keep it local); use both files in the experiment manifest. Every exact occurrence of a passage
+becomes a relevant span, in any document it occurs in, because MTCB accepts a chunk from
+anywhere that contains it. A passage that occurs nowhere exactly (or more than 100 times) is
+skipped and counted, never matched loosely.
+
+Reports then show **Passage recall (MTCB)** beside span recall. They differ on purpose: span
+recall counts a chunk that *overlaps* a labelled span; MTCB's recall@k counts a question as
+found only when one of the top k chunks *contains* the passage whole, so a chunker that cuts
+the passage in two scores 0 on it. `result.json` records it under each candidate's
+`span_summary.passage_containment` with MTCB's MRR, nDCG and precision at k (rank of the first
+containing chunk; precision is 1/k when found). To line up with MTCB's published numbers, use
+the same embedding model, chunker and k; the three built-in chunkers are not MTCB's.
+
+## Putting your numbers beside public scores (MTEB layout)
+
+```bash
+vectraudit experiment export-mteb experiment-results --out mteb-results --task OurDocs
+```
+
+writes `mteb-results/<candidate>/OurDocs.json` for every candidate in the layout of a published MTEB
+result: `dataset_revision`, `evaluation_time`, `kg_co2_emissions`, `mteb_version`, `task_name`, and
+`scores` split to a list of subset dicts with `main_score` and `ndcg_at_k`, `map_at_k`, `mrr_at_k`,
+`precision_at_k` and `recall_at_k` at the experiment's `k`.
+
+**These numbers are not like for like with the leaderboard.** They are your corpus and your labels,
+a different task from any public one; they are averaged with equal weight over question families;
+and they use the experiment's `k` (MTEB's retrieval default is 10, so use `"k": 10` to line up).
+Each file says so under `vectraudit.not_like_for_like`, `mteb_version` is `null` (MTEB did not
+produce the file), languages are left empty, and `main_score` is nDCG at the experiment's `k`
+(`vectraudit.main_score_metric` names the key). A candidate with failed questions, or with no
+label metrics, is not exported. Use the files to see where your own corpus ranks models differently
+from the leaderboard, not to rank yours against it.
+
 ## How candidates are compared fairly
 
 - **Document level.** Retrieved chunks map to their source documents (first occurrence
@@ -71,6 +136,17 @@ For finer evaluation, label the exact passage with character offsets in the sour
 - **Paired statistics.** Every candidate is compared with the leader on the same queries,
   with a bootstrap 95% interval. If the interval includes zero, the report says *tied*:
   the queries can't separate them, so pick on cost or add queries.
+- **Many candidates at once.** With three or more candidates, every pairwise interval is
+  another chance to see a winner that is not there. The report also runs a randomized Tukey
+  HSD (Carterette, 2012): system labels are permuted within each family and the largest gap
+  between any two candidates is compared with each observed gap, so the chance of *any*
+  false winner stays at 5%. Each candidate gets `hsd_group` letters (candidates that share a
+  letter cannot be told apart) and `p_vs_leader_adjusted`, and the report says which
+  candidates are "not distinguishable from the leader (randomized Tukey HSD, α = 0.05)". It
+  is paired, because all candidates answer the same questions. The bootstrap tie above is
+  unchanged. `workbench optimize` adds the same annotation to its exploratory ranking
+  (`significance` in the report, and extra columns in the workbench's Experiments tab); the
+  choice of candidate and the held-out check do not read it.
 - **Costs alongside quality.** Chunks, dimensions, index size, embedding time and search
   latency (query embedding is timed separately from search).
 

@@ -1,16 +1,22 @@
 # Vectraudit
 
-A Python-first retrieval debugger for FAISS: a local web UI (FastAPI backend + React frontend) that shows index internals, explains missed neighbours against exact ground truth, and tunes recall vs latency. Formerly named faissight.
+A retrieval evaluation and release-check platform for RAG and search: it measures a baseline and a candidate on the same labelled questions across the whole pipeline, explains where documents were lost, and gates releases. It has a local workbench (FastAPI backend + React frontend), release checks for eight vector backends (FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch, OpenSearch, Chroma), trace and label importers, experiments, and a hosted control plane. The FAISS index debugger it started as (formerly named faissight) is one part of it.
 
-**Product direction:** this is now a private commercial product, the foundation for a multi-backend retrieval release-check platform (FAISS, Qdrant, pgvector at MVP; private runner, hosted control plane, GitHub checks). The requirements live in `RetrievalScope_Product_Requirements.docx` at the repo root (gitignored; never commit it). Nothing is published to PyPI; don't add public-distribution steps. `PLAN.md` is the original, completed build plan; work through new phases one at a time and stop after each for review.
+**Product direction:** this is a private commercial product. The requirements live in `RetrievalScope_Product_Requirements.docx` at the repo root (gitignored; never commit it). Nothing is published to PyPI; don't add public-distribution steps. `PLAN.md` is the original, completed build plan; work through new phases one at a time and stop after each for review.
 
 ## Repo layout
 
 - `src/vectraudit/`: Python package
-  - `cli.py`: Typer app (`vectraudit serve | info | sweep`)
-  - `session.py`: in-memory state (index, vectors, metadata, caches)
-  - `core/`: pure library (loader, ivf, hnsw, pq, search, hnsw_trace, sweep, projection, metadata, embed). **Must not import FastAPI or anything web-related.**
-  - `server/`: FastAPI app factory, routes, pydantic schemas
+  - `cli.py`: Typer app (`serve | info | sweep | compare | demo`, `runs`); the other command groups live in `release_cli.py` (`record | check | init | dataset`), `workbench_cli.py` (`workbench ...`), `experiments_cli.py`, `labelling_cli.py`, `doctor_cli.py`
+  - `session.py`: in-memory state of the FAISS debugger (index, vectors, metadata, caches)
+  - `core/`: pure library (loader, ivf, hnsw, pq, search, hnsw_trace, sweep, projection, metadata, embed, coverage, atlas). **Must not import FastAPI or anything web-related.**
+  - `connectors/`: read-only backend connectors
+  - `evaluation/`: datasets, runs, metrics, policies, comparison and reports; importers and analyses that work on run and dataset files
+  - `pipelines/`: the workbench: pipeline runner, trace importers, intake, drift, investigations and its web app
+  - `experiments/`: embedding model, chunking and index comparisons
+  - `labelling/`: the local labelling assistant
+  - `cloud/`, `integrations/`: hosted control plane and its clients
+  - `server/`: FastAPI app factory, routes, pydantic schemas (FAISS debugger)
   - `static/`: built frontend (gitignored; produced by `npm run build`, shipped in the wheel)
 - `frontend/`: React + TypeScript + Vite + Tailwind; builds into `src/vectraudit/static`
 - `examples/`: synthetic and RAG demo generators, notebook

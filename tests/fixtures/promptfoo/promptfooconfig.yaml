@@ -1,0 +1,23 @@
+description: Vectraudit import fixture (offline; echo provider)
+prompts:
+  - id: concise
+    label: concise
+    raw: "Answer briefly: {{question}} (password reset is in Settings > Security)"
+  - id: detailed
+    label: detailed
+    raw: "Answer in detail: {{question}}"
+providers:
+  - id: echo
+    label: echo-model
+tests:
+  - vars: {question: "How do I reset my password?"}
+    metadata: {query_id: q1}
+    assert:
+      - {type: icontains, value: "settings", metric: Correctness}
+      - {type: javascript, value: "output.length < 200", metric: Brevity}
+  - vars: {question: "Where is the invoice?"}
+    assert:
+      - {type: icontains, value: "billing", metric: Correctness}
+  - vars: {question: "A question that is not in the benchmark"}
+    assert:
+      - {type: icontains, value: "x", metric: Correctness}

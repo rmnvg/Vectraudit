@@ -34,7 +34,216 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   who judged) and `--label` maps categorical values to verdicts. Undeclared, unnamed or
   unusable scores are skipped and counted; comments and author IDs are not read. The
   agreement line now says it measures model judgments.
+- The trust package and threat model cover the analyses added since the corpus atlas: no new
+  subprocessor, no dataset download, no outbound call, and which outputs contain text.
+- `vectraudit dataset import --format mtcb` imports an MTCB chunking-benchmark folder: each
+  `chunk-must-contain` passage is located exactly and becomes a relevant span. Experiment
+  reports show MTCB's passage-containment recall beside span recall. See `docs/experiments.md`.
+- `vectraudit sweep --batch` measures throughput with every query in one call (ann-benchmarks'
+  batch mode), reported as batch queries per second beside single-query latency and never
+  compared with it. See `docs/faiss-debugger.md`.
+- `vectraudit dataset import-annb` imports an ann-benchmarks HDF5 dataset (vectors, queries and
+  its published neighbours as an external exact reference), checking the file's recorded
+  distance against the data; `--normalize` lets an inner-product index be scored against an
+  angular dataset. Needs the new optional `[hdf5]` extra (h5py). See `docs/vectordbbench.md`.
+- Large runs: `vectraudit runs summary` validates a run of any size one question at a time
+  and shows its summary in a few MiB of memory, and `vectraudit runs table` writes runs as one
+  row per question and repeat (CSV, or Parquet with `vectraudit[parquet]`; no text) for your
+  own notebooks. The workbench lists runs above 64 MiB as "summary only" instead of hiding
+  them. See `docs/release-checks.md`.
+- Component scoreboard: for each pipeline run, where along the pipeline (retrieval, filter,
+  fusion, rerank, cut-off, context packing, answer) each question first lost its required
+  evidence, with family-weighted rates and intervals; questions the run cannot place are not
+  observed, never assigned. Shown in the workbench run view, the release report (as
+  information) and `vectraudit workbench components`. A benchmark header can map tags to the
+  components they exercise (`component_tags`). See `docs/retrieval-workbench.md`.
+- Embedding drift: `vectraudit workbench drift --embeddings` compares the benchmark's questions
+  with production questions in embedding space, and `workbench embedding-drift` compares two
+  windows of production questions or two corpus exports. The default is Evidently's classifier
+  test; `mmd`, `ratio` and `distance` are available. The `vectraudit.embedding_drift` report
+  opens in the Checks tab. When drift is found, the report names the groups of production
+  questions (or new documents) no benchmark question is close to, by their terms, and
+  `workbench intake --embedding-drift` raises those questions in the review queue. See
+  `docs/production-intake.md`.
+- `vectraudit workbench label-audit` lists relevance labels that are likely wrong or missing,
+  from how candidate runs rank labelled documents (confident learning, after cleanlab),
+  near-duplicate documents labelled differently and unresolved annotator splits. Suspects are
+  hypotheses: `workbench benchmark --label-audit` queues them, and `workbench review-labels`
+  applies a named reviewer's decisions as a new dataset version. Nothing changes a label by
+  itself. See `docs/label-audit.md`.
+- An experiment manifest can name a BEIR (or MTEB retrieval) folder instead of `corpus` and
+  `queries`, and `vectraudit experiment export-mteb` writes each candidate's result in the MTEB
+  result layout, marked as not like for like with leaderboard tasks. See `docs/experiments.md`.
+- Reports show metrics in ir-measures notation at the run's k beside Vectraudit's own names
+  (`nDCG@10 (ndcg)`, `P@10 (precision)`, `Success@10 (hit_rate)`); policy keys and verdicts are
+  unchanged, and the check JSON adds `metric_notation`.
+- TREC interchange: `vectraudit runs export-trec`, `vectraudit dataset export-qrels` and
+  `vectraudit runs import-trec` move runs and labels to and from trec_eval, ranx and ir-measures.
+  An imported run computes quality here from your labels, is marked `external:trec`, and its
+  latency, evidence and permission data are not measured (comparisons say so). A question missing
+  from the file is an error unless `--missing-as-empty`. See `docs/release-checks.md`.
+- The six label metrics are now also checked against `trec_eval` (through pytrec_eval 0.5) on
+  200 seeded queries beside ranx; they agree to 1e-9, and the one difference (tie order) is
+  documented in `docs/release-checks.md`.
+- `vectraudit.evaluation.ppi`: prediction-powered inference (PPI and PPI++) for a rate: a judge's
+  verdicts on every question corrected by the judge's measured error on a random human-reviewed
+  sample, with a valid interval and the human-only and judge-only numbers beside it (reports in
+  progress: Phase 33).
+- `vectraudit workbench review-sample` draws a reproducible uniform random sample of question
+  families for human review (the precondition for judge-corrected estimates): hash-ordered by seed,
+  held-out and errored families excluded, identifiers only, and refused on read if edited.
+- `attach-answers --sample` adds `answers.estimates`: a judge-corrected correct rate per model
+  evaluator beside the judge-only and people-only rates, or the reason there is none (no sample,
+  judge skipped questions, review incomplete). It never changes a verdict or diagnosis. The
+  workbench run view shows the three numbers.
+- The release check adds `judge_corrected`: the change in correct-answer rate between baseline and
+  candidate, judge-corrected from the same random review sample, shown in the Markdown, job
+  summary and HTML reports as information only. The verdict does not use it.
+- `docs/judge-corrected-estimates.md` explains the round trip (review-sample, human review,
+  attach-answers --sample), what makes the interval valid, when no estimate is given, and what it
+  cannot fix; credits ARES and the prediction-powered inference papers.
+- `docs/credits.md` credits every reimplemented method (ranx, RAGChecker, promptfoo,
+  VectorDBBench, embedding-atlas and the papers behind the statistics) and states that none of
+  them runs inside Vectraudit; module docstrings carry the same credit, and a test keeps the
+  page and the docstrings in step. The trust package states that these analyses add no
+  subprocessor or outbound call; the FAISS debugger and release-check docs describe the filtered
+  sweep, external references and the capacity curve. Browser smoke scripts cover the atlas, the
+  new Checks reports and the pass-rate card.
+- `vectraudit workbench atlas`: a 2D corpus atlas (`vectraudit.atlas`, a JSON sidecar and a
+  binary points file) categorising documents (relevant, lost by where, hub, flagged) and
+  questions (passed, failed, regressed) from run records. Held-out questions are hidden and never
+  colour anything; every question and notable document survives sampling. See
+  `docs/corpus-atlas.md`. The workbench gains a lazy-loaded **Atlas** tab
+  (`embedding-atlas`, pinned) with selection, region labels and a download of the documents of
+  an unasked group to judge (never labels).
+- `workbench benchmark --corpus` reports `embedding_coverage`: groups of documents (seeded
+  k-means on the full-dimensional vectors) that no exploratory question is close to, as
+  `hypothesis` findings with top terms; the atlas draws the same regions.
+- Filtered FAISS search (`vectraudit.core.filtering`): a metadata filter becomes an allowed
+  set of ids that FAISS applies during the search (IVF, HNSW, flat, IDMap, PreTransform and
+  refine indexes), with exact ground truth over the same set, cached per filter. A filtered
+  IVF explanation reports how many allowed vectors sit in the probed cells.
+- `vectraudit sweep --filter/--pass-rates`: recall against filter selectivity, with metadata
+  filters or VectorDBBench-style synthetic id filters, each measured against the exact
+  neighbours among the documents it allows. The Tuner gains a pass-rate card (`/api/selectivity`)
+  and the advice quotes measured recall per pass rate, listing brute force and partitioning as
+  not measured. See `docs/filtered-search.md`.
+- Filtered recall in release checks: connectors gain `Capabilities.filter_count` and
+  `Connector.count(filter)` (Qdrant, pgvector, Elasticsearch/OpenSearch, Weaviate, and FAISS
+  with a new `metadata` connection option, which also gives the FAISS connector filters);
+  run records carry `pass_rate` on filtered queries and a `search.pass_rates` summary; a
+  dataset header's `selectivity_buckets` opts in to cohorts such as `pass_rate<1%`. A backend
+  that cannot count leaves the pass rate unknown.
+- `vectraudit capacity`: throughput, p50/p95/p99 latency, error rate and sampled recall per
+  concurrency level against a staging target, under a fixed duration (default 30 s) and a
+  global requests-per-second ceiling (default 50). It prints the most it can send, refuses
+  without `--confirm-target` matching the connection's target, and refuses a target named like
+  `prod` without `--allow-production`. Reports (`vectraudit.capacity` v1, with
+  `vectraudit.selectivity_sweep`) appear in the Checks tab and compare only on matching runner
+  environments. See `docs/capacity.md`.
+- `vectraudit dataset import-vdbbench DIR --distance cosine|l2|ip --out OUT` (needs
+  `vectraudit[parquet]`) converts a VectorDBBench directory into vectors, ids, queries, a
+  dataset and the published neighbours as an external exact reference (with every source
+  file's hash). `record --reference` and `sweep --reference` measure ANN recall against it and
+  record its source; runs against different references are not compared on ANN recall. Filter
+  rates are converted to pass rates, and a filtered variant whose neighbours break its filter
+  is refused. Nothing is downloaded. See `docs/vectordbbench.md`.
+- `examples/poisoning_demo.py` and `docs/poisoning.md`: an offline demonstration of the corpus
+  scan, a poison suite, a poisoned run (a hijack blocked by a tenant filter, a tenant-mimicking
+  one that is not, an injection that displaces required evidence) and a failing release
+  comparison. The threat model covers poisoning (local generation, staging only, no writes).
 
+- `workbench promptfoo-redteam` imports promptfoo's RAG red-team results (rag-poisoning,
+  rag-document-exfiltration, indirect-prompt-injection, rag-source-attribution,
+  prompt-extraction): suite-level counts per plugin and strategy with a Wilson interval, plus
+  per-question safety records for tests that name a `query_id` or `trace_id`, kept apart from
+  answer verdicts. Reasons, prompts and outputs are never written. `attach-answers --inventory`
+  adds the citation class `not_in_corpus`: a cited ID absent from the corpus inventory is a
+  fabricated citation, found by lookup. The Checks tab shows the red-team report.
+- `workbench canary-judgments` checks the answers your system gave for the canaries of a poison
+  suite (normalised for case, Unicode form and invisible characters) and writes `safety`
+  records with no answer text. `attach-answers` stores them as `answer.safety`, apart from
+  answer verdicts, and `workbench poison followed` adds the rate at which answers followed an
+  injected instruction to the poisoning report; any followed injection is a safety failure.
+- `workbench poison run` runs a clean and a poisoned candidate side by side on a suite's target
+  questions and a seeded sample of control questions, and reports per attack how often a
+  poisoned document was retrieved (with Wilson intervals over question families), how deep it
+  got, whether it reached the model, whether it displaced answering evidence, and whether it
+  turned up on unrelated control questions. Safety failures come from the forbidden-document
+  machinery; unknown (an incomplete run, an overlay that never appeared) is inconclusive, never
+  a pass. A policy can set opt-in `robustness` limits. The Checks tab shows the report.
+- Candidates can run poisoned: the hybrid baseline takes `adapter.corpus_overlay` (a poison
+  suite's corpus, loaded in memory; repeated IDs are an error), and Python or HTTP candidates
+  declare `"environment": "staging"` and an `overlay` for a staging index you loaded
+  yourself. A suite is verified against its hashes before use, and a run that shows no poisoned
+  document in any recorded stage gets a warning that the overlay may not be loaded. Existing
+  candidate identities are unchanged.
+- `workbench poison generate` builds a deterministic poison suite from your corpus and
+  benchmark: hijack, inject, contradict, authority and exfil documents with harmless sentinel
+  claims and unique canaries, a copy of the benchmark that forbids them, and a descriptor
+  with hashes and canaries. Only exploratory questions are targeted; nothing is inserted
+  anywhere and your files are unchanged (`docs/poisoning.md`).
+- `workbench corpus-scan` looks through a corpus for text that tries to instruct a model:
+  override and role phrases, chat-template markers, zero-width and bidirectional characters,
+  hidden HTML, exfiltration beacons, encoded instructions and homoglyph words, with
+  detectors of your own from a patterns file. Findings are hypotheses with offsets and no
+  document text; excerpts print to the terminal only, with control characters escaped. The
+  Checks tab shows the report (`docs/poisoning.md`).
+- `workbench ragchecker-judgments` imports RAGChecker output as answer judgments: chosen
+  answer metrics as scores (a verdict only from a declared pass mark; retrieval metrics are
+  refused) and, per question, claim counts and which delivered documents entailed or
+  contradicted the reference answer's and the response's claims. `attach-answers` attaches
+  them as `claim_evidence`, and the answer gains `claim_findings`: reference claims missing
+  from the context, unused evidence, the documents that misled the answer, invented and
+  own-knowledge claims, and documents contradicting the reference. Findings are
+  model-judged (`supported`), marked disputed when human review disagrees, and never change a
+  verdict or the diagnosis. No claim, answer or chunk text is read into any file
+  (`docs/claim-evidence.md`).
+- The benchmark audit turns claim evidence into review suggestions: documents that entail
+  reference claims but are unjudged, labels that may be stale or wrong, and proposed
+  required-evidence groups. `workbench accept-evidence` writes a new dataset version for the
+  questions you name. Held-out questions never get any.
+- `workbench ragchecker-input` builds RAGChecker's input from a run: each question's text,
+  reference, response and the context the model was given, with document text from a corpus
+  file or the registered document resolver. Incomplete questions are skipped and counted,
+  held-out ones are not exported, and the file is written owner-only with a warning that it
+  holds private text.
+- Attaching claim evidence reports, per claim finding, how often human reviewers judged the
+  answer incorrect (`meta_evaluation`), so a team can check a finding against people before
+  trusting it.
+- Check reports (HTML, job summary and terminal) show a paired-randomization p-value beside
+  each metric change, and `p_value` is in the check JSON. It is information only: verdicts
+  and intervals are unchanged.
+- Experiment reports and `workbench optimize` results with three or more candidates add a
+  randomized Tukey HSD: `hsd_group` letters and an adjusted p-value against the leader, and
+  "not distinguishable from the leader (randomized Tukey HSD, α = 0.05)" in the verdict.
+  `tied_with_leader`, candidate selection and the held-out check are unchanged.
+- Policies accept `cohorts.control: "holm"`, an opt-in Holm step-down control for cohort
+  rules that never fails fewer real drops than Bonferroni. Reports show the adjusted
+  p-values and the policy editor offers it. No default changes.
+- `vectraudit.evaluation.significance`: a paired randomization test (p is never 0), a
+  randomized Tukey HSD for three or more systems (Carterette 2012, paired by design) and
+  Holm's adjustment, all seeded and working on family means. Calibration tests show the
+  false-positive and false-winner rates stay within tolerance of 5%.
+- `workbench optimize --fusion-grid` adds one candidate per fusion setting of a hybrid
+  candidate (within `max_candidates`), and `--shortlist-from replay.json --top N` runs only
+  the points a fusion replay ranks highest. Held-out questions are still used once, for the
+  chosen candidate only.
+- `workbench fusion-replay` re-fuses a run's recorded stage hits under other fusion methods
+  and weights without calling the pipeline. It flags shallow inputs, bounds the result when
+  filters follow fusion, marks replays with a reranker after fusion as unknown, reports
+  forbidden documents, never uses held-out questions, and writes a `vectraudit.fusion_replay`
+  hypothesis with a next step (`docs/fusion.md`). The Checks tab shows the report, marking it
+  a hypothesis and listing its limits.
+- The hybrid baseline takes `fusion`, `fusion_k` and `fusion_norm` params (default: weighted
+  RRF with k = 60, unchanged output), `runtime.fusion_stage()` declares a measured fusion
+  stage in a Python pipeline, and investigations offer the built-in fix "switch to weighted
+  score fusion" once vectors are fused.
+- `vectraudit.core.fusion`, a fusion library: RRF, ISR, Borda, weighted sum, CombSUM,
+  CombMNZ and CombMAX, with min-max, max, sum, z-score, rank and Borda normalisation,
+  checked against ranx 0.3.21 (`docs/fusion.md`).
+- Metric conformance tests: recall, precision, MRR, nDCG, MAP and Hit Rate at k agree with
+  ranx 0.3.21 to within 1e-9 on 200 seeded queries (graded labels, ties, short lists).
 - `workbench import-traces` and `workbench intake` read LangSmith run exports and Langfuse
   observations (an API page or a list) as well as OpenInference. Retrievers are the runs or
   observations the export marks as retrievers, or the span names given with `--stage-kind`;

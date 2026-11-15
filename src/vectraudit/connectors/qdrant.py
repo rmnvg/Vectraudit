@@ -140,6 +140,7 @@ class QdrantConnector(Connector):
     def capabilities(self) -> Capabilities:
         return Capabilities(
             filters=True,
+            filter_count=True,
             exact_reference=True,
             config_inspection=True,
             tuning_params=("hnsw_ef",),
@@ -206,6 +207,18 @@ class QdrantConnector(Connector):
             )
         )
         return [str(p.id) for p in response.points]
+
+    def _count(self, filter: Mapping[str, FilterValue]) -> int:
+        """Qdrant's count API with ``exact=True``: a true count, not the approximate one."""
+        result = self._call(
+            lambda: self._client.count(
+                self.collection,
+                count_filter=_filter(filter) if filter else None,
+                exact=True,
+                timeout=self._timeout,
+            )
+        )
+        return int(result.count)
 
     def close(self) -> None:
         client, self._client = getattr(self, "_client", None), None

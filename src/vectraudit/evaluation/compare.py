@@ -24,10 +24,15 @@ from typing import Any
 
 import numpy as np
 
+from vectraudit.evaluation.answer_estimates import compare_estimates
+from vectraudit.evaluation.components import compare_components
 from vectraudit.evaluation.diagnose import diagnose
+from vectraudit.evaluation.external_reference import reference_identity
 from vectraudit.evaluation.families import family_count, family_id, family_means
+from vectraudit.evaluation.measure_names import notations
 from vectraudit.evaluation.metrics import QUALITY_METRICS, SEMANTIC_METRICS
-from vectraudit.evaluation.policy import DEFAULT_POLICY, MetricRule, Policy
+from vectraudit.evaluation.policy import DEFAULT_POLICY, CohortRule, MetricRule, Policy
+from vectraudit.evaluation.significance import holm_adjust, paired_randomization
 
 CHECK_FORMAT = "vectraudit.check"
 CHECK_FORMAT_VERSION = 1
@@ -35,6 +40,8 @@ SMALL_SAMPLE = 30
 MANY_COHORT_RULES = 5
 """From this many cohort rules judged without control, warn that some fail by chance."""
 EPS = 1e-9
+HOLM_LEVEL = 0.025
+P_VALUE_RESAMPLES = 5000
 BOOTSTRAP_MAX_CELLS = 1_000_000
 MAX_CRITICAL_FAILURES = 10
 _ENVIRONMENT_KEYS = ("system", "machine", "cpu_count", "python")
@@ -78,9 +85,11 @@ class _Check:
     ) -> None:
         self.base, self.cand, self.policy = base, cand, policy
         self.rng = np.random.default_rng(seed)
+        self.seed = seed
         self.n_bootstrap = n_bootstrap
         self.reasons: list[dict[str, Any]] = []
         self.warnings: list[str] = []
+        self.ann_blocked = _reference_mismatch(base, cand)
         self.out: dict[str, Any] = {
             "format": CHECK_FORMAT,
             "format_version": CHECK_FORMAT_VERSION,
@@ -120,8 +129,18 @@ class _Check:
             self._critical_queries()
             self._critical_context()
             self._quality(pairs)
+            if self.out["metrics"]:
+                self.out["metric_notation"] = notations(
+                    self.out["metrics"], int(self.cand["search"]["k"])
+                )
+            # Information only: nothing here is a reason or changes the verdict.
+            if (corrected := compare_estimates(self.base, self.cand)) is not None:
+                self.out["judge_corrected"] = corrected
+            if (components := compare_components(self.base, self.cand)) is not None:
+                self.out["components"] = components
             self._cohorts(pairs)
             self._latency()
+            self._prompt_rule()
         verdicts = {Verdict(r["verdict"]) for r in self.reasons}
         verdict = next((v for v in _PRECEDENCE if v in verdicts), Verdict.PASS)
         self.out["verdict"] = verdict.value
@@ -482,10 +501,58 @@ class _Check:
                 f"Distance differs ({b['backend'].get('distance')} vs "
                 f"{c['backend'].get('distance')}); compare rankings, not scores."
             )
+        self._prompt_warnings()
         nondeterministic = sum(bool(q.get("nondeterministic")) for q in c["queries"])
         if nondeterministic:
             self.warnings.append(
                 f"{nondeterministic} candidate queries returned different results across repeats."
+            )
+
+    def _prompt_rule(self) -> None:
+        """Under ``prompt_changes: fail``, every changed prompt fails as ``prompt:<name>``."""
+        if self.policy.prompt_changes != "fail":
+            return
+        recorded = {}
+        for side, run in (("baseline", self.base), ("candidate", self.cand)):
+            prompts = ((run.get("backend") or {}).get("config") or {}).get("prompts")
+            if not isinstance(prompts, Mapping) or not prompts:
+                self.flag(
+                    Verdict.NOT_COMPARABLE,
+                    f"The policy fails prompt changes, but the {side} run records no prompt "
+                    "versions, so a change cannot be ruled out. Record prompt versions in the "
+                    "traces (see the prompt versions table in the workbench docs).",
+                )
+                return
+            recorded[side] = prompts
+        before, after = recorded["baseline"], recorded["candidate"]
+        for name in sorted(set(before) | set(after)):
+            old, new = _versions(before.get(name)), _versions(after.get(name))
+            if old != new:
+                self.flag(
+                    Verdict.FAIL,
+                    f"Prompt {name} changed ({_shown_versions(old)} → {_shown_versions(new)}); "
+                    "the policy fails prompt changes until they are accepted by exception.",
+                    f"prompt:{name}",
+                )
+
+    def _prompt_warnings(self) -> None:
+        """Prompt versions recorded from traces: mixed within a run, or on one side only."""
+        recorded = {}
+        for side, run in (("baseline", self.base), ("candidate", self.cand)):
+            prompts = ((run.get("backend") or {}).get("config") or {}).get("prompts")
+            recorded[side] = isinstance(prompts, Mapping) and bool(prompts)
+            for name, versions in sorted((prompts or {}).items()):
+                if isinstance(versions, list):
+                    self.warnings.append(
+                        f"The {side} run mixes versions of prompt {name} "
+                        f"({', '.join(map(str, versions))}): its answers came from different "
+                        "prompts, so a change cannot be attributed to one version."
+                    )
+        if recorded["baseline"] != recorded["candidate"]:
+            only = "baseline" if recorded["baseline"] else "candidate"
+            self.warnings.append(
+                f"Only the {only} run records prompt versions, so whether a prompt changed "
+                "between the runs is unknown."
             )
 
     # --- quality ---------------------------------------------------------------------
@@ -496,8 +563,12 @@ class _Check:
 
     def _quality(self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]) -> None:
         available = {}
+        if self.ann_blocked:
+            self.warnings.append(self.ann_blocked)
         for name in QUALITY_METRICS:
-            stats = self._metric_stats(pairs, name)
+            if name == "ann_recall" and self.ann_blocked:
+                continue
+            stats = self._metric_stats(pairs, name, p_value=True)
             if stats is not None:
                 available[name] = stats
         self.out["metrics"] = available
@@ -530,7 +601,7 @@ class _Check:
             self.flag(
                 Verdict.NOT_COMPARABLE,
                 "No quality metric was measured in both runs: add relevance labels or an "
-                "exact reference.",
+                "exact reference." + (f" {self.ann_blocked}" if self.ann_blocked else ""),
             )
             return
         for name, stats in available.items():
@@ -548,7 +619,7 @@ class _Check:
         for name, rule in self.policy.metrics.items():
             if name not in available:
                 if rule.required:
-                    self.flag(Verdict.NOT_COMPARABLE, _unavailable(name))
+                    self.flag(Verdict.NOT_COMPARABLE, _unavailable(name, self.ann_blocked))
                 continue
             if available[name]["n_families"] < self.policy.min_queries:
                 self.flag(
@@ -565,7 +636,11 @@ class _Check:
         self._regressed_queries(pairs, available)
 
     def _metric_stats(
-        self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]], name: str
+        self,
+        pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+        name: str,
+        *,
+        p_value: bool = False,
     ) -> dict[str, Any] | None:
         base_vals, cand_vals = [], []
         for b, c in pairs:
@@ -578,7 +653,7 @@ class _Check:
         base_means, cand_means = family_means(base_vals), family_means(cand_vals)
         deltas = np.asarray(cand_means) - np.asarray(base_means)
         low, high = self._bootstrap(deltas)
-        return {
+        stats = {
             "n": len(base_vals),
             "n_families": len(deltas),
             "baseline": statistics.fmean(base_means),
@@ -587,6 +662,13 @@ class _Check:
             "ci_low": low,
             "ci_high": high,
         }
+        if p_value:
+            # Information for the reader only: no rule reads it, and it has its own seeded
+            # generator, so the bootstrap interval (and every verdict) is what it was.
+            stats["p_value"] = paired_randomization(
+                deltas.tolist(), n=P_VALUE_RESAMPLES, seed=self.seed
+            ).p_value
+        return stats
 
     def _bootstrap(self, deltas: np.ndarray[Any, Any]) -> tuple[float, float]:
         if len(deltas) == 1:
@@ -666,7 +748,10 @@ class _Check:
         )
         if primary is None or primary not in available:
             if self.policy.max_regressed_queries is not None:
-                self.flag(Verdict.NOT_COMPARABLE, _unavailable(primary or "a quality metric"))
+                self.flag(
+                    Verdict.NOT_COMPARABLE,
+                    _unavailable(primary or "a quality metric", self.ann_blocked),
+                )
             return
         if (
             self.policy.max_regressed_queries is not None
@@ -734,7 +819,9 @@ class _Check:
         With ``cohorts.control = "bonferroni"`` a cohort ``max_drop`` fails only when its 95%
         interval, widened to 1 - 0.05/m for the m cohort ``max_drop`` rules judged, lies
         entirely beyond the allowed drop: a normal interval on the family-mean change with the
-        family standard error. ``min`` rules are absolute floors and are not adjusted.
+        family standard error. ``"holm"`` tests the same claim with Holm's step-down
+        procedure on one-sided p-values (:meth:`_holm_adjusted`). ``min`` rules are absolute
+        floors and are not adjusted.
         """
         tags = sorted({t for b, _ in pairs for t in b.get("tags", [])})
         rule = self.policy.cohorts
@@ -754,7 +841,8 @@ class _Check:
                     if name not in metrics:
                         if metric_rule.required:
                             self.flag(
-                                Verdict.NOT_COMPARABLE, f"cohort {tag!r}: {_unavailable(name)}"
+                                Verdict.NOT_COMPARABLE,
+                                f"cohort {tag!r}: {_unavailable(name, self.ann_blocked)}",
                             )
                     elif metrics[name]["n_families"] < rule.min_queries:
                         self.warnings.append(
@@ -771,13 +859,23 @@ class _Check:
             for name in judged
             if rule.metrics[name].max_drop is not None
         )
-        adjust = rule.control == "bonferroni" and drop_rules > 1
+        adjust = rule.control in ("bonferroni", "holm") and drop_rules > 1
+        holm = (
+            self._holm_adjusted(prepared, rule, drop_rules)
+            if adjust and rule.control == "holm"
+            else {}
+        )
         failures_before = len(self.reasons)
         for tag, members, metrics, n_families, enough_queries, judged_metrics in prepared:
             for name in judged_metrics:
                 metric_rule = rule.metrics[name]
                 if adjust and metric_rule.max_drop is not None:
-                    self._apply_adjusted(tag, name, metric_rule, members, metrics[name], drop_rules)
+                    if holm:
+                        self._apply_holm(tag, name, metric_rule, metrics[name], holm[(tag, name)])
+                    else:
+                        self._apply_adjusted(
+                            tag, name, metric_rule, members, metrics[name], drop_rules
+                        )
                     metric_rule = MetricRule(min=metric_rule.min, required=metric_rule.required)
                 self._apply_rule(
                     name, metric_rule, metrics[name], f"cohort {tag!r}: ", f"cohort:{tag}"
@@ -835,6 +933,58 @@ class _Check:
                 f"cohort:{tag}:{name}.max_drop",
             )
 
+    def _holm_adjusted(
+        self, prepared: Sequence[tuple[Any, ...]], rule: CohortRule, m: int
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """Holm-adjusted p-values that each judged cohort ``max_drop`` is truly exceeded.
+
+        The null for a rule is "the true drop is at most the allowed one"; the one-sided
+        p-value uses the same normal approximation and family standard error as the
+        Bonferroni interval. A rule fails when its adjusted p-value is below 0.025, the
+        per-side level of the 95% interval it replaces, so both controls hold the chance of
+        any false failure to the same level and Holm rejects at least as often.
+        """
+        keys, raw = [], []
+        for tag, members, metrics, _, _, judged in prepared:
+            for name in judged:
+                limit = rule.metrics[name].max_drop
+                if limit is None:
+                    continue
+                deltas = self._family_deltas(members, name)
+                delta = metrics[name]["delta"]
+                se = statistics.stdev(deltas) / math.sqrt(len(deltas)) if len(deltas) > 1 else 0.0
+                excess = -delta - limit
+                if se == 0:
+                    p = 0.0 if excess > EPS else 1.0
+                else:
+                    p = 1 - statistics.NormalDist().cdf(excess / se)
+                keys.append((tag, name))
+                raw.append(min(1.0, max(0.0, p)))
+        return {
+            key: {"p": p, "p_adjusted": adj, "rules": m}
+            for key, p, adj in zip(keys, raw, holm_adjust(raw), strict=True)
+        }
+
+    def _apply_holm(
+        self,
+        tag: str,
+        name: str,
+        rule: MetricRule,
+        stats: dict[str, Any],
+        holm: dict[str, Any],
+    ) -> None:
+        stats["holm"] = holm
+        assert rule.max_drop is not None
+        if holm["p_adjusted"] < HOLM_LEVEL:
+            self.flag(
+                Verdict.FAIL,
+                f"cohort {tag!r}: {name} dropped by {-stats['delta']:.4f} "
+                f"({stats['baseline']:.4f} → {stats['candidate']:.4f}); the drop exceeds the "
+                f"allowed {rule.max_drop:.4f} even after Holm adjustment for {holm['rules']} "
+                f"cohort rules (adjusted p = {holm['p_adjusted']:.4f}).",
+                f"cohort:{tag}:{name}.max_drop",
+            )
+
     def _family_deltas(
         self, pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]], name: str
     ) -> list[float]:
@@ -850,6 +1000,18 @@ class _Check:
     # --- latency ---------------------------------------------------------------------
 
     def _latency(self) -> None:
+        imported = [
+            role
+            for role, run in (("baseline", self.base), ("candidate", self.cand))
+            if str((run.get("timing") or {}).get("source") or "").startswith("external:")
+        ]
+        if imported:
+            self.warnings.append(
+                f"Latency was not judged: the {' and '.join(imported)} run"
+                f"{'s are' if len(imported) > 1 else ' is'} imported from another tool "
+                "(external:trec) and has no measured latency."
+            )
+            return
         bl = self.base["summary"].get("latency_ms") if self.base.get("summary") else None
         cl = self.cand["summary"].get("latency_ms") if self.cand.get("summary") else None
         if not bl or not cl:
@@ -942,6 +1104,19 @@ class _Check:
                 )
 
 
+def _versions(value: Any) -> tuple[str, ...]:
+    """A prompt's recorded versions (one, several when a run mixed them, none when absent)."""
+    if value is None:
+        return ()
+    if isinstance(value, list):
+        return tuple(sorted(str(v) for v in value))
+    return (str(value),)
+
+
+def _shown_versions(versions: tuple[str, ...]) -> str:
+    return "absent" if not versions else " + ".join(versions)
+
+
 def _value(q: Mapping[str, Any], name: str) -> float | None:
     if name == "ann_recall":
         v = q.get("ann_recall")
@@ -1008,9 +1183,38 @@ def _critical_detail(failures: Sequence[Mapping[str, Any]], total: int) -> str:
     return f"failed on {len(failures)} of {total} executions; first at {where}: {observed}"
 
 
-def _unavailable(name: str) -> str:
+def _reference_mismatch(base: Mapping[str, Any], cand: Mapping[str, Any]) -> str | None:
+    """Why ANN recall cannot be compared, when the runs used different exact references.
+
+    A run's reference is its backend's own exact search unless it recorded an external one.
+    Recall against different references answers different questions, so it is not compared.
+    """
+    b, c = reference_identity(base), reference_identity(cand)
+    if b == c:
+        return None
+
+    def describe(identity: tuple[str, str] | None) -> str:
+        if identity is None:
+            return "the backend's own exact search"
+        return f"{identity[0]} {identity[1][:12]}"
+
+    return (
+        "ANN recall is not compared: the runs used different exact references "
+        f"({describe(b)} vs {describe(c)}). Re-record both against the same reference."
+    )
+
+
+def _unavailable(name: str, ann_blocked: str | None = None) -> str:
+    if name == "ann_recall" and ann_blocked:
+        return f"The policy requires ann_recall. {ann_blocked}"
     need = "an exact reference" if name == "ann_recall" else "relevance labels"
     return f"The policy requires {name}, which needs {need} in both runs."
+
+
+def environment_differences(a: Mapping[str, Any], b: Mapping[str, Any]) -> list[str]:
+    """The runner-environment fields (``system``, ``machine``, ``cpu_count``, ``python``) on
+    which two runners differ: timing measured on them is not comparable."""
+    return [key for key in _ENVIRONMENT_KEYS if a.get(key) != b.get(key)]
 
 
 def _environment(run: Mapping[str, Any]) -> dict[str, Any]:

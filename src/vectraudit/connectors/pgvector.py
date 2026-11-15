@@ -182,6 +182,7 @@ class PgvectorConnector(Connector):
     def capabilities(self) -> Capabilities:
         return Capabilities(
             filters=bool(self.filter_columns),
+            filter_count=bool(self.filter_columns),
             exact_reference=True,
             config_inspection=True,
             query_plans=True,
@@ -232,10 +233,12 @@ class PgvectorConnector(Connector):
             snapshot=None,
         )
 
-    def _query(self, request: SearchRequest, *, explain: bool = False) -> tuple[Any, list[Any]]:
+    def _where(self, filter: Mapping[str, FilterValue]) -> tuple[Any, list[FilterValue]]:
+        """The ``WHERE`` clause and parameters for a filter; search and count share it, so
+        a pass rate is counted with exactly the condition the search applies."""
         from psycopg import sql
 
-        unknown = set(request.filter) - self.filter_columns
+        unknown = set(filter) - self.filter_columns
         if unknown:
             raise ConnectorError(
                 ErrorCode.UNSUPPORTED,
@@ -243,12 +246,26 @@ class PgvectorConnector(Connector):
                 "connection.",
                 "Add them to filter_columns (plain column names) in the connection file.",
             )
-        conditions = [
-            sql.SQL("{} = %s").format(sql.Identifier(col)) for col in sorted(request.filter)
-        ]
+        conditions = [sql.SQL("{} = %s").format(sql.Identifier(col)) for col in sorted(filter)]
         where = (
             sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("")
         )
+        return where, [filter[c] for c in sorted(filter)]
+
+    def _count(self, filter: Mapping[str, FilterValue]) -> int:
+        """``SELECT count(*)`` with the search's own filter: exact, unlike ``reltuples``."""
+        from psycopg import sql
+
+        where, params = self._where(filter)
+        query = sql.SQL("SELECT count(*) FROM {rel}{where}").format(
+            rel=self._relation(), where=where
+        )
+        return int(self._fetch(query, params)[0][0])
+
+    def _query(self, request: SearchRequest, *, explain: bool = False) -> tuple[Any, list[Any]]:
+        from psycopg import sql
+
+        where, params = self._where(request.filter)
         query = sql.SQL(
             "{explain}SELECT {id}::text FROM {rel}{where} ORDER BY {vec} {op} %s::{vtype} LIMIT %s"
         ).format(
@@ -260,7 +277,6 @@ class PgvectorConnector(Connector):
             op=sql.SQL(OPERATORS[self.distance]),
             vtype=sql.SQL(self._column_type),
         )
-        params: list[FilterValue] = [request.filter[c] for c in sorted(request.filter)]
         return query, [*params, vector_literal(request.vector), request.k]
 
     def _settings(self, request: SearchRequest) -> list[Any]:

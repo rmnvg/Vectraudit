@@ -137,7 +137,13 @@ def _optional_path(cfg: ConnectionConfig, key: str) -> Path | None:
 
 # Shared by offline doctor and runtime opens: structural checks need no backend client.
 _OPTION_TYPES: dict[str, dict[str, type]] = {
-    "faiss": {"index": str, "vectors": str, "ids": str, "reconstructed_reference": bool},
+    "faiss": {
+        "index": str,
+        "vectors": str,
+        "ids": str,
+        "reconstructed_reference": bool,
+        "metadata": str,
+    },
     "qdrant": {
         "url": str,
         "path": str,
@@ -173,6 +179,16 @@ _OPTION_TYPES: dict[str, dict[str, type]] = {
         "basic_auth_env": str,
         "timeout_s": int,
     },
+    "chroma": {
+        "url": str,
+        "collection": str,
+        "tenant": str,
+        "database": str,
+        "id_field": str,
+        "token_env": str,
+        "timeout_s": int,
+        "exact_limit": int,
+    },
     "weaviate": {
         "url": str,
         "collection": str,
@@ -191,6 +207,7 @@ _REQUIRED = {
     "pinecone": ("api_key_env", "index"),
     "weaviate": ("url", "collection"),
     "elasticsearch": ("url", "index", "vector_field"),
+    "chroma": ("url", "collection"),
 }
 _OPTION_TYPES["opensearch"] = _OPTION_TYPES["elasticsearch"]
 _REQUIRED["opensearch"] = _REQUIRED["elasticsearch"]
@@ -251,12 +268,13 @@ def validate_connection(cfg: ConnectionConfig) -> None:
 def _open_faiss(cfg: ConnectionConfig) -> Connector:
     from vectraudit.connectors.faiss_index import FaissConnector
 
-    _reject_unknown(cfg, {"index", "vectors", "ids", "reconstructed_reference"})
+    _reject_unknown(cfg, {"index", "vectors", "ids", "reconstructed_reference", "metadata"})
     return FaissConnector(
         resolve_path(cfg, require(cfg.options, "index", str)),
         vectors=_optional_path(cfg, "vectors"),
         ids=_optional_path(cfg, "ids"),
         reconstructed_reference=option(cfg.options, "reconstructed_reference", bool, False),
+        metadata=_optional_path(cfg, "metadata"),
     )
 
 
@@ -336,6 +354,22 @@ def _open_elasticsearch(cfg: ConnectionConfig) -> Connector:
     )
 
 
+def _open_chroma(cfg: ConnectionConfig) -> Connector:
+    from vectraudit.connectors.chroma import EXACT_LIMIT, ChromaConnector
+
+    _reject_unknown(cfg, set(_OPTION_TYPES["chroma"]))
+    return ChromaConnector(
+        url=require(cfg.options, "url", str),
+        collection=require(cfg.options, "collection", str),
+        tenant=option(cfg.options, "tenant", str) or "default_tenant",
+        database=option(cfg.options, "database", str) or "default_database",
+        id_field=option(cfg.options, "id_field", str),
+        token=secret(cfg.options, "token", required=False),
+        timeout_s=_positive_int(cfg, "timeout_s", 10),
+        exact_limit=_positive_int(cfg, "exact_limit", EXACT_LIMIT),
+    )
+
+
 def _open_pgvector(cfg: ConnectionConfig) -> Connector:
     from vectraudit.connectors.pgvector import PgvectorConnector
 
@@ -393,6 +427,7 @@ BACKENDS: dict[str, Callable[[ConnectionConfig], Connector]] = {
     "pinecone": _open_pinecone,
     "weaviate": _open_weaviate,
     "elasticsearch": _open_elasticsearch,
+    "chroma": _open_chroma,
     "opensearch": _open_elasticsearch,
 }
 

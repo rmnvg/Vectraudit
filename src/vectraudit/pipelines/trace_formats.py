@@ -15,6 +15,11 @@ report are exactly those of an OpenInference import.
   ``metadata``), as a JSON array, one per line, or the API's ``{"data": [...]}`` page.
   ``RETRIEVER`` observations are retrievers and ``GENERATION`` observations are model calls.
   Input and output arrive as raw strings and are parsed here.
+- **Opik** spans (``id``, ``trace_id``, ``parent_span_id``, ``type``, ``name``,
+  ``start_time``, ``end_time``, ``input``, ``output``, ``metadata``) as written by
+  ``workbench opik-pull``, which adds each trace as its root span so the question is found.
+  Opik has no retriever span type (``general``, ``tool``, ``llm``, ``guardrail``): retrievers
+  must be named with ``--stage-kind``. ``llm`` spans carry the prompt.
 
 Nothing is inferred from names or nesting: a span is a retriever only when the export says
 so (``run_type: retriever``, ``type: RETRIEVER``), or when its name is one the caller lists
@@ -32,16 +37,19 @@ from vectraudit.pipelines.traces import Span, TraceImportError, _epoch, _span
 
 LANGSMITH_KINDS = {"retriever": "RETRIEVER", "llm": "LLM", "chain": "CHAIN", "tool": "TOOL"}
 LANGFUSE_KINDS = {"RETRIEVER": "RETRIEVER", "GENERATION": "LLM", "CHAIN": "CHAIN", "TOOL": "TOOL"}
+OPIK_KINDS = {"llm": "LLM", "tool": "TOOL", "general": None, "guardrail": None}
 
 
 def shape_of(obj: Any) -> str | None:
-    """``langsmith``, ``langfuse`` or ``None`` (not one of these records)."""
+    """``langsmith``, ``langfuse``, ``opik`` or ``None`` (not one of these records)."""
     if not isinstance(obj, Mapping):
         return None
     if "run_type" in obj and ("inputs" in obj or "outputs" in obj):
         return "langsmith"
     if "traceId" in obj and "type" in obj and "startTime" in obj:
         return "langfuse"
+    if "trace_id" in obj and "start_time" in obj and obj.get("type") in OPIK_KINDS:
+        return "opik"
     return None
 
 
@@ -165,19 +173,55 @@ def langfuse_span(observation: Mapping[str, Any], stage_names: Collection[str] =
         name,
         _epoch(observation.get("startTime")),
         _epoch(observation.get("endTime") or observation.get("startTime")),
-        _attributes(
-            kind,
-            observation.get("input"),
-            observation.get("output"),
-            observation.get("metadata"),
-            session=observation.get("sessionId"),
-            user=observation.get("userId"),
-        ),
+        {
+            **_attributes(
+                kind,
+                observation.get("input"),
+                observation.get("output"),
+                observation.get("metadata"),
+                session=observation.get("sessionId"),
+                user=observation.get("userId"),
+            ),
+            **_langfuse_prompt(observation),
+        },
+    )
+
+
+def _langfuse_prompt(observation: Mapping[str, Any]) -> dict[str, Any]:
+    """A linked Langfuse prompt as OpenInference prompt attributes (name and version only)."""
+    name, version = observation.get("promptName"), observation.get("promptVersion")
+    if not isinstance(name, str) or not name or isinstance(version, bool):
+        return {}
+    if not isinstance(version, (int, str)) or not str(version):
+        return {}
+    return {
+        "prompt.vendor": "langfuse",
+        "prompt.id": name,
+        "llm.prompt_template.version": str(version),
+    }
+
+
+def opik_span(span: Mapping[str, Any], stage_names: Collection[str] = ()) -> Span:
+    """One Opik span as a span. A retriever is only ever a span named in ``stage_names``."""
+    name = span.get("name")
+    kind = "RETRIEVER" if name in stage_names else OPIK_KINDS.get(str(span.get("type")))
+    if not span.get("trace_id"):
+        raise TraceImportError(f"Opik span {span.get('id')} has no trace_id.")
+    return _span(
+        str(span["trace_id"]),
+        str(span.get("id")),
+        str(span["parent_span_id"]) if span.get("parent_span_id") else None,
+        name,
+        _epoch(span.get("start_time")),
+        _epoch(span.get("end_time") or span.get("start_time")),
+        _attributes(kind, span.get("input"), span.get("output"), span.get("metadata")),
     )
 
 
 def convert(obj: Mapping[str, Any], shape: str, stage_names: Collection[str] = ()) -> Span:
-    """A LangSmith run or Langfuse observation as a span."""
+    """A LangSmith run, Langfuse observation or Opik span as a span."""
     if shape == "langsmith":
         return langsmith_span(obj, stage_names)
+    if shape == "opik":
+        return opik_span(obj, stage_names)
     return langfuse_span(obj, stage_names)

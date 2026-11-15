@@ -73,6 +73,7 @@ def run_record(
     max_p95_ms: float | None = None,
     label: str | None = None,
     source: VectorSource | None = None,
+    reference: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A JSON-ready record of a finished sweep (:func:`save_run` writes it).
 
@@ -110,7 +111,15 @@ def run_record(
             "k": result.k,
             "repeats": result.repeats,
             "seed": result.seed,
-            "truth_source": "reconstructed" if result.truth_reconstructed else "raw",
+            "batch_threads": result.batch_threads,
+            "truth_source": (
+                "external"
+                if reference is not None
+                else "reconstructed"
+                if result.truth_reconstructed
+                else "raw"
+            ),
+            "reference": reference,
             "ground_truth_fingerprint": corpus_fingerprint(source) if source is not None else None,
         },
         "environment": dict(result.environment),
@@ -130,6 +139,11 @@ def run_record(
                 "latency_mean_ms": p.latency_mean_ms,
                 "latency_p95_ms": p.latency_p95_ms,
                 "probe_coverage": p.probe_coverage,
+                **(
+                    {"batch_qps": p.batch_qps, "batch_recall": p.batch_recall}
+                    if p.batch_qps is not None
+                    else {}
+                ),
                 "recall_distribution": [list(pair) for pair in p.recall_distribution],
                 "worst_queries": [
                     {"query_no": w.query_no, "id": w.id, "recall": w.recall}
@@ -227,6 +241,9 @@ def check_run(data: Any) -> dict[str, Any]:
                 _nonneg(p["latency_mean_ms"])
             if p.get("probe_coverage") is not None:
                 _fraction(p["probe_coverage"])
+            if p.get("batch_qps") is not None:
+                _nonneg(p["batch_qps"])
+                _fraction(p["batch_recall"])
             lo, hi = p.get("recall_ci_low"), p.get("recall_ci_high")
             if lo is not None and hi is not None and _fraction(lo) > _fraction(hi) + 1e-9:
                 raise ValueError("recall_ci_low > recall_ci_high")
@@ -326,7 +343,13 @@ def compare_runs(
         notes.append("Different query sets (fingerprints differ): recall isn't comparable.")
         recall_ok = False
     if bs.get("truth_source") != cs.get("truth_source"):
-        notes.append("One run's ground truth used decoded vectors, the other raw vectors.")
+        notes.append(
+            "The runs used different kinds of ground truth "
+            f"({bs.get('truth_source')} vs {cs.get('truth_source')}): recall isn't comparable."
+        )
+        recall_ok = False
+    elif bs.get("reference") != cs.get("reference"):
+        notes.append("The runs used different external exact references: recall isn't comparable.")
         recall_ok = False
     base_fp, cur_fp = bs.get("ground_truth_fingerprint"), cs.get("ground_truth_fingerprint")
     if base_fp is not None and cur_fp is not None and base_fp != cur_fp:

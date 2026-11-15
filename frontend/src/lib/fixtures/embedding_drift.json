@@ -1,0 +1,108 @@
+{
+  "format": "vectraudit.embedding_drift",
+  "format_version": 1,
+  "kind": "questions",
+  "status": "drift",
+  "evidence": "hypothesis",
+  "reference": {
+    "label": "benchmark",
+    "source": "exploratory benchmark questions",
+    "dataset_sha256": "4ebdc50ece63146faefccf823682958e34512fbcb200582934c3cf1272576f84",
+    "count": 60,
+    "embedded_here": 60,
+    "model": "hash"
+  },
+  "current": {
+    "label": "production",
+    "source": "traces.jsonl",
+    "count": 60,
+    "embedded_here": 60,
+    "model": "hash",
+    "ids": "trace"
+  },
+  "result": {
+    "method": "model",
+    "evidently_default": true,
+    "statistic": "domain classifier ROC AUC",
+    "value": 0.8648,
+    "threshold": 0.6401,
+    "p_value": null,
+    "drift": true,
+    "rule": "drift when the ROC AUC is above the 95% quantile of 100 AUCs of random scores (0.640)",
+    "held_out": 60,
+    "n_reference": 60,
+    "n_current": 60,
+    "dimensions": 256,
+    "pca_components": null,
+    "sampled": null,
+    "seed": 0,
+    "warnings": [
+      "With fewer than 200 reference vectors the classifier test has little power: when the rest of the traffic is unchanged, a new topic must be a large share of it to show (a perfect classifier reaches only 0.5 + share / 2). On synthetic questions mmd found a topic making up a fifth of the traffic far more often; consider --method mmd."
+    ]
+  },
+  "where": {
+    "method": "k-means on the reference and current vectors together",
+    "k": 11,
+    "seed": 0,
+    "groups": [
+      {
+        "share": 0.6667,
+        "items": 40,
+        "terms": [
+          "phrase",
+          "seed",
+          "wallet",
+          "connect"
+        ],
+        "distance_ratio": 1414213576.004,
+        "ids": [
+          "t0",
+          "t1",
+          "t2",
+          "t3",
+          "t4",
+          "t5",
+          "t6",
+          "t7",
+          "t8",
+          "t9",
+          "t10",
+          "t11",
+          "t12",
+          "t13",
+          "t14",
+          "t15",
+          "t16",
+          "t17",
+          "t18",
+          "t19",
+          "t20",
+          "t21",
+          "t22",
+          "t23",
+          "t24",
+          "t25",
+          "t26",
+          "t27",
+          "t28",
+          "t29",
+          "t30",
+          "t31",
+          "t32",
+          "t33",
+          "t34",
+          "t35",
+          "t36",
+          "t37",
+          "t38",
+          "t39"
+        ],
+        "evidence": "hypothesis",
+        "message": "About 67% of the production questions form a group no benchmark question is close to (about: phrase, seed, wallet, connect)."
+      }
+    ],
+    "note": null
+  },
+  "method_source": "Evidently 0.7.22 (commit 34771fe41c08); see docs/production-intake.md",
+  "note": "Drift says the two sets of vectors differ, not that retrieval got worse. Compare the release check on the new traffic before acting on it. Local only."
+}

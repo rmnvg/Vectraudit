@@ -1,4 +1,8 @@
-"""Inspectable BM25/vector hybrid baseline with reciprocal-rank fusion."""
+"""Inspectable BM25/vector hybrid baseline.
+
+Fusion defaults to weighted reciprocal-rank fusion (k = 60); ``fusion``, ``fusion_k`` and
+``fusion_norm`` select any method of :mod:`vectraudit.core.fusion`.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from vectraudit.contracts import matches_filter
+from vectraudit.core.fusion import FUSION_METHODS, NORM_METHODS, FusionMethod, NormMethod, fuse
 from vectraudit.pipelines.errors import PipelineCallError
 from vectraudit.pipelines.models import Hit, PipelineRequest
 from vectraudit.pipelines.runtime import PythonPipeline, Stage
@@ -67,17 +72,16 @@ def hybrid_pipeline(documents: list[dict[str, Any]]) -> PythonPipeline:
         return [Hit(id=ids[i], score=float(scores[i])) for i in order]
 
     def fusion(q: PipelineRequest, parents: dict[str, list[Hit]]) -> list[Hit]:
-        scores: dict[str, float] = {}
         weight = _weight(q)
-        for name, w in (("keyword", 1 - weight), ("vector", weight)):
-            if not w:
-                continue
-            for rank, hit in enumerate(parents[name], 1):
-                scores[hit.id] = scores.get(hit.id, 0) + w / (60 + rank)
-        return [
-            Hit(id=doc, score=score)
-            for doc, score in sorted(scores.items(), key=lambda t: (-t[1], t[0]))
-        ]
+        method, rrf_k, norm = _fusion(q)
+        fused = fuse(
+            {name: [(h.id, h.score) for h in parents[name]] for name in ("keyword", "vector")},
+            method,
+            weights={"keyword": 1 - weight, "vector": weight},
+            rrf_k=rrf_k,
+            norm=norm,
+        )
+        return [Hit(id=doc, score=score) for doc, score in fused]
 
     def filtering(q: PipelineRequest, parents: dict[str, list[Hit]]) -> list[Hit]:
         required = dict(q.filters)
@@ -121,6 +125,19 @@ def _depth(q: PipelineRequest) -> int:
     if type(value) is not int or not q.k <= value <= 10000:
         raise ValueError("depth must be an integer between k and 10000")
     return value
+
+
+def _fusion(q: PipelineRequest) -> tuple[FusionMethod, int, NormMethod]:
+    method = q.params.get("fusion", "rrf")
+    if method not in FUSION_METHODS:
+        raise ValueError(f"fusion must be one of {', '.join(FUSION_METHODS)}")
+    rrf_k = q.params.get("fusion_k", 60)
+    if type(rrf_k) is not int or not 0 <= rrf_k <= 10000:
+        raise ValueError("fusion_k must be an integer between 0 and 10000")
+    norm = q.params.get("fusion_norm", "min_max")
+    if norm not in NORM_METHODS:
+        raise ValueError(f"fusion_norm must be one of {', '.join(NORM_METHODS)}")
+    return method, rrf_k, norm
 
 
 def _weight(q: PipelineRequest) -> float:

@@ -14,13 +14,15 @@ export interface ReleaseRecord extends ReleaseSummary {
   files: Record<string, string>
 }
 
-export const METRICS = ['ndcg', 'recall', 'mrr', 'precision', 'ann_recall'] as const
+export const METRICS = ['ndcg', 'recall', 'mrr', 'precision', 'map', 'hit_rate', 'ann_recall'] as const
 export type Metric = typeof METRICS[number]
 export const METRIC_HELP: Record<Metric, string> = {
   ndcg: 'nDCG: are the most relevant documents near the top?',
   recall: 'Recall: how many of the relevant documents were returned at all?',
   mrr: 'MRR: how high is the first relevant document?',
   precision: 'Precision: how many returned documents are relevant?',
+  map: 'MAP: precision at every relevant document, over all relevant ones (runs recorded before MAP was added lack it).',
+  hit_rate: 'Hit rate: did any relevant document come back at all (runs recorded before it was added lack it)?',
   ann_recall: 'ANN recall: how closely approximate search matches exact search?',
 }
 
@@ -32,6 +34,8 @@ export const DROP_TESTS: { value: DropTest; label: string; help: string }[] = [
   { value: 'non_inferiority', label: 'Shown within tolerance', help: 'Pass only when the whole 95% interval stays above the allowed drop; otherwise fail as inconclusive. Strictest: small benchmarks often cannot show it.' },
 ]
 export interface MetricForm { enabled: boolean; maxDrop: string; min: string }
+export type CohortControl = 'none' | 'bonferroni' | 'holm'
+
 export interface PolicyForm {
   metrics: Record<Metric, MetricForm>
   minQueries: string
@@ -39,8 +43,8 @@ export interface PolicyForm {
   primaryMetric: string
   cohortMinQueries: string
   cohortMetrics: Record<Metric, { enabled: boolean; maxDrop: string }>
-  /** Bonferroni control across judged cohort rules (`cohorts.control`). */
-  cohortControl: boolean
+  /** Multiplicity control across judged cohort rules (`cohorts.control`). */
+  cohortControl: CohortControl
   /** Policy blocks this form does not edit (audited exceptions, the permission stage
    *  boundary), kept unchanged. */
   preserved: RawPolicy
@@ -88,8 +92,8 @@ export function formFromPolicy(raw: RawPolicy): PolicyForm {
     primaryMetric: typeof raw.primary_metric === 'string' ? raw.primary_metric : '',
     cohortMinQueries: text(cohorts.min_queries ?? 10),
     cohortMetrics: Object.fromEntries(METRICS.map(m => [m, { enabled: m in cohortMetrics, maxDrop: text(object(cohortMetrics[m]).max_drop) }])) as PolicyForm['cohortMetrics'],
-    cohortControl: cohorts.control === 'bonferroni',
-    preserved: Object.fromEntries((['exceptions', 'forbidden_stages'] as const).filter(key => key in raw).map(key => [key, raw[key]])),
+    cohortControl: cohorts.control === 'bonferroni' || cohorts.control === 'holm' ? cohorts.control : 'none',
+    preserved: Object.fromEntries((['exceptions', 'forbidden_stages', 'prompt_changes', 'robustness'] as const).filter(key => key in raw).map(key => [key, raw[key]])),
     p95Pct: text(latency.p95_max_increase_pct),
     p50Pct: text(latency.p50_max_increase_pct),
     p95Ms: text(latency.p95_max_ms),
@@ -181,7 +185,7 @@ export function policyFromForm(form: PolicyForm): { policy?: RawPolicy; errors: 
     cohorts: {
       min_queries: count(form.cohortMinQueries, 'Minimum questions per cohort', 1) ?? 10,
       metrics: cohortMetrics,
-      ...(form.cohortControl && { control: 'bonferroni' }),
+      ...(form.cohortControl !== 'none' && { control: form.cohortControl }),
     },
     require_significance: form.dropTest === 'significance',
     ...(form.dropTest === 'non_inferiority' && { non_inferiority: true }),

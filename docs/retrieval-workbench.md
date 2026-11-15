@@ -486,6 +486,55 @@ Phoenix exports them (one per line or a JSON array; flattened `attributes.*` col
 epoch-millisecond times are accepted). The result is an ordinary run file: `vectraudit check`
 judges two imported runs, or an imported run against a live one, under the same policy.
 
+**OpenLLMetry (Traceloop) OTLP exports** are read from the same OTLP JSON: spans that use
+OpenLLMetry's conventions instead of OpenInference's are translated on the way in.
+
+- **Vector database queries** (Pinecone, Chroma, Milvus and the others it instruments) record
+  each result as a `db.query.result` (or `db.search.result`) span event. Those become the
+  retriever's documents: id, score, text and metadata, so `--id-field` reads a metadata field
+  as usual, including Pinecone's metadata, which it writes as a Python `repr`. Only `score`
+  counts as a score; `distance` runs the other way and is not used in its place.
+- **Retrievers are never guessed:** a span is one only when it has result events or is marked
+  as a vector query (`db.vector.query.top_k`, `db.chroma.query.n_results`). A vector query
+  without result events (Qdrant records none) is a gap, not an empty result. So is a span
+  that ran several queries at once (Chroma with several texts, Milvus with several query
+  IDs): its results carry nothing saying which query each belongs to, so they are not
+  merged into one ranking.
+- **The question** comes from `traceloop.entity.input`, in either form OpenLLMetry writes:
+  the SDK decorators' `{"args": [...], "kwargs": {...}}` (a `question`, `query`, `input` or
+  `text` keyword, else the first string argument), or its LangChain instrumentation's
+  `{"inputs": ..., "tags", "metadata", "kwargs"}` (the `inputs` string, or the question in
+  an `inputs` object) and `{"query": ...}` on retriever spans.
+- **LLM calls** (`gen_ai.system`, `llm.request.type`) contribute their `gen_ai.prompt.N`
+  messages, so model context is located as for OpenInference.
+- **Association properties** (`traceloop.association.properties.*`) are metadata, so
+  `--context-field tenant` works, and `session_id`/`user_id` are the session and user.
+- **Managed prompts** (`traceloop.prompt.key`, with `traceloop.prompt.version` or its hash)
+  are recorded as prompt versions (below).
+- Spans that already carry OpenInference attributes are read exactly as recorded, and a
+  translated value never replaces a recorded one.
+
+**OpenTelemetry GenAI conventions (OpenLIT and others)** are read from the same OTLP JSON:
+
+- **Retrievals** (`gen_ai.operation.name` `retrieval`) take their documents from
+  `gen_ai.retrieval.documents` (the specification's `id` and `score`, plus `content` and
+  `metadata` when recorded) and the question from `gen_ai.retrieval.query.text`.
+- **A list shorter than its count is a gap.** OpenLIT's LangChain instrumentation keeps
+  only the first three documents and records the total in
+  `gen_ai.retrieval.document_count`. When the count is larger, the recorded documents are
+  not the ranking, so the question is a gap rather than a shorter top k. Retrievers that
+  return three documents or fewer import in full.
+- **Vector database spans** from OpenLIT record counts but no document IDs, so they are
+  retrievers without documents. When a trace has both, name the delivered retrieval, for
+  example `--final-span "retrieval VectorStoreRetriever"`. Otherwise the question is
+  reported as ambiguous instead of guessed.
+- **Model calls** (`chat`, `text_completion`, `generate_content`) contribute
+  `gen_ai.input.messages`, so model context is located when the call is in the same trace.
+- **What real OpenLIT output showed** (OpenLIT 1.45 with LangChain and Chroma): OpenLIT
+  recorded the retriever, vector-store and chat spans of one question as separate traces,
+  so rankings import but model context is unknown. Document IDs come only from metadata
+  `id` or `source`; documents with neither import as `document_id_missing`.
+
 LangSmith and Langfuse exports are read too, and converted to the same spans, so everything
 below applies to them unchanged:
 
@@ -538,8 +587,35 @@ that cause; the run is then `partial` and cannot pass a release check.
 The capability report, printed and optionally saved as JSON, states for the imported traces:
 stable document IDs, the delivered ranking, observed stages, document flow between stages,
 filters and tenant context (none of these formats has a standard attribute for filters;
-metadata key names and session or user IDs are listed), model context (below), replay and latency.
-It holds counts, span names and attribute names only.
+metadata key names and session or user IDs are listed), model context (below), prompt
+versions (below), replay and latency. It holds counts, span names and attribute names only.
+
+**Prompt versions from traces.** When the traces record which managed prompt produced each
+answer, the run records its name and version per question, and the run's
+`backend.config.prompts` holds each prompt's version:
+
+| Source | Recorded as |
+|---|---|
+| OpenInference | `prompt.id` and `llm.prompt_template.version` |
+| Langfuse | the observation's linked prompt (`promptName`, `promptVersion`) |
+| LangSmith | LangChain hub prompts: `lc_hub_owner`/`lc_hub_repo` and `lc_hub_commit_hash` in run metadata |
+| Opik | `opik_prompts` in span or trace metadata (`name`, with `version.commit` or `version_number`) |
+| OpenLLMetry | `traceloop.prompt.key` with `traceloop.prompt.version` (or `version_hash`) |
+
+- **Release checks** list a prompt change with the other changed settings
+  (`backend.config.prompts.support-answer: 12 → 13`). They warn when a run mixes versions
+  of one prompt, since its answers then came from different prompts, and when only one run
+  recorded prompt versions. With `"prompt_changes": "fail"` in the policy, a changed
+  prompt fails the check until an audited exception accepts it (see the release-check
+  policy docs).
+- **Answer judgments** (`attach-answers`) break diagnoses down by prompt version when a run
+  holds several, so "answered wrong despite evidence rose with v13" is visible.
+- **Only names and versions are kept,** never template text. Hosted uploads carry them as
+  fingerprints, like other text settings: a hosted check shows that a prompt changed, but
+  not its name or version.
+- Vectraudit does not store, edit or serve prompts. Keep managing them in Langfuse,
+  LangSmith or Opik; Vectraudit reads which version answered.
+- A question that matched several traces and was refused records no prompt.
 
 **Model context from traces.** When LLM spans record their input messages, each delivered
 document's recorded text (`document.content`) is looked for in the prompt, ignoring case and
@@ -624,6 +700,14 @@ are read as they are, below):
 {"query_id": "refund-annual", "evaluator": "ragas.answer_correctness", "evaluator_version": "0.2", "kind": "model", "score": 0.41}
 ```
 
+- Optional `citations` (document IDs the answer cited, at most 100) and `citation_support`
+  (`{"doc-id": "supported" | "unsupported"}`, only for cited IDs). Each cited document is
+  placed against the run: `in_context`, `not_in_context` (delivered but absent from an
+  observed model context), `delivered_context_unknown`, or `not_delivered` (retrieval never
+  returned it). Support verdicts follow the answer rule: humans over models, disagreement is
+  `disputed`. Different citation lists for one question are reported as conflicting and not
+  analysed. Citations are reported beside the answer; they never change a verdict or
+  diagnosis, and relevance to the benchmark's labels is not judged.
 - `verdict` is `correct`, `partial` or `incorrect`. A judgment with only a `score` needs a
   `--threshold` for its evaluator; there is no default, and without one the question is
   reported as unjudged.
@@ -664,6 +748,75 @@ vectraudit workbench attach-answers traces.run.json scores.json --out judged.run
 - Comments, corrections and author IDs are never read. The run records the export's format
   and how many scores were skipped, and why.
 
+**From DeepEval.** Teams that grade answers with DeepEval can use its saved results
+(`.deepeval/.latest_test_run.json`) directly:
+
+```bash
+vectraudit workbench deepeval-judgments .deepeval/.latest_test_run.json benchmark.jsonl \
+  --metric "Correctness [GEval]" --out judgments.jsonl
+vectraudit workbench attach-answers current.run.json judgments.jsonl --out current.judged.run.json
+```
+
+- **You choose which metrics judge answers** (`--metric`, repeatable). Without it the
+  command lists the metrics in the file. A faithful or relevant answer can still be wrong,
+  so no metric is assumed to mean "correct". Contextual Precision, Recall and Relevancy
+  judge the retrieved context, not the answer, and are refused; Vectraudit measures
+  retrieval against the benchmark's labels itself.
+- **Verdicts are DeepEval's own decisions:** a metric's `success` (its score against its
+  threshold) becomes `correct` or `incorrect`, with the score and the judge model kept.
+  Errored or unevaluated metrics are skipped and counted.
+- **Matching:** each test case is matched by `metadata.query_id`, else
+  `metadata.trace_id`, else its input when that is exactly one benchmark question's text
+  (case and spacing ignored). Ambiguous and unmatched test cases are counted, not guessed.
+- Reasons, inputs, outputs and contexts are never written.
+
+**From promptfoo.** Teams that grade answers with promptfoo can use its results file
+(`promptfoo eval -o results.json`) directly:
+
+```bash
+vectraudit workbench promptfoo-judgments results.json benchmark.jsonl \
+  --assertion Correctness --prompt concise --out judgments.jsonl
+```
+
+- **One variant.** A promptfoo eval usually compares prompts or models, and judgments of
+  different systems must not be attached to one run. When the file holds several
+  provider/prompt pairs, choose one with `--provider` and `--prompt`. Without
+  `--assertion`, the command lists the assertions and variants in the file.
+- **Chosen assertions** (`--assertion`, repeatable): an assertion's `metric` label, else
+  its type, or `overall` for the test's own pass/fail. `context-recall` and
+  `context-relevance` judge retrieval and are refused; `overall` is not used for a test
+  that includes them.
+- **Verdicts are promptfoo's** `pass`, with the score. Only results that errored
+  (`failureReason` 2) are skipped. promptfoo also fills `error` with the message of an
+  ordinary assertion failure, so that field alone is not read as an error. Each repeat is
+  its own judgment, so repeats that disagree show as disputed.
+- **Matching:** `query_id` or `trace_id` in the test's metadata or vars, else the
+  `question` (or `--question-var`) variable when it matches exactly one benchmark question.
+- Reasons, prompts and outputs are never written.
+
+**From Ragas.** Teams that score answers with Ragas can save the result table
+(`evaluate(...).to_pandas()` as CSV, JSON Lines or JSON) and import it:
+
+```bash
+vectraudit workbench ragas-judgments results.csv benchmark.jsonl \
+  --metric factual_correctness --out judgments.jsonl
+vectraudit workbench attach-answers run.json judgments.jsonl \
+  --threshold ragas.factual_correctness=0.7 --out judged.json
+```
+
+- **Scores, not verdicts.** Ragas decides nothing; each judgment is named
+  `ragas.METRIC` and keeps only the score, and the pass mark is declared with
+  `--threshold` when attaching. There is no default threshold.
+- **Chosen metrics** (`--metric`, repeatable): the metric columns as Ragas names them.
+  Without `--metric`, the command lists them. Metrics with `context` in their name (context
+  precision, recall, entity recall, utilization, relevance) judge retrieval and are
+  refused.
+- **Failed metrics** (an empty cell or `null`, written when the judge errored) are skipped
+  and counted.
+- **Matching:** a `query_id` or `trace_id` column added before saving, else `user_input`
+  when it matches exactly one benchmark question. Multi-turn samples need a `query_id`.
+- Inputs, responses, references and contexts are never written.
+
 Each judged question then gets a **diagnosis**: the first observable loss on the path from
 retrieval to answer, with the facts behind it. It is not a root cause.
 
@@ -682,6 +835,90 @@ The command writes a new run file and leaves the original unchanged. Comparisons
 `answer_regressed` when an answer judged correct in the baseline is judged partial or
 incorrect in the candidate, with the candidate's diagnosis. Answers do not change release
 verdicts yet, and none of this is uploaded.
+
+### Component scoreboard: where questions lose their evidence
+
+The diagnosis above is per question. The scoreboard adds them up per component, so a team
+sees whether its losses sit at retrieval, a filter, fusion, the reranker, the cut-off,
+context packing or the answer. The workbench run view shows it for every pipeline run that
+recorded stages, the release report shows both runs' rows as information, and the command
+prints it (with `--json` for the Checks tab):
+
+```bash
+vectraudit workbench components current.run.json --json components.json
+```
+
+- **Lost** means the question's required evidence (any one complete group) or, without
+  groups, every relevant document, did not survive. A group breaks at the first drop of any
+  of its documents; the question is lost where its last group broke.
+- **Components** are the stage kinds the pipeline recorded (`keyword` and `vector` count as
+  `retrieve`), then `context` and `answer` (after `attach-answers`). A document no recorded
+  stage returned counts at `retrieve`, though the corpus, the index or query rewriting (which
+  no stage records) may be the cause.
+- **Not observed, never assigned:** a question whose evidence was not delivered and whose
+  stages were not recorded, or whose context or answer would place it but was not recorded.
+  Unlabelled and no-answer questions are not applicable; errored ones are counted apart.
+- **Rates** are family-weighted (each paraphrase family counts once, split across the
+  components its questions lost at) with Wilson 95% intervals.
+- **Cohorts meant for a component:** the benchmark header can map your own tags to the
+  components they exercise, and each such cohort gets its own rows, for example "multi_hop
+  (meant to exercise retrieve, rerank): 9 of 40 observed questions lost their evidence there":
+
+  ```json
+  {"dataset": {"component_tags": {"multi_hop": ["retrieve", "rerank"], "long_policy": ["context"]}}}
+  ```
+
+The scoreboard never changes a verdict. The idea of a score per component comes from
+Giskard's RAG evaluation toolkit; here the attribution comes from recorded evidence, not
+generated questions or a model grader.
+
+### Show the diagnosis in Langfuse
+
+For a run imported from Langfuse (a `langfuse-pull` or export), `workbench langfuse-push`
+writes each judged trace's diagnosis back to Langfuse as a categorical score, so engineers
+can filter and chart traces by it where they already work:
+
+```bash
+vectraudit workbench langfuse-push current.judged.run.json            # preview: sends nothing
+vectraudit workbench langfuse-push current.judged.run.json --send     # write the scores
+```
+
+- **Previews by default.** The preview shows how many traces get a score, the values, and
+  one score exactly as it would be sent. Nothing is sent and no connection is made
+  without `--send`.
+- **Sent per trace:** the trace ID, the score name (`--name`, default
+  `vectraudit.diagnosis`), the diagnosis class, an optional `--environment`, and metadata
+  with Vectraudit's name, a format version and a run digest. No question or document
+  text, no document IDs, no facts, no comment.
+- **Re-sending replaces.** Each score's ID is derived from the trace and score name, so a
+  newer diagnosis is meant to replace the earlier one rather than add a second. Langfuse
+  keys scores by ID; confirm this on your deployment.
+- **Partial rejection** (Langfuse's HTTP 207) is reported as counts and exits 3. It is not
+  retried, as Langfuse asks, and rejection messages are not echoed. A score config with
+  the same name that doesn't list the diagnosis classes as categories is the likely cause.
+- Only runs imported from Langfuse are accepted, because other runs' trace IDs are not
+  Langfuse's. Questions without a trace or a diagnosis are left out and counted.
+
+### Show the diagnosis in Phoenix
+
+For a run imported from Phoenix (a `phoenix-pull`, a Phoenix span export, or OpenInference
+traces that were also sent to Phoenix), `workbench phoenix-push` writes each judged trace's
+diagnosis back as a trace annotation:
+
+```bash
+vectraudit workbench phoenix-push current.judged.run.json            # preview: sends nothing
+vectraudit workbench phoenix-push current.judged.run.json --send     # write the annotations
+```
+
+- **Sent per trace:** the trace ID, the annotation name (`--name`, default
+  `vectraudit.diagnosis`), `annotator_kind` `CODE`, the diagnosis class as the label, the
+  identifier `vectraudit`, and metadata with Vectraudit's name, a format version and a run
+  digest. No explanation, text, document IDs or facts. Previews by default.
+- **Re-sending replaces:** Phoenix keys annotations by trace, name and identifier.
+- **Unknown traces are reported, not silently lost.** Phoenix's default asynchronous write
+  answers 200 and drops annotations for traces it does not have, so requests use
+  `sync=true`. A batch naming an unknown trace is refused whole; it is resent one trace at
+  a time, the known traces are written, and the unknown ones are counted (exit 3).
 
 ## Investigate a failure and try a fix
 

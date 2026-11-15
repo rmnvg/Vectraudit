@@ -59,6 +59,22 @@ def _param(value: str | int | float | bool, projected: bool) -> str | int | floa
     return "sha256:" + hashlib.sha256(value.encode()).hexdigest()[:16]
 
 
+def _prompts(value: Any, projected: bool) -> dict[str, str | list[str]]:
+    """Prompt names and versions as fingerprints: a hosted check can see that a prompt
+    changed, as it can for a text parameter, without learning its name or version."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, str | list[str]] = {}
+    for name, versions in value.items():
+        if not isinstance(name, str):
+            continue
+        if isinstance(versions, str):
+            out[str(_param(name, projected))] = str(_param(versions, projected))
+        elif isinstance(versions, list) and all(isinstance(v, str) for v in versions):
+            out[str(_param(name, projected))] = sorted(str(_param(v, projected)) for v in versions)
+    return out
+
+
 def _error(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -89,7 +105,7 @@ def _query(
 ) -> dict[str, Any]:
     out = _scalars(
         query,
-        "query_id family_id filtered latency_ms ann_recall nondeterministic "
+        "query_id family_id filtered pass_rate latency_ms ann_recall nondeterministic "
         "no_answer_correct permission_checked abstained cost_usd memory_bytes "
         "attempt_count elapsed_ms",
     )
@@ -104,7 +120,9 @@ def _query(
         out["repeat_ids"] = query["repeat_ids"]  # validated by check_run, including attempts
     if "repeat_metrics" in query:
         out["repeat_metrics"] = [
-            _scalars(sample, "recall precision mrr ndcg") if sample is not None else None
+            _scalars(sample, "recall precision mrr ndcg map hit_rate")
+            if sample is not None
+            else None
             for sample in query["repeat_metrics"]
         ]
     if "repeat_ann_recall" in query:
@@ -118,7 +136,7 @@ def _query(
     out.setdefault("ann_recall", None)
     out.setdefault("nondeterministic", False)
     out["metrics"] = (
-        _scalars(query["metrics"], "recall precision mrr ndcg")
+        _scalars(query["metrics"], "recall precision mrr ndcg map hit_rate")
         if query.get("metrics") is not None
         else None
     )
@@ -196,6 +214,9 @@ def _payload(
         out["backend"]["config"] = _scalars(
             record["backend"]["config"], "adapter name sha256 pipeline_version corpus_sha256"
         )
+        prompts = _prompts(record["backend"]["config"].get("prompts"), projected)
+        if prompts:
+            out["backend"]["config"]["prompts"] = prompts
     out["connection"] = {}
     out["capabilities"] = _scalars(record.get("capabilities"), "exact_reference filters search")
     search = record["search"]

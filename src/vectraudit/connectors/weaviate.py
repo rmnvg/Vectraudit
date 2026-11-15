@@ -27,6 +27,7 @@ from vectraudit.connectors.base import (
     ConnectorError,
     Distance,
     ErrorCode,
+    FilterValue,
     SearchRequest,
 )
 
@@ -170,6 +171,7 @@ class WeaviateConnector(Connector):
         flat = self._index_type == "flat"
         return Capabilities(
             filters=True,
+            filter_count=True,
             exact_reference=flat,
             exact_reference_note=None,
             config_inspection=True,
@@ -228,13 +230,27 @@ class WeaviateConnector(Connector):
             snapshot=None,
         )
 
-    def _search(self, request: SearchRequest) -> list[str]:
+    @staticmethod
+    def _filters(conditions: Mapping[str, FilterValue]) -> Any:
         from weaviate.classes.query import Filter
 
         filters = None
-        for key, value in request.filter.items():
+        for key, value in conditions.items():
             condition = Filter.by_property(key).equal(value)
             filters = condition if filters is None else filters & condition
+        return filters
+
+    def _count(self, filter: Mapping[str, FilterValue]) -> int:
+        """The aggregate ``total_count`` with the search's own filter."""
+        response = self._call(
+            lambda: self._collection.aggregate.over_all(
+                filters=self._filters(filter), total_count=True
+            )
+        )
+        return int(response.total_count)
+
+    def _search(self, request: SearchRequest) -> list[str]:
+        filters = self._filters(request.filter)
         response = self._call(
             lambda: self._collection.query.near_vector(
                 near_vector=[float(x) for x in request.vector],

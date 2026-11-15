@@ -1,0 +1,2 @@
+{"user_input":"How do I reset my password?","retrieved_contexts":["Reset your password from Settings."],"response":"Open Settings and choose Reset password.","reference":"Open Settings and choose Reset password.","exact_match":1.0,"faithfulness":null}
+{"user_input":"Where is the invoice?","retrieved_contexts":["Invoices are emailed monthly."],"response":"Invoices are emailed monthly.","reference":"Invoices are under Billing > Invoices.","exact_match":0.0,"faithfulness":null}

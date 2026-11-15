@@ -140,6 +140,28 @@ fastest measured setting, since that gap is usually timing noise. A p95 latency 
 reachable but not within the budget, the result says so, with the setting recall needs and
 the best recall the budget allows, instead of reporting "not reached".
 
+### Single-query latency and batch throughput
+
+`--batch` also measures each setting the way ann-benchmarks' batch mode does: every query in
+one search call, on FAISS's usual thread pool, untimed once and then timed `--repeats` times,
+keeping the best. It is reported as **batch q/s**, with the thread count, beside the
+single-query latency columns:
+
+```bash
+vectraudit sweep index.faiss --vectors v.npy --queries eval.npy --batch
+```
+
+The two answer different questions and are never compared or merged. Single-query latency
+(one query per call, one thread) is what one caller waits for; a batch time divided by the
+number of queries is an amortised cost across many cores that no single caller waits for. It
+can come out faster or slower per query than the single-query figures (thread start-up
+dominates small batches), which is why neither stands in for the other. ann-benchmarks makes the same
+split: it runs single queries on one CPU by default, offers batch mode as a separate setting,
+and keeps batch results in separate files and plots. Recommendations, the p95 budget and saved
+baselines (`runs diff`) use the single-query columns only. The batch call's recall is recorded
+too (`batch_recall`), and `--json` labels each number's mode under `modes`. `--batch` applies
+to the unfiltered sweep.
+
 ### Suggested next steps
 
 The Tuner, `vectraudit sweep` and `GET /api/sweep/{job_id}/advice?target=0.95` turn a sweep
@@ -201,6 +223,28 @@ or a full disk), the projection is still shown, with a warning in the Cluster ma
 server log. `vectraudit cache info` shows usage per index. `vectraudit cache clear` removes
 everything, or only entries unused for `--older-than-days`, or least recently used entries
 beyond `--max-mb`. It never touches the demo data. `serve --no-cache` skips the disk cache.
+
+## Filtered search
+
+Metadata filters are applied inside the FAISS search (an `IDSelector`, so IVF, HNSW, flat,
+ID-map and refine indexes never return a disallowed id), and recall is measured against the
+exact neighbours **among the documents that pass**:
+
+```bash
+vectraudit sweep index.faiss --vectors x.npy --meta meta.jsonl \
+  --filter 'lang=de' --pass-rates 0.001,0.01,0.1
+```
+
+The Tuner has the same sweep as a pass-rate card. A pass rate is the fraction of documents that
+*pass*, not the fraction removed. See [Filtered search](filtered-search.md).
+
+## An external exact reference
+
+`vectraudit sweep ... --queries queries.npy --reference reference.json` uses published exact
+neighbours (for example from a VectorDBBench dataset imported with `dataset import-vdbbench`
+or an ann-benchmarks file imported with `dataset import-annb`) as ground truth instead of
+computing it, and records where they came from. Sweeps measured against different ground truth
+are not compared on recall. See [VectorDBBench and ann-benchmarks datasets](vectordbbench.md).
 
 ## How it compares
 

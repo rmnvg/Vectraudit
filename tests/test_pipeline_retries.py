@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from tests.fake_time import patch_time
 from vectraudit.core.jobs import JobCancelledError
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import parse_dataset
@@ -40,8 +41,9 @@ def clock(monkeypatch):
             self.now += seconds
 
     fake = Clock()
-    monkeypatch.setattr("vectraudit.pipelines.runner.time.monotonic", fake.monotonic)
-    monkeypatch.setattr("vectraudit.pipelines.runner.time.sleep", fake.sleep)
+    patch_time(
+        monkeypatch, "vectraudit.pipelines.runner", monotonic=fake.monotonic, sleep=fake.sleep
+    )
     return fake
 
 
@@ -286,3 +288,27 @@ def test_cli_retry_options_are_recorded_and_frozen_for_resume(tmp_path):
     assert changed.exit_code == 2
     assert "changed" in changed.output
     assert cli.invoke(app, [*args, "--max-attempts", "0"]).exit_code != 0
+
+
+def test_other_threads_sleeping_do_not_touch_the_fake_clock(clock):
+    # Why the clock is scoped to the runner module: a thread elsewhere in the process (a
+    # server left by another test) used to record its sleeps here and fail the totals.
+    import threading
+    import time
+
+    stop = threading.Event()
+
+    def busy():
+        while not stop.is_set():
+            time.sleep(0.001)
+
+    thread = threading.Thread(target=busy, daemon=True)
+    thread.start()
+    try:
+        time.sleep(0.01)  # the busy thread is sleeping in a loop before the run starts
+        run = execute_pipeline(dataset(), Flaky("timeout", failures=2), options())
+    finally:
+        stop.set()
+        thread.join()
+    assert run["status"] == "complete"
+    assert sum(clock.slept) == pytest.approx(3.0)

@@ -20,10 +20,11 @@ from rich.markup import escape
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from vectraudit import __version__
+from vectraudit import __version__, selectivity_cli
 from vectraudit.core import runs
 from vectraudit.core._faiss import FaissNotInstalledError
-from vectraudit.core.advice import Suggestion
+from vectraudit.core.advice import Suggestion, advise_selectivity
+from vectraudit.core.filtering import FilterError
 from vectraudit.core.loader import IndexLoadError, load_index
 from vectraudit.core.projection import (
     DEFAULT_MAX_POINTS,
@@ -31,8 +32,10 @@ from vectraudit.core.projection import (
     clear_cache,
     default_cache_root,
 )
+from vectraudit.core.selectivity import selectivity_sweep
 from vectraudit.core.sweep import Choice, SweepResult
 from vectraudit.core.types import LoadedIndex
+from vectraudit.evaluation.external_reference import ExternalReferenceError, load_reference
 from vectraudit.server.app import create_app
 from vectraudit.session import InputError, Session, fmt_bytes
 
@@ -450,14 +453,78 @@ def sweep(
             "with rows sorted by id).",
         ),
     ] = False,
+    meta: Annotated[
+        Path | None,
+        typer.Option(help="Metadata (.jsonl/.csv/.parquet, an 'id' column) for --filter."),
+    ] = None,
+    filter_: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--filter",
+            help="Also sweep with this metadata filter, e.g. 'lang=de' or "
+            "'lang=de;year={\"gte\":2020}' (';' ANDs conditions). Repeatable. Needs --meta.",
+        ),
+    ] = None,
+    pass_rates: Annotated[
+        str | None,
+        typer.Option(
+            help="Also sweep with synthetic id filters at these pass rates, e.g. 0.001,0.01,0.1. "
+            "A pass rate is the fraction of documents that PASS, not the fraction removed."
+        ),
+    ] = None,
+    reference: Annotated[
+        Path | None,
+        typer.Option(
+            help="An external exact reference (reference.json from `dataset import-vdbbench` "
+            "or `import-annb`) used as ground truth instead of computing it. Needs --queries "
+            "(the queries.npy beside it). Runs against different references are not compared."
+        ),
+    ] = None,
+    batch: Annotated[
+        bool,
+        typer.Option(
+            "--batch",
+            help="Also measure throughput with every query in one call on all FAISS threads "
+            "(ann-benchmarks' batch mode). Reported apart from single-query latency.",
+        ),
+    ] = False,
 ) -> None:
     """Measure recall@k and latency across nprobe/efSearch values.
+
+    With --filter or --pass-rates, the sweep is repeated for each filter (and unfiltered),
+    each against the exact neighbours among the documents that filter allows.
 
     Exits with code 2 if no value reaches --target (within --max-p95-ms, if given), 3 if
     --baseline shows a regression, or 4 if --baseline couldn't be compared at all (not a
     pass -- see the printed notes), so it can gate CI.
     """
     parsed_values = _values_option(values)
+    if reference is not None and (filter_ or pass_rates is not None):
+        raise _fail(
+            "--reference cannot be combined with --filter or --pass-rates.",
+            "The published neighbours assume no filter; use the filtered reference with `record`.",
+        )
+    external = None
+    if reference is not None:
+        try:
+            external = load_reference(reference)
+        except ExternalReferenceError as e:
+            raise _fail(str(e)) from e
+    if filter_ or pass_rates is not None:
+        if batch:
+            raise _fail("--batch applies to the unfiltered sweep.", "Run --batch without --filter.")
+        if save is not None or baseline is not None:
+            raise _fail(
+                "--save and --baseline do not apply to a filtered sweep.",
+                "Run the filtered sweep on its own; --json prints the full result.",
+            )
+        _filtered_sweep(
+            index_path, vectors, ids, queries, meta, param, parsed_values, k, n_queries,
+            repeats, seed, target, max_p95_ms, filter_ or [], pass_rates, as_json, mmap,
+        )  # fmt: skip
+        return
+    if meta is not None:
+        raise _fail("--meta is only used with --filter.", "Add --filter 'key=value'.")
     base_run = None
     if baseline is not None:
         try:
@@ -468,9 +535,15 @@ def sweep(
         raise _fail(f"Unknown --param {param!r}.", "Use nprobe (IVF) or efSearch (HNSW).")
     try:
         session = Session(
-            index_path, vectors=vectors, ids=ids, queries=queries, disk_cache=False, mmap=mmap
+            index_path,
+            vectors=vectors,
+            ids=ids,
+            queries=queries,
+            disk_cache=False,
+            mmap=mmap,
+            reference=external,
         )
-        _, job = session.sweep_job(param, parsed_values, k, n_queries, repeats, seed)
+        _, job = session.sweep_job(param, parsed_values, k, n_queries, repeats, seed, batch)
     except FaissNotInstalledError as e:
         raise _fail("FAISS is not installed.", e.hint) from e
     except (FileNotFoundError, IndexLoadError) as e:
@@ -524,7 +597,14 @@ def sweep(
                     "k": result.k,
                     "n_queries": result.n_queries,
                     "query_origin": result.query_origin,
-                    "truth_source": "reconstructed" if result.truth_reconstructed else "raw",
+                    "truth_source": (
+                        "external"
+                        if result.reference
+                        else "reconstructed"
+                        if result.truth_reconstructed
+                        else "raw"
+                    ),
+                    "reference": result.reference,
                     "target": target,
                     "max_p95_ms": max_p95_ms,
                     "status": choice.status,
@@ -533,9 +613,28 @@ def sweep(
                     "query_sha256": result.query_sha256,
                     "query_seed": result.query_seed,
                     "environment": result.environment,
+                    "modes": {
+                        "latency_mean_ms, latency_p95_ms": "one query per call, one thread",
+                        **(
+                            {
+                                "batch_qps": f"every query in one call, "
+                                f"{result.batch_threads} threads: a throughput, not a latency"
+                            }
+                            if result.batch_threads is not None
+                            else {}
+                        ),
+                    },
+                    "batch_threads": result.batch_threads,
                     "recommended": rec.value if rec else None,
                     "fastest_meeting_target": fastest.value if fastest else None,
-                    "points": [asdict(p) for p in result.points],
+                    "points": [
+                        {
+                            key: value
+                            for key, value in asdict(p).items()
+                            if result.batch_threads is not None or not key.startswith("batch_")
+                        }
+                        for p in result.points
+                    ],
                     "suggestions": [{**asdict(s), "kind": s.kind.value} for s in suggestions],
                     "baseline": _comparison_json(comparison) if comparison else None,
                 },
@@ -553,6 +652,102 @@ def sweep(
         raise typer.Exit(code=3)
     if comparison is not None and not comparison.comparable:
         raise typer.Exit(code=4)
+
+
+def _filtered_sweep(
+    index_path: Path,
+    vectors: Path | None,
+    ids: Path | None,
+    queries: Path | None,
+    meta: Path | None,
+    param: str | None,
+    values: list[int] | None,
+    k: int,
+    n_queries: int,
+    repeats: int,
+    seed: int,
+    target: float,
+    max_p95_ms: float | None,
+    filters: list[str],
+    pass_rates: str | None,
+    as_json: bool,
+    mmap: bool,
+) -> None:
+    """``sweep`` with filters: the unfiltered sweep plus one per filter; exit 2 if any misses."""
+    if param is not None and param not in ("nprobe", "efSearch"):
+        raise _fail(f"Unknown --param {param!r}.", "Use nprobe (IVF) or efSearch (HNSW).")
+    try:
+        specs = [selectivity_cli.parse_filter(f) for f in filters]
+        if pass_rates is not None:
+            specs += selectivity_cli.parse_pass_rates(pass_rates)
+        if specs and any(s.kind == "metadata" for s in specs) and meta is None:
+            raise FilterError("--filter needs --meta.", "Pass --meta with a file keyed by id.")
+        session = Session(
+            index_path,
+            vectors=vectors,
+            ids=ids,
+            queries=queries,
+            metadata=meta,
+            disk_cache=False,
+            mmap=mmap,
+        )
+        if not session.li.is_supported:
+            raise ValueError(f"Cannot sweep: {session.li.unsupported_reason}")
+        sweep_values = values
+        qs = session.sweep_queries(n_queries, seed)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            BarColumn(),
+            console=err_console,
+            transient=True,
+            disable=as_json,
+        ) as bar:
+            task = bar.add_task("Sweeping", total=1.0)
+            result = selectivity_sweep(
+                session.li,
+                qs,
+                session.ground_truth,
+                specs,
+                metadata=session.metadata,
+                param=param,
+                values=sweep_values,
+                k=k,
+                repeats=repeats,
+                seed=seed,
+                assignments=session.assignments if session.li.kind.is_ivf else None,
+                progress=lambda f, m: bar.update(task, completed=f, description=m),
+            )
+    except FaissNotInstalledError as e:
+        raise _fail("FAISS is not installed.", e.hint) from e
+    except (FileNotFoundError, IndexLoadError) as e:
+        raise _fail(str(e)) from e
+    except InputError as e:
+        raise _fail(str(e), e.hint) from e
+    except FilterError as e:
+        raise _fail(str(e), e.hint) from e
+    except ValueError as e:
+        raise _fail(str(e)) from e
+    suggestions = advise_selectivity(result, target, max_p95_ms=max_p95_ms)
+    if as_json:
+        typer.echo(
+            json.dumps(
+                selectivity_cli.result_json(
+                    result, target, suggestions, truth_reconstructed=not session.has_raw_vectors
+                ),
+                indent=2,
+            )
+        )
+    else:
+        if not session.has_raw_vectors:
+            console.print(
+                "[yellow]Ground truth computed on reconstructed vectors; PQ/SQ error is not "
+                "measured.[/] Pass --vectors for exact ground truth."
+            )
+        selectivity_cli.print_table(console, result, target)
+        _print_suggestions(suggestions)
+    if any(choice.by_recall is None for _, choice in result.choose(target, max_p95_ms=max_p95_ms)):
+        raise typer.Exit(code=2)
 
 
 def _comparison_json(cmp: runs.RunComparison) -> dict[str, object]:
@@ -619,10 +814,21 @@ def _print_comparison(cmp: runs.RunComparison, param: str) -> None:
 def _print_sweep(result: SweepResult, choice: Choice, target: float) -> None:
     rec, budget = choice.point, choice.max_p95_ms
     origin = "given" if result.query_origin == "given" else "sampled stored-vector"
+    modes = (
+        f"latency: one query per call, 1 thread · batch q/s: every query in one call, "
+        f"{result.batch_threads} threads"
+        if result.batch_threads is not None
+        else "single-threaded latency"
+    )
     console.print(
         f"[bold]{result.param.value} sweep[/] · recall@{result.k} over {result.n_queries} "
-        f"{origin} queries · single-threaded latency"
+        f"{origin} queries · {modes}"
     )
+    if result.reference:
+        console.print(
+            f"Ground truth: the published neighbours of {escape(str(result.reference['source']))}, "
+            "not computed here. They are an ANN reference, not relevance labels."
+        )
     if result.truth_reconstructed:
         console.print(
             "[yellow]Ground truth computed on reconstructed vectors; PQ/SQ error is not "
@@ -643,6 +849,9 @@ def _print_sweep(result: SweepResult, choice: Choice, target: float) -> None:
         table.add_column("in probed lists", justify="right")
     table.add_column("mean ms", justify="right")
     table.add_column("p95 ms", justify="right")
+    batch = result.batch_threads is not None
+    if batch:
+        table.add_column("batch q/s", justify="right")
     table.add_column("")
     for p in result.points:
         mark = (
@@ -666,9 +875,15 @@ def _print_sweep(result: SweepResult, choice: Choice, target: float) -> None:
             *(coverage if has_coverage else []),
             f"{p.latency_mean_ms:.3f}",
             f"{p.latency_p95_ms:.3f}",
+            *([f"{p.batch_qps:,.0f}" if p.batch_qps is not None else ""] if batch else []),
             mark,
         )
     console.print(table)
+    if batch:
+        console.print(
+            "Batch q/s is a throughput, not a latency: recommendations and budgets use the "
+            "single-query columns only."
+        )
     name = result.param.value
     if choice.status == "latency":
         over = choice.by_recall
@@ -928,6 +1143,7 @@ def cache_clear(
 # Release checks (backend-neutral): defined in release_cli to keep this module FAISS-focused.
 from vectraudit.release_cli import (  # noqa: E402
     calibrate,
+    capacity,
     check,
     cloud_app,
     dataset_app,
@@ -942,12 +1158,15 @@ from vectraudit.experiments_cli import experiment_app  # noqa: E402
 
 app.add_typer(experiment_app, name="experiment")
 app.command()(record)
+app.command()(capacity)
 app.command()(check)
 app.command()(init)
 app.command()(calibrate)
 
 runs_app = typer.Typer(
-    help="Compare saved sweep runs (vectraudit sweep --save).", no_args_is_help=True
+    help="Compare saved sweep runs (vectraudit sweep --save); summarise, tabulate and move "
+    "release runs to and from the TREC run format.",
+    no_args_is_help=True,
 )
 app.add_typer(runs_app, name="runs")
 
@@ -992,6 +1211,157 @@ def runs_diff(
         raise typer.Exit(code=3)
     if not cmp.comparable:
         raise typer.Exit(code=4)
+
+
+@runs_app.command("export-trec")
+def runs_export_trec(
+    run: Annotated[Path, typer.Argument(help="A release run (JSON from `vectraudit record`).")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark the run was recorded on.")],
+    out: Annotated[
+        Path, typer.Option(help="TREC run file to write (qid Q0 docno rank score tag).")
+    ],
+    include_heldout: Annotated[
+        bool,
+        typer.Option(
+            "--include-heldout", help="Also export held-out questions (left out by default)."
+        ),
+    ] = False,
+    tag: Annotated[str | None, typer.Option(help="Run tag (default: the run's label).")] = None,
+) -> None:
+    """Write a release run as a TREC run file for trec_eval, ranx, ir-measures and the like.
+
+    Uses each question's first-repeat ranking. A Vectraudit run records ranks, not scores, so
+    the score column holds descending ranks. Errored questions are left out, never written as
+    empty answers.
+    """
+    from vectraudit.evaluation.dataset import DatasetError, load_dataset
+    from vectraudit.evaluation.runfile import RunFileError, load_run
+    from vectraudit.evaluation.trec import TrecError, export_run
+
+    try:
+        done = export_run(
+            load_run(run), load_dataset(dataset), include_heldout=include_heldout, tag=tag
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(done.lines) + ("\n" if done.lines else ""), encoding="utf-8")
+    except (OSError, DatasetError, RunFileError, TrecError) as e:
+        raise _fail(str(e)) from e
+    console.print(
+        f"Wrote {done.queries} questions ({len(done.lines)} lines) to {escape(str(out))}."
+    )
+    if done.heldout_left_out:
+        console.print(f"{done.heldout_left_out} held-out questions left out (--include-heldout).")
+    if done.errored_left_out:
+        console.print(f"{done.errored_left_out} errored questions left out: not written as empty.")
+
+
+@runs_app.command("import-trec")
+def runs_import_trec(
+    trec_file: Annotated[Path, typer.Argument(help="Another system's TREC run file.")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark that system was run on.")],
+    out: Annotated[Path, typer.Option(help="Release run to write (JSON).")],
+    k: Annotated[int, typer.Option(min=1, help="Rankings are cut to k results.")] = 10,
+    label: Annotated[
+        str | None, typer.Option(help="Display name (default: the file's tag).")
+    ] = None,
+    missing_as_empty: Annotated[
+        bool,
+        typer.Option(
+            "--missing-as-empty",
+            help="Count a question absent from the file as retrieving nothing (the TREC "
+            "convention). Without it, such a question is an error and the run is partial.",
+        ),
+    ] = False,
+) -> None:
+    """Import another system's TREC run as a release run, to compare it on quality.
+
+    Quality metrics are computed here from the dataset's labels, so the run compares with any
+    other on quality. Latency, stage evidence and permission checks are not measured for an
+    imported run, and the run says so (source external:trec).
+    """
+    from vectraudit.evaluation.dataset import DatasetError, load_dataset
+    from vectraudit.evaluation.runfile import save_run
+    from vectraudit.evaluation.trec import TrecError, import_notes, import_run
+
+    try:
+        record = import_run(
+            trec_file, load_dataset(dataset), k=k, label=label, missing_as_empty=missing_as_empty
+        )
+        save_run(record, out)
+    except (OSError, DatasetError, TrecError) as e:
+        raise _fail(str(e)) from e
+    s = record["summary"]
+    console.print(
+        f"{escape(record['status'])}: {s['n_ok']:,} of {s['n_queries']:,} questions ranked "
+        f"by {escape(trec_file.name)} → {escape(str(out))}"
+    )
+    for note in import_notes(record):
+        console.print(f"[dim]{escape(note)}[/]")
+    if record["status"] != "complete":
+        raise typer.Exit(code=1)
+
+
+@runs_app.command("summary")
+def runs_summary(
+    runs: Annotated[list[Path], typer.Argument(help="Release or pipeline run files (any size).")],
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Also write the summaries (JSON).")
+    ] = None,
+) -> None:
+    """Validate runs and show their summaries without loading their questions.
+
+    Each question is read, validated and dropped one at a time, so a run of hundreds of MiB
+    is checked in a few MiB of memory. Exits 1 if any run is invalid.
+    """
+    from vectraudit.evaluation.runfile import RunFileError, run_header_report
+
+    out, failed = [], False
+    for path in runs:
+        try:
+            report = run_header_report(path)
+        except (OSError, RunFileError) as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            failed = True
+            continue
+        out.append(report)
+        header = report["run"]
+        summary = header.get("summary") or {}
+        metrics = summary.get("metrics") or {}
+        latency = summary.get("latency_ms") or {}
+        console.print(
+            f"{escape(path.name)}: {header['status']}, {report['questions']} questions, "
+            f"{report['bytes'] / 2**20:.1f} MiB (dataset {header['dataset']['sha256'][:12]}, "
+            f"k={header['search']['k']})"
+            + (f", nDCG {metrics['ndcg']:.3f}" if isinstance(metrics.get("ndcg"), float) else "")
+            + (f", p95 {latency['p95']:.1f} ms" if isinstance(latency.get("p95"), float) else "")
+            + (f", label {escape(str(header['label']))}" if header.get("label") else "")
+        )
+    if json_out is not None:
+        json_out.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@runs_app.command("table")
+def runs_table(
+    runs: Annotated[list[Path], typer.Argument(help="Release or pipeline run files (any size).")],
+    out: Annotated[
+        Path, typer.Option(help="Table to write: .csv, or .parquet (vectraudit[parquet]).")
+    ],
+) -> None:
+    """One row per question and repeat, with metrics, verdicts, latency and flags.
+
+    For analysis in your own notebook. IDs, numbers and flags only: no question, document or
+    answer text. Runs are read one question at a time, so large runs export in bounded memory.
+    """
+    from vectraudit.evaluation.run_table import RunTableError, write_table
+    from vectraudit.evaluation.runfile import RunFileError
+
+    try:
+        done = write_table(runs, out)
+    except (OSError, RunFileError, RunTableError) as e:
+        raise _fail(str(e)) from e
+    console.print(f"Wrote {done['rows']} rows from {done['runs']} runs to {escape(str(out))}.")
 
 
 from vectraudit.labelling_cli import label_app  # noqa: E402

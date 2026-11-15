@@ -468,6 +468,59 @@ def test_sweep_flow(ivf_client) -> None:
     assert again.json()["job_id"] == job_id
 
 
+def _wait_selectivity(client, job_id):
+    for _ in range(1000):
+        r = client.get(f"/api/selectivity/{job_id}")
+        if r.status_code != 202:
+            return r
+        time.sleep(0.01)
+    raise AssertionError("filtered sweep never finished")
+
+
+def test_selectivity_flow_and_advice(ivf_client) -> None:
+    body = {"values": [1, 4], "n_queries": 30, "k": 10, "repeats": 1, "pass_rates": [0.1, 0.02]}
+    r = ivf_client.post("/api/selectivity", json=body)
+    assert r.status_code in (200, 202)
+    job_id = r.json()["job_id"]
+    done = _wait_selectivity(ivf_client, job_id).json()
+    assert done["status"] == "done"
+    res = done["result"]
+    assert [run["kind"] for run in res["runs"]] == ["all", "synthetic", "synthetic"]
+    assert [round(run["pass_rate"], 2) for run in res["runs"]] == [1.0, 0.1, 0.02]
+    assert all([p["value"] for p in run["points"]] == [1, 4] for run in res["runs"])
+    assert ivf_client.post("/api/selectivity", json=body).json()["job_id"] == job_id
+    advice = ivf_client.get(f"/api/selectivity/{job_id}/advice", params={"target": 0.999})
+    assert advice.status_code == 200
+    kinds = {s["kind"] for s in advice.json()["suggestions"]}
+    assert "FILTER_UNMEASURED" in kinds
+
+
+def test_selectivity_metadata_filter_and_errors(ivf_client, hnsw_client) -> None:
+    source = "blob_00.txt"
+    r = ivf_client.post(
+        "/api/selectivity",
+        json={
+            "values": [4],
+            "n_queries": 20,
+            "k": 5,
+            "repeats": 1,
+            "filters": [{"source": source}],
+        },
+    )
+    done = _wait_selectivity(ivf_client, r.json()["job_id"]).json()
+    assert done["status"] == "done", done
+    assert done["result"]["runs"][1]["label"] == f"source={source}"
+    assert 0 < done["result"]["runs"][1]["pass_rate"] < 1
+    # Needs at least one filter; a pass rate is a fraction that passes.
+    assert ivf_client.post("/api/selectivity", json={"n_queries": 10}).status_code == 422
+    assert ivf_client.post("/api/selectivity", json={"pass_rates": [0]}).status_code == 422
+    # No metadata loaded -> a clear error, not a crash.
+    bad = hnsw_client.post("/api/selectivity", json={"filters": [{"source": "x"}]})
+    assert bad.status_code == 400
+    assert bad.json()["error_code"] == "NO_METADATA"
+    assert ivf_client.get("/api/selectivity/nope").status_code == 404
+
+
 def test_sweep_sampled_queries_hnsw(hnsw_client) -> None:
     r = hnsw_client.post("/api/sweep", json={"values": [16, 64], "n_queries": 30})
     body = _wait_sweep(hnsw_client, r.json()["job_id"]).json()

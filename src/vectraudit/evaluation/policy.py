@@ -43,12 +43,17 @@ _TOP_KEYS = {
     "critical_context",
     "exceptions",
     "forbidden_stages",
+    "prompt_changes",
+    "robustness",
 }
 STAGE_KINDS = ("keyword", "vector", "filter", "fusion", "rerank", "truncate", "custom")
 """Pipeline stage kinds, as recorded in stage traces."""
-EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical")
+EXCEPTION_KINDS = ("metric", "cohort", "regressed_queries", "latency", "critical", "prompt")
+PROMPT_CHANGES = ("report", "fail")
 """Rule kinds a policy may open to audited exceptions. Safety rules are governed separately."""
-COHORT_CONTROLS = ("none", "bonferroni")
+COHORT_CONTROLS = ("none", "bonferroni", "holm")
+POISON_ATTACKS = ("hijack", "inject", "contradict", "authority", "exfil")
+"""The attacks of a poison suite (a test keeps them equal to ``pipelines.poison.ATTACKS``)."""
 _LATENCY_KEYS = {
     "p50_max_increase_pct",
     "p95_max_increase_pct",
@@ -94,7 +99,25 @@ class CohortRule:
     control: str = "none"
     """``none``: each cohort rule is judged on its own. ``bonferroni``: a cohort ``max_drop``
     fails only when its interval, widened for the number of cohort rules judged, lies
-    entirely beyond the allowed drop, so many small cohorts do not fail by chance."""
+    entirely beyond the allowed drop, so many small cohorts do not fail by chance. ``holm``:
+    the same family-wise error level, but each rule's one-sided p-value for "the drop exceeds
+    the allowed one" is adjusted by Holm's step-down procedure, which fails at least as many
+    real drops as Bonferroni and never more false ones."""
+
+
+@dataclass(frozen=True)
+class RobustnessRule:
+    """Limits for a poisoning check (``workbench poison run``), in rates over question families.
+
+    ``max_retrieved_rate`` maps an attack to the largest share of target families whose
+    poisoned document of that attack may reach the final results. ``max_displacement_rate`` is
+    the largest share of target families whose answering evidence may be pushed out. They
+    apply only to a poison suite's dataset (questions tagged ``poison:``) and are opt-in: a
+    policy without the section is judged exactly as before.
+    """
+
+    max_retrieved_rate: dict[str, float] = field(default_factory=dict)
+    max_displacement_rate: float | None = None
 
 
 @dataclass(frozen=True)
@@ -158,6 +181,12 @@ class Policy:
     """Stage kinds a forbidden document must never reach, as input or output (for example
     ``rerank``: a third-party reranker must not see it). Forbidden documents in the results
     or the model context always fail; this extends the boundary upstream."""
+    robustness: RobustnessRule | None = None
+    """Opt-in limits for a poisoning check; absent, the policy is unchanged."""
+    prompt_changes: str = "report"
+    """``report``: prompt version changes are listed with the changed settings. ``fail``: each
+    changed prompt fails as rule ``prompt:<name>`` (acceptable only through an audited
+    exception), and runs that do not both record prompt versions are not comparable."""
 
     def as_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -175,10 +204,19 @@ class Policy:
             result.pop("critical_queries")
         else:
             result["critical_queries"] = [asdict(rule) for rule in self.critical_queries]
+        if self.prompt_changes == "report":
+            result.pop("prompt_changes")
         if not self.forbidden_stages:
             result.pop("forbidden_stages")
         else:
             result["forbidden_stages"] = list(self.forbidden_stages)
+        if self.robustness is None:
+            result.pop("robustness")
+        else:
+            result["robustness"] = {
+                "max_retrieved_rate": dict(sorted(self.robustness.max_retrieved_rate.items())),
+                "max_displacement_rate": self.robustness.max_displacement_rate,
+            }
         if not self.critical_context:
             result.pop("critical_context")
         else:
@@ -271,6 +309,8 @@ def parse_policy(raw: Any) -> Policy:
         critical_context=_context_rules(raw.get("critical_context", [])),
         exceptions=_exception_rules(raw["exceptions"]) if "exceptions" in raw else None,
         forbidden_stages=_stage_kinds(raw.get("forbidden_stages", [])),
+        prompt_changes=_prompt_changes(raw.get("prompt_changes", "report")),
+        robustness=_robustness_rules(raw["robustness"]) if "robustness" in raw else None,
     )
     has_quality_rule = (
         bool(metrics)
@@ -286,6 +326,35 @@ def parse_policy(raw: Any) -> Policy:
         "shown within tolerance) are opposite rules; choose one",
     )
     return policy
+
+
+def _rate(value: Any, where: str) -> float:
+    ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+    _expect(ok and math.isfinite(value) and 0 <= value <= 1, f"{where} must be a rate from 0 to 1")
+    return float(value)
+
+
+def _robustness_rules(raw: Any) -> RobustnessRule:
+    _expect(isinstance(raw, dict), "robustness must be an object")
+    _no_unknown(raw, {"max_retrieved_rate", "max_displacement_rate"}, "robustness")
+    limits = raw.get("max_retrieved_rate", {})
+    _expect(isinstance(limits, dict), "robustness.max_retrieved_rate must map attacks to rates")
+    unknown = sorted(set(limits) - set(POISON_ATTACKS))
+    _expect(not unknown, f"robustness.max_retrieved_rate names unknown attack(s) {unknown}")
+    rates = {a: _rate(v, f"robustness.max_retrieved_rate.{a}") for a, v in limits.items()}
+    displacement = raw.get("max_displacement_rate")
+    if displacement is not None:
+        displacement = _rate(displacement, "robustness.max_displacement_rate")
+    _expect(
+        bool(rates) or displacement is not None,
+        "robustness needs max_retrieved_rate or max_displacement_rate",
+    )
+    return RobustnessRule(rates, displacement)
+
+
+def _prompt_changes(raw: Any) -> str:
+    _expect(raw in PROMPT_CHANGES, f"prompt_changes must be one of {list(PROMPT_CHANGES)}")
+    return str(raw)
 
 
 def _exception_rules(raw: Any) -> ExceptionRule:

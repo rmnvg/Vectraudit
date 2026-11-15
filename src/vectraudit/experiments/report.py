@@ -4,6 +4,12 @@ Candidates are ranked by a primary metric (nDCG by default). Each is compared wi
 leader on the same queries: the paired difference and its seeded bootstrap 95% interval.
 A candidate whose interval includes zero is *statistically tied* with the leader: the
 data can't separate them, so the report says so instead of declaring a false winner.
+
+With three or more candidates each pairwise interval is a separate chance to see a winner
+that is not there, so the report also runs a randomized Tukey HSD
+(:mod:`vectraudit.evaluation.significance`): every candidate gets ``hsd_group`` letters
+(candidates sharing a letter cannot be told apart) and ``p_vs_leader_adjusted``, adjusted
+for all pairs at once. ``tied_with_leader`` is unchanged; the HSD is added beside it.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from vectraudit import __version__
 from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.families import family_id, family_means
 from vectraudit.evaluation.metrics import SEMANTIC_METRICS
+from vectraudit.evaluation.significance import hsd_for_runs
 from vectraudit.experiments.runner import CandidateResult
 
 N_BOOTSTRAP = 2000
@@ -75,6 +82,9 @@ def rank(
                 "metrics": r.run["summary"]["metrics"],
                 "ann_recall": r.run["summary"].get("ann_recall"),
                 "span_metrics": (r.span_summary or {}).get("metrics"),
+                "passage_containment": (
+                    (r.span_summary or {}).get("passage_containment") or {}
+                ).get("metrics"),
                 "delta_vs_leader": float(deltas.mean()) if len(deltas) else 0.0,
                 "ci_vs_leader": [low, high],
                 "tied_with_leader": tied,
@@ -106,11 +116,17 @@ def rank(
                 "n_families": best[3],
             }
     tied_names = [x["name"] for x in ranking if x["tied_with_leader"]]
+    hsd = hsd_for_runs({r.spec.name: r.run for r in scored}, primary, seed=seed)
+    if hsd is not None:
+        for entry in ranking:
+            entry["hsd_group"] = hsd["letters"][entry["name"]]
+            entry["p_vs_leader_adjusted"] = hsd["p_vs_leader"][entry["name"]]
     return {
         **summary,
         "primary_metric": primary,
         "leader": leader.spec.name,
         "tied_with_leader": tied_names,
+        **({"hsd": hsd} if hsd is not None else {}),
         "ranking": ranking,
         "cohorts": cohorts,
     }
@@ -139,7 +155,26 @@ def _s(x: Any) -> str:
     return "cached" if x is None else f"{x:.1f} s"
 
 
+def hsd_sentence(ranked: dict[str, Any]) -> str:
+    """What the randomized Tukey HSD adds; empty with fewer than three candidates."""
+    hsd = ranked.get("hsd")
+    if hsd is None:
+        return ""
+    same = hsd["indistinguishable"]
+    basis = f"randomized Tukey HSD, \u03b1 = {hsd['alpha']:g}, all pairs at once"
+    if same:
+        return (
+            f"Not distinguishable from the leader ({basis}): {', '.join(same)}. "
+            f"Candidates sharing a group letter cannot be told apart."
+        )
+    return f"Every other candidate is distinguishable from the leader ({basis})."
+
+
 def verdict_sentence(ranked: dict[str, Any]) -> str:
+    return " ".join(s for s in (_verdict(ranked), hsd_sentence(ranked)) if s)
+
+
+def _verdict(ranked: dict[str, Any]) -> str:
     leader, tied = (
         ranked["leader"],
         [t for t in ranked["tied_with_leader"] if t != ranked["leader"]],
@@ -158,22 +193,32 @@ def verdict_sentence(ranked: dict[str, Any]) -> str:
     )
 
 
+def _p(p: Any) -> str:
+    if p is None:
+        return NONE
+    return "<0.001" if p < 0.001 else f"{p:.3f}"
+
+
 def render_markdown(ranked: dict[str, Any]) -> str:
     m = ranked["primary_metric"]
+    hsd = ranked.get("hsd")
+    hsd_header = " HSD group | p vs leader (adj.) |" if hsd else ""
     lines = [
         f"## Experiment {ranked['name']}: {ranked['leader']} leads",
         "",
         verdict_sentence(ranked),
         "",
-        f"| Rank | Candidate | {m} | Δ vs leader (95% CI) | recall | MRR | p95 ms | Index |",
-        "|---|---|---|---|---|---|---|---|",
+        f"| Rank | Candidate | {m} | Δ vs leader (95% CI) |{hsd_header} recall | MRR | p95 ms "
+        "| Index |",
+        "|---|---|---|---|" + ("---|---|" if hsd else "") + "---|---|---|---|",
     ]
     for r in ranked["ranking"]:
         ci = NONE if r["rank"] == 1 else _ci(r)
         tie = " (tied)" if r["tied_with_leader"] and r["rank"] > 1 else ""
+        significance = f" {r['hsd_group']} | {_p(r['p_vs_leader_adjusted'])} |" if hsd else ""
         lines.append(
             f"| {r['rank']} | {r['name']}{tie} "
-            f"| {_n(r['metrics'][m])} | {ci} | {_n(r['metrics']['recall'])} "
+            f"| {_n(r['metrics'][m])} | {ci} |{significance} {_n(r['metrics']['recall'])} "
             f"| {_n(r['metrics']['mrr'])} | {_n((r['latency_ms'] or {}).get('p95'), 2)} "
             f"| {_mb(r['stats']['index_bytes'])} |"
         )
@@ -213,6 +258,7 @@ def _table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
 
 def render_html(ranked: dict[str, Any]) -> str:
     m = ranked["primary_metric"]
+    hsd = ranked.get("hsd")
     quality_rows = []
     for r in ranked["ranking"]:
         if r["rank"] == 1:
@@ -226,11 +272,13 @@ def render_html(ranked: dict[str, Any]) -> str:
                 f"<strong>{_e(r['name'])}</strong> {badge}",
                 _e(_n(r["metrics"][m])),
                 _e(ci),
+                *([_e(r["hsd_group"]), _e(_p(r["p_vs_leader_adjusted"]))] if hsd else []),
                 _e(_n(r["metrics"]["recall"])),
                 _e(_n(r["metrics"]["mrr"])),
                 _e(_n(r["metrics"]["precision"])),
                 _e(_n(r["ann_recall"])),
                 _e(_n((r["span_metrics"] or {}).get("recall"))),
+                _e(_n((r.get("passage_containment") or {}).get("recall"))),
             ]
         )
     cost_rows = []
@@ -274,11 +322,13 @@ def render_html(ranked: dict[str, Any]) -> str:
                 "Candidate",
                 f"{m}@k",
                 "Δ vs leader (95% CI)",
+                *(["HSD group", "p vs leader (adj.)"] if hsd else []),
                 "Recall@k",
                 "MRR@k",
                 "Precision@k",
                 "ANN recall",
                 "Span recall",
+                "Passage recall (MTCB)",
             ],
             quality_rows,
         )

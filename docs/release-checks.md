@@ -42,6 +42,35 @@ Publishing never changes the exit code. Pull requests from forks get a read-only
 publishing is skipped with a warning and the job summary still carries the result. Never
 use `pull_request_target` to work around this: it would expose your secrets to fork code.
 
+### From a pytest suite
+
+Teams that already gate merges on `pytest` can make the check one more test. It gives the
+same verdict as `vectraudit check` on the same files and policy:
+
+```python
+from vectraudit.testing import assert_release
+
+
+def test_retrieval_release():
+    assert_release("baseline.json", "candidate.json", policy="retrieval/policy.json")
+```
+
+- `assert_release` raises `ReleaseCheckFailed`, an `AssertionError`, unless the verdict is
+  `pass`. Fail, error and not comparable all fail the test. The message gives the verdict,
+  the failing rules and the changed settings (including prompt versions).
+  `check_release` returns the same result without asserting (`.verdict`, `.passed`,
+  `.reasons`, `.changed_settings`, `.markdown()`).
+- Runs can be file paths or run records. The policy can be a path, a policy record, a
+  parsed policy, or omitted for the built-in policy. Invalid files raise the errors the CLI
+  reports.
+- **The pytest plugin** registers itself when Vectraudit is installed. When a test made a
+  check, the terminal summary lists each one with its test and verdict, and
+  `--vectraudit-report release.md` writes them all as one Markdown report for the job
+  summary. Sessions without checks are untouched; `-p no:vectraudit` disables it. Under
+  `pytest-xdist` each worker keeps its own list.
+- This runs the comparison only. Recording the runs (`vectraudit record`, a pipeline run, or
+  a trace import) stays a separate step, so the test is fast and repeatable.
+
 ## Dataset (JSONL)
 
 One query per line:
@@ -66,6 +95,25 @@ One query per line:
 An optional first line `{"dataset": {"name": ..., "description": ..., "embedding_model": ...,
 "normalized": ..., "cohort_fields": [...]}}` holds metadata; it is part of the version.
 
+**External exact reference.** `record --reference reference.json` measures ANN recall against
+neighbours computed elsewhere (for example a VectorDBBench dataset's published neighbours,
+imported with `dataset import-vdbbench`) instead of the backend's own exact search. The run
+records the reference's source and hashes, and two runs measured against different references
+are not compared on ANN recall ([details](vectordbbench.md)).
+
+**Judge-corrected change in correct answers.** When baseline and candidate carry answer estimates from the same review sample, the report shows the corrected change as information; the verdict does not use it ([details](judge-corrected-estimates.md)).
+
+**Capacity.** `vectraudit capacity` measures throughput, latency percentiles, errors and sampled recall per concurrency level against a staging target, under a rate ceiling and with an explicit target confirmation; see [capacity](capacity.md). Its report is not a release verdict.
+
+**Cohorts by filter selectivity.** `"selectivity_buckets": [0.001, 0.01, 0.1]` tags each
+filtered question with the one bucket its filter's **pass rate** falls in, named by the
+bucket's upper bound (`pass_rate<1%`), judged like any cohort. The pass rate is the fraction
+of the corpus the filter keeps, and it is counted by the backend (see below), never
+estimated. A question whose backend cannot count is in no bucket and its `pass_rate` is
+`null`: unknown, not low. Buckets are exclusive, so a question is never in two of them, and a
+pass rate at or above the largest bound is in none. Give 1 to 6 distinct values above 0 and
+below 1.
+
 **Cohorts from context.** `"cohort_fields": ["tenant", "plan"]` turns those context fields
 into cohorts: a question with `"context": {"tenant": "acme"}` also belongs to cohort
 `tenant=acme` (booleans read `true`/`false`), judged by the policy's cohort rules exactly
@@ -75,6 +123,13 @@ one value per question; a list-valued field such as `groups` is refused (tag tho
 explicitly). Derived cohorts are not written back into the benchmark. They are recorded in
 run files and hosted uploads like tags, so declare only fields whose values you are willing
 to share as cohort names. `vectraudit dataset stats` counts them with the other cohorts.
+
+**Tags meant for a component.** `"component_tags": {"multi_hop": ["retrieve", "rerank"]}`
+says which pipeline components a tag's questions are meant to exercise (`retrieve`,
+`filter`, `fusion`, `rerank`, `truncate`, `custom`, `context`, `answer`). The component
+scoreboard then reports each such cohort on its own; it is information and no policy rule
+reads it. A query rewriter records no stage, so `rewrite` is refused rather than reported
+as if it could be observed.
 
 Building one:
 
@@ -96,6 +151,7 @@ only translate your labels; they never invent questions or judgments.
 | Source | Command | What becomes the label |
 |---|---|---|
 | BEIR folder | `dataset import ./fiqa --format beir [--split test]` | `qrels/<split>.tsv` grades by corpus id |
+| MTCB folder | `dataset import ./gacha --format mtcb --out q.jsonl --corpus-out corpus.jsonl` | each `chunk-must-contain` passage located exactly as a relevant span ([details](experiments.md#an-mtcb-chunking-benchmark-as-the-corpus-and-queries)) |
 | TREC | `dataset import topics.tsv --format trec --qrels qrels.txt` | `qid iter docno grade` lines; the query file is `qid<TAB>text` or JSONL |
 | Ragas test set | `dataset import testset.jsonl --format ragas --corpus chunks.jsonl` | `reference_context_ids`, or `reference_contexts` located in the corpus |
 | DeepEval goldens | `dataset import goldens.json --format deepeval --corpus chunks.jsonl` | `context` located in the corpus (`retrieval_context` is never a label) |
@@ -122,6 +178,35 @@ matter). Runs on different versions are never compared. Label documents by stabl
 survive re-chunking; if chunk ids change between baseline and candidate, map the labels to
 each chunk version first, or the comparison is meaningless.
 
+### Moving runs and labels to and from other IR tools (TREC)
+
+The TREC run format (`qid Q0 docno rank score tag`) and qrels format (`qid 0 docno grade`) are
+what `trec_eval`, pytrec_eval, ir-measures and ranx read, so existing tooling works without a
+converter:
+
+```bash
+vectraudit runs export-trec current.run.json --dataset benchmark.jsonl --out current.trec
+vectraudit dataset export-qrels benchmark.jsonl --out benchmark.qrels
+vectraudit runs import-trec other_system.trec --dataset benchmark.jsonl --label other \
+  --out other.run.json
+```
+
+*Export* writes each question's first-repeat ranking. A Vectraudit run records ranks, not
+scores, so the score column holds descending ranks (the tag says nothing about this; use the rank
+column, as trec_eval's tie rule never applies to distinct scores). Held-out questions are left
+out unless you pass `--include-heldout`, an errored question is left out rather than written as an
+empty answer, and an identifier with whitespace is refused, never altered. Qrels keep integer
+grades and judged zeros; documents that only appear as relevant spans get grade 1.
+
+*Import* builds a run from another system's file on your benchmark, with quality metrics computed
+here from your labels, so it compares with any other run on quality (same dataset version, same
+`k`). It is marked `source: external:trec`: rankings only. Latency, stage evidence and permission
+checks are **not measured**, and a comparison says so instead of passing them. A question the
+file does not rank is an error and the run is partial; `--missing-as-empty` counts it as
+retrieving nothing, the TREC convention, as an explicit choice. The rank column orders the
+results (trec_eval would use the scores); questions where the two disagree are counted in the
+run's `import` block.
+
 ## Connections (JSON)
 
 ```json
@@ -135,12 +220,13 @@ parameters (`--param key=value` overrides them). **Secrets never go in the file:
 
 | Backend | Fields | Tuning params | Exact reference |
 |---|---|---|---|
-| `faiss` | `index`, optional `vectors` (+ `ids`), `reconstructed_reference` | `nprobe` (IVF), `ef_search` (HNSW) | Raw `vectors`, or a flat index itself. `reconstructed_reference` decodes vectors from the index and is marked as a weaker reference. |
+| `faiss` | `index`, optional `vectors` (+ `ids`), `reconstructed_reference`, optional `metadata` (a `.jsonl`/`.csv`/`.parquet` keyed by `id`: enables equality filters and pass-rate counts) | `nprobe` (IVF), `ef_search` (HNSW) | Raw `vectors`, or a flat index itself. `reconstructed_reference` decodes vectors from the index and is marked as a weaker reference. |
 | `qdrant` (`vectraudit[qdrant]`) | `url` (or `path` for embedded local mode), `collection`, optional `api_key_env`, `vector_name` (required when the collection has several named vectors), `timeout_s` | `hnsw_ef` | Qdrant's exact search over the same collection. |
 | `pgvector` (`vectraudit[pgvector]`) | `dsn_env`, `table` (`schema.table`), `id_column` (default `id`), `vector_column` (default `embedding`), `distance` (`cosine`, `l2`, `ip`: match your index's operator class), `filter_columns`, `statement_timeout_ms`, `connect_timeout_s` | `hnsw.ef_search`, `ivfflat.probes` | A sequential scan with index scans disabled for that query. |
 | `pinecone` (no extra) | `index`, `api_key_env`, optional `namespace`, `host` (private endpoint), `control_plane_url`, `timeout_s` | none | None: Pinecone is measured as a black box (no exact mode, no snapshot). |
 | `elasticsearch` or `opensearch` (no extra) | `url`, `index` (or alias), `vector_field`, optional `id_field` (default `_id`), `api_key_env` (an Elasticsearch API key) or `basic_auth_env` (a variable holding `user:password`), `timeout_s` | `num_candidates` (Elasticsearch), `ef_search` (OpenSearch 2.16+) | A brute-force `script_score` over the same documents, filters and distance. |
 | `weaviate` (`vectraudit[weaviate]`) | `url`, `collection`, optional `api_key_env` (required for Weaviate Cloud), `id_property` (default: object UUID), `vector_name`, `tenant`, `grpc_url` (self-hosted), `timeout_s` | none (ef is collection configuration) | Only collections with a flat index. |
+| `chroma` (no extra) | `url`, `collection`, optional `tenant` and `database` (defaults `default_tenant`, `default_database`), `id_field` (a metadata field; default the record ID), `token_env` (sent as `Authorization: Bearer` and `x-chroma-token`), `timeout_s`, `exact_limit` (default 200,000) | none (`ef_search` is set per collection and recorded) | Computed from the collection's stored vectors, fetched with the same filter, using Chroma's distance (`l2` squared, `cosine`, `ip`). |
 
 Qdrant filters map to `must` conditions (`match` for strings, integers and booleans; an equal-bounds `range` for floats). Qdrant has no immutable snapshot id, so reports warn that concurrent updates can't be ruled out: freeze the collection, or point both runs at a versioned collection or alias.
 
@@ -172,6 +258,36 @@ never an empty result.
 - **Semantic** (needs `relevant` labels): recall@k, precision@k, MRR@k, nDCG@k with linear
   gains (grade / max grade of the query). Unjudged results count as non-relevant; duplicate
   results get no extra credit.
+- **MAP@k and Hit Rate@k** (also from labels): MAP is trec_eval's `map_cut_k`, the precision
+  at each rank holding a new relevant document, divided by the number of relevant documents,
+  so losing a relevant document lowers it. (Evidently divides by the relevant documents
+  retrieved, which would not.) Hit Rate is 1 when any relevant document is in the top k.
+  Runs recorded before these were added lack them. A policy rule on `map` or `hit_rate`
+  against such a run makes the check not comparable rather than letting it pass, so
+  re-record the baseline to use them. Both work as `primary_metric` and in cohort rules.
+- **Conformance.** All six label metrics agree with [ranx](https://github.com/AmenRa/ranx)
+  0.3.21 (`recall@k`, `precision@k`, `mrr@k`, `ndcg@k` with Järvelin gains, `map@k`,
+  `hit_rate@k`) to within 1e-9 on 200 seeded queries at k = 1, 5, 10 and 100, covering
+  graded labels 0–3, single-relevant queries, lists shorter than k (precision still divides
+  by k) and tied scores (`tests/test_metric_conformance.py`). Dividing gains by the query's
+  maximum grade cancels in the nDCG ratio. ranx breaks score ties arbitrarily, while
+  Vectraudit keeps the backend's order, so the fixture fixes one order before both sides
+  score it. ranx runs cannot repeat a document, so the no-extra-credit rule for duplicates
+  is tested separately.
+- **trec_eval parity.** The same six metrics also agree with the NIST `trec_eval` (through
+  [pytrec_eval](https://github.com/cvangysel/pytrec_eval) 0.5) to within 1e-9 on the same
+  200 queries: `recall_k`, `P_k` (which divides by k when fewer documents come back),
+  `ndcg_cut_k`, `map_cut_k`, `success_k` and `recip_rank` on the ranking cut to k, at relevance
+  level 1. The one behaviour to know: trec_eval breaks equal scores by document id, descending,
+  while Vectraudit keeps the order the backend returned, so a run with tied scores can score
+  differently in the two tools. Export a run with distinct scores (or ranks) to compare them
+  (`vectraudit runs export-trec` writes ranks).
+- **Names in other tools' notation.** Reports show each metric in [ir-measures](https://ir-measur.es)
+  notation at the run's `k`, beside Vectraudit's key: `nDCG@10 (ndcg)`, `P@10 (precision)`,
+  `R@10 (recall)`, `RR@10 (mrr)` (ir-measures calls MRR an alias of RR), `AP@10 (map)` and
+  `Success@10 (hit_rate)`. A label of 1 or more counts as relevant, which is ir-measures' default
+  `rel=1` for integer grades. This is display only: policy keys and run files keep Vectraudit's
+  names, and the check JSON adds a `metric_notation` map.
 - **ANN recall@k** (needs an exact reference): overlap with an exact search over the same
   corpus and distance. It measures approximation loss, **not** whether the results answer the
   query, so it can't choose between embedding models.
@@ -184,6 +300,36 @@ Changes are paired per query, averaged within each declared family, then average
 weight across families. Seeded 95% bootstrap intervals resample these family means. With fewer
 than 30 families the report warns about limited evidence. One family's interval cannot estimate
 between-family uncertainty, even if it has many scenario rows.
+
+Each suite-level metric change also carries a **p-value** (the `p` column of the HTML report,
+the job summary and the terminal table; `p_value` in the check JSON): a two-sided paired
+randomization test on the same family deltas, with 5,000 seeded sign flips and
+`p = (b + 1) / (n + 1)`, so it is never 0 and below 0.001 is shown as "<0.001". It is for
+the reader. The verdict comes from the policy's rules and intervals, never from `p`; it has
+its own random generator, so adding it changed no interval and no verdict. Cohort rows do not
+carry one; a policy that sets `cohorts.control` to `holm` shows adjusted p-values for those
+rules (`holm`). With three or more candidates, `experiments` and `workbench optimize` add a
+randomized Tukey HSD instead (see `docs/experiments.md`).
+
+### Hubs
+
+`vectraudit workbench hubs RUN [--baseline RUN] [--dataset BENCHMARK]` finds documents the
+retriever returns for many unrelated questions. Embeddings produce such *hubs*, and a new
+embedding model or index can create one without moving average quality much, while it
+crowds answers out of the top k.
+
+- **k-occurrence:** how many questions' top k hold each document.
+- **Gini and coverage**, after Evidently's popularity-bias metrics: Gini of the
+  k-occurrences (0 even, near 1 a few documents dominate), and the share of the corpus
+  ever retrieved (when the run records the corpus size).
+- **Skewness:** the standard hubness measure.
+- **Hubs:** documents in the top k of at least `--hub-share` (default 10%, and at least
+  three) questions. With `--dataset`, each hub shows for how many of those questions it is
+  labelled relevant. A hub that is rarely relevant is crowding out answers.
+- **Comparison:** with `--baseline`, hubs new to the candidate are listed, and
+  `--fail-on-new-hubs` exits 3.
+
+It is a diagnostic: it never changes a release verdict.
 
 ## Policy (JSON)
 
@@ -206,6 +352,14 @@ between-family uncertainty, even if it has many scenario rows.
   p95 rise is also larger than this in absolute terms, so scheduler jitter on shared CI
   runners (about 0.1 ms on local indexes, 1.5 ms against networked backends) is not a
   regression. Lower it, or set 0 to judge every rise, on dedicated hardware.
+- `prompt_changes: "fail"` gates on prompt versions recorded from traces (see the prompt
+  versions table in the workbench docs). Each prompt whose version differs between the runs,
+  including one added, removed or only partly rolled out, fails as rule `prompt:<name>`. A
+  reviewed change is accepted through an audited exception (`allow` it with the `prompt`
+  kind). If either run records no prompt versions the check is not comparable, because a
+  change cannot be ruled out. The default, `"report"`, only lists prompt changes with the
+  changed settings. Hosted checks see fingerprinted prompt names, so their rule keys are
+  `prompt:sha256:…`. Policies without the option keep their hashes.
 - `require_significance: true` fails a `max_drop` rule only when the whole 95% interval of
   the change is beyond the limit; useful for small or noisy query sets. Not detecting harm
   this way is not evidence that the change is within tolerance.
@@ -239,14 +393,23 @@ between-family uncertainty, even if it has many scenario rows.
     widened to 1 − 0.05/m for the m cohort `max_drop` rules judged, lies entirely beyond the
     allowed drop. The interval is a normal approximation from the family-level standard
     error, slightly narrow for very small cohorts.
+  - **`cohorts.control: "holm"`:** the same claim and error level, tested with Holm's
+    (1979) step-down procedure. Each judged `max_drop` rule gets a one-sided p-value that
+    its drop truly exceeds the allowed one (same normal approximation and family standard
+    error); the p-values are Holm-adjusted and a rule fails when its adjusted p is below
+    0.025, the per-side level of the 95% interval it replaces. The smallest p is judged
+    exactly as Bonferroni judges it, and each next one against a threshold that loosens by
+    one rule, so Holm never fails fewer real drops than Bonferroni and never more chance
+    ones. The check JSON shows `p` and `p_adjusted` per cohort metric (`holm`). The gain
+    over Bonferroni is largest when few cohort rules are judged and several regressed.
   - **Effect:** chance failures fell from every A/A comparison to at most about one in 20,
     while a real 0.4 drop in one cohort still failed.
   - **Unchanged by the control:** `min` floors, the suite-level metrics and the rule keys
     that audited exceptions name.
   - **Choosing:** run `vectraudit calibrate` with and without the control to see the
     difference on your own runner. Leaving the control out keeps existing policy hashes.
-  - **In the workbench:** the policy editor's "Correct for many cohorts (Bonferroni)"
-    checkbox sets the control.
+  - **In the workbench:** the policy editor's "Correct for many cohorts" menu sets the
+    control (none, Bonferroni or Holm), and keeps it when a policy is edited and saved.
 - Without `--policy`, a built-in policy allows drops of 0.01 in nDCG, recall and ANN recall
   (0.02 in MRR) and a 50% p95 rise, judged on whatever both runs measured. The workbench
   labels this mode *exploratory*; it is not a substitute for an agreed release policy.
@@ -320,7 +483,7 @@ The policy decides what can be accepted. Without an `exceptions` block, nothing 
 ```
 
 - `allow`: rule kinds open to exceptions (`metric`, `cohort`, `regressed_queries`,
-  `latency`, `critical`).
+  `latency`, `critical`, `prompt`).
 - `approver`: least role that may accept them (`engineer` or `owner`; default `owner`).
 - `safety`: `never` (default) or `owner`, for forbidden-document and no-answer failures.
   An engineer can never accept a safety failure.
@@ -373,6 +536,34 @@ It contains the dataset version, backend description and capabilities, search pa
 timing protocol, metric contract, provenance (commit SHA, CI run URL, runner environment,
 `--tag key=value` labels such as embedding model or chunking version) and per-query ranked
 ids, latency, metrics and errors.
+
+### Large runs: summaries and tables
+
+A run with many questions, repeats and stage evidence can reach hundreds of MiB. Two commands
+read a run one question at a time, validating each exactly as `check` does and keeping only
+the top-level fields, so its size does not matter:
+
+```bash
+vectraudit runs summary nightly.run.json --json summary.json
+vectraudit runs table baseline.run.json candidate.run.json --out runs.parquet
+```
+
+- **`runs summary`** validates every question and prints the status, question count, size,
+  dataset version, nDCG and p95 latency; it exits 1 if a run is invalid. On a synthetic 200 MiB
+  run it took about 2 seconds with a peak of 13 MiB of Python allocations (the documented bound
+  is 32 MiB); loading the same file whole took 1.3 GiB.
+- **`runs table`** writes one row per question and repeat to CSV, or Parquet with
+  `vectraudit[parquet]`, for analysis in your own notebook: the run's ID, label, status and
+  dataset version on every row; the question's ID, family, tags (a JSON list), error code and
+  retries; per repeat, each metric (`metric_ndcg`, ...), ANN recall, latency, how many results
+  came back, forbidden results and the no-answer check; per question, sufficiency, the answer
+  verdict and diagnosis, cost, and `component` (where it first lost its evidence; repeat 1 only).
+  IDs, numbers and flags only: no question, document or answer text. The layout follows
+  Inspect's log dataframes.
+- **The workbench** lists a run above its 64 MiB limit for opening files as "summary only";
+  choosing it shows the validated summary in the Checks tab instead of loading the questions.
+
+`check` itself still loads both runs whole, because it compares them question by question.
 
 
 Policy `min_queries` counts independent query families, both for the suite and for the paired

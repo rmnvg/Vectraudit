@@ -33,13 +33,26 @@ describe('release policy form', () => {
     const exceptions = { allow: ['metric'], approver: 'engineer' }
     const raw = { metrics: { ndcg: { max_drop: 0.02 } }, cohorts: { min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } }, control: 'bonferroni' }, exceptions }
     const form = formFromPolicy(raw)
-    expect(form.cohortControl).toBe(true)
+    expect(form.cohortControl).toBe('bonferroni')
     const { policy } = policyFromForm(form)
     expect(policy?.cohorts).toEqual(raw.cohorts)
     expect(policy?.exceptions).toEqual(exceptions)
     expect(policyFromForm(formFromPolicy({ ...raw, forbidden_stages: ['rerank'] })).policy?.forbidden_stages).toEqual(['rerank'])
-    form.cohortControl = false
+    form.cohortControl = 'none'
     expect(policyFromForm(form).policy?.cohorts).toEqual({ min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } } })
+  })
+  it('keeps Holm cohort control and drops an unknown one', () => {
+    const cohorts = { min_queries: 5, metrics: { ndcg: { max_drop: 0.05 } } }
+    const holm = formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } }, cohorts: { ...cohorts, control: 'holm' } })
+    expect(holm.cohortControl).toBe('holm')
+    expect(policyFromForm(holm).policy?.cohorts).toEqual({ ...cohorts, control: 'holm' })
+    expect(formFromPolicy({ cohorts: { ...cohorts, control: 'sidak' } }).cohortControl).toBe('none')
+  })
+  it('keeps the poisoning robustness limits through editing', () => {
+    const robustness = { max_retrieved_rate: { hijack: 0, inject: 0.1 }, max_displacement_rate: 0.05 }
+    const raw = { metrics: { ndcg: { max_drop: 0.02 } }, robustness }
+    expect(policyFromForm(formFromPolicy(raw)).policy?.robustness).toEqual(robustness)
+    expect(policyFromForm(formFromPolicy({ metrics: raw.metrics })).policy).not.toHaveProperty('robustness')
   })
   it('chooses one way to judge allowed drops', () => {
     expect(formFromPolicy({ metrics: { ndcg: { max_drop: 0.02 } } }).dropTest).toBe('measured')
@@ -77,4 +90,27 @@ it('keeps context assertions through an edit instead of dropping them', () => {
   expect(policyFromForm(repeated).errors).toContain('Context assertion 2 repeats a question.')
   const onlyContext = policyFromForm({ ...formFromPolicy({ critical_context: [{ query_id: 'q' }] }) })
   expect(onlyContext.errors).toEqual([])
+})
+
+it('keeps MAP and hit rate rules through an edit instead of dropping them', () => {
+  const raw = {
+    metrics: { ndcg: { max_drop: 0.01 }, map: { max_drop: 0.02 }, hit_rate: { min: 0.9 } },
+    cohorts: { min_queries: 10, metrics: { map: { max_drop: 0.05 } } },
+    primary_metric: 'map',
+  }
+  const { policy, errors } = policyFromForm(formFromPolicy(raw))
+  expect(errors).toEqual([])
+  if (!policy) throw new Error('expected a policy')
+  expect(policy.metrics).toEqual(raw.metrics)
+  expect(policy.primary_metric).toBe('map')
+  expect((policy.cohorts as { metrics: unknown }).metrics).toEqual(raw.cohorts.metrics)
+})
+
+it('keeps the prompt change rule through an edit instead of dropping it', () => {
+  const raw = { metrics: { ndcg: { max_drop: 0.01 } }, prompt_changes: 'fail', exceptions: { allow: ['prompt'] } }
+  const { policy, errors } = policyFromForm(formFromPolicy(raw))
+  expect(errors).toEqual([])
+  if (!policy) throw new Error('expected a policy')
+  expect(policy.prompt_changes).toBe('fail')
+  expect(policy.exceptions).toEqual({ allow: ['prompt'] })
 })

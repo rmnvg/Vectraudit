@@ -10,10 +10,123 @@ vectraudit workbench intake traces-2026-10-18.jsonl questions.jsonl \
   --workspace workbench-runs --export-review review.jsonl
 ```
 
-Traces are read like `workbench import-traces` (OpenInference OTLP JSON or Phoenix span
-records, LangSmith runs, Langfuse observations).
+Traces are read like `workbench import-traces` (OpenInference, OpenLLMetry or OpenTelemetry GenAI OTLP JSON,
+Phoenix span records, LangSmith runs, Langfuse observations, Opik pulls).
 Everything stays local: the state folder holds a cursor and the review queue, including
 question text, and nothing is uploaded.
+
+## Pulling directly from Langfuse
+
+Teams on Langfuse, LangSmith, Opik or OpenObserve can skip the export step. `workbench langfuse-pull` reads a time window
+from the project's public API and writes the same observation records an export holds, plus
+the project's scores as answer judgments:
+
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_HOST=https://cloud.langfuse.com   # or your region or self-hosted URL
+vectraudit workbench langfuse-pull --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces traces-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+vectraudit workbench intake traces-2026-10-19.jsonl questions.jsonl --state retrieval/intake
+```
+
+- **Read-only.** Nothing is written to Langfuse. Keys go only over https (plain http only
+  to a local server) and are never written to files.
+- **Overlapping windows are safe:** intake's cursor skips traces it has already taken.
+- **Scores:** a boolean score becomes `correct` or `incorrect`; a categorical score only
+  when its category is `correct`, `partial` or `incorrect`; a numeric score stays a score
+  and needs `--threshold` in `attach-answers`. Text and correction scores, other
+  categories, and session or experiment scores are skipped and counted. Annotation scores
+  are human review (change with `--human-source`); API and evaluator scores are model
+  judgments. Comments are never requested.
+- **Freshness:** Langfuse says scores can lag by about ten minutes, so end score windows a
+  little in the past, or pull again.
+- **Bounds:** at most 200,000 records per window; a larger window is refused, so pull a
+  shorter one.
+- **Window edges:** Langfuse filters observations by their own start time, so a trace
+  that begins just before `--until` can lose its later observations to the next window.
+  It then imports as a gap (no retriever, or context unknown), never as a wrong result.
+  End windows at a quiet time, or overlap them; intake skips traces it has already taken.
+
+## Pulling directly from LangSmith
+
+```bash
+export LANGSMITH_API_KEY=lsv2_...   # LANGSMITH_ENDPOINT for the EU region or self-hosted
+vectraudit workbench langsmith-pull --project support-bot \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces runs-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+```
+
+- **Whole traces:** the window applies to each trace's root run, so a trace that started
+  in the window comes back with all of its runs, even those that ended after it.
+- **Feedback:** a `value` of `correct`, `partial` or `incorrect` is that verdict; otherwise
+  a boolean `score` is a verdict and a numeric `score` stays a score that needs
+  `--threshold`. Other values, feedback without a score, and feedback on runs outside the
+  pulled traces are skipped and counted. Feedback from the LangSmith app (UI and
+  annotation queues, source type `app`) is human review (change with `--human-source`);
+  `api` and `model` feedback are model judgments. Feedback on a child run counts for its
+  trace.
+- **Read-only.** Nothing is written to LangSmith. The key goes only over https (plain http
+  only to a local server). LangSmith returns comments and corrections with feedback; they
+  are never written to the output files.
+
+## Pulling directly from Opik
+
+```bash
+export OPIK_API_KEY=... OPIK_WORKSPACE=acme   # Opik Cloud; a self-hosted Opik may need neither
+export OPIK_URL_OVERRIDE=http://localhost:5173/api   # only for a self-hosted Opik
+vectraudit workbench opik-pull --project support-bot \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces spans-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+vectraudit workbench intake spans-2026-10-19.jsonl questions.jsonl --state retrieval/intake \
+  --stage-kind search_kb=vector
+```
+
+- **Name the retriever.** Opik's span types are `general`, `tool`, `llm` and `guardrail`,
+  with no retriever type, so pass `--stage-kind SPAN_NAME=KIND` for the span that returns
+  documents. It is never guessed from a name.
+- **The question is on the trace.** Each Opik trace is written as its trace's root span,
+  with top-level spans under it, so the trace's input is where the question is found.
+- **Window:** Opik filters by creation time. Traces created in the window are taken, and
+  their spans are read up to `--grace-minutes` (default 60) after it, because spans can be
+  created after their trace. Spans later than that leave the trace incomplete, which
+  imports as a gap, never as a result.
+- **Scores** come inline on traces and spans; a span's score counts for its trace. A
+  `category_name` of `correct`, `partial` or `incorrect` is that verdict, and other
+  categories are skipped, never read from their numeric value. Uncategorised values stay
+  scores that need `--threshold`. `ui` scores (the Opik interface and annotation queues)
+  are human review (change with `--human-source`); `sdk` and `online_scoring` are model
+  judgments. Opik's averaged `span_feedback_scores` are not used. Reasons are never
+  written out.
+- **Read-only.** An API key goes only over https (plain http only to a local server). A
+  keyless self-hosted Opik can be read over http, since no secret is sent.
+
+## Pulling directly from Phoenix
+
+```bash
+export PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006   # or https://app.phoenix.arize.com/s/SPACE
+export PHOENIX_API_KEY=...                                # Phoenix Cloud or a secured server
+vectraudit workbench phoenix-pull --project support-bot \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces spans-2026-10-19.jsonl --judgments judgments-2026-10-19.jsonl
+vectraudit workbench intake spans-2026-10-19.jsonl questions.jsonl --state retrieval/intake \
+  --id-field doc_id
+```
+
+- **Spans are written as Phoenix returns them** (`/v1/projects/{project}/spans`), which is
+  the `spans` shape import-traces already reads, with OpenInference span kinds.
+- **Window:** traces whose root span started in the window are taken, and every span of
+  those traces is read by trace ID, so a trace is never cut at the window's end.
+- **Document IDs:** LangChain retrievers usually record the ID only in document metadata;
+  name the field with `--id-field` (Phoenix flattens metadata, and both forms are read).
+- **Annotations** on traces and spans become judgments; a span's annotation counts for its
+  trace. A label of `correct`, `partial` or `incorrect` is that verdict, with the score
+  kept. Other labels (such as `hallucinated` or `factual`) are skipped, never read from
+  their score, whose direction differs between evaluators. A score without a label needs
+  `--threshold`. `HUMAN` annotations are human review; `LLM`, `CODE` and other kinds are
+  model judgments. Notes are skipped. `--annotation NAME` keeps only the named ones.
+  Explanations and notes are never written out.
+- **Read-only.** The project defaults to `PHOENIX_PROJECT_NAME`, else `default`. An API
+  key goes only over https (plain http only to a local server).
 
 ## What each run does
 
@@ -53,6 +166,143 @@ questions.
 passage review → it joins the benchmark (`promoted`) → a failing release creates a
 regression case → a fix is verified → `intake` reports a *likely recurrence* if production
 misses its labelled documents again, and asks to reopen the verified case.
+
+## Pulling directly from OpenObserve
+
+Teams that send their application's OpenTelemetry traces (OpenInference or OpenLLMetry) to
+OpenObserve can pull them as OTLP JSON:
+
+```bash
+export OPENOBSERVE_URL=https://o2.example.com OPENOBSERVE_ORG=acme
+export OPENOBSERVE_USER=dev@example.com OPENOBSERVE_PASSWORD=...   # or OPENOBSERVE_TOKEN
+vectraudit workbench openobserve-pull --stream default \
+  --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z --traces otlp-2026-10-19.json
+vectraudit workbench intake otlp-2026-10-19.json questions.jsonl --state retrieval/intake
+```
+
+- **Whole traces:** traces are taken by start time from OpenObserve's latest-traces
+  listing, then every span of each is read up to `--grace-minutes` (default 60) after the
+  window.
+- **Restored keys:** OpenObserve stores attribute keys flattened (lower case, dots as
+  underscores, `attr_` before a key that collides with a span column). That cannot be
+  undone in general, so the keys Vectraudit reads (OpenInference retrieval, reranker,
+  message, prompt and session keys, and the OpenLLMetry keys) are restored by explicit
+  patterns. Other attributes keep their stored names, where nothing reads them. Span
+  events are stored with their original keys and come back as recorded.
+- **Read-only.** Credentials go only over https (plain http only to a local server); trace
+  IDs are checked to be 32 hex characters before they appear in a query; error bodies are
+  not echoed.
+- OpenObserve is AGPL-3.0. Vectraudit only calls its HTTP API, as any client does, and
+  contains none of its code.
+
+## Is the benchmark still representative?
+
+`workbench drift` compares production questions from traces with the benchmark's, in the
+manner of Evidently's data drift reports, so you learn when a passing release check has
+started to say less about production:
+
+```bash
+vectraudit workbench drift traces-2026-10-19.jsonl questions.jsonl \
+  --context-field tenant --context-field language --json drift.json
+```
+
+- **Descriptors** per question: word count, script (Latin, Cyrillic, CJK, ...), digits,
+  question form, whether it uses a term the benchmark never uses, and each
+  `--context-field`. For the benchmark, an unseen term is one no *other* benchmark
+  question uses, so both sides are measured the same way.
+- **Tests:** the ones Evidently selects by default. With up to 1,000 benchmark questions,
+  the Kolmogorov-Smirnov test for numbers with more than five distinct values and
+  otherwise chi-square (a Z-test for two values), drift at p < 0.05. With more, the normed
+  Wasserstein distance for numbers and the Jensen-Shannon distance otherwise, drift at
+  0.1. `--method psi` uses the population stability index instead. At its usual 0.1
+  threshold it raises false alarms on samples of a few hundred (about 90% of the time on
+  stable data at 200 questions), so it is not the default.
+- **What moved:** new values (a script or tenant the benchmark lacks), the most frequent
+  unseen terms, and the share of production questions that are benchmark questions word
+  for word.
+- `--fail-on-drift` exits 3, for a scheduled job. Below about 30 questions on either side,
+  the report warns that the tests have little power.
+
+### Did the questions move in meaning? (embedding drift)
+
+A new topic asked in ordinary words changes none of the descriptors above, but it moves the
+questions' embeddings. `--embeddings` compares those too and writes a
+`vectraudit.embedding_drift` report, which the workbench Checks tab opens:
+
+```bash
+vectraudit workbench drift traces-2026-10-19.jsonl questions.jsonl --embeddings embedding-drift.json
+vectraudit workbench embedding-drift traces-2026-10-12.jsonl traces-2026-10-19.jsonl \
+  --embedder sentence-transformers/all-MiniLM-L6-v2 --out windows.json
+vectraudit workbench embedding-drift corpus-2026-10-12.jsonl corpus-2026-10-19.jsonl --corpus \
+  --out corpus-drift.json
+```
+
+- **What is compared:** the benchmark's exploratory questions against production questions
+  (held-out questions stay out), two windows of production questions, or with `--corpus` the
+  earlier corpus export against the documents the later one added or changed (their `vector`
+  fields, or embedded with `--embedder`). Unchanged documents are the same in both exports
+  and would only dilute the comparison; fewer than 10 added or changed is an error, not a
+  pass. A question asked verbatim on both sides is kept on one side of the classifier's
+  train/test split, so repeats cannot hide drift.
+- **Embedding:** traces hold question text, so questions are embedded locally with
+  sentence-transformers (`vectraudit[text]`): by default with the benchmark's own
+  `embedding_model`, matching its normalisation. Another model is refused when the benchmark
+  already has vectors, because comparing two models measures the models.
+- **Method:** the default is Evidently's (read in Evidently 0.7.22): a classifier is trained
+  to tell the two sets apart on half the vectors and scored by ROC AUC on the other half.
+  With fewer than 1,000 benchmark vectors, drift is an AUC above the 95th percentile of 100
+  AUCs of random scores (a test at about the 5% level); with more, an AUC above 0.55.
+  `--embedding-method` (or `--method` on `embedding-drift`) picks `mmd` (maximum mean
+  discrepancy with a permutation p-value, drift at p < 0.05), `ratio` (share of components
+  that moved) or `distance` (between the means).
+- **Measured on synthetic questions** (eight topics; a ninth makes up 20% of production;
+  40 seeded repeats): with 300 benchmark questions against 3,000 production ones, the default
+  found the new topic in all 40 repeats, with at most 1 false alarm in 40 on unchanged
+  traffic. With only 100 benchmark questions it found it in 19 to 29 of 40, where `mmd` found
+  it in 35 to 40, so prefer `mmd` for a small benchmark. Evidently's `ratio` defaults flagged
+  every unchanged window of 300 vectors (the report warns below 1,000), and the fixed
+  `distance` threshold of 0.2 never fired on unit-length vectors (the report warns; its
+  bootstrap compares with resamples instead).
+- **Where it moved:** when drift is found, the benchmark and production questions are
+  grouped together (k-means on the full vectors) and any group of production questions no
+  benchmark question is close to is named by its terms: "About 20% of the production
+  questions form a group no benchmark question is close to (about: wallet, seed, phrase)".
+  Each group lists its trace IDs. A small benchmark (under 200 questions) gets a warning that
+  the default has little power there, with `mmd` suggested.
+- **Into the review queue:** pass the report to intake, and the pending questions from those
+  traces are tagged `new_topic` (with the terms) and raised, like feedback; the review export
+  tags them `new-topic`. They are candidates for the benchmark, never labels:
+
+  ```bash
+  vectraudit workbench intake traces-2026-10-19.jsonl questions.jsonl --embedding-drift embedding-drift.json
+  ```
+
+- **What it means:** drift is a hypothesis that the questions differ, not proof that
+  retrieval got worse. `--fail-on-drift` exits 3 when the descriptors or the embeddings
+  drifted.
+
+### Did the retriever change?
+
+`workbench score-drift EARLIER LATER` compares two windows of production traces: the
+retriever's first-document score, mean score, spread from first to last, and how many
+documents came back, with the same tests. It compares the questions of the two windows
+too, so it can tell the causes apart:
+
+```bash
+vectraudit workbench score-drift traces-2026-10-12.jsonl traces-2026-10-19.jsonl --fail-on-drift
+```
+
+- **Retriever shift likely:** scores moved while the questions did not. A new embedding
+  model, a re-index, or a similarity or score-scale change are the usual causes. Recheck
+  older baselines before trusting them. `--fail-on-drift` exits 3 only in this case.
+- **Drift with question drift:** both moved, so the questions may explain the shift.
+  Compare recorded runs on the fixed benchmark to isolate the retriever.
+- **Which stage:** the first retriever span is used; `--stage NAME` picks another. Traces
+  whose retriever recorded no scores are counted and left out, never filled in.
+- **Local only:** the report holds production terms and context values and is never
+  uploaded.
+- **Next step after drift:** run intake and review its queue, then add or relabel
+  questions before trusting a pass.
 
 ## Limits
 

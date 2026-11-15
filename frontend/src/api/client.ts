@@ -23,6 +23,8 @@ import type {
   SearchResponse,
   BaselineComparison,
   RunDecision,
+  SelectivityJob,
+  SelectivityRequest,
   SweepAdvice,
   SweepJob,
   SweepRun,
@@ -193,6 +195,14 @@ export const api = {
         (maxP95 !== null ? `&max_p95_ms=${maxP95}` : ''),
       signal,
     ),
+  /** Starts (or reuses) a sweep repeated at each pass rate and metadata filter. */
+  startSelectivity: (req: SelectivityRequest) => post<SelectivityJob>('selectivity', req),
+  selectivity: (jobId: string, signal?: AbortSignal) =>
+    get<SelectivityJob>(`selectivity/${encodeURIComponent(jobId)}`, signal),
+  cancelSelectivity: async (jobId: string) =>
+    (await request<SelectivityJob>(`selectivity/${encodeURIComponent(jobId)}`, { method: 'DELETE' })).body,
+  selectivityAdvice: (jobId: string, target: number, signal?: AbortSignal) =>
+    get<SweepAdvice>(`selectivity/${encodeURIComponent(jobId)}/advice?target=${target}`, signal),
   /** A saveable record of a finished sweep, for its decision (target, budget). */
   sweepRun: (jobId: string, d: RunDecision) =>
     get<SweepRun>(

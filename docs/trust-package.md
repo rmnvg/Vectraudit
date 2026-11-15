@@ -20,6 +20,33 @@ In every mode **your documents, passages, request context (tenant, user, groups)
 vectors, credentials, endpoint hosts and error messages stay on your side**. Evaluation always
 runs where your application runs; the hosted service never calls your application.
 
+## New analyses add no data flow
+
+The rank-fusion replay, claim-level evidence, poisoning checks, filtered-search sweeps, capacity
+curve, VectorDBBench import and corpus atlas run on your machine from files you provide. They
+add **no subprocessor and no outbound call from Vectraudit**: claim and red-team results are
+imported from files that RAGChecker and promptfoo wrote, never by running them; no dataset is
+downloaded; the atlas renders offline. The capacity curve sends read-only searches to the
+backend you name and confirm, under a rate ceiling, and nothing to anyone else. Reports from
+these analyses hold identifiers, counts and scores, not document or answer text. The two
+exceptions stay local: the atlas sidecar carries document titles and is marked `local_only`,
+and the benchmark audit's coverage groups carry terms drawn from local titles. Neither is part
+of an upload.
+
+The same holds for the later analyses: judge-corrected estimates, TREC, BEIR, MTEB and MTCB
+interchange, the label audit, embedding drift, the component scoreboard, run summaries and
+tables, the ann-benchmarks import and batch sweeps. All read local files and write local
+files. None adds a subprocessor, downloads a dataset or makes an outbound call. Vectraudit
+never runs a judge, MTEB, Evidently, cleanlab or any other evaluation tool: their methods are
+reimplemented ([credits](credits.md)). Embedding drift embeds production questions on your
+machine with a sentence-transformers model you already have; the first use of a model name
+that is not cached locally makes that library fetch it from its hub, as it does for text
+queries today. Three outputs contain text or terms and stay local: an embedding drift report
+(group terms from production questions), `dataset import --format mtcb --corpus-out` (document
+text) and intake's review queue. `runs table` and every other new report hold identifiers,
+numbers and flags only. One new optional dependency, h5py (BSD-3-Clause), reads HDF5 files
+for the ann-benchmarks import and is installed only with the `[hdf5]` extra.
+
 ## Data flows
 
 ```

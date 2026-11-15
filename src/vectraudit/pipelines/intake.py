@@ -18,6 +18,9 @@ Run on each new trace export (OpenInference, LangSmith runs or Langfuse observat
   so review is not limited to what users complained about.
 - **Routes to reviewers** by context (``{"when": {"tenant": "acme"}, "reviewer": "ana"}``),
   first matching rule wins.
+- **Raises new topics.** With an embedding drift report (``workbench drift --embeddings``),
+  questions whose traces fall in a group no benchmark question is close to are tagged with
+  the group's terms and raised, like feedback; they never become labels.
 
 Question text stays in the local state folder and the exported review file; nothing is
 uploaded. A question that later enters the benchmark is marked ``promoted`` on the next run.
@@ -50,7 +53,7 @@ from vectraudit.pipelines.traces import (
 )
 
 SIGNALS = ("negative", "escalated", "positive")
-WEIGHTS = {"escalated": 5.0, "negative": 3.0, "positive": -1.0}
+WEIGHTS = {"escalated": 5.0, "negative": 3.0, "positive": -1.0, "new_topic": 2.0}
 MAX_TRACE_IDS = 20
 MAX_QUEUE = 20_000
 
@@ -179,8 +182,14 @@ def intake(
     sample_rate: float = 0.1,
     seed: int = 0,
     workspace: str | Path | None = None,
+    new_topics: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Take the traces newer than the cursor; update the review queue and report."""
+    """Take the traces newer than the cursor; update the review queue and report.
+
+    ``new_topics`` maps a trace ID to its new-topic group (from
+    :func:`vectraudit.pipelines.embedding_drift.new_topics`); such questions, new now or
+    already pending, are tagged and raised.
+    """
     if not 0 <= sample_rate <= 1:
         raise TraceImportError("sample_rate must be between 0 and 1")
     settings = settings or Settings()
@@ -268,6 +277,17 @@ def intake(
             entry["signals"][signal] = entry["signals"].get(signal, 0) + n
         entry["priority"] = _priority(entry)
         touched.add(key)
+    topics = new_topics or {}
+    raised = 0
+    for entry in queue.values():
+        topic = next((topics[t] for t in entry["trace_ids"] if t in topics), None)
+        if entry["status"] != "new" or topic is None or "new_topic" in entry["signals"]:
+            continue
+        entry["new_topic"] = {"terms": list(topic["terms"]), "share": topic["share"]}
+        entry["signals"]["new_topic"] = 1
+        entry["priority"] = _priority(entry)
+        touched.add(entry["key"])
+        raised += 1
     benchmark_texts = set(texts)
     promoted = 0
     for entry in queue.values():
@@ -307,6 +327,8 @@ def intake(
             "promoted_now": promoted,
             "independent_sample": sum(1 for e in pending if e["sampled"]),
             "unassigned": sum(1 for e in pending if e["reviewer"] is None),
+            "new_topic": sum(1 for e in pending if "new_topic" in e),
+            "new_topic_now": raised,
         },
         "cursor": {"after": _time(cursor["after_ns"]) if cursor["after_ns"] else None},
     }
@@ -334,6 +356,8 @@ def review_dataset(state: str | Path, *, reviewer: str | None = None, limit: int
     rows = []
     for e in chosen:
         tags = ["incident-review", "independent-sample" if e["sampled"] else "signalled"]
+        if "new_topic" in e:
+            tags.append("new-topic")
         rows.append(
             {
                 "query_id": f"incident-{e['key'][:20]}",
@@ -357,6 +381,11 @@ def render(report: Mapping[str, Any]) -> str:
         f"{q['unassigned']} without a reviewer); {q['updated']} updated now; "
         f"{q['promoted_now']} newly in the benchmark.",
     ]
+    if q.get("new_topic"):
+        lines.append(
+            f"New topics: {q['new_topic']} pending questions are in a group no benchmark "
+            f"question is close to ({q['new_topic_now']} raised now)."
+        )
     for r in report["likely_recurrences"][:20]:
         cases = ", ".join(c["case"] for c in r["cases"]) or "no case yet"
         reopen = f"; reopen verified case(s) {', '.join(r['reopen'])}" if r["reopen"] else ""

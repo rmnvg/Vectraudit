@@ -582,8 +582,57 @@ export type SearchResponse = {
   "ivf_trace": (IvfTraceResponse | null);
 }
 
+export type SelectivityJobResponse = {
+  "job_id": string;
+  "status": "running" | "done" | "failed" | "cancelled";
+  "progress": number;
+  "message": string;
+  "error": (string | null);
+  "result": (SelectivityResultOut | null);
+}
+
+export type SelectivityPointOut = {
+  "value": number;
+  "recall": number;
+  "recall_ci_low": (number | null);
+  "recall_ci_high": (number | null);
+  "latency_mean_ms": number;
+  "latency_p95_ms": number;
+  "probe_coverage": (number | null);
+}
+
+export type SelectivityRequest = {
+  "param"?: ("nprobe" | "efSearch" | null);
+  "values"?: (Array<number> | null);
+  "k"?: number;
+  "n_queries"?: number;
+  "repeats"?: number;
+  "seed"?: number;
+  "pass_rates"?: Array<number>;
+  "filters"?: Array<Record<string, (string | number | number | boolean | Array<(string | number | number | boolean)> | Record<string, (number | number)>)>>;
+}
+
+export type SelectivityResultOut = {
+  "param": "nprobe" | "efSearch";
+  "k": number;
+  "n_queries": number;
+  "query_origin": "given" | "sampled";
+  "truth_source": "raw" | "reconstructed";
+  "repeats": number;
+  "seed": number;
+  "runs": Array<SelectivityRunOut>;
+}
+
+export type SelectivityRunOut = {
+  "label": string;
+  "kind": "all" | "metadata" | "synthetic";
+  "pass_rate": number;
+  "allowed_count": number;
+  "points": Array<SelectivityPointOut>;
+}
+
 export type SuggestionOut = {
-  "kind": "PROBE_MORE" | "RANKING_LIMIT" | "SEARCH_WIDER" | "RECALL_PLATEAU" | "FAILING_QUERIES" | "LIST_IMBALANCE" | "LATENCY_BUDGET";
+  "kind": "PROBE_MORE" | "RANKING_LIMIT" | "SEARCH_WIDER" | "RECALL_PLATEAU" | "FAILING_QUERIES" | "LIST_IMBALANCE" | "LATENCY_BUDGET" | "FILTER_RECALL_SHORT" | "FILTER_RECALL_DROP" | "FILTER_UNMEASURED";
   "title": string;
   "detail": string;
   "evidence": Array<EvidenceOut>;

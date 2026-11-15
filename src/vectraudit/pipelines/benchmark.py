@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
+
+from vectraudit.core.coverage import coverage, public
 from vectraudit.evaluation.dataset import Dataset
+from vectraudit.evaluation.label_audit import queue_items
+from vectraudit.pipelines.claim_review import claim_review
 
 SUITE_TAGS = (
     "exact_identifier",
@@ -19,13 +27,45 @@ SUITE_TAGS = (
 )
 
 
+@dataclass(frozen=True)
+class CorpusVectors:
+    """The corpus as the coverage analysis needs it."""
+
+    ids: Sequence[str]
+    vectors: npt.ArrayLike
+    titles: Sequence[str | None] | None = None
+
+
+def _embedding_coverage(dataset: Dataset, corpus: CorpusVectors | None) -> dict[str, Any] | None:
+    """Coverage regions of the corpus against the exploratory questions (held-out never count)."""
+    if corpus is None:
+        return None
+    asked = [q.vector for q in dataset.queries if q.split == "explore" and q.vector is not None]
+    if not asked:
+        return {
+            "findings": [],
+            "note": "No exploratory question has a vector, so coverage was not measured.",
+        }
+    relevant = frozenset(d for q in dataset.queries if q.split == "explore" for d in q.relevant)
+    result = coverage(corpus.ids, corpus.vectors, np.asarray(asked), relevant, corpus.titles)
+    return public(result)
+
+
 def audit_benchmark(
     dataset: Dataset,
     runs: list[dict[str, Any]] | None = None,
     *,
     irrelevant: dict[str, list[str]] | None = None,
+    corpus: CorpusVectors | None = None,
+    label_audit: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Suggest human review; never infer relevance or modify a frozen benchmark."""
+    """Suggest human review; never infer relevance or modify a frozen benchmark.
+
+    With ``corpus`` (document IDs, vectors, and titles) the report gains ``embedding_coverage``:
+    groups of documents no exploratory question is close to, as hypotheses to look at. With
+    ``label_audit`` (a ``vectraudit.label_audit`` report of this dataset version), its suspect
+    labels join the judgment queue with their reasons.
+    """
     groups: dict[str, list[str]] = defaultdict(list)
     tags: Counter[str] = Counter()
     for q in dataset.queries:
@@ -63,6 +103,18 @@ def audit_benchmark(
                 }
                 for doc in sorted(unjudged)
             )
+    # Claim-level evidence (RAGChecker via attach-answers) adds documents to judge and labels
+    # to recheck; they merge with what the pool already queued, never become labels.
+    claim_items, proposals = claim_review(dataset, runs or [], judged_extra=irrelevant)
+    queued = {(j["query_id"], j["doc_id"]): j for j in judgments}
+    audit_items = queue_items(label_audit, dataset) if label_audit is not None else []
+    for item in [*claim_items, *audit_items]:
+        key = (item["query_id"], item["doc_id"])
+        if key in queued:
+            queued[key].update({**item, "priority": max(queued[key]["priority"], item["priority"])})
+        else:
+            judgments.append(item)
+            queued[key] = item
     return {
         "format": "vectraudit.benchmark",
         "dataset_sha256": dataset.sha256,
@@ -70,12 +122,19 @@ def audit_benchmark(
         "n_labelled": dataset.n_labelled,
         "splits": dict(Counter(q.split for q in dataset.queries)),
         "coverage": dict(tags),
+        "embedding_coverage": _embedding_coverage(dataset, corpus),
         "missing_categories": [tag for tag in SUITE_TAGS if not tags[tag]],
         "duplicates": [ids for ids in groups.values() if len(ids) > 1],
         "unannotated": [q.query_id for q in dataset.queries if not q.labelled],
         "judgment_queue": sorted(
-            judgments, key=lambda row: (-int(row["priority"]), str(row["query_id"]))
+            judgments,
+            key=lambda row: (
+                -int(row["priority"]),
+                -int(row.get("claims_entailed", 0)),
+                str(row["query_id"]),
+            ),
         ),
+        "required_evidence_proposals": proposals,
         "suggestions": [
             {"category": tag, "instruction": instruction}
             for tag, instruction in zip(
@@ -96,6 +155,6 @@ def audit_benchmark(
         ],
         "note": (
             "Suggestions require human judgment. "
-            "Held-out queries are excluded from the judgment queue."
+            "Held-out queries are excluded from the judgment queue and from proposals."
         ),
     }

@@ -14,6 +14,8 @@ from typing import Any
 from vectraudit import __version__
 from vectraudit.evaluation.compare import execution_label
 from vectraudit.evaluation.evidence import describe_evidence
+from vectraudit.evaluation.measure_names import label as measure_label
+from vectraudit.evaluation.measure_names import notation
 
 NONE = "\u2013"  # en dash for missing values
 
@@ -31,13 +33,16 @@ _VERDICT_EMOJI = {
     "not_comparable": "⏸️",
     "accepted": "🟡",
 }
-_METRIC_NAMES = {
-    "recall": "Recall@k",
-    "precision": "Precision@k",
-    "mrr": "MRR@k",
-    "ndcg": "nDCG@k",
-    "ann_recall": "ANN recall@k",
-}
+_METRIC_NAMES = {"ann_recall": "ANN recall@k"}
+
+
+def _name(result: Mapping[str, Any], metric: str, *, key: bool = True) -> str:
+    """A metric's display name: ir-measures notation at this run's k (``nDCG@10``), with
+    Vectraudit's key beside it in tables (``nDCG@10 (ndcg)``)."""
+    k = (result.get("candidate") or {}).get("k")
+    if isinstance(k, int) and metric not in _METRIC_NAMES:
+        return measure_label(metric, k) if key else (notation(metric, k) or metric)
+    return _METRIC_NAMES.get(metric, metric)
 
 
 def _num(x: Any, digits: int = 4, signed: bool = False) -> str:
@@ -51,20 +56,99 @@ def _ids(ids: Sequence[str], limit: int = 5) -> str:
     return shown + (f" … (+{len(ids) - limit})" if len(ids) > limit else "")
 
 
-def _metric_rows(metrics: Mapping[str, Any]) -> list[list[str]]:
+def _metric_rows(result: Mapping[str, Any]) -> list[list[str]]:
     return [
         [
-            _METRIC_NAMES.get(name, name),
+            _name(result, name),
             _num(m["baseline"]),
             _num(m["candidate"]),
             _num(m["delta"], signed=True),
             f"[{_num(m['ci_low'], signed=True)}, {_num(m['ci_high'], signed=True)}]",
+            _p(m.get("p_value")),
             str(m["n"]),
             str(m.get("n_families", m["n"])),
         ]
-        for name, m in metrics.items()
+        for name, m in result["metrics"].items()
     ]
 
+
+def _p(p: Any) -> str:
+    if p is None:
+        return NONE
+    return "<0.001" if p < 0.001 else f"{p:.3f}"
+
+
+P_NOTE = (
+    "p is a paired randomization test on family means, for information. The verdict uses "
+    "the rules above, not p."
+)
+
+JUDGE_NOTE = (
+    "Judge-corrected change in the correct-answer rate: the judge's change corrected by what "
+    "people found on the same random sample of question families in both runs. Information "
+    "only; the verdict does not use it."
+)
+
+
+def _pct(x: float) -> str:
+    return f"{x * 100:+.1f} pts"
+
+
+def judge_corrected_rows(result: Mapping[str, Any]) -> list[list[str]]:
+    """Rows (evaluator, judge only, people only, corrected, reviewed) for the change in rate."""
+    block = result.get("judge_corrected") or {}
+    rows = []
+    for name, row in (block.get("by_evaluator") or {}).items():
+        if row["status"] != "ok":
+            rows.append([name, "", "", "no corrected estimate: " + str(row["reason"]), ""])
+            continue
+        human, corrected = row["human_only"], row["corrected"]
+        rows.append(
+            [
+                name,
+                _pct(row["judge_only"]["estimate"]),
+                f"{_pct(human['estimate'])} ({_pct(human['ci_low'])} to {_pct(human['ci_high'])})",
+                f"{_pct(corrected['estimate'])} "
+                f"({_pct(corrected['ci_low'])} to {_pct(corrected['ci_high'])})",
+                f"{row['sample_families']} of {row['frame_families']} families",
+            ]
+        )
+    return rows
+
+
+JUDGE_HEADER = ["Judge", "Judge only (biased)", "People only", "Corrected (95%)", "Reviewed"]
+
+
+def component_rows(result: Mapping[str, Any]) -> list[list[str]]:
+    """Rows (component, baseline, candidate): where questions first lost their evidence."""
+    block = result.get("components") or {}
+
+    def cell(side: str, name: str) -> str:
+        row = (block.get(side) or {}).get(name)
+        if not row or row["rate"] is None:
+            return "not observed"
+        return (
+            f"{row['rate'] * 100:.1f}% ({row['ci_low'] * 100:.1f} to {row['ci_high'] * 100:.1f}), "
+            f"{row['questions']} questions"
+        )
+
+    rows = [
+        [name, cell("baseline", name), cell("candidate", name)]
+        for name in block.get("components") or []
+    ]
+    if rows:
+        missing = block["not_observed"]
+        rows.append(["not observed", str(missing["baseline"]), str(missing["candidate"])])
+    return rows
+
+
+COMPONENT_HEADER = ["Component", "Baseline: lost first here (95%)", "Candidate"]
+COMPONENT_NOTE = (
+    "Information only: the share of observed question families whose required evidence was "
+    "first lost at each component, from the stages, context and answer judgments each run "
+    "recorded. A document no recorded stage returned counts at retrieve. Questions a run "
+    "cannot place are not observed, never assigned."
+)
 
 PAIRED_NOTE = (
     "Latency recorded interleaved (paired execution): each question ran on both sides back to "
@@ -125,7 +209,7 @@ _TOLERANCE = {
 def tolerance_line(result: Mapping[str, Any]) -> str | None:
     """``Non-inferiority: nDCG shown within tolerance; recall inconclusive (...).``"""
     parts = [
-        f"{_METRIC_NAMES.get(name, name)} {_TOLERANCE[m['tolerance']['decision']]}"
+        f"{_name(result, name, key=False)} {_TOLERANCE[m['tolerance']['decision']]}"
         for name, m in (result.get("metrics") or {}).items()
         if m.get("tolerance")
     ]
@@ -142,11 +226,10 @@ def cohort_line(result: Mapping[str, Any]) -> str | None:
     judging = result.get("cohort_judging")
     if not judging or not judging["judged_rules"]:
         return None
-    control = (
-        "each rule widened for the number judged (Bonferroni)"
-        if judging["control"] == "bonferroni"
-        else "no multiplicity control"
-    )
+    control = {
+        "bonferroni": "each rule widened for the number judged (Bonferroni)",
+        "holm": "p-values adjusted for the number judged (Holm)",
+    }.get(judging["control"], "no multiplicity control")
     return (
         f"Cohorts: {judging['judged_cohorts']} of {judging['cohorts']} judged on "
         f"{judging['judged_rules']} rules, {judging['failed_rules']} failed; {control}."
@@ -189,11 +272,19 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     if result["metrics"]:
         out += [
             _md_table(
-                ["Metric", "Baseline", "Candidate", "Change", "95% CI", "Rows", "Families"],
-                _metric_rows(result["metrics"]),
+                ["Metric", "Baseline", "Candidate", "Change", "95% CI", "p", "Rows", "Families"],
+                _metric_rows(result),
             ),
             "",
         ]
+        if any("p_value" in m for m in result["metrics"].values()):
+            out += [P_NOTE, ""]
+    if judge_rows := judge_corrected_rows(result):
+        out += [_md_table(JUDGE_HEADER, judge_rows), "", JUDGE_NOTE, ""]
+    elif (result.get("judge_corrected") or {}).get("note"):
+        out += [str(result["judge_corrected"]["note"]), ""]
+    if components := component_rows(result):
+        out += [_md_table(COMPONENT_HEADER, components), "", COMPONENT_NOTE, ""]
     latency = _latency_rows(result["latency"])
     if latency:
         out += [_md_table(["Latency", "Baseline", "Candidate", "Change"], latency), ""]
@@ -207,7 +298,7 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
     if queries and queries["regressed"]:
         out += [
             f"**{queries['regressed_count']} regressed, {queries['improved_count']} improved** "
-            f"on {_METRIC_NAMES.get(queries['primary_metric'], queries['primary_metric'])}. "
+            f"on {_name(result, queries['primary_metric'], key=False)}. "
             "Worst:",
             "",
             _md_table(
@@ -455,12 +546,25 @@ def render_html(result: Mapping[str, Any]) -> str:
                     "Candidate",
                     "Change",
                     "95% CI of change",
+                    "p",
                     "Rows",
                     "Families",
                 ],
-                _metric_rows(result["metrics"]),
+                _metric_rows(result),
             )
         )
+        if any("p_value" in m for m in result["metrics"].values()):
+            parts.append(f'<p class="muted">{html.escape(P_NOTE)}</p>')
+    if judge_rows := judge_corrected_rows(result):
+        parts.append("<h2>Judge-corrected change in correct answers</h2>")
+        parts.append(_html_table(JUDGE_HEADER, judge_rows))
+        parts.append(f'<p class="muted">{html.escape(JUDGE_NOTE)}</p>')
+    elif (result.get("judge_corrected") or {}).get("note"):
+        parts.append(f'<p class="muted">{html.escape(str(result["judge_corrected"]["note"]))}</p>')
+    if components := component_rows(result):
+        parts.append("<h2>Where questions first lost their evidence</h2>")
+        parts.append(_html_table(COMPONENT_HEADER, components))
+        parts.append(f'<p class="muted">{html.escape(COMPONENT_NOTE)}</p>')
     latency = result.get("latency")
     if latency:
         note = "" if latency["compared"] else " (not compared; see warnings)"
@@ -472,7 +576,7 @@ def render_html(result: Mapping[str, Any]) -> str:
             parts.append(f"<p>{_e(PAIRED_NOTE)}</p>")
     queries = result.get("queries")
     if queries:
-        metric = _METRIC_NAMES.get(queries["primary_metric"], queries["primary_metric"])
+        metric = _name(result, queries["primary_metric"], key=False)
         parts.append(
             f"<h2>Queries by {_e(metric)}</h2><p>{queries['regressed_count']} regressed · "
             f"{queries['improved_count']} improved · {queries['unchanged_count']} unchanged</p>"
@@ -516,7 +620,7 @@ def render_html(result: Mapping[str, Any]) -> str:
                         str(cohort["n"]),
                         str(cohort.get("n_families", cohort["n"])),
                         "yes" if cohort["judged"] else "no (too few measured families)",
-                        _METRIC_NAMES.get(name, name),
+                        _name(result, name),
                         _num(m["baseline"]),
                         _num(m["candidate"]),
                         _num(m["delta"], signed=True),

@@ -1,7 +1,7 @@
 [project]
 name = "vectraudit"
 version = "0.1.0"
-description = "Retrieval release checks, local relevance labelling and FAISS debugging."
+description = "Retrieval evaluation and release checks for RAG and search, with a FAISS index debugger."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
@@ -9,7 +9,7 @@ authors = [
     { name = "Ramanjot Singh", email = "ramanjotsingh247@gmail.com" }
 ]
 requires-python = ">=3.10"
-keywords = ["faiss", "vector-search", "ann", "rag", "retrieval", "visualization", "debugging"]
+keywords = ["retrieval", "rag", "evaluation", "release-checks", "vector-search", "ann", "faiss"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     # PyPI rejects any upload carrying this classifier: a guard against publishing by mistake.
@@ -40,11 +40,12 @@ umap = ["umap-learn>=0.5"]
 text = ["sentence-transformers>=2.2"]
 label-llm = ["transformers>=4.40", "torch>=2.2"]
 parquet = ["pyarrow>=14"]
+hdf5 = ["h5py>=3.12"]
 qdrant = ["qdrant-client>=1.13"]
 weaviate = ["weaviate-client>=4.10"]
 pgvector = ["psycopg[binary]>=3.1"]
 cloud = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1"]
-all = ["vectraudit[faiss-cpu,umap,text,parquet,qdrant,weaviate,pgvector,cloud]"]
+all = ["vectraudit[faiss-cpu,umap,text,parquet,hdf5,qdrant,weaviate,pgvector,cloud]"]
 dev = [
     "ruff>=0.5",
     "mypy>=1.10",
@@ -58,6 +59,9 @@ dev = [
 [project.scripts]
 vectraudit = "vectraudit.cli:app"
 vectraudit-cloud = "vectraudit.cloud.cli:app"
+
+[project.entry-points.pytest11]
+vectraudit = "vectraudit.pytest_plugin"
 
 [project.urls]
 Homepage = "https://github.com/rmnvg/Vectraudit"
@@ -96,7 +100,7 @@ include = [
 line-length = 100
 target-version = "py310"
 src = ["src", "tests"]
-extend-exclude = ["frontend", "src/vectraudit/static"]
+extend-exclude = ["frontend", "src/vectraudit/static", ".refs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "NPY", "PT"]

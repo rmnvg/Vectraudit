@@ -1283,18 +1283,18 @@ as missing merely because their customer validation is pending.
 | Item | Current code evidence | Remaining work |
 |---|---|---|
 | **1.0 Evidence boundary** | Step 9: structured context/filters/history, optional source identity and coverage, allowlisted hosted projection, preview and opt-in text sharing. Step 23: preview and confirmed sharing from the workbench UI. | Extend the projection when 1.2 adds context/answer records. |
-| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Representative trace importer, observed/missing capability report, independent engineer setup evidence. Choose the trace format from actual inputs. |
-| **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Context/answer/judgment provenance and evidence sufficiency, with mixed/unknown outcomes; depends on 1.0. |
-| **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Supported intervention controls and linked full-policy verification for customer-selected failure classes. |
+| **1.1 Connection** | Python/HTTP and framework adapters, connection diagnostics, document lookup exist. | Independent engineer setup evidence, and confirming the trace format from a partner's real export. *Updated after Steps 39, 61, 64, 66, 67, 69, 75, 77, 81 (Langfuse, LangSmith, Opik and OpenObserve pulls; OpenLLMetry and OTel GenAI OTLP): OpenInference, LangSmith and Langfuse importers with a capability report exist, and documented commands are tested against the real CLI; fixtures are written from vendor docs, not real exports.* |
+| **1.2 Context/answer evidence** | Stage rankings and passage judgments exist; `PipelineResult` has no actual-context, answer or citation records. | Citation relevance to labels, answer judgments in policies or uploads, and calibration on real applications. *Updated after Steps 40–41 and 65: model-context evidence, required evidence, imported answer judgments and cited-document placement exist, kept apart from retrieval quality.* |
+| **1.3 Repair loop** | Findings, regression cases, verification and bounded CLI optimization exist. | Customer-selected failure classes, recorded-candidate replay, and measured investigation time with a second engineer. *Updated after Steps 42–47 and 68 (diagnosis written back to Langfuse traces): investigate and try-fix (CLI and browser), protecting the repaired case, investigation records and shared investigations linked from recurring problems.* |
 | **1.4 Policy/uncertainty** | Query-family weighting/bootstrap and cross-split protection landed; critical assertions inspect repeats. Step 13: the optimizer screens and approves under the release policy against a baseline. Step 14 averages every repeat and exposes intermittent rankings/stage losses. Step 20: cohort counts on every surface and optional Bonferroni control, measured on A/A runs. Step 21: opt-in non-inferiority with inconclusive kept distinct from pass. Step 33: cohorts from context fields a benchmark declares. Step 34: paired (interleaved) execution and a warm-up mismatch warning. Step 37: paired release runs in CI. | Protocol evidence on a customer's endpoint. |
 | **1.5 Execution** | Typed errors, retry budgets, per-candidate concurrency/rate limits, release protocols, checkpoint recovery and 1,000-question artifact/UI bounds landed. Step 19: calls/spend preview and budget guards before run, optimize and monitor. Step 30: actual calls and reported spend beside the plan, retries and failures included. Step 31: optimization runs each candidate at its own concurrency, rate limit and retry policy. Step 32: two evaluations at once in the workbench, one per registered pipeline, with overlap recorded. | Declared customer 1,000-question CI-window acceptance. |
 | **1.6 Shared decisions** | Local question text is joined safely. Step 10: a decision ledger keeps release decisions after retention, with a hosted timeline and API. Step 15: cases, benchmark snapshots and policy revisions are shared as immutable allowlisted records. Step 16: plain-language decision summaries and per-benchmark quality/latency trends from the ledger (dashboard, API, CLI). Step 17: scheduled monitor runs upload into the same history with drift and a monitor status. Step 22: recurring problems across checks, linked to shared cases. Step 23: sharing from the workbench UI. Step 24: document titles beside IDs locally and, when shared with text, on hosted cases. | Lead and second-engineer acceptance with real users. |
-| **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. Step 29: declared monitor schedules; a monitor that stops reporting raises one overdue alert, resolved by the next run. | Proof with the first customer's real channel; email or Slack-app delivery only if asked; additional CI only on demand. |
-| **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | Maintained production integration/cursors, reviewer routing, full incident-to-case links and measured upkeep effort. |
+| **1.7 Delivery** | GitHub publishing exists; `pipelines/monitor.py` writes local history and machine-readable alerts. Step 17: hosted monitor status with a stable alert ID per failing streak and the run that resolved it. Step 18: signed webhooks and Slack incoming webhooks deliver each decision and each alert (opened, resolved) once, with retries. Step 29: declared monitor schedules; a monitor that stops reporting raises one overdue alert, resolved by the next run. | Proof with the first customer's real channel; Slack-app delivery only if asked; additional CI only on demand. *Updated after Step 62: email notifications exist; a live mail-server run does not.* |
+| **1.8 Benchmark upkeep** | Incident imports, deduplication, passage review, snapshots and freshness foundations exist. | A customer's production traces, paraphrase matching, a hosted review queue and measured reviewer effort. *Updated after Step 57: cursor-based intake, recurrence-to-case links, a de-duplicated review queue and reviewer routing exist.* |
 | **1.9 Delivery foundations** | Step 8 prepares pinned wheel-only distribution independently of source access. Step 26 drafts the trust package and support/compatibility policy. Step 27: one reusable CI step (install, record, check, report) called by both generated workflows. | Provision and verify channel/credentials, a first run of the CI step on GitHub-hosted runners, owner decisions in the drafts, a DPA template with counsel. |
 | **1.10 Calibration/exceptions** | Step 11: scoped, audited, expiring exceptions with policy-declared roles, recorded in the decision ledger. Step 12: A/A calibration with false alarms by rule and a reviewable draft policy. Step 25: calibration in the workbench, with configuration differences called out. Step 28: the workbench shows who may accept each failure and the connected project's exceptions against it. | Customer-runner calibration evidence. |
-| **Tier 2** | Chunking experiments, permission scenarios and CLI optimization foundations exist. | Customer-selected lineage/freshness or permission lifecycle proof; interactive experiment/migration workflow where demand supports it. |
-| **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Defer optional breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
+| **Tier 2** | Chunking experiments, permission scenarios and CLI optimization foundations exist. | Customer-selected lineage/freshness or permission lifecycle proof on real exports and change logs. *Updated after Steps 49–59: lineage, freshness, permission paths, access changes, cache isolation, migration report, browser Checks tab and a demo exist, validated on fixtures only.* |
+| **Tier 3 / commercial** | Synthetic reference demos and operations/security documentation exist. | Elasticsearch/OpenSearch connector exists (Step 63, owner-chosen, fake-cluster tests); Chroma connector (Step 85, owner-chosen, tested against a real server). Defer further breadth; obtain real pilot inputs, independent adoption, paid continuation, deployment evidence and sustainable support economics. Code cannot establish these. |
 
 ## Step 38: adversarial verdict audit (§9 correctness gate)
 
@@ -2062,6 +2062,1009 @@ LangSmith feedback attached through the CLI to a run imported from LangSmith tra
 documented model source kept over a declaration and a child run unmatched; refusals for
 unnamed evaluators, mixed formats and bad labels. No comment or author ID reaches the run.
 Full suite, ruff and mypy on Python 3.12 and 3.10 pass.
+## Step 65: citations beside answer judgments (1.2)
+
+`attach-answers` judgments may carry `citations` (document IDs the answer cited) and
+`citation_support` (`supported` or `unsupported` per cited document, from review or a tool).
+- **Placement:** each cited document is `in_context`, `not_in_context` (delivered but absent
+  from an observed model context), `delivered_context_unknown`, or `not_delivered`.
+- **Support:** humans decide over models; disagreement is `disputed`, as for answers.
+- **Conflicts:** different citation lists for one question are reported as conflicting and
+  not analysed.
+- **Summary:** run-level counts and a terminal line. Failed questions are not analysed.
+- **Boundary:** verdicts, diagnoses, release policies and uploads are unchanged; only
+  document IDs already in the run are stored.
+
+Not included: judging a citation against the benchmark's relevance labels, citation spans or
+text, citations in policies or uploads, the workbench panel, and calibration on real judgments.
+
+Validation: 8 new tests (placement against delivery and context, unchanged verdicts and
+diagnoses, support precedence and disputes, conflicting lists, 8 invalid inputs, failed and
+unmatched rows, CLI output with private text kept out). Ruff and mypy pass; the full suite
+passes except two failures that also occur on clean `main`
+(`test_cloud_email` subject check and `test_github` CLI publishing warnings).
+
+## Step 66: pull traces and scores from Langfuse (1.1, 1.8)
+
+`vectraudit workbench langfuse-pull --since T --until T [--traces F] [--judgments F]` reads
+a time window from a Langfuse project's public API, so a scheduled intake or import no
+longer needs someone to export a file first:
+- **Observations** come from `GET /api/public/v2/observations` (cursor-paged, with the
+  `io` and `metadata` groups) and are written exactly as an export holds them, so
+  `import-traces` and `intake` read them unchanged. Repeated records are kept once.
+- **Scores** come from `GET /api/public/v3/scores` (cursor-paged, with each score's
+  subject) and become `attach-answers` judgments keyed by trace ID. Booleans and the three
+  verdict categories become verdicts and numerics stay scores that need a declared
+  threshold. Other categories, text and correction scores, and session or experiment
+  scores are skipped and counted. Annotation scores count as human review.
+- **Boundary:** read-only; comments are never requested; keys from the standard
+  `LANGFUSE_*` variables, sent only over https (local http excepted); error bodies not
+  echoed; a window over 200,000 records or a repeated cursor is refused.
+- No dependency was added (standard-library HTTP, as in the Elasticsearch connector).
+  Request shapes follow Langfuse's published OpenAPI specification.
+
+Not included: LangSmith's API (still files), writing findings back to Langfuse as scores or
+comments, a stored pull cursor (intake's own cursor skips repeats, so overlapping windows
+are safe), retries on rate limits, and a run against a real Langfuse project.
+
+Validation: 17 new tests:
+- an end-to-end pull from a local HTTP server that pages like Langfuse, through
+  `import-traces` and `attach-answers`, with human annotation deciding over a model score;
+- paging, de-duplication and request parameters for both endpoints;
+- every score mapping and skip reason;
+- wrong keys, rate limits, server errors and malformed responses refused without echoing
+  bodies, a repeated cursor, an oversized window, unsafe hosts, missing keys, times without
+  a zone, and CLI errors.
+
+Results:
+- Full Python suite: 1,969 passed, 29 skipped (live services not configured), 1 deselected,
+  2 failed. The two failures (`test_cloud_email` subject check and `test_github` publishing
+  warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
+
+## Step 67: pull runs and feedback from LangSmith (1.1, 1.8)
+
+`vectraudit workbench langsmith-pull --project NAME --since T --until T [--traces F]
+[--judgments F]` is the LangSmith counterpart of Step 66:
+- **Runs** come from `POST /runs/query`, cursor-paged. The window is a `trace_filter` on
+  each trace's root run, so a trace that started in the window comes back whole, including
+  runs that end after it. They are written as an export holds them, so `import-traces` and
+  `intake` read them unchanged.
+- **Feedback** on the pulled runs comes from `GET /feedback`, batched by run and
+  offset-paged, and becomes `attach-answers` judgments keyed by trace (feedback on a child
+  run counts for its trace). An explicit `correct`/`partial`/`incorrect` value or a boolean
+  score is a verdict, and a numeric score stays a score needing a threshold. Other values,
+  feedback without a score, and feedback on runs outside the pull are skipped and counted.
+  `app` feedback (the LangSmith interface and annotation queues) is human review by default.
+- **Boundary:** read-only; the key comes from `LANGSMITH_API_KEY` and is sent only over https
+  (local http excepted); comments and corrections are never written out; error bodies are
+  not echoed; a repeated cursor or more than 200,000 runs is refused. No dependency.
+- **Request shapes** are copied from the official LangSmith SDK source, because LangSmith's
+  published API specification could not be reached from the build environment.
+- **Langfuse window edges:** checked while writing this step. A Langfuse trace cut at a
+  window edge imports as a gap (missing trace, no retrieval, or unknown model context),
+  never as a result. A test now pins that.
+
+Not included: writing findings back to LangSmith or Langfuse, retries on rate limits, a
+stored pull cursor, and a run against a real LangSmith workspace. `app` as the human source
+type needs confirming on one.
+
+Validation: 20 new tests:
+- 17 for LangSmith:
+  - an end-to-end pull from a local server that pages like LangSmith, through
+    `import-traces` and `attach-answers`, with app feedback deciding over a model score
+    and feedback on a child run counting for its trace;
+  - the root-run window filter, cursor paging and repeated runs;
+  - feedback batched by run and paged by offset;
+  - every feedback mapping and skip reason;
+  - an unknown project, a wrong key, rate limits, server errors and malformed responses
+    refused without echoing bodies;
+  - a repeated cursor, an oversized window, unsafe endpoints, a missing key, times
+    without a zone, and CLI errors.
+- 3 for Langfuse traces cut at a window edge.
+
+Results:
+- Full Python suite: 1,988 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- The 3 window-edge tests were added after that run and pass with their module (20 passed).
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
+
+## Step 68: write the diagnosis back to Langfuse (1.3, strategy "integrate")
+
+`vectraudit workbench langfuse-push RUN [--send]` writes each judged trace's diagnosis onto
+the original Langfuse trace as a categorical score (`vectraudit.diagnosis` by default), so
+engineers see Vectraudit's first-observable-loss class where they already work, and can
+filter traces by it.
+- **Preview first:** without `--send` it shows the counts, values and one score exactly as
+  it would be sent, and makes no connection.
+- **Minimal payload:** trace ID, score name, diagnosis class, optional environment, and
+  metadata (source, format version, run digest). No text, document IDs or facts.
+- **Idempotent by intent:** the score ID is derived from the trace and score name, so a
+  re-push is meant to replace the earlier score (to confirm on a real deployment).
+- **Safe failure:** batches of 100. A 207 partial rejection is counted, exits 3, and is not
+  retried or echoed. Runs not imported from Langfuse, unjudged runs, and invalid names or
+  environments are refused before any request.
+- The Langfuse client gained a POST path (`POST /api/public/scores`, per the published
+  spec), sharing the GET path's key, region, rate-limit and no-echo handling.
+
+Not included: write-back to LangSmith, scores per observation (the diagnosis is per
+question, so per trace), retrieval metrics or citation flags as scores, a Langfuse score
+config for the diagnosis classes, and a run against a real Langfuse project.
+
+Validation: 8 new tests:
+- one categorical score per judged trace, with the exact payload;
+- no question text, passage text, document IDs or evaluator names in what is sent;
+- an end-to-end preview and send against a local server that accepts score batches: the
+  preview makes no connection, the sent score matches the preview, and a re-send uses the
+  same score IDs;
+- a 207 partial rejection counted, exiting 3, not retried and not echoed;
+- batching (205 scores in 100, 100, 5) and a malformed 207 refused;
+- questions without a trace or diagnosis and repeated traces left out and counted;
+- non-Langfuse and unjudged runs, bad names and environments refused;
+- CLI errors.
+
+The existing Langfuse pull tests still pass on the shared client.
+
+Results:
+- Full Python suite: 2,000 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
+
+## Step 69: pull traces and feedback scores from Opik (1.1, 1.8)
+
+The owner asked for something from Opik (Comet) that Vectraudit lacked. Opik's README
+lists tracing, LLM-as-a-judge metrics, a prompt playground, an agent optimizer,
+dashboards, online evaluation rules, guardrails and a PyTest integration. Tracing, the
+playground and the optimizer are on the strategy's "Do not build" list, and judge metrics
+fall under "import evaluator results before building another suite". The strongest fit
+was Opik as a source, so Opik users' data becomes Vectraudit's input as Langfuse's and
+LangSmith's already is. A PyTest integration is the other candidate, not built here.
+
+`vectraudit workbench opik-pull --project NAME --since T --until T [--traces F]
+[--judgments F]`:
+- **Traces and spans** from `GET /v1/private/traces` and `/v1/private/spans`. Traces are
+  taken by creation time; spans over the window plus `--grace-minutes` (default 60), kept
+  only for the traces taken. Each trace is written as its root span, so the question on
+  the trace is found, and the file imports through the shared reader (`opik` shape).
+- **Retrievers must be named** with `--stage-kind`, because Opik has no retriever span type.
+- **Feedback scores** inline on traces and spans become judgments: verdict categories
+  become verdicts, uncategorised values stay scores that need a threshold, other
+  categories are skipped, and `ui` is human review. Averaged `span_feedback_scores` and
+  reasons are never used.
+- **Boundary:** read-only; key and workspace from the SDK's `OPIK_*` variables; a key is
+  sent only over https (local http excepted); a keyless self-hosted Opik may use http;
+  error bodies not echoed; windows over 200,000 records refused. No dependency.
+- **Found while testing:** stopping at a page shorter than the requested size could
+  silently drop records if Opik caps page size (the spec sets no maximum). Paging now
+  follows the reported total.
+- **Also found:** `intake` had no `--stage-kind` option (only `import-traces` did), so a
+  source without a retriever span type could not show retrieval in production intake. Both
+  commands now share the option.
+
+Not included: writing the diagnosis back to Opik (its feedback-score endpoints exist), Opik
+threads as multi-turn history, Opik datasets and experiments, the PyTest integration, and
+a run against a real Opik deployment.
+
+Validation: 24 new tests:
+- an end-to-end pull from a local server behind Opik Cloud's headers, through
+  `import-traces` and `attach-answers`, with a `ui` score deciding over an online one and a
+  span's score counting for its trace;
+- production intake on a pull with a named retriever, finding the likely recurrence;
+- a retriever never guessed without `--stage-kind`;
+- traces as root spans and spans of other traces left out;
+- the grace window, paging that follows the total when the server returns smaller pages,
+  and a short page ending a listing without a total;
+- every score mapping and skip reason, reasons dropped;
+- wrong keys, wrong URL, rate limits, server errors and malformed responses refused
+  without echoing bodies, an oversized window;
+- unsafe settings, a keyless self-hosted Opik over http;
+- times, grace, CLI errors and mixed formats.
+
+Results:
+- Full Python suite: 2,026 passed, 29 skipped (live services not configured),
+  1 deselected, 4 failed.
+  - Two failures (`test_cloud_email`, `test_github`) also fail on clean `main`.
+  - The other two (`test_optimize_concurrency`, `test_pipeline_retries[http_unavailable]`)
+    are timing-sensitive, cover code this step does not touch, and passed three runs in a
+    row on their own (25 of 25 each).
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted code changed.
+
+## Step 70: prompt versions as release evidence (1.1, 1.4)
+
+The owner asked whether Vectraudit has prompt management and versioning like Langfuse. It
+did not. A Langfuse-style registry (store, edit, label and serve prompts at runtime) was
+not built: it sits on the customer's runtime path, competes with tools teams already use,
+and is most of the "broad prompt playground" the strategy rules out. What a release
+decision needs is which prompt version produced each answer, so that is what this step
+reads.
+- **Recorded from traces** in all four supported formats: OpenInference `prompt.id` and
+  `llm.prompt_template.version`; Langfuse linked prompts (the pull now requests the
+  `prompt` field group; `promptName`/`promptVersion` become the OpenInference attributes);
+  LangChain hub metadata in LangSmith runs (`lc_hub_*`); Opik `opik_prompts` in span or
+  trace metadata. Each convention was checked against the vendor's spec or SDK source.
+- **Per question and per run:** questions record `prompts` (name and version), and
+  `backend.config.prompts` holds each prompt's version, or a sorted list when a run mixed
+  several. Without prompt data the config is unchanged.
+- **In release checks:** a prompt change appears as a changed setting through the existing
+  path, so checks, the decision ledger's changed-setting names, lead summaries and
+  calibration's configuration differences all show it. New warnings cover a run mixing
+  versions of one prompt and only one run recording prompt versions.
+- **In diagnosis:** `attach-answers` reports diagnoses by prompt version when a run holds
+  several.
+- **Capability report:** a `prompt_versions` line says how many traces recorded one, names
+  mixed versions, and says plainly when prompt changes cannot be seen.
+- **Boundary:** names and versions only, never template text. Hosted projections
+  fingerprint them like text parameters, so a hosted check shows that a prompt changed but
+  not its name or version.
+- **Correctness:** a question refused because it matched several traces records no prompt,
+  and its traces do not count towards the run's versions.
+
+Not included: prompt versions reported by live Python/HTTP pipelines (they can be put in
+`pipeline_version` for now), a release-policy rule on prompt changes, per-prompt-version
+quality metrics in checks, and a prompt registry.
+
+Validation: 11 new tests:
+- each convention yielding a name and version and never the template (OpenInference,
+  LangChain hub with and without an owner, Opik commit and version-number forms, malformed
+  input);
+- a Langfuse import recording per-question and run-level versions that still validate;
+- mixed versions named in the run and capability report;
+- an unchanged config and a named gap without prompt data;
+- a release check listing `backend.config.prompts.support-answer: 12 → 13`;
+- warnings for mixed versions and one-sided recording, none for steady runs;
+- an ambiguous question claiming no prompt (and `--latest` using the later trace);
+- LangSmith hub prompts end to end, and Opik prompts end to end without template text;
+- diagnoses by prompt version;
+- hosted projections fingerprinting names and versions, stable on re-projection, still
+  showing the change, and refusing raw names.
+
+One existing test was updated for the Langfuse pull's added `prompt` field group.
+
+Results:
+- Full Python suite: 2,039 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed. No frontend or hosted server code changed.
+
+## Step 71: release checks from a pytest suite (after Opik)
+
+The owner asked for something else from Opik. Its PyTest integration (an `@llm_unit`
+decorator and a plugin registered through `pytest11`) was the remaining candidate from the
+Step 69 comparison. The Vectraudit equivalent makes a retrieval release check one more test
+in a team's existing suite, a way in for teams that will not add a separate CI step.
+- **`vectraudit.testing`:** `assert_release(baseline, candidate, policy)` raises
+  `ReleaseCheckFailed` (an `AssertionError`) unless the check passes, with the verdict,
+  failing rules and changed settings in the message. `check_release` returns the result.
+  Both call the same comparison as `vectraudit check`. A test asserts the same verdict and
+  reasons as the CLI for pass, fail, not comparable and error, and another pins the passing
+  verdicts to the CLI's exit-zero codes. Runs and policies can be paths or records. No test
+  framework is imported.
+- **pytest plugin** (`pytest11` entry point): lists the session's checks with test and
+  verdict in the terminal summary; `--vectraudit-report PATH` writes them as one Markdown
+  report. Silent without checks; `-p no:vectraudit` disables it.
+- **Load cost:** about 0.2 s per pytest run where Vectraudit is installed, from importing
+  the package (numpy). Accepted and documented.
+- No dependency added.
+
+Not included: recording runs inside a test, a decorator like Opik's `llm_unit`, combining
+reports across `pytest-xdist` workers, and hosted (`cloud:`) baselines from tests.
+
+Validation: 12 new tests:
+- a steady candidate passing and recorded under its test ID;
+- a regression failing as an `AssertionError` with reasons and changed settings;
+- verdict and reasons identical to `vectraudit check` for pass, fail, not comparable and
+  error, with matching exit codes;
+- passing verdicts pinned to the CLI's exit-zero codes;
+- paths, records, parsed and built-in policies giving the same result;
+- invalid policies and runs raising the CLI's errors;
+- records not mutated;
+- through a real pytest subprocess with the installed entry point: the summary section, a
+  failing release test failing the run, the Markdown report, a silent session without
+  checks, `-p no:vectraudit`, and the option disappearing with it.
+
+Results:
+- Full Python suite: 2,051 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10 (`--locked` sync, so the lock file is unchanged),
+  passed.
+
+## Step 72: query drift, after Evidently (1.8)
+
+The owner asked for something from Evidently. Most of it (tabular drift and quality,
+classification and regression metrics, text descriptors, LLM judges, a monitoring UI) is
+outside a retrieval release check, or already covered (ranking metrics, reports, CI
+tests). The fit was its **data drift** method applied to Vectraudit's open benchmark-upkeep
+question (1.8): is the benchmark still representative of production?
+
+`vectraudit workbench drift TRACES DATASET [--context-field F] [--json] [--fail-on-drift]`:
+- **Production questions** are read from traces in any supported format, the same way
+  intake reads them.
+- **Descriptors:** word count, script, digits, question form, unseen terms (leave-one-out
+  on the benchmark) and declared context fields.
+- **Each descriptor is compared by PSI** exactly as Evidently computes it (Sturges binning
+  for numbers with more than 20 distinct reference values, category shares otherwise, the
+  same empty-bin floor, drift at 0.1). Tests check it against hand computation.
+- **What moved:** new values, the most frequent unseen terms, and the share of production
+  questions that are benchmark questions word for word. A small-sample warning appears
+  below about 30 questions.
+- Local only. It never changes a release verdict. No dependency (numpy).
+
+Not included: embedding drift, retrieval-score drift, drift tracking over time in the
+hosted service, other statistical tests, and a run on a customer's production traces.
+
+**Corrected in Step 73:** PSI was the wrong default. It came from Evidently's documented
+example, not its automatic test selection, and it raises false alarms on stable data at
+realistic sample sizes. Step 73 measures this and switches to Evidently's default tests.
+
+Validation: 18 new tests:
+- categorical PSI against the textbook sum;
+- Evidently's empty-bin floor in both forms;
+- Sturges binning against a direct numpy computation, and few-valued numbers compared as
+  categories;
+- script detection across six scripts and none;
+- descriptors, including the fullwidth question mark;
+- no drift on identical samples;
+- a new language, tenant and vocabulary flagged and named;
+- longer questions drifting on word count;
+- leave-one-out unseen terms;
+- missing context as its own value;
+- refusals;
+- production questions read from traces with context;
+- the CLI (report, JSON, `--fail-on-drift`, a calm run, a missing file).
+
+Results:
+- Full Python suite: 2,069 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff and mypy on Python 3.12 passed. mypy on Python 3.10 caught a bare `np.ndarray`
+  annotation that its older numpy stubs reject; after the fix (annotation only) it passes.
+
+## Step 73: retrieval score drift, and Evidently's default drift tests (1.7, 1.8)
+
+The next Evidently item: did the **retriever** change? `vectraudit workbench score-drift
+EARLIER LATER [--stage NAME] [--fail-on-drift]` compares two windows of production traces
+on the retriever's first-document score, mean score, spread and number of documents
+returned. It also compares the windows' questions, and reads the result:
+- **retriever shift likely:** scores moved, questions did not (embedding model, index,
+  similarity or score-scale change);
+- **drift with question drift:** both moved; compare recorded runs to isolate the
+  retriever;
+- **no drift.**
+
+Traces without recorded scores are counted and left out; `--fail-on-drift` exits 3 only for
+a likely retriever shift.
+
+**Found while testing: Step 72's PSI default was wrong.** Two windows from the same
+retriever (60 traces each) gave PSI 0.63. Measured on samples drawn from one distribution,
+PSI at its 0.1 threshold raised false alarms:
+
+| Values per side | 30 | 60 | 200 | 1,000 |
+|---|---|---|---|---|
+| Scores | 96% | 89% | 36% | 0% |
+| Question word counts | 100% | 100% | 94% | 0% |
+
+Evidently's automatic selection (read from its source) does not use PSI. Both drift
+commands now use it:
+- up to 1,000 reference values: Kolmogorov-Smirnov for numbers with more than five distinct
+  values, otherwise chi-square (Z-test for two values), drift at p < 0.05;
+- above that: normed Wasserstein for numbers, Jensen-Shannon otherwise, drift at 0.1.
+
+False alarms fell to 1-7% at every size. PSI remains as `--method psi`. The query-drift
+report format is now version 2: each descriptor names its test with a `p_value` or
+`score` and a threshold, instead of `psi`. No dependency was added. The statistics are
+numpy implementations, tested against SciPy (a dev dependency already installed):
+chi-square, Z, Wasserstein and Jensen-Shannon agree to rounding, and K-S is within 0.03 of
+SciPy's exact small-sample result.
+
+Not included: embedding drift, per-document score calibration, drift history in the
+hosted service, and a run on a customer's traces.
+
+Validation: 19 new tests (8 score drift, 11 for the default tests and their selection), plus 2 query
+drift tests updated for the version-2 report fields.
+- **Score drift:**
+  - a steady retriever not flagged;
+  - rescaled scores with steady questions flagged as a likely retriever shift;
+  - a smaller result set flagged on `returned`;
+  - drift with changed questions not blamed on the retriever;
+  - unscored traces counted and refused when none have scores;
+  - a named stage;
+  - small windows flagged;
+  - the CLI exit codes.
+- **Default tests:**
+  - every statistic against SciPy;
+  - a new category as chi-square drift;
+  - the selection rule for seven cases;
+  - false alarms under 10% with the defaults against over 50% with PSI on the same stable
+    data;
+  - PSI as an explicit choice.
+
+Results:
+- Full Python suite: 2,090 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email` subject check and
+  `test_github` publishing warnings) also fail on clean `main`.
+- Ruff, and mypy on Python 3.12 and 3.10, passed.
+
+## Step 74: MAP and Hit Rate (after Evidently)
+
+The last Evidently item: two standard ranking metrics Evidently reports and Vectraudit did
+not.
+- **Definitions:** MAP@k as trec_eval's `map_cut_k` (precision at each new relevant hit,
+  over all relevant documents; duplicates earn nothing) and Hit Rate@k (any relevant
+  document in the top k). Evidently's MAP divides by the relevant documents retrieved,
+  which does not penalise losing one, so it was not copied. Both are in the metric
+  contract.
+- **Optional, so nothing recorded breaks:** they are recorded beside the four semantic
+  metrics on every new run (questions, repeats and summary) but are not added to the
+  required set, and the contract stays at version 2. Older runs validate and compare
+  exactly as before. A policy that requires `map` or `hit_rate` against an older run is
+  not comparable, never a pass.
+- **Validated:** when present they must be fractions, on every repeat, and equal to the
+  repeat mean.
+- **Everywhere a metric goes:** policy rules, `primary_metric`, cohort rules, comparisons,
+  hosted uploads (older projections unchanged), lead-summary wording, and the workbench
+  policy editor.
+- **Found while adding them:** the policy editor rebuilds `metrics` from a fixed list, so a
+  MAP rule written by hand or by another tool would have been dropped on the next save. The
+  editor now lists both, and a frontend test pins the round trip.
+
+Not included: other Evidently ranking and recommender metrics (novelty, diversity,
+serendipity, popularity bias), MAP or Hit Rate in the FAISS index debugger's own evaluation
+view, and re-scoring stored runs (re-record to get the new metrics).
+
+Validation: 13 new Python tests:
+- MAP against hand computation, including duplicates, the cutoff and no labels;
+- MAP falling when a relevant document is lost;
+- Hit Rate with graded labels;
+- repeat averaging;
+- the contract;
+- new runs summarising both while older runs validate unchanged;
+- old against new comparing as before;
+- a policy needing MAP not comparable against an older run;
+- a MAP regression failing, with MAP as the primary metric;
+- invalid values refused;
+- incomplete repeat coverage refused;
+- uploads carrying both, with older projections unchanged.
+
+One frontend test pins MAP and Hit Rate rules (including cohort and primary metric) through
+an edit. One existing test that pinned the exact metric set was updated, and now also checks
+MAP and Hit Rate with a duplicate in the ranking.
+
+Results:
+- Full Python suite: 2,102 passed, 29 skipped (live services not configured),
+  1 deselected, 3 failed. Two failures (`test_cloud_email`, `test_github`) also fail on
+  clean `main`. The third was that pinned metric-set test, since updated (45 related tests
+  pass).
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+- Frontend: TypeScript, Oxlint, 116 frontend tests and the production build passed.
+## Step 75: OpenLLMetry traces (1.1)
+
+The owner asked what OpenLLMetry (Traceloop) offers that Vectraudit could use. It is
+OpenTelemetry instrumentation for LLM applications. Instrumenting applications is general
+tracing, which the strategy rules out; but its exports are traces that teams already
+record, and Vectraudit's OTLP import read only OpenInference's conventions, so an
+OpenLLMetry export imported with no retrieval at all. Reading them is the strategy's
+"integrate rather than replace".
+
+The OTLP reader now keeps span events and translates OpenLLMetry spans into OpenInference
+attributes. Every convention was checked against the OpenLLMetry source (the
+semantic-conventions package, the Pinecone, Chroma and Qdrant instrumentations, and the
+SDK's decorators and tracing):
+- **Vector database results** come from `db.query.result`/`db.search.result` events: id,
+  score, text, and metadata (JSON, or Pinecone's Python `repr`, read as literals only).
+  `distance` is never used as a score.
+- **Retrievers are never inferred from names:** only result events or vector-query markers
+  count. A query without result events (Qdrant) is a gap, and so is a span holding several
+  queries' results (Chroma with several texts, Milvus with several query IDs), never a
+  merged ranking.
+- **Question** from the workflow's `traceloop.entity.input` (`{"args", "kwargs"}`).
+  **Prompts** come from `gen_ai.prompt.N` for model context. **Association properties**
+  become metadata, session and user, so `--context-field` works in intake and drift.
+- **Managed prompt versions** (`traceloop.prompt.key`/`version`) feed Step 70's prompt
+  evidence.
+- OpenInference spans are untouched; recorded attributes always win over translated ones.
+
+Not included: OpenLLMetry's newer `gen_ai.input.messages` beyond using it as the input
+value, rerankers (OpenLLMetry has no reranker convention), a Traceloop API pull, and a
+real OpenLLMetry export (fixtures follow the instrumentation source).
+
+Validation: 15 new tests:
+- a Pinecone trace (ids from repr metadata, scores, question, prompt version);
+- a Chroma trace locating model context, with distance never a score;
+- multi-query Chroma and Milvus spans as gaps;
+- a Qdrant query without results as a gap;
+- no retriever inferred from a name;
+- OpenInference spans and recorded attributes untouched;
+- association properties as context and session;
+- six question-extraction cases;
+- literal-only metadata parsing, refusing code and oversized input;
+- the prompt version-hash fallback.
+
+Results:
+- Full Python suite: 2,105 passed, 29 skipped (live services not configured),
+  1 deselected, 2 failed. The two failures (`test_cloud_email`, `test_github`) also fail on
+  clean `main`.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 76: the two tests that always failed
+
+Since Step 65 every full run reported the same two failures, noted each time as "also fail
+on clean `main`" but never explained. A suite that always reports two failures hides the
+next real one. Both had real causes:
+- **`test_cloud_email`, a product defect.** Python's email header folding (reproduced on
+  3.10.20 and 3.12.3) moved the decision email's 89-character subject whole onto a
+  continuation line, so recipients got a subject starting with a space. Emails are now
+  serialised without folding (`max_line_length=998`; subjects are capped at 200 characters,
+  within RFC 5322's limit). A new test calls the message builder directly and fails on the
+  old code.
+- **`test_github`, a test-isolation defect.** The code also reads the gh CLI's `GH_TOKEN`.
+  The test removed only `GITHUB_TOKEN`, so wherever `GH_TOKEN` is set (this environment, and
+  any developer machine logged in to `gh`) it took the publishing path against the test's
+  mock server. The fixture now removes `GH_TOKEN` too, for every GitHub test.
+
+CI runs Python 3.10 to 3.13, so the email failure probably showed there as well; the earlier
+step reports that called it environment-specific were wrong to assume so.
+
+Validation:
+- Full Python suite: **2,109 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected. This is the first full run without failures since Step 65.
+- The email and GitHub test modules also pass on Python 3.10 (23 passed), and the GitHub
+  tests pass with and without `GH_TOKEN` set.
+- Ruff, and mypy on Python 3.12 and 3.10, passed.
+
+## Step 77: pull traces from OpenObserve (1.1, 1.8)
+
+The owner asked what OpenObserve could add. It is a general observability backend (logs,
+metrics, traces, RUM), which is the general tracing the strategy rules out. But teams send
+their LLM traces there, so it fits the same "integrate" pattern as Langfuse, LangSmith and
+Opik.
+
+`vectraudit workbench openobserve-pull --since T --until T --traces F [--stream S]`:
+- **Whole traces:** traces are taken by start time (`GET .../traces/latest`), then all their
+  spans are read by SQL (`POST .../_search?type=traces`, by trace ID, over the window plus
+  `--grace-minutes`), so traces are not cut at the window's end.
+- **Rebuilt as OTLP JSON,** so the existing reader, including Step 75's OpenLLMetry
+  translation, imports it unchanged. Taken from OpenObserve's source: spans are flat rows
+  with attribute keys rewritten (lower case, other characters to `_`, `attr_` on collision)
+  and events kept as JSON with their original keys. The rewrite is not invertible, so the
+  keys the importer reads are restored by explicit patterns (a test round-trips every
+  one), and other keys keep their stored names.
+- **Boundary:** read-only; Basic auth over https only (local http excepted); trace IDs
+  validated as 32 hex characters before entering SQL, and organisation and stream names
+  restricted; error bodies not echoed.
+- **Licence:** OpenObserve is AGPL-3.0. Its source was read only to learn the stored
+  format; nothing was copied or added as a dependency, and the client only calls its HTTP
+  API.
+
+Not included: OpenObserve's own LLM evaluation scores as judgments, writing back, SQL
+filters beyond the time window, and a real OpenObserve instance. The fake server stores
+spans by the documented flattening rules.
+
+Validation: 21 new tests:
+- every key the importer reads surviving storage and restoration, collisions, and unknown
+  keys left alone;
+- an OpenInference trace end to end through the CLI (ids, model context, prompt version);
+- an OpenLLMetry Pinecone trace end to end (event results with repr metadata, prompt
+  version, tenant context);
+- the grace window and exact request shapes (times in microseconds, `type=traces`, the SQL);
+- paging, with a malformed trace ID never reaching SQL;
+- seven refused responses without echoing bodies;
+- seven unsafe or incomplete settings;
+- a token sent as given;
+- the CLI without a URL or organisation.
+
+Results:
+- Full Python suite: **2,130 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 78: hubs, after Evidently's popularity bias
+
+Asked again about Evidently: its drift detection and MAP/Hit Rate were already taken
+(Steps 72-74). The remaining fit was its recommender **popularity-bias** metrics, adapted
+to retrieval as **hubness**: documents an embedding retriever returns for many unrelated
+questions. A new embedding model or index can create a hub without moving average quality
+much, and no existing check showed it.
+
+`vectraudit workbench hubs RUN [--baseline RUN] [--dataset BENCHMARK] [--fail-on-new-hubs]`:
+- **Measures:** k-occurrence per document; Gini (Evidently's formula) and coverage (when the
+  run records the corpus size); k-occurrence skewness, the standard hubness measure.
+- **Hubs:** documents in the top k of at least 10% (and at least three) of the questions.
+  With the benchmark, each hub's labelled relevance where it was retrieved, flagging hubs
+  that are relevant for fewer than half of their questions.
+- **Comparison:** hubs new to the candidate; `--fail-on-new-hubs` exits 3.
+- Diagnostic only. It works on any recorded run and adds no dependency.
+
+Not included: average-recommendation popularity (retrieval has no interaction history), hub
+causes (vector norms, index structure), and hubness in hosted checks or the workbench UI.
+
+Validation: 8 new tests:
+- Gini against Evidently's formula by hand;
+- skewness against SciPy;
+- a spread retriever with no hubs (coverage, Gini 0, zeros counted);
+- a planted irrelevant hub found with its relevance and flagged;
+- new hubs in a comparison;
+- failed questions and repeats within one ranking not counted;
+- unknown corpus size, the three-question minimum and refusals;
+- the CLI (report, JSON, `--fail-on-new-hubs`, no new hubs, a missing file).
+
+Results:
+- Full Python suite: **2,140 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 79: merge MAP and Hit Rate with main, and fix the flaky clock tests
+
+`feat/map-hit-rate` (Step 74) had fallen behind Steps 75-78 and no longer merged: both sides
+had appended to `DECISIONS.md` and this log. Merged `main` into it, keeping both sides with
+Step 74 in order. No code conflicted.
+
+The re-run after the merge failed once in `test_pipeline_retries` (it passed five times
+alone), the same family as the Step 69 "timing" failures that were waved through then.
+- **Cause:** the retry, concurrency and job tests faked time by patching `time.sleep` and
+  `time.monotonic` on the `time` module itself, which is process-wide. Any other thread
+  sleeping during the test added its sleeps to the fake clock.
+- **Fix:** a small helper (`tests/fake_time.py`) replaces only the module-under-test's
+  `time` reference, so other threads keep real time. Applied to all three files.
+- **Regression test:** runs a busy sleeping thread beside a retried run. Against the old
+  patch it recorded 1,742 seconds of sleep instead of 3 and failed; it passes now.
+
+Validation: the merged branch passes the full suite with **2,154 passed, 0 failed**,
+29 skipped (live services not configured), 1 deselected. Also passing:
+- the 47 retry, concurrency and job tests, and the 21 retry tests on repeated runs;
+- Ruff, and mypy on Python 3.12 and 3.10;
+- the API type generation check;
+- TypeScript, Oxlint and 116 frontend tests (MAP touched the policy editor).
+
+## Step 80: DeepEval results as answer judgments (1.2)
+
+The owner asked what DeepEval offers. Its ~50 metrics are mostly LLM judges (the strategy
+says to import evaluator results, not build another suite), and its pytest integration
+already has a Vectraudit equivalent (Step 71). The fit was reading its results: Step 41's
+`attach-answers` needed its own JSONL, so DeepEval users had to convert by hand.
+
+`vectraudit workbench deepeval-judgments TEST_RUN BENCHMARK --metric NAME --out F` reads
+`.deepeval/.latest_test_run.json` (DeepEval's `LLMApiTestCase`/`MetricData` models, checked in
+its source) and writes judgment lines:
+- **Explicit metric choice:** without `--metric`, the metrics in the file are listed. The
+  contextual metrics are refused because they judge retrieval, not answers.
+- **Verdicts:** DeepEval's own `success` decision becomes the verdict; the score and judge
+  model are kept; errored or unevaluated metrics are counted and skipped.
+- **Matching:** `metadata.query_id`, `metadata.trace_id`, or an unambiguous exact question
+  text; ambiguous and unmatched cases are counted.
+- Reasons, inputs, outputs and contexts are never written.
+
+Not included: DeepEval's conversational test cases, its Confident AI platform API, its
+synthesizer (LLM-generated benchmarks), and red-teaming.
+
+Validation: 6 new tests:
+- verdicts matched by ID, trace and text, with errored and unevaluated metrics counted and
+  no private text written;
+- only chosen metrics, the three contextual metrics refused, and metric listing;
+- ambiguous text not guessed;
+- the judgments attaching and diagnosing a planted wrong answer;
+- both file layouts, plus non-runs and invalid JSON refused;
+- the CLI (listing without `--metric`, writing, refusing a contextual metric).
+
+Results:
+- Full Python suite: **2,160 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 81: OpenTelemetry GenAI retrieval conventions (OpenLIT) (1.1)
+
+The owner asked what OpenLIT offers. It is OpenTelemetry instrumentation for LLM apps and
+vector databases plus an observability platform; the platform is general tracing, ruled out.
+Its source showed two things:
+- Its **vector-database spans** record only counts and query text, never document IDs.
+- Its **LangChain retriever spans** use the official **OpenTelemetry GenAI semantic
+  conventions** (`gen_ai.operation.name = retrieval`, `gen_ai.retrieval.documents`,
+  `gen_ai.retrieval.query.text`), checked against the specification and its JSON schema.
+
+So the support targets the specification, not OpenLIT, and covers any instrumentation that
+follows it. The Step 75 translation now also reads:
+- **retrieval spans:** documents (`id`, `score`, `content`, `metadata`) and the question;
+- **chat and completion spans:** `gen_ai.input.messages`, so model context is located.
+
+**Found in OpenLIT's source:** its LangChain retriever records only the first three
+documents, with the total in `gen_ai.retrieval.document_count`. Taking those three as the
+ranking would understate recall and misattribute losses, so a list shorter than its count is
+a gap. A trace holding both a retrieval span and an ID-less vector-database span is reported
+as ambiguous until `--final-span` names the delivered one.
+
+Not included: other OpenLIT platform features (dashboards, guardrails, evaluations, prompt
+hub), an OpenLIT API pull, and a real OpenLIT export.
+
+Validation: 9 new tests:
+- an OpenLIT LangChain trace (question, IDs, model context);
+- a three-of-five list as a gap, with a complete list importing;
+- the specification's `id`/`score` shape;
+- four unusable document lists as gaps;
+- a nested vector-database span reported as ambiguous, then resolved with `--final-span`;
+- chat spans as LLM spans, and OpenInference spans untouched.
+
+Results:
+- Full Python suite: **2,171 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 82: a policy rule for prompt changes (1.4, after Step 70)
+
+Step 70 recorded which prompt version produced each answer and reported changes, but no
+policy could gate on them. `"prompt_changes": "fail"` (default `"report"`) now:
+- **Fails each changed prompt** as its own rule `prompt:<name>`, including one added,
+  removed or only partly rolled out (a run mixing versions).
+- **Allows audited acceptance:** a new exception kind, `prompt`, lets a policy open these
+  rules to audited exceptions, so a reviewed change is accepted deliberately.
+- **Refuses unverifiable runs:** a check where either run records no prompt versions is
+  not comparable, never a pass.
+- **Calibration:** reports prompt failures between supposedly unchanged runs as not noise.
+- **Hosted checks:** gate on fingerprinted names (`prompt:sha256:…`).
+- **Workbench policy editor:** keeps the option through edits (a frontend test fails
+  without the fix, the same class of bug as Steps 20 and 74).
+- **Hashes:** policies without the option keep their hashes. Checked by hashing two
+  policies with `main` and with this change; the existing hash-pinning test gained the
+  field, as for each earlier optional field.
+
+Not included: a workbench control to switch the rule on (it is kept, not edited), per-prompt
+rules (for example, gate one prompt and not another), and requiring a minimum time between
+prompt changes.
+
+Validation:
+- 9 new Python tests:
+  - the default reporting without failing;
+  - a change failing with its rule key and message, and steady versions passing;
+  - a mixed rollout;
+  - added and removed prompts;
+  - one-sided and missing recording as not comparable;
+  - an audited exception accepting the change only when the policy opens `prompt`;
+  - hashes and value validation;
+  - calibration;
+  - hosted projections.
+- 1 new frontend test.
+
+Results:
+- Full Python suite: **2,180 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, the API type generation check, TypeScript, Oxlint and
+  117 frontend tests passed.
+
+## Step 83: importers tested against real instrumentation output
+
+Every trace importer had been tested only against fixtures written from specifications. The
+real libraries were installed in a throwaway environment (not as dependencies) and run on
+one offline LangChain + Chroma pipeline (deterministic fake embeddings, fake chat model),
+exporting OTLP JSON as the Collector's file exporter does:
+- **OpenInference** (`openinference-instrumentation-langchain` 0.1.81): imported fully.
+  Questions, document IDs and model context all as expected.
+- **OpenLLMetry** (`opentelemetry-instrumentation-langchain`/`-chromadb` 0.62.4): documents
+  imported, but **no question matched**. A real bug from Step 75: the LangChain
+  instrumentation writes `traceloop.entity.input` as `{"inputs", "tags", "metadata",
+  "kwargs"}` (and `{"query"}` on retrievers), not the SDK decorator form the fixtures
+  assumed. Fixed; it now imports identically to OpenInference.
+- **OpenLIT** (1.45.0): two facts the Step 81 fixtures did not show:
+  - it records each span of one request as a **separate trace**, so model context cannot
+    be tied to retrieval;
+  - it takes document IDs only from metadata `id`/`source`.
+
+  Both are reported as gaps (unknown context, `document_id_missing`), not reconstructed.
+  With `metadata.id` set, its rankings import.
+
+All three give the same rankings for the same run. The real exports (synthetic text only,
+checked for machine details) and the scripts and versions that produced them are in
+`tests/fixtures/real_traces`, so the importers stay pinned to what these libraries emit.
+
+Not included: LangSmith, Langfuse, Opik and OpenObserve. Their data comes from hosted
+services, so a real check needs a workspace. DeepEval also needs a real results file, and
+LlamaIndex and other frameworks need instrumenting. This is still not a customer
+application.
+
+Validation: 10 new tests:
+- the two full imports with model context;
+- OpenLIT rankings without context;
+- OpenLIT without IDs as a gap;
+- fixtures free of machine details;
+- five question-extraction cases.
+
+Without the fix, 5 of them fail.
+
+Results:
+- Full Python suite: **2,190 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 84: promptfoo results as answer judgments (1.2)
+
+The owner asked what promptfoo offers. It is an LLM evaluation CLI (YAML tests, about 60
+assertion types, prompt and model comparison, red-teaming, CI). Assertions and judges
+are a suite of their own (the strategy says to import results), and CI integration exists
+(Steps 27, 71). The fit is the same as DeepEval's (Step 80): its results become
+`attach-answers` judgments.
+
+`vectraudit workbench promptfoo-judgments RESULTS BENCHMARK --assertion NAME [--provider P]
+[--prompt Q] --out F`:
+- **One variant:** an eval comparing several provider/prompt pairs needs one chosen;
+  judgments of different systems are never mixed.
+- **Chosen assertions:** by metric label or type, or `overall`. `context-recall` and
+  `context-relevance` are refused, and `overall` is skipped for tests that include them.
+- **Verdicts:** promptfoo's `pass`, with the score. Each repeat is its own judgment.
+- **Matching:** metadata or vars IDs, else an unambiguous question variable.
+
+**Tested on a real promptfoo file**, following Step 83. promptfoo 0.125.1 ran offline (echo
+provider, deterministic assertions; 2 prompts × 3 tests × 2 repeats). It caught a defect in
+the first draft, written from promptfoo's types: promptfoo sets `error` to the assertion
+message on every ordinary failure. The draft skipped those as errors, which would have
+dropped every failing answer and imported only passes. Errors are now read from
+`failureReason` 2 only. The fixture, its config and the command are in
+`tests/fixtures/promptfoo`, with the local base path removed.
+
+Not included: promptfoo's red-teaming, its LLM-graded RAG assertions as retrieval evidence,
+and its cloud sharing.
+
+Validation: 9 new tests on the real file:
+- variants, assertions and repeats as recorded;
+- several variants refused;
+- failures imported as failures (5 of the 9 fail with the draft's `error` check);
+- matching by metadata and question;
+- `overall` and the retrieval refusals;
+- real errors skipped;
+- disagreeing repeats attaching as disputed;
+- non-promptfoo files refused;
+- the CLI.
+
+Results:
+- Full Python suite: **2,199 passed, 0 failed**, 29 skipped (live services not
+  configured), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+
+## Step 85: Chroma connector (Tier 3, chosen by the owner)
+
+The owner asked what VectorDBZ (an MIT desktop GUI for browsing vector databases) offers.
+Browsing and embedding views overlap the existing workbench, and a database GUI is not the
+product. Its list of supported databases showed the gap: Chroma, the most common store in
+RAG prototypes, had no connector. The strategy defers new backends until a customer is
+blocked (Tier 3), and the owner chose to build it anyway, as with Elasticsearch (Step 63).
+
+`{"backend": "chroma", "url": …, "collection": …}` (also `tenant`, `database`, `id_field`,
+`token_env`, `timeout_s`, `exact_limit`):
+- **Search:** over the v2 REST API, with no dependency. Equality filters become a Chroma
+  `where` clause (`$and` for several).
+- **Distance and settings:** distance comes from the collection's `hnsw` or `spann`
+  `space`; `ef_search` and the other index settings are recorded.
+- **Exact reference:** ranks the collection's stored vectors, fetched with the same filter
+  and cached, using Chroma's distance definitions. It is capped at `exact_limit`.
+- **No tuning parameters:** Chroma sets `ef_search` per collection.
+- **No snapshot:** `log_position` stayed 0 across writes on a real server.
+- **Scaffolding:** `vectraudit init --backend chroma` writes a connection template.
+
+**Built against a real server**, not a fake: Chroma 1.5.9 ran locally, and its OpenAPI
+document gave the endpoints and shapes. Against it:
+- the exact reference matched an independent brute-force ranking in all three spaces;
+- filters (single and `$and`) and `id_field` behaved as specified;
+- `vectraudit record` then `check` ran end to end (ANN recall measured, MAP and Hit Rate
+  recorded).
+
+CI now runs `chromadb/chroma:1.5.9` beside the other backends so the live tests keep running.
+
+Not included: Chroma Cloud specifics beyond token headers, Chroma's hybrid `search`
+endpoint, sparse vectors, and a customer collection.
+
+Validation:
+- 18 unit tests against a fake shaped like the real server's responses:
+  - describe;
+  - query body and `where`;
+  - `id_field`;
+  - exact ranking per space against numpy;
+  - paging and caching of the exact reference;
+  - the exact limit;
+  - seven HTTP failures typed;
+  - token headers and https-only;
+  - empty or unsupported collections;
+  - connection-file validation.
+- 3 live tests (one per space) that seed their own collections through the REST API. They
+  passed against the real server.
+
+Results:
+- Full Python suite: **2,219 passed, 0 failed**, 32 skipped (live services not configured,
+  including the three Chroma live tests, which run in CI and passed locally against the
+  server), 1 deselected.
+- Ruff, mypy on Python 3.12 and 3.10, and the API type generation check passed.
+- An intermediate run showed 8 CLI failures because the scratch Chroma server had been
+  started on port 8765, `vectraudit serve`'s default; with it stopped they pass.
+
+## Step 86: Ragas scores as answer judgments (1.2)
+
+The owner asked what Ragas offers. It is an Apache-2.0 RAG evaluation library: LLM-judged
+and non-LLM metrics, test-set generation, and experiments. Its test sets were already
+imported (`dataset import --format ragas`). Its metrics are a judge suite of their own, so
+following the strategy (import results; Steps 80, 84) its evaluation results become
+`attach-answers` judgments.
+
+`vectraudit workbench ragas-judgments RESULTS BENCHMARK --metric NAME --out F` reads
+`evaluate(...).to_pandas()` saved as CSV, JSON Lines or JSON (records or pandas' column
+layout):
+- **Scores only:** Ragas gives no pass/fail, so judgments carry the score as
+  `ragas.METRIC` and the threshold is declared in `attach-answers --threshold`. Nothing is
+  assumed.
+- **Chosen metrics,** with every `context` metric refused (they judge retrieval).
+- **Failed metrics** (empty or `null`) skipped and counted.
+- **Matching:** `query_id`/`trace_id` columns, else an unambiguous `user_input`; multi-turn
+  samples only by ID.
+
+**Built against real Ragas output**, following Steps 83 and 84. Ragas 0.4.3 ran offline
+with its non-LLM metrics, plus a run with an unreachable LLM judge to record what a failure
+looks like. What it showed:
+- the ROUGE column is `rouge_score(mode=fmeasure)`, a name with `=` in it (attach-answers
+  already splits `--threshold` on the last `=`);
+- BLEU can exceed 1 by rounding, so scores are not range-checked;
+- failures are empty CSV cells and JSON `null`, not `NaN` text.
+
+The fixtures and the scripts that made them are in `tests/fixtures/ragas`.
+
+Not included: Ragas test-set generation (needs an LLM; its output is already importable),
+its experiment framework, and its context metrics as retrieval evidence.
+
+Validation: 11 new tests on the real files:
+- all three saved layouts read identically;
+- judgments hold only the score;
+- failed metrics skipped in CSV and JSONL;
+- context metrics refused and unknown metrics listed;
+- ID columns, multi-turn and ambiguous matching;
+- scores turning into verdicts only with a declared threshold;
+- other files refused;
+- the CLI.
+
+## Step 87: Phoenix pull and push (1.2)
+
+The owner asked what Arize Phoenix offers. It is an LLM tracing and evaluation platform
+built on OpenInference (Elastic License 2.0; it is not a dependency, only its REST API is
+used). Its traces were already importable from exports (the `spans` and OTLP shapes) and
+its evaluations through judgment files. What was missing, compared with Langfuse (Steps
+66, 68), LangSmith (67) and Opik (69), was reading a Phoenix server directly and showing
+the diagnosis there.
+
+- `vectraudit workbench phoenix-pull --since --until [--project] [--traces F]
+  [--judgments F] [--annotation NAME]`:
+  - root spans that started in the window, then every span of those traces by trace ID,
+    written unchanged (Phoenix's `/spans` records are the `spans` shape);
+  - trace and span annotations as judgments: verdict labels with their score, unlabelled
+    scores for `--threshold`, `HUMAN` as human review, other labels and notes skipped.
+- `vectraudit workbench phoenix-push RUN [--send] [--name]`: one `CODE` trace annotation
+  per judged trace, labelled with the diagnosis class. Previews by default. The diagnosis
+  loop is shared with `langfuse-push` (`judged_diagnoses`).
+
+**Built against a running Phoenix 21.0.0 server**, following Steps 83–86: the offline
+LangChain pipeline's OpenInference traces were sent to it, annotations were added through
+its API, and every response the pull received was recorded (`tests/fixtures/phoenix`, once
+with tiny page sizes so cursor paging is real). What the server showed:
+- `/spans` flattens document metadata (`document.metadata.doc_id`) where the OTLP export
+  keeps a JSON string; both import to the same rankings and model context.
+- Notes are stored as `HUMAN` annotations named `note`. Read as annotations, they would
+  have become unlabelled human judgments; they are skipped and their text never copied.
+- Writing annotations without `sync=true` answers 200 and silently drops those for
+  unknown traces. With it, the whole batch is refused (404), so the push resends that
+  batch one trace at a time and reports the unknown traces.
+- An annotation with the same trace, name and identifier replaces the earlier one, so a
+  re-push does not pile up annotations.
+
+Not included: Phoenix datasets and experiments (Vectraudit's benchmarks and runs cover
+them), its prompt management (prompt versions are read from traces, Step 70), and its
+evaluators.
+
+Validation: 27 new tests (17 pull, replayed from the real recordings; 10 push, against a
+fake server that behaves as the real one did):
+- the window and per-trace span reads;
+- paged and unpaged recordings giving the same pull;
+- pulled spans importing like the direct OpenInference export;
+- annotations to judgments, notes skipped, name filtering;
+- attached judgments with a disputed verdict;
+- the auth header and HTTP failures without echoing bodies;
+- cursor loops and record limits;
+- unsafe settings;
+- push contents with nothing private, re-push replacing, unknown traces found one by
+  one, batching, preview, and both CLIs.
 
 ## Next increments
 

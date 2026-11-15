@@ -364,7 +364,10 @@ def _email(hook: Webhook, payload: Mapping[str, Any], delivery: WebhookDelivery)
         "This address was added as a notification destination by a project owner.",
     ]
     message.set_content("\n".join(lines))
-    return bytes(message)
+    # Never fold headers: the subject is capped at 200 characters, well within RFC 5322's
+    # 998, and Python's folder (3.10 and 3.12 at least) moves a long subject whole onto a
+    # continuation line, which unfolds with a leading space recipients then see.
+    return message.as_bytes(policy=message.policy.clone(max_line_length=998))
 
 
 def render(

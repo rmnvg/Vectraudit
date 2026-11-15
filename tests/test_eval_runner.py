@@ -61,7 +61,12 @@ def test_semantic_metrics() -> None:
     assert m["mrr"] == 0.5
     assert 0 < m["ndcg"] < 1
     assert semantic_metrics(["a", "b"], labels, 2)["ndcg"] == pytest.approx(1.0)
-    assert semantic_metrics([], labels, 3) == {"recall": 0, "precision": 0, "mrr": 0, "ndcg": 0}
+    # duplicate "b" earns no extra credit: hits at ranks 2 and 3 over 2 relevant documents
+    assert m["map"] == pytest.approx((1 / 2 + 2 / 3) / 2)
+    assert m["hit_rate"] == 1.0
+    assert semantic_metrics([], labels, 3) == {
+        "recall": 0, "precision": 0, "mrr": 0, "ndcg": 0, "map": 0, "hit_rate": 0,
+    }  # fmt: skip
 
 
 def test_ann_recall_and_latency() -> None:

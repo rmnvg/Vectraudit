@@ -14,6 +14,7 @@ from typing import Literal
 
 from vectraudit.core.ivf import ListStats
 from vectraudit.core.search import MissReason, probed_miss_reason
+from vectraudit.core.selectivity import FilterRun, SelectivityResult
 from vectraudit.core.sweep import Choice, SweepParam, SweepPoint, SweepResult
 from vectraudit.core.types import IndexKind, LoadedIndex
 
@@ -52,6 +53,12 @@ class SuggestionKind(str, Enum):
     """IVF lists are unevenly filled."""
     LATENCY_BUDGET = "LATENCY_BUDGET"
     """The recall target is reachable, but not within the p95 latency budget."""
+    FILTER_RECALL_SHORT = "FILTER_RECALL_SHORT"
+    """A filtered search did not reach the recall target anywhere in the sweep range."""
+    FILTER_RECALL_DROP = "FILTER_RECALL_DROP"
+    """Recall at the unfiltered recommendation falls as the filter gets more selective."""
+    FILTER_UNMEASURED = "FILTER_UNMEASURED"
+    """Options that might help selective filters, none of which this sweep measured."""
 
 
 @dataclass(frozen=True)
@@ -454,3 +461,81 @@ def _imbalance(stats: ListStats, at: SweepPoint, param: SweepParam) -> Suggestio
         view="overview",
         at_value=at.value,
     )
+
+
+# --- filtered search ---------------------------------------------------------------------
+
+
+def advise_selectivity(
+    result: SelectivityResult,
+    target_recall: float,
+    *,
+    confident: bool = False,
+    max_p95_ms: float | None = None,
+) -> list[Suggestion]:
+    """Measured statements about recall at each pass rate, most selective problems first.
+
+    Nothing here is inferred: each line quotes a sweep result. What the sweep did not try
+    (brute force, partitioning by the filter field) is listed as not measured, never as advice.
+    """
+    base = result.baseline
+    name = result.param.value
+    out: list[Suggestion] = []
+    missed: list[FilterRun] = []
+    for run, choice in result.choose(target_recall, confident=confident, max_p95_ms=max_p95_ms):
+        if run is base or choice.by_recall is not None or not run.sweep.points:
+            continue
+        missed.append(run)
+        top = max(run.sweep.points, key=lambda p: p.value)
+        best = max(run.sweep.points, key=lambda p: (p.recall, -p.value))
+        out.append(
+            Suggestion(
+                SuggestionKind.FILTER_RECALL_SHORT,
+                f"At a {_pct(run.pass_rate)} pass rate the {_pct(target_recall)} target "
+                "was not reached",
+                f"At a {_pct(run.pass_rate)} pass rate, {name} {top.value} reaches recall "
+                f"{best.recall:.2f}; the {target_recall:.2f} target was not reached in the "
+                f"sweep range ({run.allowed_count:,} documents pass).",
+                [
+                    Evidence("Pass rate", _pct(run.pass_rate)),
+                    Evidence(f"Largest {name} tried", str(top.value)),
+                    Evidence("Best recall", f"{best.recall:.3f}"),
+                    Evidence("Filter", run.spec.label),
+                ],
+                at_value=top.value,
+            )
+        )
+    start = base.sweep.choose(target_recall, confident=confident, max_p95_ms=max_p95_ms).by_recall
+    if start is not None:
+        falls = []
+        for run in result.runs[1:]:
+            at = next((p for p in run.sweep.points if p.value == start.value), None)
+            if at is not None and at.recall < start.recall - 0.01:
+                falls.append((run, at.recall))
+        if falls:
+            falls.sort(key=lambda f: -f[0].pass_rate)
+            out.append(
+                Suggestion(
+                    SuggestionKind.FILTER_RECALL_DROP,
+                    f"Recall falls under filters at {name} {start.value}",
+                    f"Unfiltered, {name} {start.value} reaches recall {start.recall:.2f}. "
+                    "With the same setting: "
+                    + "; ".join(f"{_pct(r.pass_rate)} pass rate {rec:.2f}" for r, rec in falls)
+                    + ".",
+                    [Evidence(f"Recall at {_pct(r.pass_rate)}", f"{rec:.3f}") for r, rec in falls],
+                    at_value=start.value,
+                )
+            )
+    if missed:
+        out.append(
+            Suggestion(
+                SuggestionKind.FILTER_UNMEASURED,
+                "Not measured here",
+                "This sweep did not try: exact (brute-force) search over the allowed ids for "
+                "very selective filters, or partitioning the index by the filter field. "
+                "Either may behave differently; they are listed so they are not mistaken for "
+                "findings.",
+                [Evidence("Not measured", "brute force"), Evidence("Not measured", "partitioning")],
+            )
+        )
+    return out

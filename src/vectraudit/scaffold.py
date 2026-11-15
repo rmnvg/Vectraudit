@@ -8,7 +8,9 @@ from pathlib import Path
 
 from vectraudit import __version__
 
-BACKENDS = ("faiss", "qdrant", "pgvector", "pinecone", "weaviate", "elasticsearch", "opensearch")
+BACKENDS = (
+    "faiss", "qdrant", "pgvector", "pinecone", "weaviate", "elasticsearch", "opensearch", "chroma",
+)  # fmt: skip
 INSTALL_ACTION = ".github/actions/install-vectraudit"
 CHECK_ACTION = ".github/actions/retrieval-check"
 
@@ -28,6 +30,7 @@ _SETTINGS = {
     # REST APIs: no extra package needed.
     "elasticsearch": _Backend("", "ELASTICSEARCH_API_KEY"),
     "opensearch": _Backend("", "OPENSEARCH_BASIC_AUTH"),
+    "chroma": _Backend("", "CHROMA_TOKEN"),
 }
 
 

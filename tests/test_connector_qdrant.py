@@ -178,3 +178,15 @@ def test_run_with_filters_on_qdrant(synthetic, store) -> None:
     assert run["backend"]["distance"] == "l2"
     assert all(int(i) % 2 == 0 for q in run["queries"] for i in q["ids"])
     json.dumps(run, allow_nan=False)
+
+
+def test_count_is_exact_and_uses_the_search_filter(store, query) -> None:
+    with connect(store) as c:
+        assert c.capabilities().filter_count
+        assert c.count({}) == N
+        assert c.count({"lang": "en"}) == N // 2
+        assert c.count({"lang": "en", "public": True}) == 50
+        assert c.count({"lang": "xx"}) == 0
+        # The count and the search apply the same condition.
+        found = c.search(SearchRequest(query, N, filter={"lang": "en"}))
+        assert len(found) == c.count({"lang": "en"})

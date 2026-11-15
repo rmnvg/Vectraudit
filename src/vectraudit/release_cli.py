@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -178,7 +179,7 @@ def init(
     backend: Annotated[
         str,
         typer.Option(
-            help="faiss, qdrant, pgvector, pinecone, weaviate, elasticsearch or opensearch."
+            help="faiss, qdrant, pgvector, pinecone, weaviate, elasticsearch, opensearch or chroma."
         ),
     ] = "faiss",
     directory: Annotated[
@@ -214,6 +215,121 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+@dataset_app.command("export-qrels")
+def dataset_export_qrels(
+    dataset: Annotated[Path, typer.Argument(help="The benchmark (JSONL).")],
+    out: Annotated[Path, typer.Option(help="TREC qrels file to write (qid 0 docno grade).")],
+    include_heldout: Annotated[
+        bool,
+        typer.Option("--include-heldout", help="Also export held-out questions' labels."),
+    ] = False,
+) -> None:
+    """Write the benchmark's relevance labels as TREC qrels, for trec_eval, ranx and the like.
+
+    Graded labels keep their grades (they must be integers); documents that only appear as
+    relevant spans get grade 1. Held-out questions are left out unless asked for.
+    """
+    from vectraudit.evaluation.trec import TrecError, export_qrels
+
+    try:
+        ds = load_dataset(dataset)
+        lines, held = export_qrels(ds, include_heldout=include_heldout)
+        _write_text(out, "\n".join(lines) + ("\n" if lines else ""))
+    except (DatasetError, TrecError) as e:
+        raise _fail(str(e)) from e
+    console.print(f"Wrote {len(lines):,} judgments to {escape(str(out))}.")
+    if held:
+        console.print(f"{held} held-out questions left out (--include-heldout).")
+
+
+@dataset_app.command("import-vdbbench")
+def dataset_import_vdbbench(
+    source: Annotated[
+        Path, typer.Argument(help="A VectorDBBench dataset directory (fetched with VectorDBBench).")
+    ],
+    distance: Annotated[
+        str,
+        typer.Option(
+            help="cosine, l2 or ip: the distance the dataset's neighbours were computed under. "
+            "Required; it is never guessed."
+        ),
+    ],
+    out: Annotated[Path, typer.Option(help="Directory to write the converted files to.")],
+    name: Annotated[str | None, typer.Option(help="Dataset name (default: the directory).")] = None,
+) -> None:
+    """Import a VectorDBBench dataset: vectors, queries and its published exact neighbours.
+
+    Writes vectors.npy + ids.npy (the corpus), queries.npy, dataset.jsonl (and one
+    dataset-int-<p>p.jsonl per filtered variant), metadata.jsonl, and reference*.json: the
+    benchmark's neighbours as an external exact reference for `record --reference`. Needs
+    pyarrow (`pip install "vectraudit[parquet]"`). Nothing is downloaded.
+    """
+    from vectraudit.evaluation.vdbbench_import import VdbbenchImportError, import_vdbbench
+
+    try:
+        result = import_vdbbench(source, out, distance=distance, name=name)
+    except VdbbenchImportError as e:
+        raise _fail(str(e), e.hint or None) from e
+    console.print(
+        f"Imported {result.n_vectors:,} vectors (d={result.dim}), {result.n_queries:,} queries, "
+        f"{result.k} published neighbours each, {result.distance} distance → {escape(str(out))}"
+    )
+    for item in result.filters:
+        console.print(
+            f"  filter {item['field']}: removes {item['removed']:.0%}, pass rate "
+            f"{item['pass_rate']:.0%} (VectorDBBench's filter rate is the fraction removed)"
+        )
+    console.print("Reference files: " + ", ".join(result.references))
+
+
+@dataset_app.command("import-annb")
+def dataset_import_annb(
+    source: Annotated[
+        Path, typer.Argument(help="An ann-benchmarks HDF5 file (e.g. glove-100-angular.hdf5).")
+    ],
+    out: Annotated[Path, typer.Option(help="Directory to write the converted files to.")],
+    distance: Annotated[
+        str | None,
+        typer.Option(
+            help="l2 or cosine, only as a check: the distance is read from the file and a "
+            "different one is refused."
+        ),
+    ] = None,
+    normalize: Annotated[
+        bool,
+        typer.Option(
+            "--normalize",
+            help="Angular files: write unit-length vectors and queries, so an inner-product "
+            "index (FAISS IndexFlatIP) ranks exactly as cosine and can be scored.",
+        ),
+    ] = False,
+    name: Annotated[str | None, typer.Option(help="Dataset name (default: the file name).")] = None,
+) -> None:
+    """Import an ann-benchmarks dataset: vectors, queries and its published exact neighbours.
+
+    Reads the HDF5 file's train vectors, test queries and top-100 neighbours, checks its
+    recorded distance (euclidean or angular; hamming and jaccard are refused) against the
+    data, and writes vectors.npy + ids.npy, queries.npy, dataset.jsonl and reference.json for
+    `record --reference` and `sweep --reference`. Needs h5py (`pip install "vectraudit[hdf5]"`).
+    Nothing is downloaded.
+    """
+    from vectraudit.evaluation.annb_import import AnnbImportError, import_annb
+
+    try:
+        result = import_annb(source, out, distance=distance, normalize=normalize, name=name)
+    except AnnbImportError as e:
+        raise _fail(str(e), e.hint or None) from e
+    console.print(
+        f"Imported {result.n_vectors:,} vectors (d={result.dim}), {result.n_queries:,} queries, "
+        f"{result.k} published neighbours each, {result.source_distance} → {result.distance}"
+        f"{' (normalised)' if result.normalized else ''} → {escape(str(out))}"
+    )
+    console.print(
+        f"Checked the published distances of {result.checked_queries} queries against the "
+        "vectors. Reference file: reference.json"
+    )
+
+
 @dataset_app.command("import")
 def dataset_import(
     source: Annotated[
@@ -221,7 +337,7 @@ def dataset_import(
         typer.Argument(
             help=(
                 "CSV (with a header row), JSON array or JSONL file. JSON columns may be dotted "
-                "paths (inputs.question). With --format: a BEIR folder, a TREC query file "
+                "paths (inputs.question). With --format: a BEIR or MTCB folder, a TREC query file "
                 "(qid<TAB>text or JSONL), or a Ragas/DeepEval test set."
             )
         ),
@@ -231,7 +347,7 @@ def dataset_import(
         str | None,
         typer.Option(
             "--format",
-            help="beir, trec, ragas or deepeval. Omit for CSV/JSON with column mapping.",
+            help="beir, trec, mtcb, ragas or deepeval. Omit for CSV/JSON with column mapping.",
         ),
     ] = None,
     qrels: Annotated[
@@ -277,6 +393,13 @@ def dataset_import(
         ),
     ] = None,
     name: Annotated[str | None, typer.Option(help="Dataset name for the header.")] = None,
+    corpus_out: Annotated[
+        Path | None,
+        typer.Option(
+            help="--format mtcb: where to write the documents with the IDs the spans refer to "
+            "(the corpus for `vectraudit experiment`)."
+        ),
+    ] = None,
 ) -> None:
     """Convert queries and relevance labels you already have into a dataset."""
     from vectraudit.evaluation.dataset_formats import import_format
@@ -289,6 +412,12 @@ def dataset_import(
 
     meta: dict[str, Any] = {"name": name} if name else {}
     warnings: list[str] = []
+    documents = None
+    if (source_format or "").lower() == "mtcb" and corpus_out is None:
+        raise _fail(
+            "--format mtcb needs --corpus-out.",
+            "MTCB documents have no IDs; the importer assigns them and writes the corpus there.",
+        )
     try:
         if source_format:
             imported = import_format(
@@ -303,6 +432,7 @@ def dataset_import(
             )
             rows, warnings = imported.rows, imported.warnings
             meta["provenance"] = imported.provenance
+            documents = imported.corpus
         else:
             filters = {}
             for spec in filter_column or []:
@@ -321,6 +451,14 @@ def dataset_import(
     except DatasetError as e:
         raise _fail(str(e)) from e
     _write_text(out, text)
+    if documents is not None and corpus_out is not None:
+        _write_text(
+            corpus_out, "".join(json.dumps(d, ensure_ascii=False) + "\n" for d in documents)
+        )
+        console.print(
+            f"Wrote {len(documents):,} documents to {escape(str(corpus_out))} (contains document "
+            "text; kept local)."
+        )
     ds = load_dataset(out)
     for warning in warnings:
         err_console.print(f"[yellow]Warning:[/] {escape(warning)}")
@@ -496,6 +634,14 @@ def record(
         list[str] | None,
         typer.Option(help="Provenance label, e.g. embedding_model=e5-large. Repeatable."),
     ] = None,
+    reference: Annotated[
+        Path | None,
+        typer.Option(
+            help="An external exact reference (reference.json from `dataset import-vdbbench`): "
+            "ANN recall is measured against its neighbours instead of the backend's own exact "
+            "search. Runs with different references are not compared on ANN recall."
+        ),
+    ] = None,
     embedder: Annotated[
         str | None, typer.Option(help="sentence-transformers model for text-only queries.")
     ] = None,
@@ -530,6 +676,14 @@ def record(
     except ConnectorError as e:
         raise _fail(e.message, e.hint) from e
     params = {**cfg.params, **_parse_params(param or [])}
+    external = None
+    if reference is not None:
+        from vectraudit.evaluation.external_reference import ExternalReferenceError, load_reference
+
+        try:
+            external = load_reference(reference)
+        except ExternalReferenceError as e:
+            raise _fail(str(e)) from e
     options = RunOptions(
         k=k,
         params=params,
@@ -546,6 +700,7 @@ def record(
             **_parse_pairs(tag or [], "--tag"),
         },
         evidence=evidence,
+        reference=external,
     )
     client = _cloud_client(project) if upload else None  # fail on bad config before running
     dataset_model = ds.meta.get("embedding_model")
@@ -586,6 +741,179 @@ def record(
         raise typer.Exit(code=130)
     if run["status"] != "complete" or not uploaded:
         raise typer.Exit(code=1)
+
+
+def capacity(
+    connection: Annotated[Path, typer.Option(help="Connection file (JSON).")],
+    dataset: Annotated[Path, typer.Option(help="Dataset file (JSONL).")],
+    out: Annotated[Path, typer.Option(help="Where to write the capacity report (JSON).")],
+    confirm_target: Annotated[
+        str | None,
+        typer.Option(
+            help="The collection, index or table you mean to load. Required, and must equal the "
+            "connection's target, so a copied command cannot load another one."
+        ),
+    ] = None,
+    concurrency: Annotated[
+        str, typer.Option(help="Comma-separated levels of concurrent requests, 1 to 32 each.")
+    ] = "1,4,16",
+    duration: Annotated[
+        float, typer.Option(min=1.0, max=600.0, help="Seconds each concurrency level runs.")
+    ] = 30.0,
+    max_rps: Annotated[
+        float,
+        typer.Option(
+            min=0.001, max=1000.0, help="Ceiling on requests per second across all workers."
+        ),
+    ] = 50.0,
+    k: Annotated[int, typer.Option(min=1, help="Results per query.")] = 10,
+    param: Annotated[
+        list[str] | None, typer.Option(help="Search parameter, e.g. nprobe=16. Repeatable.")
+    ] = None,
+    serial_queries: Annotated[
+        int, typer.Option(min=1, help="Queries for the one-at-a-time baseline.")
+    ] = 100,
+    recall_sample: Annotated[
+        int, typer.Option(min=0, help="Answers per level kept for the recall check (0 = off).")
+    ] = 20,
+    seed: Annotated[int, typer.Option(min=0, help="Query order seed.")] = 0,
+    embedder: Annotated[
+        str | None, typer.Option(help="sentence-transformers model for text-only queries.")
+    ] = None,
+    normalize_text: Annotated[
+        bool, typer.Option(help="L2-normalise text embeddings (for cosine / IP corpora).")
+    ] = False,
+    allow_production: Annotated[
+        bool,
+        typer.Option(help="Allow a target whose name contains 'prod'. Staging is the intent."),
+    ] = False,
+    baseline: Annotated[
+        Path | None, typer.Option(help="An earlier capacity report to compare with.")
+    ] = None,
+) -> None:
+    """Measure throughput, latency and errors as concurrent load grows, against a staging target.
+
+    Read-only searches only, under a hard requests-per-second ceiling and fixed duration. It
+    prints everything it will send first, and refuses to start without --confirm-target
+    (and without --allow-production for a target named like production). Exits 0 when it
+    completes, 1 when it is refused or fails, 130 when cancelled.
+    """
+    from vectraudit.evaluation import capacity as cap
+
+    try:
+        levels = tuple(int(v) for v in concurrency.replace(" ", "").split(",") if v)
+    except ValueError:
+        raise _fail("--concurrency takes comma-separated integers, e.g. 1,4,16.") from None
+    try:
+        plan = cap.CapacityPlan(
+            concurrency=levels,
+            duration_s=duration,
+            max_rps=max_rps,
+            k=k,
+            params=_parse_params(param or []),
+            serial_queries=serial_queries,
+            recall_sample=recall_sample,
+            seed=seed,
+        )
+        ds = load_dataset(dataset)
+        cfg = load_connection(connection)
+        previous = None
+        if baseline is not None:
+            previous = json.loads(baseline.read_text(encoding="utf-8"))
+    except cap.CapacityRefused as e:
+        raise _fail(str(e)) from e
+    except DatasetError as e:
+        raise _fail(str(e)) from e
+    except ConnectorError as e:
+        raise _fail(e.message, e.hint) from e
+    except (OSError, ValueError) as e:
+        raise _fail(f"Cannot read --baseline: {e}") from e
+    plan = replace(plan, params={**cfg.params, **plan.params})
+    try:
+        probe = open_connector(cfg)
+    except ConnectorError as e:
+        raise _fail(e.message, e.hint) from e
+    with probe:
+        try:
+            info, caps = probe.describe(), probe.capabilities()
+        except ConnectorError as e:
+            raise _fail(e.message, e.hint) from e
+    console.print("[bold]This will send:[/]")
+    for line in cap.describe_plan(plan, info, caps, len(ds)):
+        console.print(f"  {escape(line)}")
+    problems = cap.safety_problems(
+        info, cfg.name, confirm_target=confirm_target, allow_production=allow_production
+    )
+    if problems:
+        for problem in problems:
+            err_console.print(f"[bold red]Not started:[/] {escape(problem)}")
+        raise typer.Exit(code=1)
+    embed = _embedder(embedder, normalize_text)
+    safety = {
+        "confirmed_target": confirm_target,
+        "target": cap.target_name(info),
+        "production_override": allow_production,
+    }
+    with console.status("Starting…") as status:
+        report = cap.run_capacity(
+            ds,
+            lambda: open_connector(cfg),
+            plan,
+            connection=cfg.public(),
+            embed=embed,
+            embedder_name=embedder,
+            safety=safety,
+            progress=status.update,
+        )
+    if previous is not None:
+        report["comparison"] = cap.compare_capacity(previous, report)
+    save_run(report, out)
+    _print_capacity(report)
+    if report["status"] == "cancelled":
+        raise typer.Exit(code=130)
+    if report["status"] != "complete":
+        raise typer.Exit(code=1)
+
+
+def _fmt(value: float | None, spec: str = ".1f") -> str:
+    return "n/a" if value is None else format(value, spec)
+
+
+def _print_capacity(report: dict[str, Any]) -> None:
+    status = report["status"]
+    style = "green" if status == "complete" else "red"
+    console.print(f"[{style}]{escape(status)}[/]: capacity curve")
+    if report.get("error"):
+        err_console.print(f"[red]{escape(str(report['error'].get('message')))}[/]")
+    serial = report.get("serial")
+    if serial and serial["p50_ms"] is not None:
+        console.print(
+            f"Serial: p50 {serial['p50_ms']:.1f} ms, p95 {serial['p95_ms']:.1f} ms, "
+            f"p99 {serial['p99_ms']:.1f} ms over {serial['requests']} requests"
+        )
+    if report["levels"]:
+        table = Table()
+        for column in ("concurrency", "req/s", "p50 ms", "p95 ms", "p99 ms", "errors", "recall"):
+            table.add_column(column, justify="right")
+        table.add_column("")
+        for level in report["levels"]:
+            table.add_row(
+                str(level["concurrency"]),
+                _fmt(level["achieved_qps"]),
+                _fmt(level["p50_ms"]),
+                _fmt(level["p95_ms"]),
+                _fmt(level["p99_ms"]),
+                _fmt(level["error_rate"], ".1%"),
+                _fmt(level["recall"]["mean"], ".3f"),
+                "at the ceiling" if level["at_ceiling"] else "",
+            )
+        console.print(table)
+    for note in report["notes"]:
+        console.print(f"[dim]{escape(note)}[/]")
+    comparison = report.get("comparison")
+    if comparison is not None and not comparison["comparable"]:
+        for reason in comparison["reasons"]:
+            console.print(f"[yellow]Not compared with the baseline:[/] {escape(reason)}")
 
 
 def _print_run(run: dict[str, Any], out: Path) -> None:
@@ -923,7 +1251,7 @@ def _print_check(result: dict[str, Any], verdict: Verdict) -> None:
         )
         console.print(f"  • {escape(r['message'])}{note}")
     if result["metrics"]:
-        table = Table("Metric", "Baseline", "Candidate", "Change", "95% CI")
+        table = Table("Metric", "Baseline", "Candidate", "Change", "95% CI", "p")
         for name, m in result["metrics"].items():
             table.add_row(
                 name,
@@ -931,6 +1259,7 @@ def _print_check(result: dict[str, Any], verdict: Verdict) -> None:
                 f"{m['candidate']:.4f}",
                 f"{m['delta']:+.4f}",
                 f"[{m['ci_low']:+.4f}, {m['ci_high']:+.4f}]",
+                "-" if m.get("p_value") is None else f"{m['p_value']:.3f}",
             )
         console.print(table)
     for w in result["warnings"]:

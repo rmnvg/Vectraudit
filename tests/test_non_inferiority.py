@@ -101,7 +101,8 @@ def test_reports_state_the_tolerance_decision():
     result = compare_runs(*run_pair(WIDE), policy(**NI))
     line = "Non-inferiority (pass only when the whole 95% interval stays above the allowed drop)"
     md = render_markdown(result)
-    assert f"{line}: nDCG@k inconclusive (interval reaches past the allowed drop)." in md
+    k = result["candidate"]["k"]
+    assert f"{line}: nDCG@{k} inconclusive (interval reaches past the allowed drop)." in md
     assert line in render_html(result)
     plain = compare_runs(*run_pair(WIDE), policy())
     assert "Non-inferiority" not in render_markdown(plain)

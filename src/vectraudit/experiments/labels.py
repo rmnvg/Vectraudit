@@ -4,10 +4,19 @@ Document level (the fair comparison across chunkings): retrieved chunks become t
 source documents, first occurrence wins, and metrics are computed on documents. Span level
 (finer, when spans are labelled): a chunk is relevant when it overlaps a labelled span,
 with the highest overlapping span's grade.
+
+Passage containment (MTCB's definition, kept apart from the overlap metrics): a question is
+found when a retrieved chunk **contains** a labelled span whole. With the rank of the first
+such chunk among the top k (0 when none), MTCB's metrics are recall@k = found, MRR@k = 1/rank,
+nDCG@k = 1/log2(rank + 1) and precision@k = 1/k when found, each averaged over questions.
+
+Credit: MTCB, the Massive Text Chunking Benchmark (Chonkie; Apache-2.0), whose metric
+definitions were read in its source (``evaluators/base.py``). See docs/credits.md.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping, Sequence
 
 from vectraudit.evaluation.dataset import DatasetQuery, Span
@@ -45,3 +54,28 @@ def chunk_labels(spans: Sequence[Span], chunks: Iterable[Chunk]) -> dict[str, fl
             if chunk.start < span.end and span.start < chunk.end:
                 out[chunk.chunk_id] = max(out.get(chunk.chunk_id, 0.0), span.grade)
     return out
+
+
+CONTAINMENT_METRICS = ("recall", "mrr", "ndcg", "precision")
+
+
+def containing_rank(spans: Sequence[Span], ranked: Sequence[Chunk], k: int) -> int:
+    """1-based rank of the first of the top ``k`` chunks that contains a span whole; 0 if none."""
+    for rank, chunk in enumerate(ranked[:k], 1):
+        if any(
+            s.doc_id == chunk.doc_id and chunk.start <= s.start and s.end <= chunk.end
+            for s in spans
+        ):
+            return rank
+    return 0
+
+
+def containment_metrics(rank: int, k: int) -> dict[str, float]:
+    """MTCB's per-question recall, MRR, nDCG and precision at ``k`` for a containing rank."""
+    found = rank > 0
+    return {
+        "recall": 1.0 if found else 0.0,
+        "mrr": 1.0 / rank if found else 0.0,
+        "ndcg": 1.0 / math.log2(rank + 1) if found else 0.0,
+        "precision": 1.0 / k if found else 0.0,
+    }

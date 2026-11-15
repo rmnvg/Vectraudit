@@ -1,0 +1,549 @@
+{
+ "format": "vectraudit.atlas",
+ "format_version": 1,
+ "created_at": "2026-11-07T11:12:42+00:00",
+ "name": "fixture",
+ "local_only": true,
+ "contains_text": [
+  "titles"
+ ],
+ "projection": {
+  "method": "pca",
+  "dims": 2,
+  "explained_variance_ratio": [
+   0.791985809803009,
+   0.19996364414691925
+  ],
+  "note": "A 2D layout distorts distance: points that look close may not be, and the reverse. Use the map to decide where to look, not as evidence."
+ },
+ "counts": {
+  "documents_total": 60,
+  "documents_shown": 60,
+  "plain_documents_total": 58,
+  "plain_documents_shown": 58,
+  "questions_total": 3,
+  "questions_shown": 2,
+  "questions_without_vectors": 0,
+  "heldout_hidden": 1,
+  "heldout_shown": 0,
+  "by_category": {
+   "document": 58,
+   "relevant": 1,
+   "lost_never_retrieved": 1,
+   "lost_dropped": 0,
+   "hub": 0,
+   "flagged": 0,
+   "question_passed": 1,
+   "question_failed": 1,
+   "question_regressed": 0,
+   "question_no_answer": 0,
+   "question_unjudged": 0
+  }
+ },
+ "legend": [
+  {
+   "id": 0,
+   "key": "document",
+   "kind": "document",
+   "label": "Document"
+  },
+  {
+   "id": 1,
+   "key": "relevant",
+   "kind": "document",
+   "label": "Relevant to a question"
+  },
+  {
+   "id": 2,
+   "key": "lost_never_retrieved",
+   "kind": "document",
+   "label": "Lost: never retrieved"
+  },
+  {
+   "id": 3,
+   "key": "lost_dropped",
+   "kind": "document",
+   "label": "Lost: retrieved, then dropped"
+  },
+  {
+   "id": 4,
+   "key": "hub",
+   "kind": "document",
+   "label": "Hub (retrieved for many questions)"
+  },
+  {
+   "id": 5,
+   "key": "flagged",
+   "kind": "document",
+   "label": "Flagged by the corpus scan or a poison suite"
+  },
+  {
+   "id": 6,
+   "key": "question_passed",
+   "kind": "question",
+   "label": "Question: passed"
+  },
+  {
+   "id": 7,
+   "key": "question_failed",
+   "kind": "question",
+   "label": "Question: failed"
+  },
+  {
+   "id": 8,
+   "key": "question_regressed",
+   "kind": "question",
+   "label": "Question: regressed"
+  },
+  {
+   "id": 9,
+   "key": "question_no_answer",
+   "kind": "question",
+   "label": "Question: no answer expected"
+  },
+  {
+   "id": 10,
+   "key": "question_unjudged",
+   "kind": "question",
+   "label": "Question: not judged"
+  }
+ ],
+ "sampling": {
+  "seed": 0,
+  "max_points": 50000,
+  "over_cap": false,
+  "rule": "every question and every document in a non-default category is kept"
+ },
+ "heldout": {
+  "shown": false,
+  "note": "Held-out questions never colour a point or a document by result."
+ },
+ "runs": {
+  "selected": {
+   "run_id": "r1",
+   "label": "candidate"
+  },
+  "baseline": null
+ },
+ "inputs": {},
+ "extent": {
+  "x": [
+   -28.110042572021484,
+   16.403860092163086
+  ],
+  "y": [
+   -12.949258804321289,
+   13.755431175231934
+  ]
+ },
+ "points": {
+  "n": 62,
+  "ids": [
+   "d0-0",
+   "d0-1",
+   "d0-2",
+   "d0-3",
+   "d0-4",
+   "d0-5",
+   "d0-6",
+   "d0-7",
+   "d0-8",
+   "d0-9",
+   "d0-10",
+   "d0-11",
+   "d0-12",
+   "d0-13",
+   "d0-14",
+   "d0-15",
+   "d0-16",
+   "d0-17",
+   "d0-18",
+   "d0-19",
+   "d1-0",
+   "d1-1",
+   "d1-2",
+   "d1-3",
+   "d1-4",
+   "d1-5",
+   "d1-6",
+   "d1-7",
+   "d1-8",
+   "d1-9",
+   "d1-10",
+   "d1-11",
+   "d1-12",
+   "d1-13",
+   "d1-14",
+   "d1-15",
+   "d1-16",
+   "d1-17",
+   "d1-18",
+   "d1-19",
+   "d2-0",
+   "d2-1",
+   "d2-2",
+   "d2-3",
+   "d2-4",
+   "d2-5",
+   "d2-6",
+   "d2-7",
+   "d2-8",
+   "d2-9",
+   "d2-10",
+   "d2-11",
+   "d2-12",
+   "d2-13",
+   "d2-14",
+   "d2-15",
+   "d2-16",
+   "d2-17",
+   "d2-18",
+   "d2-19",
+   "q0",
+   "q1"
+  ],
+  "titles": [
+   "billing invoices guide 0",
+   "billing invoices guide 1",
+   "billing invoices guide 2",
+   "billing invoices guide 3",
+   "billing invoices guide 4",
+   "billing invoices guide 5",
+   "billing invoices guide 6",
+   "billing invoices guide 7",
+   "billing invoices guide 8",
+   "billing invoices guide 9",
+   "billing invoices guide 10",
+   "billing invoices guide 11",
+   "billing invoices guide 12",
+   "billing invoices guide 13",
+   "billing invoices guide 14",
+   "billing invoices guide 15",
+   "billing invoices guide 16",
+   "billing invoices guide 17",
+   "billing invoices guide 18",
+   "billing invoices guide 19",
+   "password reset guide 0",
+   "password reset guide 1",
+   "password reset guide 2",
+   "password reset guide 3",
+   "password reset guide 4",
+   "password reset guide 5",
+   "password reset guide 6",
+   "password reset guide 7",
+   "password reset guide 8",
+   "password reset guide 9",
+   "password reset guide 10",
+   "password reset guide 11",
+   "password reset guide 12",
+   "password reset guide 13",
+   "password reset guide 14",
+   "password reset guide 15",
+   "password reset guide 16",
+   "password reset guide 17",
+   "password reset guide 18",
+   "password reset guide 19",
+   "refund policy guide 0",
+   "refund policy guide 1",
+   "refund policy guide 2",
+   "refund policy guide 3",
+   "refund policy guide 4",
+   "refund policy guide 5",
+   "refund policy guide 6",
+   "refund policy guide 7",
+   "refund policy guide 8",
+   "refund policy guide 9",
+   "refund policy guide 10",
+   "refund policy guide 11",
+   "refund policy guide 12",
+   "refund policy guide 13",
+   "refund policy guide 14",
+   "refund policy guide 15",
+   "refund policy guide 16",
+   "refund policy guide 17",
+   "refund policy guide 18",
+   "refund policy guide 19",
+   null,
+   null
+  ],
+  "titles_omitted": false
+ },
+ "bin": {
+  "n": 62,
+  "sha256": "c6b4f5678792bf25281f98a89b3aba3e47c994845bafd5cd8e89f0bd0a29291f",
+  "bytes": 808,
+  "layout": "float32 x[n], float32 y[n], uint8 category[n] (padded to 4), uint32 row[n]; little-endian",
+  "file": "atlas-fixture.bin"
+ },
+ "regions": [
+  {
+   "cluster": 0,
+   "documents": 5,
+   "share": 0.08333333333333333,
+   "questions": 0,
+   "relevant_documents": 0,
+   "median_question_distance": 41.72888551659428,
+   "terms": [
+    "policy",
+    "refund",
+    "guide"
+   ],
+   "distance_ratio": 18.499,
+   "centre": [
+    -27.532428741455078,
+    -0.4886244833469391
+   ],
+   "uncovered": true,
+   "pool": [
+    {
+     "id": "d2-19",
+     "title": "refund policy guide 19"
+    },
+    {
+     "id": "d2-17",
+     "title": "refund policy guide 17"
+    },
+    {
+     "id": "d2-11",
+     "title": "refund policy guide 11"
+    },
+    {
+     "id": "d2-4",
+     "title": "refund policy guide 4"
+    },
+    {
+     "id": "d2-0",
+     "title": "refund policy guide 0"
+    }
+   ]
+  },
+  {
+   "cluster": 1,
+   "documents": 17,
+   "share": 0.2833333333333333,
+   "questions": 1,
+   "relevant_documents": 1,
+   "median_question_distance": 2.142094851576685,
+   "terms": [
+    "billing",
+    "invoices",
+    "guide"
+   ],
+   "distance_ratio": 0.95,
+   "centre": [
+    12.020008087158203,
+    11.677634239196777
+   ],
+   "uncovered": false
+  },
+  {
+   "cluster": 2,
+   "documents": 8,
+   "share": 0.13333333333333333,
+   "questions": 0,
+   "relevant_documents": 0,
+   "median_question_distance": 2.8724037810879315,
+   "terms": [
+    "password",
+    "reset",
+    "guide"
+   ],
+   "distance_ratio": 1.273,
+   "centre": [
+    13.104290962219238,
+    -11.36493968963623
+   ],
+   "uncovered": false
+  },
+  {
+   "cluster": 3,
+   "documents": 3,
+   "share": 0.05,
+   "questions": 0,
+   "relevant_documents": 0,
+   "median_question_distance": 2.4883456156093042,
+   "terms": [
+    "billing",
+    "invoices",
+    "guide"
+   ],
+   "distance_ratio": 1.103,
+   "centre": [
+    12.560269355773926,
+    12.74907398223877
+   ],
+   "uncovered": false
+  },
+  {
+   "cluster": 4,
+   "documents": 1,
+   "share": 0.016666666666666666,
+   "questions": 0,
+   "relevant_documents": 0,
+   "median_question_distance": 39.324170171680684,
+   "terms": [
+    "policy",
+    "refund",
+    "guide"
+   ],
+   "distance_ratio": 17.433,
+   "centre": [
+    -24.82468032836914,
+    -1.0259382724761963
+   ],
+   "uncovered": true,
+   "pool": [
+    {
+     "id": "d2-10",
+     "title": "refund policy guide 10"
+    }
+   ]
+  },
+  {
+   "cluster": 5,
+   "documents": 9,
+   "share": 0.15,
+   "questions": 0,
+   "relevant_documents": 0,
+   "median_question_distance": 40.30368468808888,
+   "terms": [
+    "policy",
+    "refund",
+    "guide"
+   ],
+   "distance_ratio": 17.867,
+   "centre": [
+    -25.75897216796875,
+    -0.7122057676315308
+   ],
+   "uncovered": true,
+   "pool": [
+    {
+     "id": "d2-16",
+     "title": "refund policy guide 16"
+    },
+    {
+     "id": "d2-5",
+     "title": "refund policy guide 5"
+    },
+    {
+     "id": "d2-15",
+     "title": "refund policy guide 15"
+    },
+    {
+     "id": "d2-14",
+     "title": "refund policy guide 14"
+    },
+    {
+     "id": "d2-12",
+     "title": "refund policy guide 12"
+    },
+    {
+     "id": "d2-9",
+     "title": "refund policy guide 9"
+    },
+    {
+     "id": "d2-2",
+     "title": "refund policy guide 2"
+    },
+    {
+     "id": "d2-8",
+     "title": "refund policy guide 8"
+    },
+    {
+     "id": "d2-18",
+     "title": "refund policy guide 18"
+    }
+   ]
+  },
+  {
+   "cluster": 6,
+   "documents": 12,
+   "share": 0.2,
+   "questions": 1,
+   "relevant_documents": 1,
+   "median_question_distance": 2.369339592997748,
+   "terms": [
+    "password",
+    "reset",
+    "guide"
+   ],
+   "distance_ratio": 1.05,
+   "centre": [
+    15.275639533996582,
+    -11.0404052734375
+   ],
+   "uncovered": false
+  },
+  {
+   "cluster": 7,
+   "documents": 5,
+   "share": 0.08333333333333333,
+   "questions": 0,
+   "relevant_documents": 0,
+   "median_question_distance": 41.36891128535999,
+   "terms": [
+    "policy",
+    "refund",
+    "guide"
+   ],
+   "distance_ratio": 18.34,
+   "centre": [
+    -27.1690731048584,
+    -0.6967400312423706
+   ],
+   "uncovered": true,
+   "pool": [
+    {
+     "id": "d2-3",
+     "title": "refund policy guide 3"
+    },
+    {
+     "id": "d2-7",
+     "title": "refund policy guide 7"
+    },
+    {
+     "id": "d2-6",
+     "title": "refund policy guide 6"
+    },
+    {
+     "id": "d2-1",
+     "title": "refund policy guide 1"
+    },
+    {
+     "id": "d2-13",
+     "title": "refund policy guide 13"
+    }
+   ]
+  }
+ ],
+ "findings": [
+  {
+   "kind": "uncovered_region",
+   "evidence": "hypothesis",
+   "clusters": [
+    0,
+    4,
+    5,
+    7
+   ],
+   "documents": 20,
+   "share": 0.3333,
+   "distance_ratio": 18.499,
+   "terms": [
+    "policy",
+    "refund",
+    "guide"
+   ],
+   "message": "About 33% of documents form a group no benchmark question is close to (about: policy, refund, guide)."
+  }
+ ],
+ "coverage": {
+  "method": "k-means on the full-dimensional vectors",
+  "k": 8,
+  "seed": 0,
+  "min_share": 0.05,
+  "far_factor": 2.0,
+  "note": "A finding is a hypothesis: the benchmark may not ask about that part of the corpus. 2D maps distort distance, so findings come from this full-dimensional grouping, and a question can sit far from its answers in an embedding space."
+ }
+}

@@ -1,0 +1,9 @@
+{
+  "backend": "chroma",
+  "name": "production collection",
+  "url": "https://YOUR-CHROMA-HOST.example.com",
+  "token_env": "CHROMA_TOKEN",
+  "tenant": "default_tenant",
+  "database": "default_database",
+  "collection": "docs"
+}

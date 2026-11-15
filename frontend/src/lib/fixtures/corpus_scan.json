@@ -1,0 +1,175 @@
+{
+ "format": "vectraudit.corpus_scan",
+ "format_version": 1,
+ "evidence": "hypothesis",
+ "note": "Findings are hypotheses that mark a document for a person to read. They do not show a document is safe or unsafe, and no document text is recorded.",
+ "summary": {
+  "documents": 5,
+  "flagged": 4,
+  "findings": 4,
+  "by_detector": {
+   "chat_template_token": 1,
+   "exfiltration_beacon": 1,
+   "html_comment": 1,
+   "instruction_override": 1
+  },
+  "documents_by_detector": {
+   "chat_template_token": 1,
+   "exfiltration_beacon": 1,
+   "html_comment": 1,
+   "instruction_override": 1
+  },
+  "by_severity": {
+   "high": 3,
+   "medium": 1
+  }
+ },
+ "detectors": [
+  {
+   "id": "instruction_override",
+   "version": 1,
+   "severity": "high",
+   "explanation": "Text that tells a model to ignore or override its earlier instructions."
+  },
+  {
+   "id": "role_reassignment",
+   "version": 1,
+   "severity": "low",
+   "explanation": "Text such as \"you are now ...\", which can reassign the model's role. Ordinary prose says it too (\"you are now logged in\"), so it is a weak signal on its own."
+  },
+  {
+   "id": "prompt_reference",
+   "version": 1,
+   "severity": "medium",
+   "explanation": "Text that refers to the system prompt or a developer message, which documents rarely do."
+  },
+  {
+   "id": "chat_template_token",
+   "version": 1,
+   "severity": "high",
+   "explanation": "A chat-template or role marker (such as <|im_start|>, [INST], <<SYS>> or a line starting 'assistant:') that can make retrieved text read as a different speaker."
+  },
+  {
+   "id": "zero_width_character",
+   "version": 1,
+   "severity": "medium",
+   "explanation": "A zero-width character, which can hide text from a reader or split a phrase past a filter."
+  },
+  {
+   "id": "bidi_control",
+   "version": 1,
+   "severity": "high",
+   "explanation": "A bidirectional control character, which can reorder text so it reads differently from how a program sees it."
+  },
+  {
+   "id": "html_comment",
+   "version": 1,
+   "severity": "medium",
+   "explanation": "An HTML comment: text a reader of the rendered page never sees."
+  },
+  {
+   "id": "hidden_style",
+   "version": 1,
+   "severity": "high",
+   "explanation": "A style that hides text (display:none or font-size:0)."
+  },
+  {
+   "id": "exfiltration_beacon",
+   "version": 1,
+   "severity": "high",
+   "explanation": "A Markdown image or link whose URL has a template placeholder in its query string, the pattern injected text uses to send data to an outside server."
+  },
+  {
+   "id": "encoded_instruction",
+   "version": 1,
+   "severity": "high",
+   "explanation": "A long base64 or hex run that decodes to an instruction or role marker."
+  },
+  {
+   "id": "mixed_script_word",
+   "version": 1,
+   "severity": "low",
+   "explanation": "A word mixing Latin letters with Cyrillic or Greek ones, which can be a homoglyph used to slip past a filter."
+  }
+ ],
+ "review": [
+  {
+   "doc_id": "page-chat_template_token",
+   "row": 3,
+   "severity": "high",
+   "findings": 1
+  },
+  {
+   "doc_id": "page-exfiltration_beacon",
+   "row": 5,
+   "severity": "high",
+   "findings": 1
+  },
+  {
+   "doc_id": "page-instruction_override",
+   "row": 2,
+   "severity": "high",
+   "findings": 1
+  },
+  {
+   "doc_id": "page-html_comment",
+   "row": 4,
+   "severity": "medium",
+   "findings": 1
+  }
+ ],
+ "documents": [
+  {
+   "doc_id": "page-chat_template_token",
+   "row": 3,
+   "findings": [
+    {
+     "detector": "chat_template_token",
+     "start": 13,
+     "end": 25,
+     "severity": "high",
+     "evidence": "hypothesis"
+    }
+   ]
+  },
+  {
+   "doc_id": "page-exfiltration_beacon",
+   "row": 5,
+   "findings": [
+    {
+     "detector": "exfiltration_beacon",
+     "start": 8,
+     "end": 64,
+     "severity": "high",
+     "evidence": "hypothesis"
+    }
+   ]
+  },
+  {
+   "doc_id": "page-html_comment",
+   "row": 4,
+   "findings": [
+    {
+     "detector": "html_comment",
+     "start": 13,
+     "end": 65,
+     "severity": "medium",
+     "evidence": "hypothesis"
+    }
+   ]
+  },
+  {
+   "doc_id": "page-instruction_override",
+   "row": 2,
+   "findings": [
+    {
+     "detector": "instruction_override",
+     "start": 24,
+     "end": 56,
+     "severity": "high",
+     "evidence": "hypothesis"
+    }
+   ]
+  }
+ ]
+}

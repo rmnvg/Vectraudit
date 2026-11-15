@@ -73,7 +73,153 @@ def intake(tmp_path: Path) -> dict[str, Any]:
     return run(tmp_path, first_batch())
 
 
-@pytest.mark.parametrize("build", [lineage, freshness, access, cache, migration, intake])
+def fusion_replay(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_fusion_replay import _dataset, _run
+    from vectraudit.pipelines.fusion_replay import Config, next_step, replay
+
+    dataset, run = _run(_dataset(extra={0: {"split": "heldout"}}))
+    configs = [Config("rrf"), Config("wsum", norm="none")]
+    report = replay(run, dataset, configs)
+    report["next_step"] = next_step(report, configs)
+    return report
+
+
+def corpus_scan(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_corpus_scan import CLEAN, POISONED
+    from vectraudit.evaluation.corpus_scan import scan_corpus
+
+    keep = ("instruction_override", "chat_template_token", "html_comment", "exfiltration_beacon")
+    docs = [("billing-faq", CLEAN["plain"])]
+    docs += [(f"page-{name}", POISONED[name]) for name in keep]
+    return scan_corpus(docs)
+
+
+def poisoning(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_poisoning import policy, runs_for
+    from vectraudit.pipelines.poisoning import analyse
+
+    loaded, dataset, make = runs_for(tmp_path)
+    hijack, inject = "poison:hijack:q-refund:1", "poison:inject:q-refund:1"
+    clean = make("clean-run", {"q-refund": ["refund-policy"], "q-reset": ["reset-guide"]})
+    poisoned = make(
+        "poisoned-run",
+        {"q-refund": [hijack, inject], "q-reset": ["reset-guide"], "q-open": [hijack]},
+    )
+    limits = {"max_retrieved_rate": {"hijack": 0.0}, "max_displacement_rate": 0.05}
+    rules = policy(robustness=limits)
+    return analyse(clean, poisoned, dataset, loaded, rules, controls=1, seed=0)
+
+
+def promptfoo_redteam(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_promptfoo_redteam import SPECS, run_import
+
+    return run_import(tmp_path, SPECS)[1]
+
+
+def selectivity_sweep(tmp_path: Path) -> dict[str, Any]:
+    import faiss
+    import numpy as np
+
+    from vectraudit.core import vectors as V
+    from vectraudit.core.advice import advise_selectivity
+    from vectraudit.core.loader import load_index
+    from vectraudit.core.search import GroundTruth
+    from vectraudit.core.selectivity import selectivity_sweep as sweep_filters
+    from vectraudit.core.selectivity import synthetic_spec
+    from vectraudit.core.sweep import sample_queries
+    from vectraudit.selectivity_cli import result_json
+
+    x = np.random.default_rng(3).standard_normal((3000, 16)).astype("float32")
+    index = faiss.IndexHNSWFlat(16, 16)
+    index.add(x)
+    li = load_index(index)
+    gt = GroundTruth(V.from_arrays(li, x), li.metric)
+    result = sweep_filters(
+        li,
+        sample_queries(gt.source, 30, seed=0),
+        gt,
+        [synthetic_spec(0.01)],
+        values=[16, 32],
+        k=10,
+        repeats=1,
+    )
+    return result_json(result, 0.95, advise_selectivity(result, 0.95), truth_reconstructed=False)
+
+
+def capacity(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_capacity import _plan, _Stub
+    from vectraudit.evaluation.capacity import run_capacity
+    from vectraudit.evaluation.dataset import parse_dataset
+
+    rows = [{"query_id": f"q{i}", "vector": [float(i)] * 32} for i in range(5)]
+    dataset = parse_dataset("\n".join(json.dumps(r) for r in rows))
+    stub = _Stub(lambda n, request: ["1", "2"], exact=True)
+    return run_capacity(
+        dataset,
+        lambda: stub,
+        _plan(concurrency=(1,), max_rps=20.0, serial_queries=3),
+        safety={"confirmed_target": "staging", "target": "staging", "production_override": False},
+    )
+
+
+def label_audit(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_label_audit import ROWS, dataset, two_runs
+    from vectraudit.evaluation.label_audit import audit_labels
+
+    ds = dataset(ROWS)
+    return audit_labels(ds, two_runs(ds))
+
+
+def embedding_drift(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_embedding_drift import BILLING, CRYPTO, bench_rows, hashed
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.evaluation.dataset_tools import render_dataset
+    from vectraudit.pipelines.embedding_drift import benchmark_drift
+
+    ds = parse_dataset(render_dataset(bench_rows()))
+    production = [(f"t{i}", text) for i, text in enumerate(CRYPTO[:40] + BILLING[:20])]
+    return benchmark_drift(ds, production, hashed, model="hash", source="traces.jsonl")
+
+
+def component_scoreboard(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_components import broken_run
+    from vectraudit.evaluation.components import component_scoreboard as board
+
+    return board(broken_run({"multi_hop": ["retrieve", "rerank"]}))
+
+
+def run_header(tmp_path: Path) -> dict[str, Any]:
+    from tests.test_components import broken_run
+    from vectraudit.evaluation.runfile import run_header_report
+
+    path = tmp_path / "large.run.json"
+    run = broken_run()
+    run["label"] = "nightly"
+    path.write_text(json.dumps(run))
+    return run_header_report(path)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lineage,
+        freshness,
+        access,
+        cache,
+        migration,
+        intake,
+        fusion_replay,
+        corpus_scan,
+        poisoning,
+        promptfoo_redteam,
+        selectivity_sweep,
+        capacity,
+        label_audit,
+        embedding_drift,
+        component_scoreboard,
+        run_header,
+    ],
+)
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):
     current = build(tmp_path)
     fixture = json.loads((FIXTURES / f"{build.__name__}.json").read_text())

@@ -1,0 +1,117 @@
+{
+  "format": "vectraudit.label_audit",
+  "format_version": 1,
+  "dataset_sha256": "28259b597444335517ca2d67029eb82898134ad0d0bebf78303ae3f8291d1080",
+  "evidence": "hypothesis",
+  "include_heldout": false,
+  "settings": {
+    "min_runs": 2,
+    "duplicate_cosine": 0.995
+  },
+  "runs": [
+    {
+      "run_id": "r1",
+      "label": "r1",
+      "k": 5,
+      "source": "measured"
+    },
+    {
+      "run_id": "r2",
+      "label": "r2",
+      "k": 5,
+      "source": "measured"
+    }
+  ],
+  "runs_ignored": 0,
+  "excluded": {
+    "heldout_questions": 1,
+    "exploratory_repeats_of_heldout": 0,
+    "already_reviewed": 0
+  },
+  "signals": {
+    "rank": {
+      "status": "measured",
+      "questions_audited": 1,
+      "questions_skipped": {
+        "fewer than two relevant labels": 1
+      },
+      "flagged": 2
+    },
+    "near_duplicate": {
+      "status": "not_measured",
+      "reason": "No corpus vectors given."
+    },
+    "annotators": {
+      "status": "not_measured",
+      "reason": "No labelling task given."
+    }
+  },
+  "summary": {
+    "suspects": 2,
+    "questions": 1,
+    "by_kind": {
+      "label_may_be_missing": 1,
+      "label_may_be_wrong": 1
+    },
+    "by_signal": {
+      "rank": 2,
+      "near_duplicate": 0,
+      "annotators": 0
+    }
+  },
+  "suspects": [
+    {
+      "query_id": "q1",
+      "doc_id": "z",
+      "label": {
+        "state": "relevant",
+        "grade": 1.0
+      },
+      "kind": "label_may_be_wrong",
+      "signals": [
+        {
+          "signal": "rank",
+          "strength": 1.0,
+          "score": 0.0,
+          "threshold": 0.5,
+          "runs": 2,
+          "returned_by": 0,
+          "best_rank": null,
+          "label_state": "relevant"
+        }
+      ],
+      "score": 1.0,
+      "priority": 4,
+      "reason": "labelled relevant, but the candidate runs rank it no higher than the question's not-relevant results (or every run misses it)",
+      "evidence": "hypothesis",
+      "source": "label_audit"
+    },
+    {
+      "query_id": "q1",
+      "doc_id": "m",
+      "label": {
+        "state": "unjudged",
+        "grade": null
+      },
+      "kind": "label_may_be_missing",
+      "signals": [
+        {
+          "signal": "rank",
+          "strength": 0.8,
+          "score": 0.9,
+          "threshold": 0.5,
+          "runs": 2,
+          "returned_by": 2,
+          "best_rank": 1,
+          "label_state": "unjudged"
+        }
+      ],
+      "score": 0.8,
+      "priority": 4,
+      "reason": "unjudged (counted as not relevant), but the candidate runs rank it as high as the question's relevant documents",
+      "evidence": "hypothesis",
+      "source": "label_audit"
+    }
+  ],
+  "note": "Suspects are hypotheses for a reviewer, ordered by priority and score (a ranking, not a probability). Nothing was changed: a reviewer's decisions make a new dataset version with `vectraudit workbench review-labels`."
+}

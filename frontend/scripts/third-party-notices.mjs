@@ -20,6 +20,15 @@ function licenceFiles(dir, depth = 0) {
     .flatMap((e) => licenceFiles(join(dir, e), depth + 1))
 }
 
+// Packages that are installed only because a required peer depends on them and that no emitted
+// chunk contains (checked by tests/test_third_party_notices.py). Their licence is the one their
+// package.json declares; they ship no licence file to copy.
+const NOT_BUNDLED = new Set(['@duckdb/duckdb-wasm'])
+
+// Bundled packages that ship no licence file: the licence text of their upstream repository,
+// copied verbatim into scripts/licences/ (their package.json declares the same licence).
+const VENDORED = { 'embedding-atlas': 'licences/embedding-atlas.LICENSE' }
+
 const lock = JSON.parse(readFileSync(join(FRONTEND, 'package-lock.json'), 'utf8'))
 const sections = []
 for (const [path, pkg] of Object.entries(lock.packages).sort(([a], [b]) => a.localeCompare(b))) {
@@ -28,6 +37,11 @@ for (const [path, pkg] of Object.entries(lock.packages).sort(([a], [b]) => a.loc
   const dir = join(FRONTEND, path)
   if (!existsSync(dir)) throw new Error(`${name} is not installed; run npm ci first`)
   const files = licenceFiles(dir)
+  if (!files.length && VENDORED[name]) files.push(join(import.meta.dirname, VENDORED[name]))
+  if (!files.length && NOT_BUNDLED.has(name)) {
+    sections.push(`${name}@${pkg.version} (${pkg.license ?? 'see its package.json'})\n\nNot bundled into the web UI: installed as a dependency of a required peer and tree-shaken out of every chunk. It ships no licence file.`)
+    continue
+  }
   if (!files.length) throw new Error(`${name}@${pkg.version} has no licence file`)
   const texts = files.map((f) =>
     files.length > 1 ? `[${relative(dir, f)}]\n${readFileSync(f, 'utf8').trim()}` : readFileSync(f, 'utf8').trim(),

@@ -200,15 +200,28 @@ def _otlp_value(value: Any) -> Any:
     return None
 
 
+def _otlp_attributes(raw: Any) -> dict[str, Any]:
+    return {
+        a["key"]: _otlp_value(a.get("value"))
+        for a in raw or []
+        if isinstance(a, dict) and isinstance(a.get("key"), str)
+    }
+
+
 def _otlp_spans(obj: Mapping[str, Any]) -> Iterator[Span]:
+    from vectraudit.pipelines.openllmetry import is_openllmetry, translate
+
     for resource in obj.get("resourceSpans") or []:
         for scope in (resource or {}).get("scopeSpans") or []:
             for raw in (scope or {}).get("spans") or []:
-                attributes = {
-                    a["key"]: _otlp_value(a.get("value"))
-                    for a in raw.get("attributes") or []
-                    if isinstance(a, dict) and isinstance(a.get("key"), str)
-                }
+                attributes = _otlp_attributes(raw.get("attributes"))
+                events = [
+                    {"name": e.get("name"), "attributes": _otlp_attributes(e.get("attributes"))}
+                    for e in raw.get("events") or []
+                    if isinstance(e, dict)
+                ]
+                if is_openllmetry(attributes, events):  # OpenLLMetry (Traceloop) conventions
+                    attributes = translate(attributes, events)
                 yield _span(
                     raw.get("traceId"),
                     raw.get("spanId"),
@@ -361,6 +374,8 @@ class TraceView:
     duplicates_dropped: int = 0
     prompt: str = ""
     """Normalized text of every recorded LLM input message; memory only, never written."""
+    prompts: frozenset[tuple[str, str]] = frozenset()
+    """``(name, version)`` of each managed prompt the trace recorded; never the template."""
 
 
 def _documents(
@@ -438,6 +453,63 @@ def _query_text(value: Any) -> str | None:
     return None
 
 
+PROMPT_FIELD_LIMIT = 200
+
+
+def _prompt_part(value: Any) -> str | None:
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return None
+    text = str(value).strip()
+    return text[:PROMPT_FIELD_LIMIT] if text else None
+
+
+def span_prompts(span: Span) -> set[tuple[str, str]]:
+    """``(name, version)`` of each managed prompt a span recorded.
+
+    Read from the conventions each source documents, never from the template text:
+
+    - OpenInference: ``prompt.id`` and ``llm.prompt_template.version`` (Langfuse
+      observations are converted to these from ``promptName`` and ``promptVersion``).
+    - LangSmith (LangChain hub prompts): ``lc_hub_owner``, ``lc_hub_repo`` and
+      ``lc_hub_commit_hash`` in the run's metadata.
+    - Opik: the ``opik_prompts`` list in span or trace metadata, each with a ``name`` and a
+      ``version`` holding a ``commit`` or ``version_number``.
+
+    A version without a prompt name is kept under ``prompt_template``.
+    """
+    attributes = span.attributes
+    found: set[tuple[str, str]] = set()
+    version = _prompt_part(attributes.get("llm.prompt_template.version"))
+    if version:
+        found.add((_prompt_part(attributes.get("prompt.id")) or "prompt_template", version))
+    raw = attributes.get("metadata")
+    try:
+        meta = json.loads(raw) if isinstance(raw, str) else None
+    except ValueError:
+        meta = None
+    if not isinstance(meta, dict):
+        return found
+    repo, commit = (
+        _prompt_part(meta.get("lc_hub_repo")),
+        _prompt_part(meta.get("lc_hub_commit_hash")),
+    )
+    if repo and commit:
+        owner = _prompt_part(meta.get("lc_hub_owner"))
+        found.add((f"{owner}/{repo}" if owner and owner != "-" else repo, commit))
+    entries = meta.get("opik_prompts")
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        name = _prompt_part(entry.get("name"))
+        info = entry.get("version") if isinstance(entry.get("version"), dict) else {}
+        assert isinstance(info, dict)
+        number = _prompt_part(info.get("version_number"))
+        ver = _prompt_part(info.get("commit")) or number
+        if name and ver:
+            found.add((name, ver))
+    return found
+
+
 def view_trace(spans: Sequence[Span], settings: Settings) -> TraceView:
     """Read one trace's retrieval stages, query identity and recorded capabilities."""
     ordered = sorted(spans, key=lambda s: (s.start_ns, s.end_ns, s.span_id))
@@ -451,9 +523,11 @@ def view_trace(spans: Sequence[Span], settings: Settings) -> TraceView:
     llm_spans = 0
     llm_context = False
     prompt: list[str] = []
+    prompts: set[tuple[str, str]] = set()
     for span in ordered:
         metadata = _metadata(span)
         metadata_keys.update(metadata)
+        prompts |= span_prompts(span)
         if settings.query_attribute is not None and query_id is None:
             key = settings.query_attribute
             value = (
@@ -513,6 +587,7 @@ def view_trace(spans: Sequence[Span], settings: Settings) -> TraceView:
         llm_context=llm_context,
         llm_spans=llm_spans,
         prompt=_normal("\n".join(prompt)),
+        prompts=frozenset(prompts),
         metadata_keys=metadata_keys,
         session=any("session.id" in s.attributes for s in ordered),
         user=any("user.id" in s.attributes for s in ordered),
@@ -802,6 +877,14 @@ class TracePipeline:
         return result
 
 
+def prompt_summary(used: Mapping[str, Collection[str]]) -> dict[str, str | list[str]]:
+    """Each prompt's version, or its sorted versions when the run mixed several."""
+    return {
+        name: next(iter(versions)) if len(versions) == 1 else sorted(versions)
+        for name, versions in sorted(used.items())
+    }
+
+
 def import_traces(
     dataset: Dataset,
     path: str | Path,
@@ -841,7 +924,13 @@ def import_traces(
     options = PipelineOptions(
         k=k, warmup=0, repeats=1, evidence=evidence, label=label, retry=NO_RETRY
     )
-    config = {
+    used: dict[str, set[str]] = defaultdict(set)
+    for qid, view in kept.items():
+        found = match.by_question.get(qid) or []
+        if len(found) == 1 or settings.duplicates == "latest":  # traces actually used
+            for name, version in view.prompts:
+                used[name].add(version)
+    config: dict[str, Any] = {
         "adapter": "trace_import",
         "name": FORMAT,
         "shape": shape,
@@ -855,13 +944,18 @@ def import_traces(
             "duplicates": settings.duplicates,
         },
     }
+    if used:  # absent when no prompt versions were recorded, so older configs are unchanged
+        config["prompts"] = prompt_summary(used)
     run = execute_pipeline(dataset, pipeline, options, config=config)
     _use_trace_timing(run, pipeline.latency)
     for q in run["queries"]:
         found = match.by_question.get(q["query_id"]) or []
         if len(found) == 1 or (found and settings.duplicates == "latest"):
             # Local link for evaluations keyed by trace (Phoenix, Langfuse); never uploaded.
-            q["trace_id"] = kept[q["query_id"]].trace_id
+            chosen = kept[q["query_id"]]
+            q["trace_id"] = chosen.trace_id
+            if chosen.prompts:
+                q["prompts"] = [{"name": n, "version": v} for n, v in sorted(chosen.prompts)]
     report = capability_report(
         views, match, dataset, settings, run, shape=shape, k=k, context=pipeline.context
     )
@@ -887,6 +981,36 @@ def _use_trace_timing(run: dict[str, Any], latency: Mapping[str, float]) -> None
 
 def _capability(status: str, detail: str) -> dict[str, str]:
     return {"status": status, "detail": detail}
+
+
+def _prompt_capability(views: Sequence[TraceView], run: Mapping[str, Any]) -> dict[str, Any]:
+    traced = sum(bool(v.prompts) for v in views)
+    questions = sum(bool(q.get("prompts")) for q in run["queries"])
+    mixed = {
+        name: versions
+        for name, versions in ((run["backend"].get("config") or {}).get("prompts") or {}).items()
+        if isinstance(versions, list)
+    }
+    detail = (
+        f"Managed prompt versions recorded in {traced} of {len(views)} traces and for "
+        f"{questions} of {len(run['queries'])} questions."
+    )
+    if mixed:
+        detail += (
+            " Mixed versions in this run: "
+            + "; ".join(
+                f"{name} ({', '.join(versions)})" for name, versions in sorted(mixed.items())
+            )
+            + "."
+        )
+    if not traced:
+        detail += (
+            " Release checks cannot tell whether a prompt changed. Record prompt versions "
+            "(OpenInference prompt.id and llm.prompt_template.version, Langfuse prompt links, "
+            "LangChain hub prompts, or Opik prompts) to have prompt changes reported."
+        )
+    status = "missing" if not traced else ("observed" if traced == len(views) else "partial")
+    return _capability(status, detail)
 
 
 def capability_report(
@@ -990,6 +1114,7 @@ def capability_report(
             f"{context_counts['none']} (no prompt recorded). Inferred by matching recorded "
             "document text in the prompt; answers and citations are not imported yet.",
         ),
+        "prompt_versions": _prompt_capability(views, run),
         "replay": _capability(
             "not_available",
             "A trace file cannot rerun the application. Register a Python or HTTP pipeline to "
