@@ -93,7 +93,16 @@ Evaluations save query progress locally. Resume from **Saved progress** in the b
 or use `workbench run --resume CHECKPOINT_DIRECTORY`; failed-query retries are explicit.
 See [recovery details](docs/retrieval-workbench.md#resume-an-evaluation).
 
-![Workbench run view with stage evidence for one question](docs/screenshots/workbench.png)
+![Workbench run view: summary, the component scoreboard and stage evidence for one question](docs/screenshots/workbench.png)
+
+<table>
+<tr>
+<td><img alt="Checks tab: a label audit listing two labels to review, an embedding drift report naming a new topic, and a failed poisoning check" src="docs/screenshots/checks.png"></td>
+<td><img alt="Corpus atlas: a map of 20,000 documents with a coverage hypothesis that 12% of documents form a group no benchmark question is close to" src="docs/screenshots/atlas.png"></td>
+</tr>
+</table>
+
+![Component scoreboard: 71.4% of question families first lost their evidence at the reranker, two questions not observed](docs/screenshots/component-scoreboard.png)
 
 See the [workbench guide](docs/retrieval-workbench.md) for adapter manifests, stage
 evidence, no-answer and permission assertions, and data-handling boundaries.
