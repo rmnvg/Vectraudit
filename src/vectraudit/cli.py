@@ -1149,6 +1149,7 @@ from vectraudit.release_cli import (  # noqa: E402
     dataset_app,
     init,
     record,
+    tune,
 )
 
 app.add_typer(dataset_app, name="dataset")
@@ -1159,6 +1160,7 @@ from vectraudit.experiments_cli import experiment_app  # noqa: E402
 app.add_typer(experiment_app, name="experiment")
 app.command()(record)
 app.command()(capacity)
+app.command()(tune)
 app.command()(check)
 app.command()(init)
 app.command()(calibrate)
