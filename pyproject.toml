@@ -9,7 +9,7 @@ authors = [
     { name = "Ramanjot Singh", email = "ramanjotsingh247@gmail.com" }
 ]
 requires-python = ">=3.10"
-keywords = ["faiss", "vector-search", "ann", "rag", "retrieval", "visualization", "debugging"]
+keywords = ["retrieval", "rag", "evaluation", "release-checks", "vector-search", "ann", "faiss"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     # PyPI rejects any upload carrying this classifier: a guard against publishing by mistake.
