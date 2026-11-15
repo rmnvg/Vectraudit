@@ -38,6 +38,7 @@ REIMPLEMENTS = {
     "src/vectraudit/evaluation/run_table.py": ("Inspect",),
     "src/vectraudit/evaluation/annb_import.py": ("ann-benchmarks",),
     "src/vectraudit/core/sweep.py": ("ann-benchmarks",),
+    "src/vectraudit/experiments/labels.py": ("MTCB",),
     "src/vectraudit/evaluation/runfile.py": ("Inspect",),
 }
 

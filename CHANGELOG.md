@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit dataset import --format mtcb` imports an MTCB chunking-benchmark folder: each
+  `chunk-must-contain` passage is located exactly and becomes a relevant span. Experiment
+  reports show MTCB's passage-containment recall beside span recall. See `docs/experiments.md`.
 - `vectraudit sweep --batch` measures throughput with every query in one call (ann-benchmarks'
   batch mode), reported as batch queries per second beside single-query latency and never
   compared with it. See `docs/faiss-debugger.md`.

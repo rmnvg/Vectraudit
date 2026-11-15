@@ -39,7 +39,14 @@ from vectraudit.experiments.beir import load_beir
 from vectraudit.experiments.chunking import Chunk, chunk_corpus
 from vectraudit.experiments.corpus import Corpus, CorpusError, load_corpus
 from vectraudit.experiments.embedders import Embedder, EmbeddingCache, FloatArray, make_embedder
-from vectraudit.experiments.labels import chunk_labels, document_labels, documents_in_order
+from vectraudit.experiments.labels import (
+    CONTAINMENT_METRICS,
+    chunk_labels,
+    containing_rank,
+    containment_metrics,
+    document_labels,
+    documents_in_order,
+)
 from vectraudit.experiments.manifest import CandidateSpec, ExperimentError, Manifest
 
 EXPERIMENT_FORMAT = "vectraudit.experiment"
@@ -175,6 +182,8 @@ def run_candidate(
 
     queries = []
     span_rows = []
+    containment_rows = []
+    chunk_of = {c.chunk_id: c for c in chunks}
     for q, qv in zip(dataset.queries, query_vectors, strict=True):
         docs, chunk_ranking, latency_ms = _ranked_documents(index, qv, k, chunks, doc_of)
         exact_docs = None
@@ -201,6 +210,8 @@ def run_candidate(
             }
         )
         if q.relevant_spans:
+            rank = containing_rank(q.relevant_spans, [chunk_of[c] for c in chunk_ranking], k)
+            containment_rows.append((q.family_id or q.query_id, containment_metrics(rank, k)))
             span_labels = chunk_labels(q.relevant_spans, chunks)
             if span_labels:
                 span_rows.append(
@@ -268,12 +279,21 @@ def run_candidate(
         "build_index_s": build_s,
     }
     span_summary = None
-    if span_rows:
+    if span_rows or containment_rows:
         span_summary = {
             "n": len(span_rows),
             "n_families": len({key for key, _ in span_rows}),
             "metrics": {
                 m: family_mean((key, row[m]) for key, row in span_rows) for m in LABEL_METRICS
+            },
+            # MTCB's definition, kept apart: a chunk must contain the passage, not just overlap.
+            "passage_containment": {
+                "definition": "a top-k chunk contains a labelled span whole (MTCB)",
+                "n": len(containment_rows),
+                "metrics": {
+                    m: family_mean((key, row[m]) for key, row in containment_rows)
+                    for m in CONTAINMENT_METRICS
+                },
             },
         }
     return CandidateResult(spec, run, stats, span_summary)

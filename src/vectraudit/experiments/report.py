@@ -82,6 +82,9 @@ def rank(
                 "metrics": r.run["summary"]["metrics"],
                 "ann_recall": r.run["summary"].get("ann_recall"),
                 "span_metrics": (r.span_summary or {}).get("metrics"),
+                "passage_containment": (
+                    (r.span_summary or {}).get("passage_containment") or {}
+                ).get("metrics"),
                 "delta_vs_leader": float(deltas.mean()) if len(deltas) else 0.0,
                 "ci_vs_leader": [low, high],
                 "tied_with_leader": tied,
@@ -275,6 +278,7 @@ def render_html(ranked: dict[str, Any]) -> str:
                 _e(_n(r["metrics"]["precision"])),
                 _e(_n(r["ann_recall"])),
                 _e(_n((r["span_metrics"] or {}).get("recall"))),
+                _e(_n((r.get("passage_containment") or {}).get("recall"))),
             ]
         )
     cost_rows = []
@@ -324,6 +328,7 @@ def render_html(ranked: dict[str, Any]) -> str:
                 "Precision@k",
                 "ANN recall",
                 "Span recall",
+                "Passage recall (MTCB)",
             ],
             quality_rows,
         )

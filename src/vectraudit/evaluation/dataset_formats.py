@@ -48,6 +48,8 @@ class Imported:
     skipped: Counter[str] = field(default_factory=Counter)
     """Source queries left out, by reason."""
     warnings: list[str] = field(default_factory=list)
+    corpus: list[dict[str, Any]] | None = None
+    """Documents with the IDs the rows refer to, when the source has none of its own (MTCB)."""
 
 
 def _sha256(path: Path) -> str:
@@ -449,6 +451,106 @@ def _finish(out: Imported) -> None:
         raise DatasetError(f"No labelled queries could be imported: {reasons}.")
 
 
+MTCB_PASSAGE_FIELDS = ("chunk-must-contain", "chunk_must_contain")
+MTCB_MAX_OCCURRENCES = 100
+
+
+def _mtcb_records(directory: Path, names: tuple[str, ...], what: str) -> tuple[list[Any], Path]:
+    """The records of ``<name>.jsonl|json|csv|parquet`` or ``<name>/*.parquet`` in ``directory``."""
+    for name in names:
+        for suffix in (".jsonl", ".json", ".csv"):
+            path = directory / f"{name}{suffix}"
+            if path.is_file():
+                return read_records(path), path
+        parquet = sorted([*directory.glob(f"{name}.parquet"), *directory.glob(f"{name}/*.parquet")])
+        if parquet:
+            try:
+                import pyarrow.parquet as pq
+            except ImportError as e:
+                raise DatasetError(
+                    'Reading .parquet needs pyarrow: pip install "vectraudit[parquet]".'
+                ) from e
+            rows: list[Any] = []
+            for path in parquet:
+                rows.extend(pq.read_table(path).to_pylist())
+            return rows, parquet[0]
+    raise DatasetError(
+        f"{directory} has no {what}: expected {names[0]}.jsonl (or .json, .csv, .parquet). "
+        "Fetch the MTCB dataset yourself; Vectraudit never downloads datasets."
+    )
+
+
+def import_mtcb(directory: str | Path) -> Imported:
+    """An MTCB chunking-benchmark dataset as questions with relevant spans.
+
+    MTCB (read in its source, commit 6fd594a345aa) publishes each dataset as a ``corpus`` of
+    documents (``text``; no IDs) and ``questions`` (``question`` and ``chunk-must-contain``, the
+    passage a retrieved chunk must contain). Its dataset generator writes ``document`` and
+    ``chunk_must_contain`` instead; both spellings are read. Documents get the IDs
+    ``doc-<row>`` (or ``doc-<document_id>``), returned in ``Imported.corpus`` so the experiment
+    uses the same ones. Every exact occurrence of a passage, in any document, becomes a
+    relevant span, because MTCB counts a chunk that contains the passage wherever it comes
+    from. A passage that occurs nowhere exactly, or more than 100 times, is skipped and
+    counted, never matched loosely.
+    """
+    d = Path(directory)
+    if not d.is_dir():
+        raise DatasetError(f"{d} is not a directory holding an MTCB corpus and questions.")
+    corpus_rows, corpus_path = _mtcb_records(d, ("corpus",), "corpus")
+    question_rows, questions_path = _mtcb_records(d, ("questions", "qa"), "questions")
+    documents: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for n, rec in enumerate(corpus_rows):
+        text = rec.get("text", rec.get("document")) if isinstance(rec, Mapping) else None
+        if not isinstance(text, str) or not text:
+            raise DatasetError(f"{corpus_path.name} row {n + 1} has no text (or document) field.")
+        doc_id = f"doc-{rec['document_id']}" if rec.get("document_id") is not None else f"doc-{n}"
+        if doc_id in seen:
+            raise DatasetError(f"{corpus_path.name} repeats the document id {doc_id!r}.")
+        seen.add(doc_id)
+        documents.append({"doc_id": doc_id, "text": text})
+    out = Imported(
+        rows=[],
+        provenance={
+            "format": "mtcb",
+            "directory": d.name,
+            "corpus_file": corpus_path.name,
+            "corpus_sha256": _sha256(corpus_path),
+            "questions_file": questions_path.name,
+            "questions_sha256": _sha256(questions_path),
+            "documents": len(documents),
+            "passage_rule": "every exact occurrence of chunk-must-contain is a relevant span",
+        },
+        corpus=documents,
+    )
+    for n, rec in enumerate(question_rows):
+        question = rec.get("question") if isinstance(rec, Mapping) else None
+        passage = next(
+            (rec[f] for f in MTCB_PASSAGE_FIELDS if isinstance(rec, Mapping) and rec.get(f)), None
+        )
+        if not isinstance(question, str) or not question.strip():
+            out.skipped["no question text"] += 1
+            continue
+        if not isinstance(passage, str) or not passage:
+            out.skipped["no chunk-must-contain passage"] += 1
+            continue
+        spans: list[dict[str, Any]] = []
+        for doc in documents:
+            start = doc["text"].find(passage)
+            while start >= 0 and len(spans) <= MTCB_MAX_OCCURRENCES:
+                spans.append({"doc_id": doc["doc_id"], "start": start, "end": start + len(passage)})
+                start = doc["text"].find(passage, start + 1)
+        if not spans:
+            out.skipped["passage not found exactly in any document"] += 1
+            continue
+        if len(spans) > MTCB_MAX_OCCURRENCES:
+            out.skipped[f"passage occurs more than {MTCB_MAX_OCCURRENCES} times"] += 1
+            continue
+        out.rows.append({"query_id": f"mtcb-{n}", "text": question, "relevant_spans": spans})
+    _finish(out)
+    return out
+
+
 def import_format(
     source_format: str,
     source: str | Path,
@@ -460,7 +562,9 @@ def import_format(
     corpus_text_field: str | None = None,
     max_matches: int = MAX_MATCHES,
 ) -> Imported:
-    """Run the importer for ``source_format``: beir, trec, ragas or deepeval."""
+    """Run the importer for ``source_format``: beir, trec, mtcb, ragas or deepeval."""
+    if source_format == "mtcb":
+        return import_mtcb(source)
     if source_format == "beir":
         return import_beir(source, split=split)
     if source_format == "trec":
@@ -482,6 +586,6 @@ def import_format(
             out.provenance["corpus_sha256"] = _sha256(cp)
         return out
     raise DatasetError(
-        f"Unknown format {source_format!r}; use beir, trec, ragas, deepeval, or omit it for "
+        f"Unknown format {source_format!r}; use beir, trec, mtcb, ragas, deepeval, or omit it for "
         "CSV/JSON with column mapping."
     )
