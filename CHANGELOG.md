@@ -28,6 +28,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- The trust package and threat model cover the analyses added since the corpus atlas: no new
+  subprocessor, no dataset download, no outbound call, and which outputs contain text.
 - `vectraudit dataset import --format mtcb` imports an MTCB chunking-benchmark folder: each
   `chunk-must-contain` passage is located exactly and becomes a relevant span. Experiment
   reports show MTCB's passage-containment recall beside span recall. See `docs/experiments.md`.
