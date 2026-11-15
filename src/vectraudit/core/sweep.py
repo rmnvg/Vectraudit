@@ -269,8 +269,7 @@ class SweepResult:
         interval must meet the target instead of the mean. With ``max_p95_ms``, the
         setting's p95 latency must also be within that budget (see :meth:`choose`).
         """
-        ok = [p for p in self.points if _meets(p, target_recall, confident, max_p95_ms)]
-        return min(ok, key=lambda p: p.value) if ok else None
+        return recommend_point(self.points, target_recall, confident, max_p95_ms)
 
     def fastest(
         self, target_recall: float, *, confident: bool = False, max_p95_ms: float | None = None
@@ -288,30 +287,11 @@ class SweepResult:
     ) -> Choice:
         """The recommendation under a recall target and optional p95 budget, and if there is
         none, which constraint no measured setting could satisfy."""
-        rec = self.recommend(target_recall, confident=confident, max_p95_ms=max_p95_ms)
-        by_recall = self.recommend(target_recall, confident=confident)
-        in_budget = [p for p in self.points if _within(p, max_p95_ms)]
-        best_in_budget = max(in_budget, key=lambda p: (p.recall, -p.value), default=None)
-        if rec is not None:
-            status: ChoiceStatus = "ok"
-        elif by_recall is None:
-            status = "recall"
-        else:
-            status = "latency"
-        return Choice(status, rec, by_recall, best_in_budget, max_p95_ms)
+        return choose_point(self.points, target_recall, confident, max_p95_ms)
 
     def pareto(self) -> list[SweepPoint]:
         """Points not beaten on both recall and mean latency, fastest first."""
-        front = [
-            p
-            for p in self.points
-            if not any(
-                (o.recall >= p.recall and o.latency_mean_ms < p.latency_mean_ms)
-                or (o.recall > p.recall and o.latency_mean_ms <= p.latency_mean_ms)
-                for o in self.points
-            )
-        ]
-        return sorted(front, key=lambda p: p.latency_mean_ms)
+        return pareto_points(self.points)
 
 
 def _within(p: SweepPoint, max_p95_ms: float | None) -> bool:
@@ -601,3 +581,46 @@ def benchmark_environment() -> dict[str, str | int]:
         "processor": platform.processor(),
         "threads": 1,
     }
+
+
+# --- choosing among measured points, for any backend's sweep ---------------------------------
+
+
+def recommend_point(
+    points: Sequence[SweepPoint],
+    target_recall: float,
+    confident: bool = False,
+    max_p95_ms: float | None = None,
+) -> SweepPoint | None:
+    """The smallest parameter value whose recall meets the target (and the p95 budget)."""
+    ok = [p for p in points if _meets(p, target_recall, confident, max_p95_ms)]
+    return min(ok, key=lambda p: p.value) if ok else None
+
+
+def choose_point(
+    points: Sequence[SweepPoint],
+    target_recall: float,
+    confident: bool = False,
+    max_p95_ms: float | None = None,
+) -> Choice:
+    """The recommendation, or which constraint no measured value could satisfy."""
+    rec = recommend_point(points, target_recall, confident, max_p95_ms)
+    by_recall = recommend_point(points, target_recall, confident)
+    in_budget = [p for p in points if _within(p, max_p95_ms)]
+    best_in_budget = max(in_budget, key=lambda p: (p.recall, -p.value), default=None)
+    status: ChoiceStatus = "ok" if rec is not None else "recall" if by_recall is None else "latency"
+    return Choice(status, rec, by_recall, best_in_budget, max_p95_ms)
+
+
+def pareto_points(points: Sequence[SweepPoint]) -> list[SweepPoint]:
+    """Points not beaten on both recall and mean latency, fastest first."""
+    front = [
+        p
+        for p in points
+        if not any(
+            (o.recall >= p.recall and o.latency_mean_ms < p.latency_mean_ms)
+            or (o.recall > p.recall and o.latency_mean_ms <= p.latency_mean_ms)
+            for o in points
+        )
+    ]
+    return sorted(front, key=lambda p: p.latency_mean_ms)

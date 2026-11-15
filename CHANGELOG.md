@@ -28,6 +28,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit tune` sweeps one search-time setting on any backend that has one (Qdrant,
+  pgvector, Elasticsearch, OpenSearch, FAISS), measures recall against an exact reference and
+  client-side latency, recommends the smallest value that meets a recall target, and lists
+  the neighbours the worst queries missed. Read-only, confirmed by target name and bounded
+  before it starts. See `docs/tuning.md`.
 - `workbench attach-answers` reads Langfuse score exports and LangSmith feedback directly,
   attaching them by trace to runs imported from the same traces. `--evaluator NAME` names
   the scores that judge answers (`NAME=human` or `NAME=model` where the export does not say

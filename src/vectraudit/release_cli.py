@@ -875,6 +875,113 @@ def capacity(
         raise typer.Exit(code=1)
 
 
+def tune(
+    connection: Annotated[Path, typer.Option(help="Connection file (JSON).")],
+    dataset: Annotated[Path, typer.Option(help="Dataset file (JSONL) of query vectors or text.")],
+    param: Annotated[
+        str,
+        typer.Option(help="The search-time parameter to sweep, e.g. hnsw_ef or hnsw.ef_search."),
+    ],
+    values: Annotated[str, typer.Option(help="Comma-separated values, e.g. 16,32,64,128.")],
+    out: Annotated[Path, typer.Option(help="Where to write the tuning report (JSON).")],
+    confirm_target: Annotated[
+        str | None,
+        typer.Option(
+            help="The collection, index or table to search, repeated here so a copied command "
+            "cannot search another one."
+        ),
+    ] = None,
+    k: Annotated[int, typer.Option(min=1, help="Results per query.")] = 10,
+    repeats: Annotated[int, typer.Option(min=1, max=20, help="Timed searches per query.")] = 3,
+    target: Annotated[float, typer.Option(help="Recall the recommendation must reach.")] = 0.95,
+    max_p95_ms: Annotated[
+        float | None, typer.Option(min=0.0, help="Also require p95 latency within this budget.")
+    ] = None,
+    reference: Annotated[
+        Path | None,
+        typer.Option(
+            help="An external exact reference (reference.json) instead of the backend's own "
+            "exact search."
+        ),
+    ] = None,
+    max_rps: Annotated[
+        float, typer.Option(min=0.1, max=1000.0, help="Ceiling on searches per second.")
+    ] = 50.0,
+    max_searches: Annotated[
+        int, typer.Option(min=1, help="Refuse to start if the sweep needs more searches.")
+    ] = 100_000,
+    query: Annotated[
+        str | None, typer.Option(help="Also print this question's results at every value.")
+    ] = None,
+    embedder: Annotated[
+        str | None, typer.Option(help="sentence-transformers model for text-only queries.")
+    ] = None,
+    normalize_text: Annotated[
+        bool, typer.Option(help="L2-normalise text embeddings (for cosine / IP corpora).")
+    ] = False,
+    allow_production: Annotated[
+        bool, typer.Option(help="Allow a target whose name contains 'prod'.")
+    ] = False,
+) -> None:
+    """Sweep one search-time setting on any backend and recommend the cheapest value.
+
+    Runs the same queries at each value, measures ANN recall against one exact reference and
+    client-side latency, and recommends the smallest value that meets --target (within
+    --max-p95-ms). Read-only: it prints what it will send, needs --confirm-target, and is
+    bounded by --max-searches and --max-rps. Exits 2 when no value reaches the target.
+    """
+    from vectraudit.evaluation import tune as T
+    from vectraudit.evaluation.capacity import target_name
+    from vectraudit.evaluation.external_reference import ExternalReferenceError, load_reference
+
+    try:
+        swept = tuple(int(v) for v in values.replace(" ", "").split(",") if v)
+    except ValueError:
+        raise _fail("--values takes comma-separated integers, e.g. 16,32,64.") from None
+    try:
+        plan = T.TunePlan(
+            param=param, values=swept, k=k, repeats=repeats, max_rps=max_rps,
+            max_searches=max_searches, target=target, max_p95_ms=max_p95_ms,
+        )  # fmt: skip
+        ds = load_dataset(dataset)
+        cfg = load_connection(connection)
+        external = load_reference(reference) if reference is not None else None
+        probe = open_connector(cfg)
+    except (T.TuneRefused, DatasetError, ExternalReferenceError) as e:
+        raise _fail(str(e)) from e
+    except ConnectorError as e:
+        raise _fail(e.message, e.hint) from e
+    embed = _embedder(embedder, normalize_text)
+    with probe:
+        try:
+            info = probe.describe()
+            console.print("[bold]This will send:[/]")
+            for line in T.describe_plan(
+                plan, info.backend, target_name(info), len(ds), exact=external is None
+            ):
+                console.print(f"  {escape(line)}")
+            with console.status("Sweeping…"):
+                report = T.tune(
+                    ds, probe, plan, reference=external, base_params=cfg.params,
+                    confirm_target=confirm_target, allow_production=allow_production,
+                    connection_name=cfg.name, embed=embed, watch=query,
+                )  # fmt: skip
+        except T.TuneRefused as e:
+            err_console.print(f"[bold red]Not started:[/] {escape(str(e))}")
+            raise typer.Exit(code=1) from e
+        except ConnectorError as e:
+            raise _fail(e.message, e.hint) from e
+    report["connection"] = cfg.public()
+    save_run(report, out)
+    typer.echo(T.render(report))
+    if report["status"] == "cancelled":
+        raise typer.Exit(code=130)
+    if report["status"] != "complete":
+        raise typer.Exit(code=1)
+    if report["recommendation"]["value"] is None:
+        raise typer.Exit(code=2)
+
+
 def _fmt(value: float | None, spec: str = ".1f") -> str:
     return "n/a" if value is None else format(value, spec)
 
