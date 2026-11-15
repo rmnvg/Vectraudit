@@ -1,28 +1,35 @@
 # Vectraudit
 
-**Test your pipeline. Explain failures. Measure fixes. Guard every release.**
+**Retrieval evaluation and release checks for RAG and search. Test your pipeline. Explain
+failures. Measure fixes. Guard every release.**
 
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
 
-> **Proprietary and confidential.** Vectraudit (formerly faissight) is a commercial product,
-> distributed privately and not published to PyPI.
+> **Proprietary and confidential.** Vectraudit is a commercial product, distributed privately
+> and not published to PyPI.
 
 Vectraudit tells you whether a change to your retrieval system made it better or worse,
-and why. It measures baseline and candidate retrieval on the same versioned, labelled
-questions. It traces where each relevant document was lost and checks permission and
-no-answer behavior. Every decision is backed by query-level evidence. Evaluation runs on
-your infrastructure; only run files are uploaded, and only if you choose to.
+and why. It measures a baseline and a candidate on the same versioned, labelled questions,
+across the whole pipeline: query handling, keyword and vector retrieval, filters, fusion,
+reranking, context packing and the answer. It traces where each relevant document was lost,
+checks permission and no-answer behaviour, and backs every decision with query-level
+evidence. It works with eight vector backends, LangChain and LlamaIndex retrievers, any
+Python or HTTP pipeline, and traces from the observability tools you already run. Evaluation
+runs on your infrastructure; only run files are uploaded, and only if you choose to.
 
-There are three ways to use it:
+## What it does
 
-| | For | Start with |
+| You want to | Vectraudit gives you | Start with |
 |---|---|---|
-| **[Retrieval workbench](#retrieval-workbench)** | Building a benchmark, evaluating a whole pipeline or its production traces, comparing a fix in the browser | `vectraudit workbench serve` |
-| **[Release checks](#release-checks)** | Blocking regressions in CI on FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch, OpenSearch or Chroma | `vectraudit init` |
-| **[FAISS index debugger](#faiss-index-debugger)** | Explaining missed neighbours, quantization loss and recall vs latency inside one index | `vectraudit serve INDEX` |
-
-Results can also go to the [hosted control plane](docs/cloud-operations.md) for pinned
-baselines, history, reports and pull-request checks.
+| **Build and maintain a benchmark** | Guided labelling with grades, no-answer and permission cases, held-out splits and frozen versions; imports from BEIR, TREC, MTCB, Ragas, DeepEval, LangSmith and Langfuse; a label audit that finds labels likely to be wrong | [`workbench serve`](#retrieval-workbench), [`label`](docs/labelling.md), [`dataset import`](docs/release-checks.md#bringing-labels-you-already-have) |
+| **Evaluate a whole pipeline** | Stage-by-stage traces, the stage where each document was lost, a per-component scoreboard, side-by-side comparison of a fix | [`workbench run`](#retrieval-workbench) |
+| **Measure what is in production** | Runs built from OpenInference, OpenTelemetry, Phoenix, Langfuse, LangSmith, Opik and OpenObserve traces; answer judgments from your evaluation tools; a review queue of new questions; question, embedding and score drift | [`import-traces`, `intake`, `drift`](#from-production-traces-and-the-tools-you-already-use) |
+| **Block regressions in CI** | A pass, fail, error or not-comparable verdict under a release policy, with paired significance tests, cohort rules, critical questions, and HTML and GitHub reports | [`init`, `record`, `check`](#release-checks) |
+| **Explain a failure** | Investigation of one question, declared fixes tried and validated on held-out data, lineage and freshness, permission lifecycle, fusion replay, claim-level evidence | [Investigate deeper](#investigate-deeper) |
+| **Choose a setup** | Embedding models, chunkers and indexes compared on one labelled set; recall under filters; capacity under concurrent load; migration reports | [`experiment`](docs/experiments.md), [`capacity`](docs/capacity.md), [`migration`](docs/migration-report.md) |
+| **Check safety** | Permission and tenant assertions, cache-leak probes, corpus scans for injected instructions, poisoning checks | [Permissions](docs/permission-lifecycle.md), [poisoning](docs/poisoning.md) |
+| **See inside a FAISS index** | Missed neighbours and why, quantization loss, HNSW search replay, recall against latency | [`serve INDEX`](#faiss-index-debugger) |
+| **Share results with a team** | Pinned baselines, history, reports and pull-request checks on a hosted control plane | [Vectraudit Cloud](docs/cloud-operations.md) |
 
 ## Install
 
@@ -36,8 +43,9 @@ pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
 Extras install only what you use: the backends `[faiss-cpu]`, `[qdrant]`, `[pgvector]` and
 `[weaviate]` (Pinecone, Elasticsearch, OpenSearch and Chroma need none), `[text]` for
 sentence-transformers text queries, `[umap]` for the cluster map, `[parquet]` for Parquet
-inputs, `[hdf5]` for ann-benchmarks datasets and `[cloud]` for the hosted control plane. `[all]` includes all of these except the
-optional LLM labelling helper (`[label-llm]`). Python 3.10 to 3.13 is tested in CI.
+inputs, `[hdf5]` for ann-benchmarks datasets and `[cloud]` for the hosted control plane.
+`[all]` includes all of these except the optional LLM labelling helper (`[label-llm]`).
+Python 3.10 to 3.13 is tested in CI.
 
 Nothing runs from the open-source projects Vectraudit learns from (ranx, trec_eval, MTEB,
 RAGChecker and others): the methods are reimplemented and credited in
@@ -84,6 +92,8 @@ vectraudit workbench monitor manifest.json baseline.run.json
 Evaluations save query progress locally. Resume from **Saved progress** in the browser
 or use `workbench run --resume CHECKPOINT_DIRECTORY`; failed-query retries are explicit.
 See [recovery details](docs/retrieval-workbench.md#resume-an-evaluation).
+
+![Workbench run view with stage evidence for one question](docs/screenshots/workbench.png)
 
 See the [workbench guide](docs/retrieval-workbench.md) for adapter manifests, stage
 evidence, no-answer and permission assertions, and data-handling boundaries.
@@ -229,9 +239,10 @@ def test_retrieval_release():
 
 ## FAISS index debugger
 
-For FAISS users, a local UI explains what happens inside one index: which true neighbours
-the search missed and why, how much quantization costs, how balanced the lists are, and the
-cheapest setting that reaches your recall target.
+One of the eight backends gets a deeper tool. For FAISS users, a local UI explains what
+happens inside one index: which true neighbours the search missed and why, how much
+quantization costs, how balanced the lists are, and the cheapest setting that reaches your
+recall target.
 
 ```bash
 vectraudit demo                       # builds a real RAG demo once (~1 min), opens the UI
@@ -256,6 +267,9 @@ the index missed, and why.
 | **Relevance** | Recall, MRR and nDCG@k from labelled judgements, before and after exact reranking. |
 | **Run history** | Saved sweeps, comparisons and evaluations kept across restarts. |
 
+<details>
+<summary>More screenshots and supported index types</summary>
+
 <table>
 <tr>
 <td><img alt="Tuner: no nprobe reaches 0.95 recall on IVF-PQ; the suggested next step explains that compression caps recall near 0.62 and to re-rank with exact distances" src="docs/screenshots/tuner.png"></td>
@@ -274,6 +288,8 @@ the index missed, and why.
 | `IndexHNSWFlat`, `IndexHNSWSQ`/`PQ` | graph view, search trace, tuner (efSearch), quantization for SQ/PQ storage |
 | Wrappers: `IndexIDMap`/`IDMap2`, `IndexPreTransform` (PCA, OPQ), `IndexRefine` | unwrapped transparently; ids stay yours |
 | Binary, GPU, IVF FastScan, others | basic stats only (convert GPU indexes with `faiss.index_gpu_to_cpu`) |
+
+</details>
 
 From Python or Jupyter (JupyterLab, VS Code notebooks and Colab; see [Jupyter notes](docs/jupyter.md)):
 

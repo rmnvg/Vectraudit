@@ -1,7 +1,7 @@
 [project]
 name = "vectraudit"
 version = "0.1.0"
-description = "Retrieval release checks, local relevance labelling and FAISS debugging."
+description = "Retrieval evaluation and release checks for RAG and search, with a FAISS index debugger."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
@@ -9,7 +9,7 @@ authors = [
     { name = "Ramanjot Singh", email = "ramanjotsingh247@gmail.com" }
 ]
 requires-python = ">=3.10"
-keywords = ["faiss", "vector-search", "ann", "rag", "retrieval", "visualization", "debugging"]
+keywords = ["retrieval", "rag", "evaluation", "release-checks", "vector-search", "ann", "faiss"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     # PyPI rejects any upload carrying this classifier: a guard against publishing by mistake.
