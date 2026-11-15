@@ -33,6 +33,20 @@ exceptions stay local: the atlas sidecar carries document titles and is marked `
 and the benchmark audit's coverage groups carry terms drawn from local titles. Neither is part
 of an upload.
 
+The same holds for the later analyses: judge-corrected estimates, TREC, BEIR, MTEB and MTCB
+interchange, the label audit, embedding drift, the component scoreboard, run summaries and
+tables, the ann-benchmarks import and batch sweeps. All read local files and write local
+files. None adds a subprocessor, downloads a dataset or makes an outbound call. Vectraudit
+never runs a judge, MTEB, Evidently, cleanlab or any other evaluation tool: their methods are
+reimplemented ([credits](credits.md)). Embedding drift embeds production questions on your
+machine with a sentence-transformers model you already have; the first use of a model name
+that is not cached locally makes that library fetch it from its hub, as it does for text
+queries today. Three outputs contain text or terms and stay local: an embedding drift report
+(group terms from production questions), `dataset import --format mtcb --corpus-out` (document
+text) and intake's review queue. `runs table` and every other new report hold identifiers,
+numbers and flags only. One new optional dependency, h5py (BSD-3-Clause), reads HDF5 files
+for the ann-benchmarks import and is installed only with the `[hdf5]` extra.
+
 ## Data flows
 
 ```
