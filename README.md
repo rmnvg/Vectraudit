@@ -193,24 +193,32 @@ def test_retrieval_release():
 | Elasticsearch 8 / OpenSearch 2 | index with a `dense_vector` / `knn_vector` field | none |
 | Chroma 1.x | collection over the v2 REST API | none |
 
-Already have a benchmark? `vectraudit dataset import` reads BEIR, TREC qrels, Ragas test
-sets, DeepEval goldens and LangSmith/Langfuse exports ([formats](docs/release-checks.md#bringing-labels-you-already-have)).
-Already have other tooling? Runs and labels move in and out in the TREC formats that
-`trec_eval`, pytrec_eval, ir-measures and ranx read: `vectraudit runs export-trec`,
-`runs import-trec` (an imported run says it is external and is never judged on latency it
-did not measure) and `dataset export-qrels`. Every quality metric is tested to equal
-trec_eval's, and reports show each metric's ir-measures name (`nDCG@10`, `RR@10`) beside
-Vectraudit's ([details](docs/release-checks.md#moving-runs-and-labels-to-and-from-other-ir-tools-trec)).
-`vectraudit runs table` writes runs as one row per question and repeat (CSV or Parquet, no
-text) for your own notebooks, and `runs summary` validates runs of any size in a few MiB of
-memory ([large runs](docs/release-checks.md#large-runs-summaries-and-tables)).
-No labels yet? The [local labelling assistant](docs/labelling.md) (`vectraudit label`)
-pools candidate documents from your questions and source corpus, then supports blind
-second passes, agreement and reviewer resolution before export. Choosing a setup
-before you guard it? [Experiments](docs/experiments.md) (`vectraudit experiment`) compare
-embedding models, chunkings and indexes on one labelled set, from your own corpus or a BEIR
-folder you have downloaded, and `experiment export-mteb` writes each candidate in MTEB's
-result layout, clearly marked as not like for like with leaderboard scores.
+### Bring what you have, take results where you need them
+
+- **Labels you already have:** `vectraudit dataset import` reads BEIR folders, TREC qrels,
+  MTCB chunking benchmarks, Ragas test sets, DeepEval goldens and LangSmith/Langfuse exports
+  ([formats](docs/release-checks.md#bringing-labels-you-already-have)).
+- **No labels yet:** the [local labelling assistant](docs/labelling.md) (`vectraudit label`)
+  pools candidate documents from your questions and corpus, then supports blind second
+  passes, agreement and reviewer resolution before export. The
+  [label audit](docs/label-audit.md) later points reviewers at labels that look wrong.
+- **Other IR tooling:** runs and labels move in and out in the TREC formats that `trec_eval`,
+  pytrec_eval, ir-measures and ranx read (`runs export-trec`, `runs import-trec`,
+  `dataset export-qrels`). An imported run says it is external and is never judged on latency
+  it did not measure. Every quality metric is tested to equal trec_eval's, and reports show
+  each metric's ir-measures name (`nDCG@10`, `RR@10`)
+  ([details](docs/release-checks.md#moving-runs-and-labels-to-and-from-other-ir-tools-trec)).
+- **Your own notebooks:** `vectraudit runs table` writes one row per question and repeat
+  (CSV or Parquet, no text), and `runs summary` validates a run of any size in a few MiB of
+  memory ([large runs](docs/release-checks.md#large-runs-summaries-and-tables)).
+- **Public ANN benchmarks:** `dataset import-vdbbench` and `dataset import-annb` turn a
+  VectorDBBench or ann-benchmarks dataset's published neighbours into the reference for ANN
+  recall ([details](docs/vectordbbench.md)).
+- **Choosing a setup before you guard it:** [experiments](docs/experiments.md)
+  (`vectraudit experiment`) compare embedding models, chunkings and indexes on one labelled
+  set, from your own corpus, a BEIR folder or an MTCB benchmark. Reports show MTCB's passage
+  recall beside span recall, and `experiment export-mteb` writes each candidate in MTEB's
+  result layout, marked as not like for like with leaderboard scores.
 
 - [Your first release check in 15 minutes](docs/first-check.md)
 - [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
@@ -239,7 +247,7 @@ the index missed, and why.
 | View | What it shows |
 |---|---|
 | **Query explorer** | Search by text, stored id or vector. Compares with exact ground truth and gives a reason for every missed neighbour: *cell not probed*, *quantization*, *transform* (PCA/OPQ), or *ranked out*, plus the smallest nprobe that finds them all. |
-| **Tuner** | Recall@k and latency across nprobe or efSearch, the cheapest value for your target recall, the worst queries, and suggested next steps backed by the measurements. |
+| **Tuner** | Recall@k and latency across nprobe or efSearch, the cheapest value for your target recall, the worst queries, and suggested next steps backed by the measurements. On the command line, `sweep --batch` adds batch throughput, kept apart from single-query latency. |
 | **Compare** | Two indexes over the same vectors on identical queries: recall with intervals, mean/p95 latency, serialized size, and which queries' neighbours changed. |
 | **HNSW graph** | The layers of an HNSW graph and an animated, step-by-step replay of the search. |
 | **Quantization** | How far PQ/SQ codes are from your raw vectors and how much they distort near-neighbour distances. |
@@ -318,8 +326,10 @@ Browser tests run on Chromium, Firefox and WebKit: `npx playwright install chrom
 webkit`, build the UI, then `npm run e2e` in `frontend/`. The workbench journeys run with
 `node scripts/workbench_smoke.mjs` and `node scripts/guided_smoke.mjs`; the newer flows have
 `scripts/atlas_smoke.mjs` (the atlas, needs a GPU-capable Chrome), `scripts/checks_smoke.mjs` (the
-new check reports in the Checks tab) and `scripts/filtered_sweep_smoke.mjs` (the Tuner's pass-rate
-card).
+check reports in the Checks tab), `scripts/filtered_sweep_smoke.mjs` (the Tuner's pass-rate
+card), `scripts/estimates_smoke.mjs` and `scripts/components_smoke.mjs` (the run view's
+judge-corrected estimates and component scoreboard) and `scripts/large_run_smoke.mjs` (a run too
+large to open). Slow tests, such as the 200 MiB run, are skipped by default: `uv run pytest -m slow`.
 Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
