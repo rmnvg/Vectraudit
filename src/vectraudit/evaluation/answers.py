@@ -9,7 +9,9 @@ from a JSONL file, one judgment per line::
     {"trace_id": "4bf9…", "evaluator": "support-review", "rubric": "v3", "kind": "human",
      "verdict": "incorrect"}
 
-A judgment names its question by ``query_id`` or, for runs imported from traces, by
+The file may also be a Langfuse scores export or LangSmith feedback export, read through
+:mod:`vectraudit.evaluation.judgment_formats` once the caller names which scores judge
+answers. A judgment names its question by ``query_id`` or, for runs imported from traces, by
 ``trace_id``. ``verdict`` is ``correct``, ``partial`` or ``incorrect``; a judgment with only a
 ``score`` gets a verdict from a threshold the caller declares for that evaluator, never from
 a default. ``outcome`` (``answered``, ``abstained`` or ``handoff``) separates an answer from a
@@ -51,10 +53,11 @@ import re
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from vectraudit.evaluation import judgment_formats
 from vectraudit.evaluation.answer_estimates import estimate_rates
 from vectraudit.evaluation.review_sample import ReviewSample, ReviewSampleError, read_sample
 
@@ -396,18 +399,145 @@ def _redteam(raw: Any, line: int) -> dict[str, Any]:
     return {"plugin": plugin, "strategy": strategy, "passed": passed}
 
 
-def read_judgments(
-    path: str | Path, thresholds: Mapping[str, float] | None = None
-) -> list[tuple[str, str, Judgment]]:
-    """``(key kind, key, judgment)`` rows; key kind is ``query_id`` or ``trace_id``."""
-    thresholds = dict(thresholds or {})
-    for name, value in thresholds.items():
-        if not math.isfinite(value):
-            raise AnswerJudgmentError(f"threshold for {name} must be finite")
+def _records(text: str) -> tuple[list[tuple[int, Any]], bool]:
+    """``(position, object)`` pairs and whether the text was JSON lines.
+
+    Reads a JSON array, an API page (``{"data": [...]}``) or JSON lines. A line that is not
+    JSON is kept as its raw text, so the line-by-line parser reports it with its line number.
+    """
+    stripped = text.strip()
+    if stripped.startswith(("[", "{")):
+        try:
+            whole = json.loads(stripped)
+        except ValueError:
+            whole = None  # JSON lines, or broken JSON reported line by line
+        if isinstance(whole, dict) and isinstance(whole.get("data"), list):
+            whole = whole["data"]
+        if isinstance(whole, list):
+            return list(enumerate(whole, 1)), False
+    out: list[tuple[int, Any]] = []
+    for line, raw in enumerate(text.splitlines(), 1):
+        if raw.strip():
+            try:
+                out.append((line, json.loads(raw)))
+            except ValueError:
+                out.append((line, _BadLine(raw)))
+    return out, True
+
+
+@dataclass(frozen=True)
+class _BadLine:
+    raw: str
+
+
+@dataclass(frozen=True)
+class JudgmentFile:
+    """The judgments read from a file, its format, and what was skipped and why."""
+
+    rows: list[tuple[str, str, Judgment]]
+    source_format: str
+    skipped: dict[str, dict[str, int]] = field(default_factory=dict)
+
+
+def read_judgment_file(
+    path: str | Path,
+    thresholds: Mapping[str, float] | None = None,
+    *,
+    evaluators: Mapping[str, str | None] | None = None,
+    labels: Mapping[str, str] | None = None,
+) -> JudgmentFile:
+    """Judgments from a judgments file, a Langfuse scores export or LangSmith feedback.
+
+    ``evaluators`` names the vendor scores that judge answers, each with the kind (``human``
+    or ``model``) to use where the export does not say who judged, or ``None``. ``labels``
+    maps categorical values to verdicts. Both apply to vendor exports only. Vendor records
+    become judgment records and go through the same validation as a judgments file.
+    """
+    for name, kind in (evaluators or {}).items():
+        if kind is not None and kind not in KINDS:
+            raise AnswerJudgmentError(f"evaluator {name}: kind must be human or model")
+    for label, verdict in (labels or {}).items():
+        if verdict not in VERDICTS:
+            raise AnswerJudgmentError(
+                f"label {label!r}: verdict must be one of {', '.join(VERDICTS)}"
+            )
     try:
         text = Path(path).read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise AnswerJudgmentError(f"Cannot read {path}: {exc.strerror or exc}") from exc
+    records, lines = _records(text)
+    shapes = {
+        judgment_formats.shape_of(obj) or "vectraudit"
+        for _, obj in records
+        if not isinstance(obj, _BadLine)
+    }
+    if len(shapes) > 1:
+        raise AnswerJudgmentError(
+            f"{path} mixes formats ({', '.join(sorted(shapes))}); use one per file"
+        )
+    shape = shapes.pop() if shapes else "vectraudit"
+    if shape == "vectraudit":
+        if evaluators or labels:
+            raise AnswerJudgmentError(
+                "--evaluator and --label apply to Langfuse and LangSmith exports; a judgments "
+                "file names its evaluators and verdicts itself"
+            )
+        if not lines:  # a JSON array of judgment records: one per line, in order
+            text = "\n".join(json.dumps(obj) for _, obj in records)
+        return JudgmentFile(_parse_judgments(text, thresholds, path), shape)
+    if len(records) > MAX_JUDGMENTS:
+        raise AnswerJudgmentError(f"more than {MAX_JUDGMENTS} judgments; split the file")
+    if not evaluators:
+        names = Counter(
+            judgment_formats.evaluator_of(obj, shape) or "(unnamed)"
+            for _, obj in records
+            if isinstance(obj, Mapping)
+        )
+        listed = ", ".join(f"{n} ({c})" for n, c in sorted(names.items())[:30])
+        raise AnswerJudgmentError(
+            f"{path} is a {shape} export with scores named {listed}. Pass --evaluator NAME "
+            "for each score that judges answers (NAME=human or NAME=model where the export "
+            "does not say who judged); nothing is read by default."
+        )
+    selection = judgment_formats.Selection(evaluators, labels or {})
+    skipped: dict[str, Counter[str]] = defaultdict(Counter)
+    # Converted records keep their position (line or record number) for error messages;
+    # skipped ones leave a blank line, which the parser ignores.
+    converted_lines = [""] * (max((n for n, _ in records), default=0))
+    for n, obj in records:
+        if isinstance(obj, _BadLine):
+            converted_lines[n - 1] = obj.raw
+            continue
+        converted = judgment_formats.convert(obj, shape, selection)
+        if isinstance(converted, str):
+            skipped[converted][judgment_formats.evaluator_of(obj, shape) or "(unnamed)"] += 1
+        else:
+            converted_lines[n - 1] = json.dumps(converted)
+    summary = {reason: dict(sorted(names.items())) for reason, names in sorted(skipped.items())}
+    if not any(converted_lines):
+        why = "; ".join(
+            f"{judgment_formats.SKIPPED[r]}: {sum(n.values())}" for r, n in summary.items()
+        )
+        raise AnswerJudgmentError(f"{path} contains no judgments" + (f" ({why})" if why else ""))
+    rows = _parse_judgments("\n".join(converted_lines), thresholds, path)
+    return JudgmentFile(rows=rows, source_format=shape, skipped=summary)
+
+
+def read_judgments(
+    path: str | Path, thresholds: Mapping[str, float] | None = None
+) -> list[tuple[str, str, Judgment]]:
+    """``(key kind, key, judgment)`` rows; key kind is ``query_id`` or ``trace_id``."""
+    return read_judgment_file(path, thresholds).rows
+
+
+def _parse_judgments(
+    text: str, thresholds: Mapping[str, float] | None, path: str | Path
+) -> list[tuple[str, str, Judgment]]:
+    """Validate judgment records given as JSON lines."""
+    thresholds = dict(thresholds or {})
+    for name, value in thresholds.items():
+        if not math.isfinite(value):
+            raise AnswerJudgmentError(f"threshold for {name} must be finite")
     rows = []
     for line, raw in enumerate(text.splitlines(), 1):
         if not raw.strip():
@@ -813,6 +943,8 @@ def attach_answers(
     source_sha256: str | None = None,
     inventory: AbstractSet[str] | None = None,
     sample: ReviewSample | None = None,
+    source_format: str = "vectraudit",
+    skipped: Mapping[str, Mapping[str, int]] | None = None,
 ) -> dict[str, Any]:
     """A copy of the run with ``answer`` on each judged question and an ``answers`` summary.
 
@@ -930,6 +1062,8 @@ def attach_answers(
     out["answers"] = {
         "format_version": ANSWERS_FORMAT_VERSION,
         "source_sha256": source_sha256,
+        "source_format": source_format,
+        "skipped_judgments": {r: dict(n) for r, n in (skipped or {}).items()},
         "judged_questions": len(grouped),
         "unmatched_judgments": unknown,
         "evaluators": [
@@ -993,15 +1127,27 @@ def attach_file(
     thresholds: Mapping[str, float] | None = None,
     inventory: AbstractSet[str] | None = None,
     sample_path: str | Path | None = None,
+    *,
+    evaluators: Mapping[str, str | None] | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """:func:`attach_answers` from a judgments file, recording the file's digest."""
-    rows = read_judgments(path, thresholds)
+    """:func:`attach_answers` from a judgments file or vendor export, recording its digest."""
+    read = read_judgment_file(path, thresholds, evaluators=evaluators, labels=labels)
+    rows = read.rows
     digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
     try:
         sample = None if sample_path is None else read_sample(sample_path)
     except ReviewSampleError as exc:
         raise AnswerJudgmentError(f"{exc} {exc.hint}".strip()) from exc
-    return attach_answers(run, rows, source_sha256=digest, inventory=inventory, sample=sample)
+    return attach_answers(
+        run,
+        rows,
+        source_sha256=digest,
+        inventory=inventory,
+        sample=sample,
+        source_format=read.source_format,
+        skipped=read.skipped,
+    )
 
 
 def _pct(value: float) -> str:
@@ -1057,8 +1203,20 @@ def render_summary(run: Mapping[str, Any]) -> str:
     lines += _estimate_lines(answers.get("estimates"))
     for name, stats in answers["agreement_with_human"].items():
         lines.append(
-            f"{name} agrees with human review on {stats['agreed']} of {stats['questions']} "
-            "questions judged by both."
+            f"{name} (model judgments) agrees with human review on {stats['agreed']} of "
+            f"{stats['questions']} questions judged by both."
+        )
+    hints = {
+        "kind_undeclared": "pass --evaluator NAME=human or NAME=model if these are reviews; "
+        "end-user ratings are not",
+        "label_unmapped": "pass --label LABEL=correct|partial|incorrect",
+    }
+    for reason, names in (answers.get("skipped_judgments") or {}).items():
+        lines.append(
+            f"Skipped {sum(names.values())}: {judgment_formats.SKIPPED[reason]} "
+            f"({', '.join(sorted(names)[:10])})"
+            + (f"; {hints[reason]}" if reason in hints else "")
+            + "."
         )
     cites = answers.get("citations") or {}
     if cites.get("questions_with_citations"):

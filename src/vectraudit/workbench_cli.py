@@ -803,7 +803,10 @@ def promptfoo_judgments_command(
 @workbench_app.command("attach-answers")
 def attach_answers_command(
     run: Annotated[Path, typer.Argument(help="Run file whose answers were judged.")],
-    judgments: Annotated[Path, typer.Argument(help="Answer judgments (JSONL).")],
+    judgments: Annotated[
+        Path,
+        typer.Argument(help="Answer judgments (JSONL), Langfuse scores or LangSmith feedback."),
+    ],
     out: Annotated[Path, typer.Option(help="Run file to write, with the judgments.")],
     threshold: Annotated[
         list[str] | None,
@@ -826,12 +829,25 @@ def attach_answers_command(
             "summary gives a judge-corrected correct rate per model evaluator, or says why not."
         ),
     ] = None,
+    evaluator: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Langfuse or LangSmith: a score NAME that judges answers, or NAME=human / "
+            "NAME=model to say who judged where the export does not. Required for exports."
+        ),
+    ] = None,
+    label: Annotated[
+        list[str] | None,
+        typer.Option(help="LABEL=correct|partial|incorrect for categorical scores."),
+    ] = None,
 ) -> None:
     """Attach answer judgments from human review or tools such as Ragas, and diagnose them.
 
     Each judged question gets its verdict (human review decides when present; disagreement
     is reported as disputed) and the first observable loss between retrieval and answer.
-    Release verdicts do not change. Writes a new file; the original run is left unchanged.
+    Langfuse scores and LangSmith feedback attach by trace to a run imported from the same
+    traces. Release verdicts do not change. Writes a new file; the original run is left
+    unchanged.
     """
     from vectraudit.evaluation.answers import attach_file, render_summary
     from vectraudit.evaluation.migration import read_inventory
@@ -846,7 +862,22 @@ def attach_answers_command(
         if out.resolve() == run.resolve():
             raise ValueError("--out must differ from the run file; the original stays unchanged")
         known = set(read_inventory(inventory)) if inventory is not None else None
-        result = attach_file(load_run(run), judgments, limits, known, sample)
+        named: dict[str, str | None] = {}
+        for item in evaluator or []:
+            name, sep, kind = item.rpartition("=")
+            if sep and kind in ("human", "model") and name:
+                named[name] = kind
+            else:
+                named[item] = None
+        verdicts = {}
+        for item in label or []:
+            text, sep, verdict = item.rpartition("=")
+            if not sep or not text:
+                raise ValueError(f"--label expects LABEL=VERDICT, got {item!r}")
+            verdicts[text] = verdict
+        result = attach_file(
+            load_run(run), judgments, limits, known, sample, evaluators=named, labels=verdicts
+        )
         _write(out, result)
     except (OSError, ValueError) as exc:
         typer.echo(f"Attach error: {exc}", err=True)

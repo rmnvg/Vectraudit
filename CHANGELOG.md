@@ -28,6 +28,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `workbench attach-answers` reads Langfuse score exports and LangSmith feedback directly,
+  attaching them by trace to runs imported from the same traces. `--evaluator NAME` names
+  the scores that judge answers (`NAME=human` or `NAME=model` where the export does not say
+  who judged) and `--label` maps categorical values to verdicts. Undeclared, unnamed or
+  unusable scores are skipped and counted; comments and author IDs are not read. The
+  agreement line now says it measures model judgments.
 - The trust package and threat model cover the analyses added since the corpus atlas: no new
   subprocessor, no dataset download, no outbound call, and which outputs contain text.
 - `vectraudit dataset import --format mtcb` imports an MTCB chunking-benchmark folder: each

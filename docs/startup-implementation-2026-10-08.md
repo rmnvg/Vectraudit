@@ -2029,6 +2029,39 @@ only when named; a retriever without documents as a gap; orphan runs and mixed f
 refused; the CLI and intake on the same export. Full suite, ruff and mypy on Python 3.12 and
 3.10 pass.
 
+## Step 65: Langfuse scores and LangSmith feedback as answer judgments (strategy 1.2)
+
+Strategy 1.2: "Accept answer judgments from existing tools (Ragas, DeepEval, Langfuse
+scores, human review) before building any answer evaluator." Step 64 imported these teams'
+traces; their judgments still needed a conversion script.
+
+- **Read as exported.** `workbench attach-answers` accepts a Langfuse Scores API page or
+  list and LangSmith feedback as a list or JSON lines. `evaluation/judgment_formats.py`
+  turns each record into an ordinary judgment keyed by trace, and the existing reader
+  validates it, so verdicts, disputes, human agreement and diagnoses are unchanged.
+- **The caller names the answer judgments** (`--evaluator`). Without it the command lists
+  the score names in the export and reads nothing: relevance, toxicity and end-user ratings
+  sit beside correctness in the same export.
+- **Who judged is never guessed.** Langfuse `ANNOTATION` is human and `EVAL` is a model,
+  and LangSmith `model` feedback is a model, as their documentation states; anything else
+  needs `NAME=human` or `NAME=model`, otherwise the score is skipped and counted.
+- **Values and keys.** Verdict-named categories, or labels mapped with `--label`; numeric
+  and boolean values are scores needing a threshold. Langfuse attaches by `traceId`
+  (session and dataset-run scores are skipped); LangSmith by `trace_id`, else `run_id`.
+- The run's `answers` summary records the export format and the skipped counts by reason
+  and score name. Comments, corrections and author IDs are never read.
+
+Not included: LangSmith feedback on child runs without `trace_id` (matched through the
+trace file in a later step if partners need it), score configs as rubric versions, and a
+real partner's export.
+
+Validation: 4 tests built from the vendors' documented record fields: Langfuse human
+annotations deciding over an LLM judge with agreement measured, session, text and unnamed
+scores skipped; undeclared sources skipped and declared ones read with mapped labels;
+LangSmith feedback attached through the CLI to a run imported from LangSmith traces, with a
+documented model source kept over a declaration and a child run unmatched; refusals for
+unnamed evaluators, mixed formats and bad labels. No comment or author ID reaches the run.
+Full suite, ruff and mypy on Python 3.12 and 3.10 pass.
 ## Step 65: citations beside answer judgments (1.2)
 
 `attach-answers` judgments may carry `citations` (document IDs the answer cited) and

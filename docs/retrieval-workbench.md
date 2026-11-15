@@ -692,7 +692,8 @@ vectraudit workbench attach-answers current.run.json judgments.jsonl \
 ```
 
 One judgment per line, naming the question by `query_id` (or by `trace_id` for runs imported
-from traces, so Phoenix or Langfuse evaluations keyed by trace attach directly):
+from traces, so evaluations keyed by trace attach directly; Langfuse and LangSmith exports
+are read as they are, below):
 
 ```json
 {"query_id": "refund-annual", "evaluator": "support-review", "kind": "human", "verdict": "incorrect", "rubric": "v3"}
@@ -716,6 +717,36 @@ from traces, so Phoenix or Langfuse evaluations keyed by trace attach directly):
   deciding judgments makes the verdict `disputed`. Each model evaluator's agreement with
   human review is reported on the questions both judged.
 - Explanations and answer text are not read. Evaluator names, versions and rubrics are kept.
+
+**Scores already in Langfuse or LangSmith.** For a run imported from Langfuse or LangSmith
+traces, the scores or feedback on those traces attach without conversion. Pass the
+export, a Langfuse Scores API page (`{"data": [...]}`) or LangSmith feedback as a JSON array
+or one record per line, and name the scores that judge answers:
+
+```bash
+vectraudit workbench attach-answers traces.run.json scores.json --out judged.run.json \
+  --evaluator correctness --evaluator support-review=human \
+  --threshold correctness=0.7 --label "Partially correct=partial"
+```
+
+- **Only named scores are read.** An export holds every score a team records (retrieval
+  relevance, toxicity, end-user ratings); without `--evaluator` the command lists the score
+  names it found and reads nothing. Other scores are counted as skipped.
+- **Who judged** comes from the export only where the vendor says so: a Langfuse
+  `ANNOTATION` score is a person and an `EVAL` score is a model; LangSmith feedback from a
+  `model` source is a model. For any other source (Langfuse `API`, LangSmith `api` or
+  `app`) declare it with `--evaluator NAME=human` or `NAME=model`; an undeclared score is
+  skipped and counted, never guessed. End-user ratings are not reviews: leave them out.
+- **Values.** A categorical value is a verdict when it reads `correct`, `partial` or
+  `incorrect` (ignoring case), or when `--label` maps it; an unmapped label falls back to
+  the score's numeric value if it has one. Numeric and boolean values are scores and need a
+  `--threshold`, as above.
+- **Keys.** Langfuse scores attach by `traceId`; scores on a session or dataset run are
+  skipped. LangSmith feedback attaches by `trace_id`, or by `run_id` when there is none,
+  which is the trace for feedback on a root run; feedback on a child run without `trace_id`
+  matches no question and is counted as unmatched.
+- Comments, corrections and author IDs are never read. The run records the export's format
+  and how many scores were skipped, and why.
 
 **From DeepEval.** Teams that grade answers with DeepEval can use its saved results
 (`.deepeval/.latest_test_run.json`) directly:
