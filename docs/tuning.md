@@ -47,6 +47,36 @@ write, and Vectraudit's connectors only read. Measure recall at its current sett
   does not expose why its index skipped a vector. For causes (cell not probed, quantization),
   the [FAISS debugger](faiss-debugger.md) reads the index itself.
 
+## Filters, batch throughput and comparing two setups
+
+```bash
+vectraudit tune --connection connection.json --dataset queries.jsonl --param hnsw_ef \
+  --values 16,64,256 --confirm-target docs --filter lang=de --filter 'tier=pro;public=true' \
+  --batch --out tune.json
+vectraudit tune-compare old.tune.json new.tune.json --json comparison.json
+```
+
+- **`--filter`** (repeatable) repeats the sweep with that filter on every query. Each filter
+  gets its own curve, recommendation and exact neighbours (computed among the documents the
+  filter allows), and its pass rate, counted by the backend with the same condition. A backend
+  that cannot count reports the pass rate as unknown, never a guess. Filters need the
+  backend's own exact search, so they cannot be combined with `--reference`. Conditions are
+  scalar `key=value` pairs. The FAISS debugger's synthetic `--pass-rates` filters are not
+  offered here: they would need a field written into the collection.
+- **`--batch`** also sends every query in one batch call per value (FAISS and Qdrant's batch
+  query API; other backends are refused) and reports queries per second, best of the repeats.
+  It is a throughput, kept in its own field and never compared with the latency columns. A
+  batch is a burst: the rate ceiling paces single searches, not the inside of a batch.
+- **`tune-compare`** puts two sweeps side by side: two collections built differently, two
+  index setups, or two backends. Recall is compared at matched values only when both sweeps
+  used the same questions, the same `k` and the same kind of exact reference; otherwise the
+  result is "not comparable" (exit 4) with the reasons. Latency differences are shown only
+  when both sides are the same backend. It also lists the questions that miss neighbours in
+  one sweep and not the other, among each sweep's worst questions.
+
+Comparing two collections is also how to judge build-time settings (`m`, `ef_construction`,
+number of lists): build both yourself, sweep each, compare. Vectraudit never rebuilds an index.
+
 ## Bounds
 
 A sweep only sends searches, and it is bounded before the first one:

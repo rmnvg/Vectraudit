@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from urllib.parse import urlsplit
@@ -207,6 +207,33 @@ class QdrantConnector(Connector):
             )
         )
         return [str(p.id) for p in response.points]
+
+    batch_search = True
+
+    def _search_batch(self, requests: Sequence[SearchRequest]) -> list[list[str]]:
+        """Qdrant's batch query API: every request in one call."""
+        from qdrant_client import models
+
+        hnsw_ef = requests[0].params.get("hnsw_ef")
+        if hnsw_ef is not None and (type(hnsw_ef) is not int or hnsw_ef < 1):
+            raise ConnectorError(ErrorCode.CONFIG, "hnsw_ef must be a positive integer.")
+        batch = [
+            models.QueryRequest(
+                query=r.vector.tolist(),
+                using=self.vector_name,
+                params=models.SearchParams(hnsw_ef=hnsw_ef),
+                limit=r.k,
+                with_payload=False,
+                with_vector=False,
+            )
+            for r in requests
+        ]
+        responses = self._call(
+            lambda: self._client.query_batch_points(
+                self.collection, requests=batch, timeout=self._timeout
+            )
+        )
+        return [[str(p.id) for p in response.points] for response in responses]
 
     def _count(self, filter: Mapping[str, FilterValue]) -> int:
         """Qdrant's count API with ``exact=True``: a true count, not the approximate one."""

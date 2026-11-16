@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,13 @@ from vectraudit.core.filtering import AllowedSet, allowed_from_metadata, filter_
 from vectraudit.core.ivf import Assignments, assignments
 from vectraudit.core.loader import IndexLoadError, load_index
 from vectraudit.core.metadata import Metadata, MetadataError, load_metadata
-from vectraudit.core.search import GroundTruth, MissReason, probed_miss_reason, search
+from vectraudit.core.search import (
+    GroundTruth,
+    MissReason,
+    probed_miss_reason,
+    resolve_search_params,
+    search,
+)
 from vectraudit.core.types import IndexKind, LoadedIndex, Metric
 from vectraudit.core.vectors import VectorMismatchError, VectorSource, from_arrays, reconstruct_all
 
@@ -201,6 +207,23 @@ class FaissConnector(Connector):
         except ValueError as e:
             raise ConnectorError(ErrorCode.QUERY, str(e)) from e
         return [str(i) for i in result.valid_ids]
+
+    batch_search = True
+
+    def _search_batch(self, requests: Sequence[SearchRequest]) -> list[list[str]]:
+        """One FAISS search call with every query vector."""
+        first = requests[0]
+        try:
+            params = resolve_search_params(
+                self.li,
+                nprobe=_int_param(first.params, "nprobe"),
+                ef_search=_int_param(first.params, "ef_search"),
+            )[0]
+            matrix = np.ascontiguousarray(np.stack([r.vector for r in requests]), dtype=np.float32)
+            _, found = self.li.index.search(matrix, first.k, params=params)
+        except ValueError as e:
+            raise ConnectorError(ErrorCode.QUERY, str(e)) from e
+        return [[str(i) for i in row if i >= 0] for row in found]
 
     def evidence(
         self, request: SearchRequest, found: list[str], exact: list[str] | None

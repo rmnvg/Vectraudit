@@ -11,7 +11,7 @@ quality regression.
 from __future__ import annotations
 
 import abc
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from types import TracebackType
@@ -123,6 +123,9 @@ class Connector(abc.ABC):
     """Whether one instance may serve several threads at once. If not, a load run opens one
     connector per worker."""
 
+    batch_search: bool = False
+    """Whether :meth:`search_batch` sends every request in one backend call."""
+
     @abc.abstractmethod
     def describe(self) -> BackendInfo:
         """Describe the backend, corpus and configuration (no secrets)."""
@@ -146,6 +149,35 @@ class Connector(abc.ABC):
                 seen.add(i)
                 out.append(i)
         return out[: request.k]
+
+    def search_batch(self, requests: Sequence[SearchRequest]) -> list[list[str]]:
+        """Ranked ids for every request, sent to the backend in one batch call.
+
+        For throughput measurement. Only where ``batch_search`` is true; requests must share
+        ``k`` and tuning parameters and carry no filter and no exact flag.
+        """
+        if not self.batch_search:
+            raise ConnectorError(
+                ErrorCode.UNSUPPORTED, f"{self.name} has no batch search call in Vectraudit."
+            )
+        if not requests:
+            return []
+        first = requests[0]
+        for request in requests:
+            self.check_request(request)
+            if request.filter or request.exact:
+                raise ConnectorError(
+                    ErrorCode.UNSUPPORTED, "Batch search takes unfiltered, approximate requests."
+                )
+            if request.k != first.k or dict(request.params) != dict(first.params):
+                raise ConnectorError(
+                    ErrorCode.QUERY, "Batch requests must share k and tuning parameters."
+                )
+        return [list(dict.fromkeys(ids))[: first.k] for ids in self._search_batch(requests)]
+
+    def _search_batch(self, requests: Sequence[SearchRequest]) -> list[list[str]]:
+        """Backend-specific batch search; implemented with ``batch_search = True``."""
+        raise ConnectorError(ErrorCode.UNSUPPORTED, f"{self.name} has no batch search.")
 
     def count(self, filter: Mapping[str, FilterValue]) -> int:
         """The exact number of documents that satisfy ``filter`` (an empty filter: all).
