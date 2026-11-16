@@ -30,6 +30,7 @@ which connectors never do.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -55,6 +56,7 @@ from vectraudit.evaluation.capacity import safety_problems, target_name
 from vectraudit.evaluation.dataset import Dataset
 from vectraudit.evaluation.external_reference import ExternalReference, ExternalReferenceError
 from vectraudit.evaluation.metrics import ann_recall
+from vectraudit.evaluation.pass_rates import PassRates
 from vectraudit.evaluation.ratelimit import RateLimiter
 from vectraudit.evaluation.runner import _query_vectors
 
@@ -68,6 +70,12 @@ WARMUP = 5
 TIMING_SCOPE = (
     "client-side wall clock of one search call, network round trip included; one query at a "
     "time. Comparable between values of this sweep only."
+)
+
+
+BATCH_SCOPE = (
+    "queries per second with every query in one batch call (best of the repeats). A "
+    "throughput, never a latency: not compared with the latency columns."
 )
 
 
@@ -87,6 +95,10 @@ class TunePlan:
     max_searches: int = DEFAULT_MAX_SEARCHES
     target: float = 0.95
     max_p95_ms: float | None = None
+    filters: tuple[Mapping[str, Any], ...] = ()
+    """Extra curves: the sweep repeated with each filter applied to every query."""
+    batch: bool = False
+    """Also measure throughput with every query in one batch call, where the backend has one."""
 
     def __post_init__(self) -> None:
         if not self.values or len(self.values) > MAX_VALUES:
@@ -102,8 +114,12 @@ class TunePlan:
 
     def searches(self, n_queries: int, *, exact: bool) -> int:
         """Searches the sweep sends: warm-up, every value and repeat, and one exact per query."""
-        per_value = n_queries * self.repeats + min(WARMUP, n_queries)
-        return len(self.values) * per_value + (n_queries if exact else 0)
+        single = len(self.values) * (n_queries * self.repeats + min(WARMUP, n_queries))
+        unfiltered = single + (n_queries if exact else 0)
+        # Batch, on the unfiltered curve only: one untimed call, then one per repeat.
+        batches = len(self.values) * n_queries * (self.repeats + 1) if self.batch else 0
+        # A filtered curve always computes its own exact neighbours.
+        return unfiltered + batches + len(self.filters) * (single + n_queries)
 
 
 def describe_plan(
@@ -116,6 +132,19 @@ def describe_plan(
         f"{n_queries:,} queries x {len(plan.values)} values of {plan.param} x {plan.repeats} "
         f"repeats, plus warm-up" + (" and one exact search per query" if exact else ""),
         f"at most {plan.max_rps:g} searches per second (about {total / plan.max_rps:,.0f} s)",
+        *(
+            [
+                f"the same sweep again under each of {len(plan.filters)} filters, each with its "
+                "own exact search"
+            ]
+            if plan.filters
+            else []
+        ),
+        *(
+            ["batch calls holding every query at once (a burst; not paced within the batch)"]
+            if plan.batch
+            else []
+        ),
         "nothing is written to the backend",
     ]
 
@@ -126,6 +155,8 @@ def check_plan(
     backend: str,
     n_queries: int,
     reference: ExternalReference | None,
+    *,
+    batch_search: bool = False,
 ) -> None:
     """Refuse a sweep that cannot be measured or exceeds its bound. Sends nothing."""
     if plan.param not in caps.tuning_params:
@@ -145,6 +176,19 @@ def check_plan(
             f"{backend} has no exact search here, so recall cannot be measured. Pass an "
             "external exact reference with --reference."
         )
+    if plan.batch and not batch_search:
+        raise TuneRefused(
+            f"{backend} has no batch search call in Vectraudit, so --batch cannot be measured."
+        )
+    if plan.filters and not caps.filters:
+        raise TuneRefused(f"{backend} does not support filters here, so --filter cannot be swept.")
+    if plan.filters and reference is not None:
+        raise TuneRefused(
+            "An external reference holds neighbours for its own filter only; --filter needs the "
+            "backend's exact search."
+        )
+    if plan.filters and not caps.exact_reference:
+        raise TuneRefused(f"{backend} has no exact search, so filtered recall cannot be measured.")
     total = plan.searches(n_queries, exact=reference is None)
     if total > plan.max_searches:
         raise TuneRefused(
@@ -195,7 +239,9 @@ def tune(
     if watch is not None and watch not in {q.query_id for q in dataset.queries}:
         raise TuneRefused(f"The dataset has no question {watch!r}.")
     info, caps = connector.describe(), connector.capabilities()
-    check_plan(plan, caps, info.backend, len(dataset), reference)
+    check_plan(
+        plan, caps, info.backend, len(dataset), reference, batch_search=connector.batch_search
+    )
     problems = safety_problems(
         info, connection_name, confirm_target=confirm_target, allow_production=allow_production
     )
@@ -241,76 +287,38 @@ def tune(
         "points": [],
         "recommendation": None,
         "missed": [],
+        "filtered": [],
+        "batch": {"measured": plan.batch, "scope": BATCH_SCOPE if plan.batch else None},
     }
     paced = _Paced(connector, plan.max_rps)
-    rankings: dict[int, list[list[str]]] = {}
-    truth: list[list[str]] = []
     try:
         vectors, _ = _query_vectors(dataset, embed, info.dim)
+        steps = len(plan.values) * (1 + len(plan.filters))
+        done = 0
 
-        def request(i: int, value: int | None, *, exact: bool = False) -> SearchRequest:
-            q = dataset.queries[i]
-            tuned = params if value is None else {**params, plan.param: value}
-            return SearchRequest(
-                vectors[i],
-                plan.k,
-                filter=cast(Mapping[str, FilterValue], q.filter),
-                params={} if exact else tuned,
-                exact=exact,
-            )
-
-        for i, q in enumerate(dataset.queries):
-            truth.append(
-                reference.neighbours(q.query_id, plan.k)
-                if reference is not None
-                else paced.search(request(i, None, exact=True))[0]
-            )
-        points: list[SweepPoint] = []
-        for step, value in enumerate(sorted(plan.values)):
+        def tick() -> None:
+            nonlocal done
             if progress is not None:
-                progress(step, len(plan.values))
-            for i in range(min(WARMUP, len(dataset))):
-                paced.search(request(i, value))
-            found: list[list[str]] = []
-            latencies: list[float] = []
-            for i in range(len(dataset)):
-                for repeat in range(plan.repeats):
-                    ids, ms = paced.search(request(i, value))
-                    latencies.append(ms)
-                    if repeat == 0:
-                        found.append(ids)
-            rankings[value] = found
-            recalls = np.asarray(
-                [ann_recall(ids, exact) for ids, exact in zip(found, truth, strict=True)],
-                dtype=np.float64,
+                progress(done, steps)
+            done += 1
+
+        base = _curve(dataset, vectors, paced, plan, params, reference, None, tick, watch)
+        record.update(base)
+        counter = PassRates(connector)
+        for flt in plan.filters:
+            curve = _curve(dataset, vectors, paced, plan, params, None, flt, tick, None)
+            rate = counter.of(cast(Mapping[str, FilterValue], flt))
+            record["filtered"].append(
+                {
+                    "filter": dict(flt),
+                    "pass_rate": rate,
+                    "pass_rate_note": None
+                    if rate is not None
+                    else f"{info.backend} cannot count the documents a filter allows.",
+                    **curve,
+                }
             )
-            low, high, distribution, worst = summarize_recalls(recalls, None)
-            points.append(
-                SweepPoint(
-                    value=value,
-                    recall=float(recalls.mean()),
-                    latency_mean_ms=float(np.mean(latencies)),
-                    latency_p95_ms=float(np.percentile(latencies, 95)),
-                    recall_ci_low=low,
-                    recall_ci_high=high,
-                    recall_distribution=distribution,
-                    worst_queries=worst,
-                )
-            )
-            record["points"].append(_point(points[-1], dataset))
         record["status"] = "complete"
-        record["recommendation"] = _recommendation(points, plan)
-        chosen = recommend_point(points, plan.target, False, plan.max_p95_ms)
-        at = chosen.value if chosen is not None else max(plan.values)
-        record["missed"] = missed_neighbours(dataset, truth, rankings, at)
-        record["missed_at"] = at
-        if watch is not None:
-            i = next(n for n, q in enumerate(dataset.queries) if q.query_id == watch)
-            record["watched"] = {
-                "query_id": watch,
-                "exact_ids": list(truth[i]),
-                "by_value": {str(v): list(rankings[v][i]) for v in sorted(rankings)},
-            }
     except ConnectorError as e:
         record["error"] = e.as_dict()
     except KeyboardInterrupt:
@@ -322,8 +330,109 @@ def tune(
         }
     record["searches_sent"] = paced.sent
     if progress is not None:
-        progress(len(plan.values), len(plan.values))
+        total = len(plan.values) * (1 + len(plan.filters))
+        progress(total, total)
     return record
+
+
+def _curve(
+    dataset: Dataset,
+    vectors: Sequence[Any],
+    paced: _Paced,
+    plan: TunePlan,
+    params: Mapping[str, Any],
+    reference: ExternalReference | None,
+    flt: Mapping[str, Any] | None,
+    tick: Callable[[], None],
+    watch: str | None,
+) -> dict[str, Any]:
+    """One sweep: every value against one exact truth, under ``flt`` when given (else each
+    query's own filter). Batch throughput is measured on the unfiltered curve only."""
+
+    def request(i: int, value: int | None, *, exact: bool = False) -> SearchRequest:
+        q = dataset.queries[i]
+        tuned = params if value is None else {**params, plan.param: value}
+        return SearchRequest(
+            vectors[i],
+            plan.k,
+            filter=cast(Mapping[str, FilterValue], q.filter if flt is None else flt),
+            params={} if exact else tuned,
+            exact=exact,
+        )
+
+    n = len(dataset)
+    truth = [
+        reference.neighbours(q.query_id, plan.k)
+        if reference is not None
+        else paced.search(request(i, None, exact=True))[0]
+        for i, q in enumerate(dataset.queries)
+    ]
+
+    def recall_of(found: Sequence[Sequence[str]]) -> Any:
+        # A query whose filter allows nothing has no neighbours to miss: recall 1, as in sweep.
+        values = [ann_recall(ids, exact) for ids, exact in zip(found, truth, strict=True)]
+        return np.asarray([1.0 if v is None else v for v in values], dtype=np.float64)
+
+    rankings: dict[int, list[list[str]]] = {}
+    points: list[SweepPoint] = []
+    rows = []
+    for value in sorted(plan.values):
+        tick()
+        for i in range(min(WARMUP, n)):
+            paced.search(request(i, value))
+        found: list[list[str]] = []
+        latencies: list[float] = []
+        for i in range(n):
+            for repeat in range(plan.repeats):
+                ids, ms = paced.search(request(i, value))
+                latencies.append(ms)
+                if repeat == 0:
+                    found.append(ids)
+        rankings[value] = found
+        recalls = recall_of(found)
+        low, high, distribution, worst = summarize_recalls(recalls, None)
+        points.append(
+            SweepPoint(
+                value=value,
+                recall=float(recalls.mean()),
+                latency_mean_ms=float(np.mean(latencies)),
+                latency_p95_ms=float(np.percentile(latencies, 95)),
+                recall_ci_low=low,
+                recall_ci_high=high,
+                recall_distribution=distribution,
+                worst_queries=worst,
+            )
+        )
+        row = _point(points[-1], dataset)
+        if plan.batch and flt is None:
+            requests = [request(i, value) for i in range(n)]
+            paced.connector.search_batch(requests)  # untimed: connections and caches warm
+            best, answers = float("inf"), None
+            for _ in range(plan.repeats):
+                started = time.perf_counter()
+                answers = paced.connector.search_batch(requests)
+                best = min(best, time.perf_counter() - started)
+            paced.sent += n * (plan.repeats + 1)
+            assert answers is not None
+            row["batch_qps"] = n / max(best, 1e-9)
+            row["batch_recall"] = float(recall_of(answers).mean())
+        rows.append(row)
+    chosen = recommend_point(points, plan.target, False, plan.max_p95_ms)
+    at = chosen.value if chosen is not None else max(plan.values)
+    out: dict[str, Any] = {
+        "points": rows,
+        "recommendation": _recommendation(points, plan),
+        "missed": missed_neighbours(dataset, truth, rankings, at),
+        "missed_at": at,
+    }
+    if watch is not None:
+        i = next(k for k, q in enumerate(dataset.queries) if q.query_id == watch)
+        out["watched"] = {
+            "query_id": watch,
+            "exact_ids": list(truth[i]),
+            "by_value": {str(v): list(rankings[v][i]) for v in sorted(rankings)},
+        }
+    return out
 
 
 def _point(p: SweepPoint, dataset: Dataset) -> dict[str, Any]:
@@ -402,6 +511,8 @@ def render(report: Mapping[str, Any]) -> str:
     rec = report["recommendation"] or {}
     for p in report["points"]:
         mark = "  <- recommended" if p["value"] == rec.get("value") else ""
+        if "batch_qps" in p:
+            mark = f"  batch {p['batch_qps']:,.0f} q/s{mark}"
         lines.append(
             f"  {p['value']:>12}  {p['recall']:.3f}   {p['recall_ci_low']:.3f}-"
             f"{p['recall_ci_high']:.3f}  {p['latency_mean_ms']:8.2f} {p['latency_p95_ms']:8.2f}"
@@ -438,6 +549,24 @@ def render(report: Mapping[str, Any]) -> str:
         )
     if report["missed"]:
         lines.append("  A backend does not expose why a neighbour was missed; none is given.")
+    if (report.get("batch") or {}).get("measured"):
+        lines.append("Batch q/s is a throughput with every query in one call, not a latency.")
+    for curve in report.get("filtered") or []:
+        rate = curve["pass_rate"]
+        passing = "pass rate unknown" if rate is None else f"pass rate {rate:.2%}"
+        chosen = curve["recommendation"]["value"]
+        best = max(curve["points"], key=lambda p: p["recall"])
+        lines.append(
+            f"Filter {json.dumps(curve['filter'], sort_keys=True)} ({passing}): "
+            + (
+                f"recommended {report['param']}={chosen}"
+                if chosen is not None
+                else f"no value reached the target (best recall {best['recall']:.3f} at "
+                f"{report['param']}={best['value']})"
+            )
+            + "; recall "
+            + ", ".join(f"{p['value']}: {p['recall']:.3f}" for p in curve["points"])
+        )
     watched = report.get("watched")
     if watched:
         exact = set(watched["exact_ids"])
@@ -446,4 +575,132 @@ def render(report: Mapping[str, Any]) -> str:
             got = sum(1 for d in ids if d in exact)
             lost = ", ".join(d for d in watched["exact_ids"] if d not in ids) or "none"
             lines.append(f"  {report['param']}={value}: {got} of {len(exact)} found; missed {lost}")
+    return "\n".join(lines)
+
+
+# --- comparing two sweeps ----------------------------------------------------------------------
+
+
+def _reference_key(report: Mapping[str, Any]) -> tuple[str, str | None]:
+    ref = report["reference"]
+    return (str(ref.get("source")), ref.get("sha256"))
+
+
+def compare_tunes(a: Mapping[str, Any], b: Mapping[str, Any]) -> dict[str, Any]:
+    """Two sweeps side by side: recall at matched values, each recommendation, and the queries
+    whose missed neighbours differ.
+
+    Recall is compared only when both sweeps used the same questions, ``k`` and kind of exact
+    reference (the same external reference, or each backend's own exact search). Latency is
+    shown per side, and its difference only when both sides are the same backend: client-side
+    timings of different backends are not comparable.
+    """
+    for report in (a, b):
+        if report.get("format") != FORMAT:
+            raise TuneRefused("Both files must be vectraudit.tune reports.")
+    reasons = []
+    for name, report in (("first", a), ("second", b)):
+        if report["status"] != "complete":
+            reasons.append(f"The {name} sweep is {report['status']}, not complete.")
+    if a["dataset"]["sha256"] != b["dataset"]["sha256"]:
+        reasons.append("The sweeps used different question sets.")
+    if a["k"] != b["k"]:
+        reasons.append(f"The sweeps used k={a['k']} and k={b['k']}.")
+    if _reference_key(a) != _reference_key(b):
+        reasons.append(
+            "The sweeps measured recall against different exact references "
+            f"({_reference_key(a)[0]} and {_reference_key(b)[0]})."
+        )
+    same_backend = a["backend"]["backend"] == b["backend"]["backend"]
+    same_param = a["param"] == b["param"]
+
+    def side(report: Mapping[str, Any]) -> dict[str, Any]:
+        rec = report.get("recommendation") or {}
+        chosen = next((p for p in report["points"] if p["value"] == rec.get("value")), None)
+        return {
+            "backend": report["backend"]["backend"],
+            "target": report["target"],
+            "param": report["param"],
+            "recommended": rec.get("value"),
+            "recall": chosen["recall"] if chosen else None,
+            "latency_p95_ms": chosen["latency_p95_ms"] if chosen else None,
+        }
+
+    out: dict[str, Any] = {
+        "format": "vectraudit.tune_comparison",
+        "format_version": 1,
+        "comparable": not reasons,
+        "reasons": reasons,
+        "a": side(a),
+        "b": side(b),
+        "matched": [],
+        "missed_changed": None,
+        "latency_note": None
+        if same_backend
+        else "Different backends: latency is shown per side and not subtracted.",
+    }
+    if reasons:
+        return out
+    if same_param:
+        points_b = {p["value"]: p for p in b["points"]}
+        for p in a["points"]:
+            q = points_b.get(p["value"])
+            if q is None:
+                continue
+            out["matched"].append(
+                {
+                    "value": p["value"],
+                    "recall_a": p["recall"],
+                    "recall_b": q["recall"],
+                    "recall_change": q["recall"] - p["recall"],
+                    "p95_ms_a": p["latency_p95_ms"],
+                    "p95_ms_b": q["latency_p95_ms"],
+                    "p95_ms_change": q["latency_p95_ms"] - p["latency_p95_ms"]
+                    if same_backend
+                    else None,
+                }
+            )
+    missed_a = {row["query_id"] for row in a.get("missed") or []}
+    missed_b = {row["query_id"] for row in b.get("missed") or []}
+    out["missed_changed"] = {
+        "at": {"a": a.get("missed_at"), "b": b.get("missed_at")},
+        "only_a": sorted(missed_a - missed_b),
+        "only_b": sorted(missed_b - missed_a),
+        "both": sorted(missed_a & missed_b),
+        "note": "Among each sweep's lowest-recall questions at its own recommended value.",
+    }
+    return out
+
+
+def render_comparison(result: Mapping[str, Any]) -> str:
+    """The comparison as plain text for the terminal."""
+    lines = []
+    for key in ("a", "b"):
+        s = result[key]
+        chosen = (
+            f"recommended {s['param']}={s['recommended']} (recall {s['recall']:.3f}, p95 "
+            f"{s['latency_p95_ms']:.2f} ms)"
+            if s["recommended"] is not None
+            else "no value reached its target"
+        )
+        lines.append(f"{key.upper()}: {s['backend']} target {s['target']}: {chosen}")
+    if not result["comparable"]:
+        lines += [f"Not comparable: {reason}" for reason in result["reasons"]]
+        return "\n".join(lines)
+    for m in result["matched"]:
+        latency = "" if m["p95_ms_change"] is None else f", p95 {m['p95_ms_change']:+.2f} ms"
+        lines.append(
+            f"  {result['a']['param']}={m['value']}: recall {m['recall_a']:.3f} -> "
+            f"{m['recall_b']:.3f} ({m['recall_change']:+.3f}){latency}"
+        )
+    if not result["matched"]:
+        lines.append("  No swept value is shared, so recall is shown per recommendation only.")
+    if result["latency_note"]:
+        lines.append(result["latency_note"])
+    changed = result["missed_changed"]
+    lines.append(
+        f"Questions missing neighbours: {len(changed['only_a'])} only in A, "
+        f"{len(changed['only_b'])} only in B, {len(changed['both'])} in both "
+        "(each sweep's worst questions at its recommended value)."
+    )
     return "\n".join(lines)

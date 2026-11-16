@@ -219,3 +219,113 @@ def test_tune_command(synthetic, tmp_path):
         app, [*args, "--confirm-target", target, "--target", "1.0", "--values", "1"]
     )
     assert unreachable.exit_code == 2
+
+
+# --- Phase 43: filters, batch and comparing two sweeps ----------------------------------------
+
+
+def qdrant_report(synthetic, tmp_path, plan):
+    pytest.importorskip("qdrant_client")
+    from tests.test_connector_qdrant import build, connect
+
+    store = build(tmp_path / "qdrant", np.load(synthetic["vectors"])[:300])
+    with connect(store) as c:
+        return tune(dataset(synthetic, 10), c, plan, confirm_target="docs")
+
+
+def test_each_filter_gets_its_own_curve_exact_search_and_pass_rate(synthetic, tmp_path):
+    plan = TunePlan(
+        "hnsw_ef", (16, 64), k=5, repeats=1, max_rps=1e5,
+        filters=({"lang": "de"}, {"public": True}),
+    )  # fmt: skip
+    report = qdrant_report(synthetic, tmp_path, plan)
+    assert report["status"] == "complete", report["error"]
+    by_filter = {json.dumps(c["filter"]): c for c in report["filtered"]}
+    assert by_filter['{"lang": "de"}']["pass_rate"] == pytest.approx(0.5)
+    assert by_filter['{"public": true}']["pass_rate"] == pytest.approx(100 / 300)
+    for curve in report["filtered"]:
+        assert [p["value"] for p in curve["points"]] == [16, 64]
+        assert curve["recommendation"]["value"] == 16
+    # one unfiltered curve and two filtered ones, each with its own exact searches
+    assert report["searches_sent"] == report["searches_planned"] == 3 * (2 * (10 + 5) + 10)
+    assert 'Filter {"lang": "de"} (pass rate 50.00%): recommended hnsw_ef=16' in render(report)
+
+
+def test_filters_are_refused_where_they_cannot_be_measured(synthetic):
+    plan = TunePlan("nprobe", (1, 4), filters=({"lang": "de"},))
+    with pytest.raises(TuneRefused, match="does not support filters"):
+        run(synthetic, plan)  # this FAISS connection has no metadata
+
+
+def test_batch_throughput_is_reported_apart_from_latency(synthetic, tmp_path):
+    report = run(synthetic, TunePlan("nprobe", (1, 8), k=K, repeats=2, max_rps=1e6, batch=True))
+    assert report["batch"]["measured"] is True
+    assert "never a latency" in report["batch"]["scope"]
+    for p in report["points"]:
+        assert p["batch_qps"] > 0
+        assert p["batch_recall"] == pytest.approx(p["recall"])  # the same results, all at once
+        assert set(p) >= {"latency_mean_ms", "latency_p95_ms"}
+    assert report["searches_sent"] == report["searches_planned"]
+    assert "Batch q/s is a throughput" in render(report)
+    plain = run(synthetic)
+    assert all("batch_qps" not in p for p in plain["points"])
+    qdrant = qdrant_report(
+        synthetic, tmp_path, TunePlan("hnsw_ef", (16,), k=5, repeats=1, max_rps=1e5, batch=True)
+    )
+    assert qdrant["points"][0]["batch_recall"] == 1.0
+
+
+def test_batch_is_refused_where_the_backend_has_no_batch_call(synthetic, monkeypatch):
+    from vectraudit.connectors.faiss_index import FaissConnector
+
+    monkeypatch.setattr(FaissConnector, "batch_search", False)
+    with pytest.raises(TuneRefused, match="no batch search call"):
+        run(synthetic, TunePlan("nprobe", (1,), batch=True))
+
+
+def other_index(synthetic, index):
+    plan = TunePlan("nprobe", VALUES, k=K, repeats=1, max_rps=1e6)
+    with open_connector(faiss_connection(synthetic, index)) as c:
+        return tune(dataset(synthetic), c, plan, confirm_target=c.describe().target["index"])
+
+
+def test_two_setups_compare_at_matched_values(synthetic):
+    from vectraudit.evaluation.tune import compare_tunes, render_comparison
+
+    flat, pq = run(synthetic), other_index(synthetic, "ivf_pq")
+    result = compare_tunes(flat, pq)
+    assert result["comparable"] is True
+    assert [m["value"] for m in result["matched"]] == list(VALUES)
+    assert all(m["p95_ms_change"] is not None for m in result["matched"])  # same backend
+    assert result["matched"][-1]["recall_b"] <= result["matched"][-1]["recall_a"]  # PQ loses
+    text = render_comparison(result)
+    assert text.startswith("A: faiss target")
+    assert "Questions missing neighbours:" in text
+    # Different questions, k or references: not compared at all.
+    assert not compare_tunes(flat, {**pq, "k": 5})["comparable"]
+    other = {**pq, "dataset": {"sha256": "x", "n_queries": 1}}
+    assert "different question sets" in compare_tunes(flat, other)["reasons"][0]
+    external = {**pq, "reference": {"source": "external:annb", "sha256": "abc"}}
+    assert "different exact references" in compare_tunes(flat, external)["reasons"][0]
+    assert not compare_tunes(flat, {**pq, "status": "cancelled"})["comparable"]
+    # Another backend: recall is compared, latency is not subtracted.
+    elsewhere = {**pq, "backend": {**pq["backend"], "backend": "qdrant"}}
+    crossed = compare_tunes(flat, elsewhere)
+    assert all(m["p95_ms_change"] is None for m in crossed["matched"])
+    assert "not subtracted" in crossed["latency_note"]
+
+
+def test_tune_compare_command(synthetic, tmp_path):
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text(json.dumps(run(synthetic)))
+    b.write_text(json.dumps(other_index(synthetic, "ivf_pq")))
+    cli = CliRunner()
+    out = tmp_path / "cmp.json"
+    done = cli.invoke(app, ["tune-compare", str(a), str(b), "--json", str(out)])
+    assert done.exit_code == 0, done.output
+    assert "nprobe=1: recall" in done.output
+    assert json.loads(out.read_text())["format"] == "vectraudit.tune_comparison"
+    b.write_text(json.dumps({**json.loads(b.read_text()), "k": 3}))
+    assert cli.invoke(app, ["tune-compare", str(a), str(b)]).exit_code == 4
+    b.write_text("{}")
+    assert cli.invoke(app, ["tune-compare", str(a), str(b)]).exit_code not in (0, 4)

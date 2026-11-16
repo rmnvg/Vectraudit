@@ -28,6 +28,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit tune --filter` sweeps again under each metadata filter with its measured pass
+  rate, `--batch` adds batch throughput (FAISS, Qdrant) apart from latency, and
+  `vectraudit tune-compare` compares two sweeps at matched values. See `docs/tuning.md`.
 - `vectraudit tune` sweeps one search-time setting on any backend that has one (Qdrant,
   pgvector, Elasticsearch, OpenSearch, FAISS), measures recall against an exact reference and
   client-side latency, recommends the smallest value that meets a recall target, and lists

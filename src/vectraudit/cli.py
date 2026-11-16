@@ -1150,6 +1150,7 @@ from vectraudit.release_cli import (  # noqa: E402
     init,
     record,
     tune,
+    tune_compare,
 )
 
 app.add_typer(dataset_app, name="dataset")
@@ -1161,6 +1162,7 @@ app.add_typer(experiment_app, name="experiment")
 app.command()(record)
 app.command()(capacity)
 app.command()(tune)
+app.command("tune-compare")(tune_compare)
 app.command()(check)
 app.command()(init)
 app.command()(calibrate)

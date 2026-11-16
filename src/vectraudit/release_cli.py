@@ -922,6 +922,22 @@ def tune(
     allow_production: Annotated[
         bool, typer.Option(help="Allow a target whose name contains 'prod'.")
     ] = False,
+    filter_: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--filter",
+            help="Also sweep with this filter on every query, e.g. 'lang=de' (';' ANDs "
+            "conditions). Repeatable; each gets its own exact search and curve.",
+        ),
+    ] = None,
+    batch: Annotated[
+        bool,
+        typer.Option(
+            "--batch",
+            help="Also measure throughput with every query in one batch call (FAISS, Qdrant). "
+            "Reported apart from latency.",
+        ),
+    ] = False,
 ) -> None:
     """Sweep one search-time setting on any backend and recommend the cheapest value.
 
@@ -939,9 +955,25 @@ def tune(
     except ValueError:
         raise _fail("--values takes comma-separated integers, e.g. 16,32,64.") from None
     try:
+        filters = []
+        for text in filter_ or []:
+            conditions = {}
+            for part in filter(None, (p.strip() for p in text.split(";"))):
+                key, sep, raw = part.partition("=")
+                if not sep or not key.strip():
+                    raise T.TuneRefused(f"Cannot read the filter {part!r}; write key=value.")
+                try:
+                    value = json.loads(raw)
+                except ValueError:
+                    value = raw
+                if isinstance(value, (list, dict)) or value is None:
+                    raise T.TuneRefused("--filter takes scalar conditions: key=value.")
+                conditions[key.strip()] = value
+            filters.append(conditions)
         plan = T.TunePlan(
             param=param, values=swept, k=k, repeats=repeats, max_rps=max_rps,
             max_searches=max_searches, target=target, max_p95_ms=max_p95_ms,
+            filters=tuple(filters), batch=batch,
         )  # fmt: skip
         ds = load_dataset(dataset)
         cfg = load_connection(connection)
@@ -980,6 +1012,33 @@ def tune(
         raise typer.Exit(code=1)
     if report["recommendation"]["value"] is None:
         raise typer.Exit(code=2)
+
+
+def tune_compare(
+    first: Annotated[Path, typer.Argument(help="A tuning report (vectraudit tune --out).")],
+    second: Annotated[Path, typer.Argument(help="The tuning report to compare with it.")],
+    json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
+) -> None:
+    """Compare two tuning sweeps: two collections, index setups or backends on one dataset.
+
+    Recall is compared at matched values when both sweeps used the same questions, k and kind
+    of exact reference. Latency is shown per side and never subtracted across backends.
+    Exits 4 when the sweeps are not comparable.
+    """
+    from vectraudit.evaluation import tune as T
+
+    try:
+        result = T.compare_tunes(
+            json.loads(first.read_text(encoding="utf-8")),
+            json.loads(second.read_text(encoding="utf-8")),
+        )
+    except (OSError, ValueError, KeyError) as e:
+        raise _fail(f"Cannot compare: {e}") from e
+    typer.echo(T.render_comparison(result))
+    if json_out is not None:
+        json_out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    if not result["comparable"]:
+        raise typer.Exit(code=4)
 
 
 def _fmt(value: float | None, spec: str = ".1f") -> str:
