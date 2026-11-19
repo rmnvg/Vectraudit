@@ -35,11 +35,12 @@ test('atlas: loads quickly, finds the uncovered group and locates failing questi
   // with the right action for each kind of point. Hosted CI runners have no GPU: Chrome draws
   // WebGL in software there and the drag never registers a selection, so this part runs only
   // with a hardware renderer (locally, or `node scripts/atlas_smoke.mjs`).
-  const renderer = await page.evaluate(() => {
+  // A string expression: e2e files compile without the DOM library.
+  const renderer = String(await page.evaluate(`(() => {
     const gl = document.createElement('canvas').getContext('webgl2')
-    const info = gl?.getExtension('WEBGL_debug_renderer_info')
+    const info = gl && gl.getExtension('WEBGL_debug_renderer_info')
     return gl && info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : 'none'
-  })
+  })()`))
   if (/swiftshader|llvmpipe|software|none/i.test(renderer)) {
     test.info().annotations.push({ type: 'skipped-part', description: `rectangle selection needs a GPU (renderer: ${renderer})` })
     return
