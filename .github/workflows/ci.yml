@@ -192,9 +192,10 @@ jobs:
       - name: Configure bounded Ubuntu dependency downloads
         timeout-minutes: 1
         run: |
-          # Hosted runners can retry a stalled Azure APT mirror for tens of minutes.
-          # Keep the existing suites/components, but use the official HTTPS mirrors.
+          # Hosted runners can retry a stalled regional APT mirror (Azure or EC2) for tens of
+          # minutes. Keep the existing suites/components, but use the official HTTPS mirrors.
           sudo python3 - <<'PY'
+          import re
           from pathlib import Path
 
           paths = [Path('/etc/apt/sources.list'), Path('/etc/apt/apt-mirrors.txt'),
@@ -206,9 +207,8 @@ jobs:
                   continue
               original = path.read_text()
               updated = original
-              for scheme in ('http', 'https'):
-                  updated = updated.replace(f'{scheme}://azure.archive.ubuntu.com/ubuntu',
-                                            'https://archive.ubuntu.com/ubuntu')
+              updated = re.sub(r'https?://[a-z0-9.-]+\.archive\.ubuntu\.com/ubuntu',
+                               'https://archive.ubuntu.com/ubuntu', updated)
               updated = updated.replace('http://archive.ubuntu.com/ubuntu',
                                         'https://archive.ubuntu.com/ubuntu')
               updated = updated.replace('http://security.ubuntu.com/ubuntu',
@@ -222,9 +222,16 @@ jobs:
           )
           PY
       - name: Install browser system dependencies
-        timeout-minutes: 6
+        timeout-minutes: 15
         working-directory: frontend
-        run: npx playwright install-deps chromium firefox webkit
+        # A slow mirror occasionally stalls one attempt; retry rather than fail the job.
+        run: |
+          for attempt in 1 2 3; do
+            timeout 6m npx playwright install-deps chromium firefox webkit && exit 0
+            echo "::warning::install-deps attempt $attempt failed; retrying"
+            sleep 10
+          done
+          exit 1
       - name: Download browsers
         timeout-minutes: 5
         working-directory: frontend
