@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 FORMAT = "vectraudit.embedding_drift"
 FORMAT_VERSION = 1
 METHODS = ("model", "ratio", "distance", "mmd")
-DEFAULT_METHOD = "model"  # Evidently's default (owner decision D11)
+DEFAULT_METHOD = "model"  # Evidently's default
 EVIDENTLY_READ = "Evidently 0.7.22 (commit 34771fe41c08)"
 MODEL_THRESHOLD = 0.55
 BOOTSTRAP_BELOW = 1000  # Evidently tests the classifier against random scores below this

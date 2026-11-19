@@ -1135,7 +1135,7 @@ def investigations_command(
     workspace: Annotated[Path, typer.Argument(help="Workbench directory (workbench serve).")],
     json_out: Annotated[Path | None, typer.Option("--json", help="Also write JSON.")] = None,
 ) -> None:
-    """Pilot measures from investigation records: diagnoses, verified fixes, times.
+    """Measures from investigation records: diagnoses, verified fixes, times.
 
     Counts are given with their denominators and medians with their sample sizes. Names in
     the records are self-reported in the local workbench.

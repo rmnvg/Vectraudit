@@ -131,7 +131,6 @@ def test_each_command_sees_only_its_own_credentials(tmp_path, capsys):
         "VA_CANDIDATE_ENV": "API_KEY=candidate-secret\nEXTRA=1",
         "VA_GITHUB_TOKEN": "gh-token",
         "GH_TOKEN": "inherited",
-        "VECTRAUDIT_DOWNLOAD_TOKEN": "download",
         "KEEP": "runner-value",
     }
     runner = FakeRunner(environ, {"Check": 3})
@@ -150,7 +149,7 @@ def test_each_command_sees_only_its_own_credentials(tmp_path, capsys):
     ]
     for _, _, env in runner.calls:
         assert env["KEEP"] == "runner-value"
-        assert not {"GH_TOKEN", "VECTRAUDIT_DOWNLOAD_TOKEN"} & set(env)
+        assert "GH_TOKEN" not in env
         assert not any(key.startswith("VA_") for key in env)
     _, command, env = runner.find("Record the baseline")
     assert env["API_KEY"] == "base-secret"

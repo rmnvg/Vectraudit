@@ -125,13 +125,16 @@ expired.
 ## See it run
 
 `examples/reliability_story_demo.py` plants a revocation the assistant never received and a
-cache shared between users, and verifies both corrections (see
-[pilot release validation](pilot-release-validation.md#third-demonstration-content-and-access-that-changed)).
+cache shared between users, and verifies both corrections:
+
+```bash
+uv run python examples/reliability_story_demo.py --out /tmp/vectraudit-reliability
+```
 
 ## Limits
 
 - **Cached answers before the probe:** they can mask a cache leak (see above).
 - **Time to propagate:** not tracked across a series of runs.
-- **Customer change logs:** the check has not yet been run on one.
+- **User change logs:** the check has not yet been run on one.
 - **Data stays local:** nothing here uploads the change log or the derived benchmark. Keep
   them out of broadly shared case histories.

@@ -1,4 +1,4 @@
-"""The prospect sample page: built from demo reports, self-contained, labelled synthetic."""
+"""The sample evidence page: built from demo reports, self-contained, labelled synthetic."""
 
 from __future__ import annotations
 
@@ -55,5 +55,5 @@ def test_cli_writes_the_page_and_explains_a_missing_demo(tmp_path, capsys):
     out = tmp_path / "page.html"
     assert sample.main([str(demo_folder(tmp_path)), "--out", str(out)]) == 0
     assert out.read_text().startswith("<!doctype html>")
-    with pytest.raises(SystemExit, match=r"run examples/pilot_release_demo\.py first"):
+    with pytest.raises(SystemExit, match=r"run examples/release_demo\.py first"):
         sample.main([str(tmp_path / "missing"), "--out", str(out)])

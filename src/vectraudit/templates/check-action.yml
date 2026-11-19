@@ -4,16 +4,15 @@ description: >-
   the same runner, check them against the policy and keep the report.
 inputs:
   repository:
-    description: Private distribution repository (owner/name); never the source repository.
-    required: true
+    description: >-
+      GitHub repository (owner/name) whose public releases hold the wheel; empty means
+      Vectraudit's own. Set it only for a fork or mirror.
+    default: ""
   version:
     description: Exact package version, without v.
     required: true
   sha256:
     description: Reviewed wheel SHA-256, committed alongside the version.
-    required: true
-  token:
-    description: Customer-specific read-only token scoped to the distribution repository.
     required: true
   extras:
     description: Optional backend extras, separated by commas.
@@ -85,7 +84,6 @@ runs:
         repository: ${{ inputs.repository }}
         version: ${{ inputs.version }}
         sha256: ${{ inputs.sha256 }}
-        token: ${{ inputs.token }}
         extras: ${{ inputs.extras }}
 
     - name: Record and check

@@ -23,13 +23,13 @@ context packing or the answer:
 
 Rates are family-weighted: each paraphrase family counts once, split across the components
 its questions lost at, with a Wilson interval over families. The dataset header may map the
-customer's own tags to the components they are meant to exercise (``component_tags``), and
+user's own tags to the components they are meant to exercise (``component_tags``), and
 each such cohort gets its own rows. This is information for the run view and the release
 report; it never changes a verdict.
 
 IDs, counts and rates only. Credit: the per-component report follows Giskard's RAG
 evaluation toolkit (RAGET), which scores retriever, generator, rewriter and router by mapping
-question types to the components they exercise; here the mapping is the customer's tags and
+question types to the components they exercise; here the mapping is the user's tags and
 the attribution comes from recorded evidence, never from generated questions or a model
 grader. See docs/credits.md.
 """

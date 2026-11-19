@@ -69,7 +69,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True)
     name: Mapped[str] = mapped_column(String(200), default="")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    """Platform operator (us), not a customer role."""
+    """Platform operator (whoever runs the service), not a workspace role."""
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
@@ -81,9 +81,9 @@ class Workspace(Base):
     slug: Mapped[str] = mapped_column(String(64), unique=True)
     name: Mapped[str] = mapped_column(String(200))
     exports_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    plan: Mapped[str] = mapped_column(String(32), default="pilot")
+    plan: Mapped[str] = mapped_column(String(32), default="standard")
     limits: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
-    """Per-workspace overrides of the plan's limits (custom pilot deals)."""
+    """Per-workspace overrides of the profile's limits, set by the operator."""
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 

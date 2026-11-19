@@ -6,7 +6,7 @@
 FROM python:3.12-slim AS build
 WORKDIR /src
 RUN pip install --no-cache-dir uv
-COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY pyproject.toml uv.lock README.md LICENSE NOTICE ./
 COPY src ./src
 RUN uv build --wheel -o /dist
 

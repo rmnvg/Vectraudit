@@ -2,7 +2,7 @@
 
 Schema: passages(snapshot, tenant, doc_id, text, title, content_version, category).
 Index (snapshot, tenant, doc_id) for bounded lookups in a large corpus. Adapt the
-authorization and filter handling to your real source before using customer data.
+authorization and filter handling to your real source before using user data.
 """
 
 import os

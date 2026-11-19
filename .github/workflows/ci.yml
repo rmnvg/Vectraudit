@@ -239,7 +239,7 @@ jobs:
       - name: Interrupted evaluation recovery browser journey
         run: node scripts/resume_smoke.mjs
       - name: Benchmark and regression case browser journey
-        run: node scripts/market_fit_smoke.mjs
+        run: node scripts/guided_workflows_smoke.mjs
       - name: Retrieved passage review browser journey
         run: node scripts/passage_review_smoke.mjs
       - name: Registered document lookup browser journey

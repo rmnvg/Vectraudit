@@ -701,7 +701,7 @@ def render_release_workflow(pipeline: ReleasePipeline) -> str:
     install = ""
     if pipeline.kind == "python":
         install = (
-            "      - name: Install pipeline dependencies (customer-owned)\n"
+            "      - name: Install pipeline dependencies\n"
             "        run: |\n"
             "          # Install what your adapter imports, e.g. pip install -r requirements.txt.\n"
             "          # Do not install the pipeline package itself: python_path makes each\n"
@@ -742,10 +742,6 @@ def _readme(
         )
     if p.token_env:
         secrets.append(f"`{p.token_env}`: a read-only credential for the pipeline")
-    secrets.append(
-        "`VECTRAUDIT_DOWNLOAD_TOKEN`: customer-specific read-only access to the private "
-        "distribution repository, never the source repository"
-    )
     lines = [
         f"# Retrieval release check: {release.name} (configuration v{release.version})",
         "",
@@ -778,17 +774,17 @@ def _readme(
         "",
         "## Repository secrets",
         "",
-        *(f"- {item}" for item in secrets),
+        *(f"- {item}" for item in secrets or ["None."]),
         "",
         "## Installation pins",
         "",
         "Commit `.github/actions/` alongside the workflow: `retrieval-check` is the one step",
         "the workflow calls (install, record both sides, check, keep the report) and",
-        "`install-vectraudit` the pinned installer it uses. Set repository",
-        "variable `VECTRAUDIT_DISTRIBUTION_REPOSITORY` to the distribution repository provided",
-        "during onboarding. In the workflow, set `VECTRAUDIT_VERSION` and replace",
-        "`VECTRAUDIT_SHA256` with the reviewed release wheel checksum. Missing or mismatched",
-        "pins fail before installation. Review and update both pins together when upgrading.",
+        "`install-vectraudit` the pinned installer it uses, which downloads the wheel from the",
+        "Vectraudit GitHub release. In the workflow, set `VECTRAUDIT_VERSION` and replace",
+        "`VECTRAUDIT_SHA256` with the wheel's checksum from that release's `SHA256SUMS`.",
+        "Missing or mismatched pins fail before installation. Review and update both pins",
+        "together when upgrading.",
         "",
     ]
     if evaluated_destination:

@@ -1,4 +1,4 @@
-"""Signed webhooks: release decisions and monitor alerts delivered to a customer's channel.
+"""Signed webhooks: release decisions and monitor alerts delivered to a user's channel.
 
 Events go through an outbox (``webhook_deliveries``). A check enqueues at most one event
 per webhook and event key: ``decision:<check>`` for a release decision, and

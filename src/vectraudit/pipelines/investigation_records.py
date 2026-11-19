@@ -1,6 +1,6 @@
-"""Investigation records: what pilots must measure about the repair loop, kept as it happens.
+"""Investigation records: how the repair loop went, kept as it happens.
 
-The strategy's acceptance for the investigation workspace is measured, not asserted: time
+Whether investigations work is measured, not asserted: time
 to an accepted explanation, accepted and disputed diagnoses, verified fixes, and repairs
 reproduced by a second engineer. A record follows one failed question from opening to
 closing: the diagnosis is accepted or disputed (with a reason), missing evidence can be
@@ -114,7 +114,7 @@ def close(record: dict[str, Any], outcome: str, by: str, note: str | None) -> No
 
 
 def measures(record: Mapping[str, Any]) -> dict[str, Any]:
-    """The pilot measures for one investigation (see the discovery ledger's columns)."""
+    """The measures for one investigation: diagnosis, verified fixes and timings."""
     diagnosis = record["diagnosis"]
     approved = [v for v in record["validations"] if v["approved"]]
     first_accept = next(

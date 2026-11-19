@@ -40,7 +40,7 @@ def digest(value: Any) -> str:
 
 
 def documents(text: str) -> list[dict[str, Any]]:
-    """Validate a customer-supplied local corpus; never fetch document content."""
+    """Validate a user-supplied local corpus; never fetch document content."""
     from vectraudit.pipelines.guided import Document
 
     docs = [

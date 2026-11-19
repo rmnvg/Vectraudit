@@ -1,6 +1,6 @@
 """Every ``vectraudit`` command in the docs exists, with the options it is shown with.
 
-A pilot engineer follows the documentation literally. A renamed subcommand or option in a
+A new user follows the documentation literally. A renamed subcommand or option in a
 fenced ``bash`` block fails them before anything else works, and nothing else catches it.
 This walks the real command tree (nothing is executed) for each documented invocation.
 """

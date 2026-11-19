@@ -1,6 +1,8 @@
-"""Install a checksum-pinned private wheel; runs before Vectraudit is installed.
+"""Install a checksum-pinned Vectraudit release wheel; runs before Vectraudit is installed.
 
-Standard library only. The download credential is used by gh, never passed to pip.
+Standard library only. The wheel is downloaded from a public GitHub release (Vectraudit's
+own by default; pass another repository for a fork or mirror) and verified against the
+pinned version and SHA-256 before pip sees it.
 """
 
 from __future__ import annotations
@@ -10,14 +12,18 @@ import hashlib
 import hmac
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path
 
-SOURCE_REPOSITORY = "rmnvg/vectraudit"
+DEFAULT_REPOSITORY = "rmnvg/Vectraudit"
+MAX_WHEEL_BYTES = 256 * 1024 * 1024
+_CREDENTIALS = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
 SUPPORTED_EXTRAS = {
     "faiss-cpu",
     "qdrant",
@@ -43,12 +49,33 @@ def validate_pins(version: str, sha256: str, extras: str) -> str:
     return f"vectraudit-{version}-py3-none-any.whl"
 
 
-def validate_repository(repository: str) -> None:
-    """Require an explicit distribution repository, never the source repository."""
+def validate_repository(repository: str) -> str:
+    """Return the GitHub repository (owner/name) whose releases hold the wheel."""
+    repository = repository or DEFAULT_REPOSITORY
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
-        raise ValueError("Set the distribution repository as owner/name.")
-    if repository.casefold().removesuffix(".git") == SOURCE_REPOSITORY:
-        raise ValueError("Customer downloads must not use the source repository.")
+        raise ValueError("Set the release repository as owner/name.")
+    return repository.removesuffix(".git")
+
+
+def release_url(repository: str, version: str, filename: str) -> str:
+    """The public download URL of one release asset."""
+    return f"https://github.com/{repository}/releases/download/v{version}/{filename}"
+
+
+def download(url: str, target: Path) -> None:
+    """Stream a release asset to ``target``, refusing anything larger than a wheel can be."""
+    try:
+        with urllib.request.urlopen(url, timeout=120) as response, target.open("wb") as out:
+            total = 0
+            for block in iter(lambda: response.read(1024 * 1024), b""):
+                total += len(block)
+                if total > MAX_WHEEL_BYTES:
+                    raise ValueError("Downloaded file is too large to be a Vectraudit wheel.")
+                out.write(block)
+    except OSError as exc:
+        raise ValueError(
+            "Wheel download failed; check the repository, version and network access."
+        ) from exc
 
 
 def verify_wheel(wheel: Path, version: str, sha256: str) -> None:
@@ -80,48 +107,12 @@ def install(
     with tempfile.TemporaryDirectory(prefix="vectraudit-install-") as directory:
         target = Path(directory) / filename
         if wheel is None:
-            validate_repository(repository)
-            if not os.environ.get("GH_TOKEN"):
-                raise ValueError("Set GH_TOKEN to a customer-specific distribution credential.")
-            # Do not permit an inherited enterprise host to redirect the download credential.
-            download_env = {**os.environ, "GH_HOST": "github.com", "GH_PROMPT_DISABLED": "1"}
-            try:
-                subprocess.run(
-                    [
-                        "gh",
-                        "release",
-                        "download",
-                        f"v{version}",
-                        "--repo",
-                        repository,
-                        "--pattern",
-                        filename,
-                        "--dir",
-                        directory,
-                    ],
-                    env=download_env,
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    timeout=120,
-                )
-            except (subprocess.SubprocessError, OSError) as exc:
-                raise ValueError(
-                    "Wheel download failed; check the release, distribution access "
-                    "and gh installation."
-                ) from exc
+            download(release_url(validate_repository(repository), version, filename), target)
         else:
-            import shutil
-
             shutil.copyfile(wheel, target)
         verify_wheel(target, version, sha256)
         requirement = str(target) + (f"[{extras}]" if extras else "")
-        pip_env = {
-            key: value
-            for key, value in os.environ.items()
-            if key
-            not in {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "VECTRAUDIT_DOWNLOAD_TOKEN"}
-        }
+        pip_env = {key: value for key, value in os.environ.items() if key not in _CREDENTIALS}
         subprocess.run(
             [
                 sys.executable,
@@ -139,18 +130,19 @@ def install(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repository", default="")
+    parser.add_argument(
+        "--repository", default="", help=f"Release repository (default {DEFAULT_REPOSITORY})."
+    )
     parser.add_argument("--version", required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--extras", default="")
     parser.add_argument(
-        "--wheel", type=Path, help="Use a pre-downloaded wheel (no gh/token needed)."
+        "--wheel", type=Path, help="Use a pre-downloaded wheel instead of downloading it."
     )
     args = parser.parse_args()
     try:
         install(**vars(args))
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
-        # The download exception is deliberately static; never echo gh's credential-bearing output.
         print(f"Installation failed: {exc}", file=sys.stderr)
         return 1
     return 0

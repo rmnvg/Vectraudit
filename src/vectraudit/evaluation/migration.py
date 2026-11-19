@@ -1,11 +1,11 @@
-"""Migration assurance: compare two customer-configured systems on one labelled suite.
+"""Migration assurance: compare two user-configured systems on one labelled suite.
 
 A migration (pgvector to Qdrant, a new embedding model, a forced provider change) is judged
 by the same release policy as any other change, plus checks a migration needs because the
 two systems are built separately:
 
 - **Corpus equivalence.** Each system's *inventory* (one document per line:
-  ``{"id": ..., "sha256": ..., "metadata": {...}}``, exported by the customer; no text)
+  ``{"id": ..., "sha256": ..., "metadata": {...}}``, exported by the user; no text)
   should hold the same documents with the same content. Labelled documents missing from
   the proposed system explain quality drops that no retrieval change can recover.
 - **ID mapping.** Results are compared by ID, so both systems must return the benchmark's
@@ -21,7 +21,7 @@ two systems are built separately:
   example re-indexing or hosting), which are labelled as estimates, never measured.
 
 Nothing here copies, re-indexes or reads production data; the runs and inventories are the
-customer's own exports.
+user's own exports.
 """
 
 from __future__ import annotations

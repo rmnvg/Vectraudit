@@ -1,4 +1,4 @@
-"""RAGChecker's input from a run: what the model was given, with text from the customer."""
+"""RAGChecker's input from a run: what the model was given, with text from the user."""
 
 from __future__ import annotations
 

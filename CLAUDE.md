@@ -1,8 +1,8 @@
 # Vectraudit
 
-A retrieval evaluation and release-check platform for RAG and search: it measures a baseline and a candidate on the same labelled questions across the whole pipeline, explains where documents were lost, and gates releases. It has a local workbench (FastAPI backend + React frontend), release checks for eight vector backends (FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch, OpenSearch, Chroma), trace and label importers, experiments, and a hosted control plane. The FAISS index debugger it started as (formerly named faissight) is one part of it.
+A retrieval evaluation and release-check platform for RAG and search: it measures a baseline and a candidate on the same labelled questions across the whole pipeline, explains where documents were lost, and gates releases. It has a local workbench (FastAPI backend + React frontend), release checks for eight vector backends (FAISS, Qdrant, pgvector, Pinecone, Weaviate, Elasticsearch, OpenSearch, Chroma), trace and label importers, experiments, and a self-hostable control plane. The FAISS index debugger it started as (formerly named faissight) is one part of it.
 
-**Product direction:** this is a private commercial product. The requirements live in `RetrievalScope_Product_Requirements.docx` at the repo root (gitignored; never commit it). Nothing is published to PyPI; don't add public-distribution steps. `PLAN.md` is the original, completed build plan; work through new phases one at a time and stop after each for review.
+**Project:** open source under the Apache License 2.0 (`LICENSE`, `NOTICE`). Releases are wheels attached to GitHub releases by `.github/workflows/release.yml`. Work one phase at a time and stop after each for review.
 
 ## Repo layout
 
@@ -15,7 +15,7 @@ A retrieval evaluation and release-check platform for RAG and search: it measure
   - `pipelines/`: the workbench: pipeline runner, trace importers, intake, drift, investigations and its web app
   - `experiments/`: embedding model, chunking and index comparisons
   - `labelling/`: the local labelling assistant
-  - `cloud/`, `integrations/`: hosted control plane and its clients
+  - `cloud/`, `integrations/`: self-hostable control plane and its clients
   - `server/`: FastAPI app factory, routes, pydantic schemas (FAISS debugger)
   - `static/`: built frontend (gitignored; produced by `npm run build`, shipped in the wheel)
 - `frontend/`: React + TypeScript + Vite + Tailwind; builds into `src/vectraudit/static`
@@ -57,8 +57,8 @@ uv build                          # wheel + sdist (build the frontend first)
 - Cache expensive work (projection, ground truth, sweep) on the Session; projections also on disk at `~/.cache/vectraudit/<index_sha1>/`.
 - API errors are structured JSON: `{error_code, message, hint}`.
 - FAISS is an optional extra (`vectraudit[faiss-cpu]`); import it lazily and raise a clear install hint on failure.
-- If the installed FAISS API differs from the plan, trust FAISS, adapt, and leave a short comment.
-- Don't add dependencies outside PLAN.md section 4 without asking. The product is proprietary (see `LICENSE`): new dependencies must have permissive licences (MIT, BSD, Apache-2.0, ISC); flag anything GPL/AGPL/LGPL, and MPL only as an unmodified dependency.
+- If the installed FAISS API differs from what the code assumes, trust FAISS, adapt, and leave a short comment.
+- Ask before adding a dependency. New dependencies must have permissive licences (MIT, BSD, Apache-2.0, ISC); flag anything GPL/AGPL/LGPL, and MPL only as an unmodified dependency.
 - Create feature branches with `git switch --no-track -c BRANCH origin/main`. Verify the branch has no upstream before commits; never configure a feature branch to track `main`. The maintainer can later publish it with an explicit matching branch name.
 - One git commit per completed step, conventional messages (`feat:`, `fix:`, `test:`, `docs:`, `chore:`). Never push; the maintainer pushes.
 - Write tests alongside code; every public function in `vectraudit.core` gets a test.

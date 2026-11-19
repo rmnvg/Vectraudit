@@ -310,5 +310,5 @@ vectraudit workbench score-drift traces-2026-10-12.jsonl traces-2026-10-19.jsonl
   reviewer links them, for example as a query family.
 - **Recurrence:** "Likely" because a production ranking can legitimately differ (other
   filters, a newer corpus). Check the trace before reopening.
-- **Effort:** reviewer minutes per accepted question aren't measured here. Record them in
-  the pilot log.
+- **Effort:** reviewer minutes per accepted question aren't measured here. Record them
+  separately if you track review effort.

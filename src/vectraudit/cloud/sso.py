@@ -39,7 +39,7 @@ def _configuration(settings: Settings) -> dict[str, str]:
     config = settings.sso or {}
     required = {"client_id", "client_secret", "authorize_url", "token_url", "userinfo_url"}
     if set(config) != required or any(not isinstance(v, str) or not v for v in config.values()):
-        raise CloudError(404, "sso_unavailable", "Enterprise sign-in is not configured.")
+        raise CloudError(404, "sso_unavailable", "Single sign-on is not configured.")
     for key in ("authorize_url", "token_url", "userinfo_url"):
         url = urlsplit(config[key])
         if (

@@ -23,7 +23,7 @@ from vectraudit.pipelines.runtime import PythonPipeline, Stage
 def hybrid_pipeline(documents: list[dict[str, Any]]) -> PythonPipeline:
     """Build a local baseline. Optional vectors must share the query embedding space.
 
-    ``tenant`` in query context restricts matching document metadata. Customers should
+    ``tenant`` in query context restricts matching document metadata. Users should
     use their own adapter when auditing their actual authorization implementation.
     """
     ids = [str(d["doc_id"]) for d in documents]

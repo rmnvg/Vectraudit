@@ -1,4 +1,4 @@
-"""Stage only the tested wheel and its checksum for a customer-visible release."""
+"""Stage only the tested wheel and its SHA256SUMS for a GitHub release."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ def prepare(source: Path, destination: Path) -> Path:
     if len(wheels) != 1 or len(list(source.glob("*.whl"))) != 1:
         raise ValueError("Expected exactly one Vectraudit release wheel.")
     if destination.exists():
-        raise ValueError("Distribution destination must be a new directory.")
+        raise ValueError("Release destination must be a new directory.")
     destination.mkdir(parents=True)
     wheel = destination / wheels[0].name
     shutil.copyfile(wheels[0], wheel)
@@ -26,6 +26,6 @@ def prepare(source: Path, destination: Path) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path("dist"))
-    parser.add_argument("--out", type=Path, default=Path("customer-dist"))
+    parser.add_argument("--out", type=Path, default=Path("release-dist"))
     args = parser.parse_args()
     prepare(args.source, args.out)

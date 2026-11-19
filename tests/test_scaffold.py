@@ -109,7 +109,7 @@ def test_init_cli(tmp_path) -> None:
 
 
 def test_fresh_project_reaches_a_passing_check(synthetic, tmp_path, monkeypatch) -> None:
-    """The pilot path: init, write queries, import, record twice, check."""
+    """The first-check path: init, write queries, import, record twice, check."""
     import faiss
 
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)

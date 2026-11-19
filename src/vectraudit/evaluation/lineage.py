@@ -1,7 +1,7 @@
 """Source-to-context lineage: where a required passage was first lost.
 
 A benchmark labels required passages as character spans of source documents
-(``relevant_spans``). A customer-exported **lineage manifest** says what their ingestion
+(``relevant_spans``). A user-exported **lineage manifest** says what their ingestion
 did with each source: its current revision, how much text extraction produced, and the
 character range, index state and indexed revision of every chunk. One JSON object per line::
 
@@ -18,7 +18,7 @@ indexed, or was indexed from an older revision; and, given a run, the chunk was 
 retrieved, was dropped before delivery, or did not reach the model. Losses before retrieval
 are ingestion problems: changing the embedding model will not recover them.
 
-The manifest describes the customer's pipeline; Vectraudit does not re-run ingestion or read
+The manifest describes the user's pipeline; Vectraudit does not re-run ingestion or read
 document text. Findings are only as complete as the export: a stage the export does not
 describe is reported as unknown, never as passed.
 """

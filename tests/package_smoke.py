@@ -133,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix="vectraudit-wheel-release-") as director
         [
             sys.executable,
             "-I",
-            str(Path(__file__).resolve().parents[1] / "examples" / "pilot_release_demo.py"),
+            str(Path(__file__).resolve().parents[1] / "examples" / "release_demo.py"),
             "--out",
             str(Path(directory) / "demo"),
         ],

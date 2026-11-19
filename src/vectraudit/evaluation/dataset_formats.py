@@ -1,6 +1,6 @@
 """Import labelled datasets that teams already keep in other tools' formats.
 
-Customers bring their own labels; these importers only translate them. Nothing here
+Users bring their own labels; these importers only translate them. Nothing here
 invents a question or a relevance judgment.
 
 - **TREC qrels** (``qid iter docno grade``) with a query file, and **BEIR** directories
@@ -8,7 +8,7 @@ invents a question or a relevance judgment.
 - **Ragas** test sets (``user_input`` with ``reference_context_ids`` or
   ``reference_contexts``) and **DeepEval** goldens (``input`` with ``context``). When a test
   set names its reference passages only by their text, each passage is located in the
-  customer's corpus file to find the document id the backend returns. Passages that are not
+  user's corpus file to find the document id the backend returns. Passages that are not
   found, or that match too many documents, are reported rather than guessed.
 
 Every importer returns validated-ready rows plus provenance (source format, file hashes and

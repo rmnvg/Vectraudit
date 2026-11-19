@@ -2,7 +2,7 @@
 
 Every document of a poison suite has a unique canary. A poisoned document that tells the model
 to include its canary (``inject``, ``exfil``) or whose claim names it (all attacks) leaves that
-token in an answer the model was steered by. This reads the answers the customer's own system
+token in an answer the model was steered by. This reads the answers the user's own system
 gave, locally, and records only *whether* a suite canary appears:
 
 - both the answer and the canaries are normalised (NFKC, format characters such as zero-width

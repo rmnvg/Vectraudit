@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from '../frontend/node_modules/@playwright/test/index.mjs'
 const root = resolve(import.meta.dirname, '..')
-const workspace = await mkdtemp(join(tmpdir(), 'vectraudit-market-fit-'))
+const workspace = await mkdtemp(join(tmpdir(), 'vectraudit-guided-workflows-'))
 const base = 'http://127.0.0.1:8818'
 // No hosted project: the share panel must preview without connecting anywhere.
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VECTRAUDIT_CLOUD_')))
@@ -55,11 +55,11 @@ try {
   await page.getByRole('button', { name: 'Compare a fix', exact: true }).click()
   await page.getByRole('button', { name: 'Compare runs' }).click()
   await page.getByRole('button', { name: 'Track finding' }).click()
-  await page.getByLabel('Case owner').fill('Pilot engineer')
+  await page.getByLabel('Case owner').fill('Release engineer')
   await page.getByLabel('Investigation note').fill('Restore candidate depth')
   await page.getByLabel('Case status').selectOption('fix_proposed')
   await page.getByRole('button', { name: 'Save case update' }).click()
-  await page.getByText('invoice · fix_proposed · Pilot engineer', { exact: true }).waitFor()
+  await page.getByText('invoice · fix_proposed · Release engineer', { exact: true }).waitFor()
   // Sharing previews what would leave the machine and refuses without a hosted project.
   await page.getByRole('button', { name: 'Share with hosted project…' }).first().click()
   const share = page.getByRole('region', { name: 'Share case invoice' })
@@ -71,7 +71,7 @@ try {
   await share.getByRole('button', { name: 'Close' }).click()
   await page.reload()
   await steps.getByRole('button', { name: /Compare a fix/ }).click()
-  await page.getByText('invoice · fix_proposed · Pilot engineer', { exact: true }).waitFor()
+  await page.getByText('invoice · fix_proposed · Release engineer', { exact: true }).waitFor()
   assert.equal(await page.getByLabel('Baseline run').locator('option').count(), 2)
 
   // Build an explicit permission scenario without editing JSON.
@@ -117,12 +117,12 @@ try {
   await page.getByRole('button', { name: 'Check current corpus' }).click()
   await page.getByText(/Freshness: review/).waitFor()
   await page.getByText('invoice · current-guide · changed', { exact: true }).waitFor()
-  await page.screenshot({ path: join(workspace, 'market-fit-desktop.png'), fullPage: true })
+  await page.screenshot({ path: join(workspace, 'guided-workflows-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.screenshot({ path: join(workspace, 'market-fit-mobile.png'), fullPage: true })
+  await page.screenshot({ path: join(workspace, 'guided-workflows-mobile.png'), fullPage: true })
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
   assert.deepEqual(errors, [])
-  console.log('Market fit browser checks passed. Screenshots: ' + workspace)
+  console.log('Guided workflow browser checks passed. Screenshots: ' + workspace)
 } finally {
   await browser?.close()
   server.kill('SIGTERM')

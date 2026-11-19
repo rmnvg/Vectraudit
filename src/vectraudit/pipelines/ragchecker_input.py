@@ -2,14 +2,14 @@
 
 RAGChecker (Ru et al., NeurIPS 2024 Datasets and Benchmarks; Apache-2.0) needs, per question,
 the question, a reference answer, the system's response and the retrieved chunks with their
-text. A run holds none of that text, so this joins it from sources the customer controls:
+text. A run holds none of that text, so this joins it from sources the user controls:
 
 - the **context** is the run's observed model context when it recorded one, else the
   documents retrieval delivered, in the recorded order;
 - the **document text** comes from a corpus file (``doc_id`` and ``text`` per line) or from
   the registered document resolver (:mod:`vectraudit.pipelines.document_lookup`), which is
   scoped to the question's tenant, filters and the run's corpus version;
-- the **reference answers** and the **responses** come from files the customer supplies.
+- the **reference answers** and the **responses** come from files the user supplies.
 
 The file this writes **contains private text** (questions, answers and documents) and is for
 local use: run RAGChecker on your own machine, then import its output with

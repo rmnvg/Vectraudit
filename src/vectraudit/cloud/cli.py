@@ -86,7 +86,7 @@ def _print_token(token: str, who: str) -> None:
 
 @app.command("create-admin")
 def create_admin(email: Annotated[str, typer.Argument(help="Operator email.")]) -> None:
-    """Create a platform administrator (can create workspaces; no customer data access)."""
+    """Create a platform administrator (can create workspaces; no user data access)."""
     from vectraudit.cloud import repo
     from vectraudit.cloud.db import transaction
 
@@ -235,7 +235,7 @@ def backfill_decisions() -> None:
 def usage(
     month: Annotated[str, typer.Option(help="YYYY-MM (default: this month).")] = "",
 ) -> None:
-    """Print usage per workspace as CSV, for invoicing."""
+    """Print usage per workspace as CSV."""
     import csv
     import sys
     from datetime import datetime
@@ -254,20 +254,20 @@ def usage(
 @app.command("set-plan")
 def set_plan(
     slug: Annotated[str, typer.Argument(help="Workspace slug.")],
-    plan: Annotated[str, typer.Argument(help="pilot, team or enterprise.")],
+    plan: Annotated[str, typer.Argument(help="Limit profile: standard, large or xlarge.")],
     limit: Annotated[
         list[str] | None,
         typer.Option(help="Override, e.g. runs_per_month=2000. Repeatable."),
     ] = None,
 ) -> None:
-    """Change a workspace's plan and limit overrides (audited)."""
+    """Change a workspace's limit profile and overrides (audited)."""
     from dataclasses import fields as dc_fields
 
     from vectraudit.cloud import quotas, repo
     from vectraudit.cloud.db import transaction
 
     if plan not in quotas.PLANS:
-        err_console.print(f"[bold red]Error:[/] plan must be one of {', '.join(quotas.PLANS)}.")
+        err_console.print(f"[bold red]Error:[/] profile must be one of {', '.join(quotas.PLANS)}.")
         raise typer.Exit(code=1)
     names = {f.name for f in dc_fields(quotas.Limits)}
     overrides: dict[str, int] = {}
@@ -290,7 +290,7 @@ def set_plan(
             session, ws.id, "cli", "workspace.plan", "workspace", ws.id, plan=plan, limits=overrides
         )
         effective = quotas.limits_for(ws)
-    console.print(f"{escape(slug)}: plan {plan}, limits {effective}")
+    console.print(f"{escape(slug)}: profile {plan}, limits {effective}")
 
 
 @app.command("delete-user")

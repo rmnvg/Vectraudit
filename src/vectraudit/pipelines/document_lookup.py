@@ -1,4 +1,4 @@
-"""Bounded contracts for customer-controlled passage lookup during local review."""
+"""Bounded contracts for user-controlled passage lookup during local review."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ class LookupRunner:
         self._lock = threading.Lock()
 
     def run(self, config: LookupConfig, root: Path, request: LookupRequest) -> LookupResult:
-        """Run trusted customer code, suppressing exception text and enforcing a timeout."""
+        """Run trusted user code, suppressing exception text and enforcing a timeout."""
         if not self._lock.acquire(blocking=False):
             raise HTTPException(429, "A document lookup is running. Try again when it finishes.")
         try:

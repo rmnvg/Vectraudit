@@ -147,7 +147,7 @@ code: review their behavior before supplying them, especially any network access
 
 Task files contain question and document text. They are local, content-hashed, written
 with private permissions and atomic replacement; they are not encrypted. Keep them in
-customer-controlled storage. The server binds to `127.0.0.1` only, with Host validation,
+user-controlled storage. The server binds to `127.0.0.1` only, with Host validation,
 CSRF-safe forms, escaped HTML, no external assets and strict CSP. Local pooling, UI and
 export make no outbound network requests. Deleting the task, exported datasets and any
 copies deletes those local artifacts; manage backups under your own retention policy.
@@ -173,7 +173,7 @@ time permits; compare releases on the same frozen dataset version.
 ## Three-candidate demo
 
 The example reuses the existing RAG corpus loader; `--rag` explicitly permits downloading
-the public example dataset if absent (no customer documents are uploaded). It discards
+the public example dataset if absent (no user documents are uploaded). It discards
 its supplied labels and pools three hashing candidates with 80/150/300-word chunks.
 
 ```bash

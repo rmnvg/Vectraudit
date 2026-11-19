@@ -3,8 +3,8 @@ name = "vectraudit"
 version = "0.1.0"
 description = "Retrieval evaluation and release checks for RAG and search, with a FAISS index debugger."
 readme = "README.md"
-license = "LicenseRef-Proprietary"
-license-files = ["LICENSE"]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [
     { name = "Ramanjot Singh", email = "ramanjotsingh247@gmail.com" }
 ]
@@ -12,8 +12,6 @@ requires-python = ">=3.10"
 keywords = ["retrieval", "rag", "evaluation", "release-checks", "vector-search", "ann", "faiss"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    # PyPI rejects any upload carrying this classifier: a guard against publishing by mistake.
-    "Private :: Do Not Upload",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
@@ -93,6 +91,7 @@ include = [
     "/README.md",
     "/CHANGELOG.md",
     "/LICENSE",
+    "/NOTICE",
     "/pyproject.toml",
 ]
 
