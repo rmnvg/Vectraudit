@@ -1,0 +1,10 @@
+Vectraudit
+Copyright 2026 Ramanjot Singh and the Vectraudit contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components bundled with or used by Vectraudit remain under their own licences;
+the packages bundled into the web UI are listed in src/vectraudit/THIRD_PARTY_NOTICES.txt.
+
+The demo corpus is "RAG Dataset 12000" by Neural Bridge AI (Apache-2.0), with passages from
+Falcon RefinedWeb (ODC-By 1.0).

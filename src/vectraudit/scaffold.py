@@ -87,7 +87,7 @@ def scaffold_files(backend: str) -> dict[str, str]:
         if secret
         else " Paths are relative to this folder."
     )
-    ci_secret = f" and `{secret}` (a read-only credential)" if secret else ""
+    ci_secret = f" Add repository secret `{secret}` (a read-only credential)." if secret else ""
     return {
         **ci_files(),
         "retrieval/connection.json": _template(f"connection-{backend}.json"),

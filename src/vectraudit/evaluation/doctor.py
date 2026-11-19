@@ -65,7 +65,7 @@ class Doctor:
                 f"dependency.{distribution}",
                 "error",
                 f"Missing optional dependency: {distribution}.",
-                f"Install the private wheel with the [{extra}] extra.",
+                f"Install vectraudit with the [{extra}] extra.",
             )
         else:
             self.add(f"dependency.{distribution}", "ok", f"{distribution} {version} is installed.")

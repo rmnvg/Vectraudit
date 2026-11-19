@@ -108,7 +108,7 @@ def test_unverified_revisions_are_reported_not_assumed():
 
 
 def test_a_chunk_boundary_defect_is_found_and_its_repair_recovers_the_passage(tmp_path):
-    """The strategy's 2.1 acceptance: a reproducible finding, then a verified repair."""
+    """A reproducible finding, then a verified repair."""
     passage = ("policy", 450, 550)  # the exception straddles the boundary at 500
     broken = check_lineage(dataset(passage), read_manifest(write(tmp_path, source())))
     assert broken["first_loss"] == {"split_across_chunks": 1}

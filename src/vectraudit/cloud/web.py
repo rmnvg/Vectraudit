@@ -499,9 +499,7 @@ def login_page(
 ) -> HTMLResponse:
     state = secrets.token_urlsafe(24)
     github = (
-        '<p><a class="badge pass" href="/auth/sso">Enterprise sign-in</a></p>'
-        if settings.sso
-        else ""
+        '<p><a class="badge pass" href="/auth/sso">Sign in with SSO</a></p>' if settings.sso else ""
     )
     if settings.github_client_id:
         github += (
@@ -711,7 +709,7 @@ def home(request: Request, session: SessionDep, settings: SettingsDep) -> HTMLRe
         for ws, role in repo.workspaces_of(session, web.user.id)
     ]
     body = "<h1>Workspaces</h1>" + _table(
-        ["Workspace", "Slug", "Your role", "Plan"],
+        ["Workspace", "Slug", "Your role", "Limits"],
         rows,
         "You are not a member of any workspace yet.",
     )
@@ -741,7 +739,7 @@ def workspace_page(
     q = quotas.status(session, ws)
     lim, used = q["limits"], q["usage"]
     plan = (
-        f'<div class="card">Plan <strong>{e(ws.plan)}</strong> · '
+        f'<div class="card">Limits <strong>{e(ws.plan)}</strong> · '
         f"{used['runs']:,} / {lim['runs_per_month']:,} runs this month · "
         f"{used['stored_runs']:,} / {lim['stored_runs']:,} runs stored · "
         f"up to {lim['queries_per_run']:,} queries per run · runs kept "

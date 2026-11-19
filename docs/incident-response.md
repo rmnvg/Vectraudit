@@ -7,14 +7,14 @@ with `docker compose run --rm api` (shown as `vac`).
 
 | Level | Examples | Response |
 |---|---|---|
-| **SEV1** | Customer data exposed to another tenant or the internet; secret key, database or backup leaked; active exploitation | Start now, all hands; customer notice within 72 hours of awareness |
+| **SEV1** | User data exposed to another tenant or the internet; secret key, database or backup leaked; active exploitation | Start now, all hands; user notice within 72 hours of awareness |
 | **SEV2** | A token or account compromised in one workspace; data deleted by mistake; service down | Start within 1 hour; notify the affected workspace's owners |
 | **SEV3** | Vulnerable dependency without known exploitation; degraded performance | Fix in the normal release cycle, record the decision |
 
 ## Roles
 
 One person **leads** (decides, keeps the timeline), one **operates** (runs commands), one
-**communicates** (customers, internal). In a small team one person may hold several roles;
+**communicates** (users, internal). In a small team one person may hold several roles;
 the lead still writes the timeline as they go.
 
 ## Steps
@@ -42,8 +42,8 @@ the lead still writes the timeline as they go.
    cloud-operations), then issue new tokens to the affected owners
    (`vac create-token EMAIL`); they re-create runner tokens and update CI secrets.
 6. **Notify.** Tell affected workspace owners what happened, what data was involved, what
-   we did and what they should do (rotate their CI secrets; their database credentials were
-   never held by us). For personal data, check notification duties under the applicable law
+   was done and what they should do (rotate their CI secrets; their database credentials were
+   never held by the service). For personal data, check notification duties under the applicable law
    (e.g. GDPR: supervisory authority within 72 hours when required).
 7. **Review** within a week, blameless: timeline, root cause, what worked, what didn't,
    follow-up actions with owners and dates. Update the threat model.
@@ -58,4 +58,4 @@ the lead still writes the timeline as they go.
 | Workspace deleted by mistake | The deletion record shows who and when; restore the latest backup into a staging database and export the workspace from there, or restore production if the whole service can roll back |
 | Cross-tenant access suspected | SEV1. Reproduce with the route audit, contain with `revoke-access`, review request logs by path for the affected ids |
 | Secret key leaked | SEV1. Rotate it (share links and CSRF tokens become invalid), revoke sessions, check logs for share-link use |
-| Database or backup leaked | SEV1. Token and session values are stored as hashes; run files contain ids and metrics, not documents. Revoke everything, rotate all secrets, notify all customers |
+| Database or backup leaked | SEV1. Token and session values are stored as hashes; run files contain ids and metrics, not documents. Revoke everything, rotate all secrets, notify all users |

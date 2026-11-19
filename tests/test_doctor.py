@@ -1,4 +1,4 @@
-"""Preflight catches onboarding errors without sending customer data."""
+"""Preflight catches onboarding errors without sending user data."""
 
 import json
 import socket

@@ -300,7 +300,7 @@ def page(facts: dict[str, Any]) -> str:
         '<p class="muted">Three planted defects, each found from your own change logs and '
         "exports, and each correction verified.</p>"
         f'<div class="steps">{body}</div>'
-        '<h2>What a pilot adds</h2><p class="muted">The same checks on your assistant: your '
+        '<h2>On your own assistant</h2><p class="muted">The same checks with your '
         "content system's change log, your identity system's access changes, your ingestion "
         "export and your release check. Expected access always comes from your systems of "
         "record, never from the assistant's own answers. A passing check is evidence about the "

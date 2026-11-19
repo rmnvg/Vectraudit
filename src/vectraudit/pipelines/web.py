@@ -67,7 +67,7 @@ def create_workbench(
 
     @app.exception_handler(ValueError)
     async def invalid(_: Request, exc: ValueError) -> JSONResponse:
-        # Validation errors name the field, not the full submitted customer payload.
+        # Validation errors name the field, not the full submitted user payload.
         from pydantic import ValidationError
 
         message = "Invalid workbench input" if isinstance(exc, ValidationError) else str(exc)

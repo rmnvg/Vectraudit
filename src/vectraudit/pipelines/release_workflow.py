@@ -74,7 +74,7 @@ class PolicyStore:
         self.records = LocalRecords(workspace, "policies")
         self.startup: dict[str, Any] | None = None
         if startup is not None:
-            # Fail at startup: a customer's CI policy must not silently fall back to defaults.
+            # Fail at startup: a user's CI policy must not silently fall back to defaults.
             raw = json.loads(startup.read_text(encoding="utf-8"))
             parsed = parse_policy(raw)
             self.startup = {
@@ -163,7 +163,7 @@ class ReleaseIn(Contract):
 def _pipeline(
     workspace: GuidedWorkspace, run: dict[str, Any], draft: dict[str, Any] | None, include: bool
 ) -> tuple[ReleasePipeline, str | None, str | None, list[str], list[str], str | None]:
-    """The adopted pipeline as portable configuration, with what the customer must supply."""
+    """The adopted pipeline as portable configuration, with what the user must supply."""
     config = run["backend"]["config"]
     params = run["search"]["params"]
     prerequisites: list[str] = []

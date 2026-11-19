@@ -3,7 +3,7 @@
 Access rules:
 
 - A user reaches a workspace only through a membership; roles rank viewer < engineer <
-  owner. Platform admins can create workspaces but get **no** implicit access to customer
+  owner. Platform admins can create workspaces but get **no** implicit access to user
   data.
 - A runner token reaches exactly one project of one workspace, and only the actions its
   scopes allow.

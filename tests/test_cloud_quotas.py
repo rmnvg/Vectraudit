@@ -1,4 +1,4 @@
-"""Plans, upload quotas, usage export and retention."""
+"""Limit profiles, upload quotas, usage export and retention."""
 
 from __future__ import annotations
 
@@ -27,15 +27,15 @@ def set_limits(app, slug: str, **limits: int) -> None:
 
 
 def test_limits_for_plans_and_overrides() -> None:
-    ws = Workspace(slug="x1", name="X", plan="team")
-    assert quotas.limits_for(ws) == quotas.PLANS["team"]
+    ws = Workspace(slug="x1", name="X", plan="large")
+    assert quotas.limits_for(ws) == quotas.PLANS["large"]
     ws.limits = {"runs_per_month": 7, "bogus": 3, "stored_runs": -1, "retention_days": "9"}
     lim = quotas.limits_for(ws)
     assert lim.runs_per_month == 7
-    assert lim.stored_runs == quotas.PLANS["team"].stored_runs
-    assert lim.retention_days == quotas.PLANS["team"].retention_days
+    assert lim.stored_runs == quotas.PLANS["large"].stored_runs
+    assert lim.retention_days == quotas.PLANS["large"].retention_days
     unknown_plan = Workspace(slug="y1", name="Y", plan="mystery")
-    assert quotas.limits_for(unknown_plan) == quotas.PLANS["pilot"]
+    assert quotas.limits_for(unknown_plan) == quotas.PLANS["standard"]
 
 
 def test_upload_quotas(world, cloud_app) -> None:
@@ -65,10 +65,10 @@ def test_usage_endpoints(world, cloud_app) -> None:
     status = world.client.get(
         "/api/v1/workspaces/acme/usage", headers=world.as_("acme_viewer")
     ).json()
-    assert status["plan"] == "pilot"
+    assert status["plan"] == "standard"
     assert status["usage"]["runs"] == 1
     assert status["usage"]["queries"] == 20
-    assert status["remaining"]["runs_this_month"] == quotas.PLANS["pilot"].runs_per_month - 1
+    assert status["remaining"]["runs_this_month"] == quotas.PLANS["standard"].runs_per_month - 1
     assert (
         world.client.get(
             "/api/v1/workspaces/acme/usage", headers=world.as_("acme_runner")
@@ -124,12 +124,12 @@ def test_admin_cli(world, cloud_app, cloud_settings, monkeypatch) -> None:
     monkeypatch.setenv("VECTRAUDIT_CLOUD_DATABASE_URL", cloud_settings.database_url)
     monkeypatch.setenv("VECTRAUDIT_CLOUD_SECRET_KEY", cloud_settings.secret_key)
     runner = CliRunner()
-    r = runner.invoke(app, ["set-plan", "acme", "team", "--limit", "runs_per_month=9"])
+    r = runner.invoke(app, ["set-plan", "acme", "large", "--limit", "runs_per_month=9"])
     assert r.exit_code == 0, r.output
     assert "runs_per_month=9" in r.output
     assert runner.invoke(app, ["set-plan", "acme", "gold"]).exit_code == 1
-    assert runner.invoke(app, ["set-plan", "acme", "team", "--limit", "x=1"]).exit_code == 1
-    assert runner.invoke(app, ["set-plan", "nope", "team"]).exit_code == 1
+    assert runner.invoke(app, ["set-plan", "acme", "large", "--limit", "x=1"]).exit_code == 1
+    assert runner.invoke(app, ["set-plan", "nope", "large"]).exit_code == 1
     usage = runner.invoke(app, ["usage"])
     assert usage.exit_code == 0
     assert usage.output.splitlines()[0].startswith("workspace,plan,month")
@@ -147,9 +147,9 @@ def test_admin_cli(world, cloud_app, cloud_settings, monkeypatch) -> None:
     assert "workspace.plan" in actions
 
 
-def test_dashboard_shows_plan(world, cloud_app) -> None:
+def test_dashboard_shows_limits(world, cloud_app) -> None:
     from tests.test_cloud_web import sign_in
 
     page = sign_in(cloud_app, world.tokens["acme_viewer"]).get("/app/acme").text
-    assert "Plan <strong>pilot</strong>" in page
+    assert "Limits <strong>standard</strong>" in page
     assert "runs kept 30 days" in page

@@ -3,7 +3,7 @@
 Use `vectraudit doctor` before the first run, or when moving a setup to CI. It checks the
 installation, packaged FAISS UI, connection fields, optional dependencies, secret presence,
 local files, dataset validity, label coverage and policy minimums. It never opens a backend,
-executes a query, loads/downloads an embedding model or uploads customer data.
+executes a query, loads/downloads an embedding model or uploads user data.
 
 ```bash
 vectraudit doctor
@@ -20,7 +20,7 @@ Each supplied file is optional; with no files, the report scope is installation 
 A stable diagnostic `code` accompanies every check. Invalid configuration reports point
 to local validation commands rather than echoing input contents. JSON reports omit question
 text, vectors, label IDs, tags, paths and secret values; share them voluntarily with support.
-A dataset hash is still an identifier of customer data, so review reports before sharing.
+A dataset hash is still an identifier of user data, so review reports before sharing.
 
 For FAISS raw vectors, doctor checks a memory-mapped floating-point `.npy` matrix without
 pickle loading and compares its dimension to pre-embedded query vectors. It does not open

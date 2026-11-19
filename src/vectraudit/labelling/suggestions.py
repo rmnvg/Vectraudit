@@ -15,7 +15,7 @@ Judge = Callable[[str, str], int]
 def suggest(task: Task, judge: Judge, *, name: str) -> None:
     """Call an explicitly supplied judge and store suggestions separately from judgments.
 
-    Callables are trusted customer code: their network/privacy behavior is the caller's
+    Callables are trusted user code: their network/privacy behavior is the caller's
     responsibility. The built-in LLM implementation only loads local model files.
     """
     suggestions = []

@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 30
     env:
       VECTRAUDIT_VERSION: "__VERSION__"
-      # Copy the wheel hash from the reviewed release handoff, then commit this pin.
+      # Copy the wheel's SHA-256 from the release's SHA256SUMS, then commit this pin.
       VECTRAUDIT_SHA256: "REPLACE_WITH_64_HEX_SHA256"
     steps:
       - uses: actions/checkout@v4
@@ -47,10 +47,8 @@ jobs:
         # effort: fork pull requests get a read-only token and only the job summary.
         uses: ./.github/actions/retrieval-check
         with:
-          repository: ${{ vars.VECTRAUDIT_DISTRIBUTION_REPOSITORY }}
           version: ${{ env.VECTRAUDIT_VERSION }}
           sha256: ${{ env.VECTRAUDIT_SHA256 }}
-          token: ${{ secrets.VECTRAUDIT_DOWNLOAD_TOKEN }}
           extras: "__EXTRAS__"
           dataset: retrieval/dataset.jsonl
           connection: retrieval/connection.json

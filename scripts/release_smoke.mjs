@@ -62,7 +62,7 @@ try {
 
   // Agree a lenient policy (imported JSON), then compare and export under it.
   await page.getByRole('button', { name: 'Create release policy' }).click()
-  await page.getByLabel('Policy name').fill('Pilot release policy')
+  await page.getByLabel('Policy name').fill('Team release policy')
   await page.getByText('Import or export policy JSON').click()
   await page.getByLabel('Policy JSON').fill(JSON.stringify({ metrics: { ndcg: { max_drop: 1 }, recall: { max_drop: 1 } }, min_queries: 1 }))
   await page.getByRole('button', { name: 'Load into form' }).click()
@@ -84,7 +84,7 @@ try {
   await page.getByRole('region', { name: 'Calibration result' }).getByText(/not one unchanged setup/).waitFor()
   await page.getByRole('region', { name: 'Release policy settings' }).screenshot({ path: join(workspace, 'calibration.png') })
   await page.getByRole('button', { name: 'Compare runs' }).click()
-  await page.getByText(/under Pilot release policy v1/).waitFor()
+  await page.getByText(/under Team release policy v1/).waitFor()
   await page.getByText('Release comparison: pass').waitFor()
   await page.getByRole('region', { name: 'Critical question results' }).getByText(/pass: password/).waitFor()
   await page.getByRole('button', { name: 'Track finding' }).click()
@@ -109,18 +109,18 @@ try {
   run(['release', 'run', release, '--approved', release, '--out', 'runs/candidate.run.json'])
   const checked = run(['release', 'check', release, 'runs/baseline.run.json', 'runs/candidate.run.json'])
   assert.match(checked, /PASS/)
-  assert.match(checked, /Pilot release policy v1/)
+  assert.match(checked, /Team release policy v1/)
 
   // A stricter version changes the browser comparison and case verification together.
   await page.getByRole('button', { name: 'Edit as new version' }).click()
   await page.getByLabel('Critical 1 docId', { exact: true }).fill('missing-required-document')
   await page.getByRole('button', { name: 'Save policy version' }).click()
-  await page.getByText(/use Pilot release policy v2/).waitFor()
+  await page.getByText(/use Team release policy v2/).waitFor()
   await page.getByText(/The selected policy changed since this comparison/).waitFor()
   await page.getByRole('button', { name: 'Compare runs' }).click()
   await page.getByText('Release comparison: fail').waitFor()
   await page.getByText(/Critical query password: document missing-required-document/).waitFor()
-  await page.getByText(/Export is available once the candidate passes Pilot release policy v2/).waitFor()
+  await page.getByText(/Export is available once the candidate passes Team release policy v2/).waitFor()
   // Each failing rule says who may accept it; this policy opens no exceptions.
   const rules = page.getByRole('region', { name: 'Failing rules' })
   await rules.getByText('critical:password:missing-required-document').waitFor()
@@ -133,8 +133,8 @@ try {
   await evaluate('Recheck', 2, 'phrase')
   await page.getByRole('button', { name: 'Compare a fix', exact: true }).click()
   await choose(page.getByLabel('Verification run').first(), 'Recheck ·')
-  await page.getByRole('button', { name: /^Verify under Pilot release policy v2/ }).first().click()
-  await page.getByText(/release fail under Pilot release policy v2/).first().waitFor()
+  await page.getByRole('button', { name: /^Verify under Team release policy v2/ }).first().click()
+  await page.getByText(/release fail under Team release policy v2/).first().waitFor()
 
   await page.screenshot({ path: join(workspace, 'release-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })

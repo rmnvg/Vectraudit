@@ -118,7 +118,7 @@ def run_with(ids, context_ids=(), query="refund"):
 
 
 def test_a_stale_answer_is_found_then_cleared_by_reindexing(tmp_path):
-    """The strategy's freshness check: stale content served, then the repair verified."""
+    """Stale content served, then the repair verified."""
     stale = [
         {
             "source_id": "policy",

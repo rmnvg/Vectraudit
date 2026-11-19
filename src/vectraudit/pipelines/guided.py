@@ -36,7 +36,7 @@ from vectraudit.pipelines.runtime import HTTPPipeline, Pipeline
 
 MAX_BODY = 5 * 1024 * 1024
 MAX_QUERIES = 1000
-"""Guided benchmark size: the PRD's 1,000-question pilot suite."""
+"""Guided benchmark size: a 1,000-question suite."""
 MAX_RUN_BYTES = 64 * 1024 * 1024
 """A 1,000-question run with stage traces at retrieval depth 100 is about 22 MiB."""
 ID = re.compile(r"^[a-f0-9]{32}$")

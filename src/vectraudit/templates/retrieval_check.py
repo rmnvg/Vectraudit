@@ -25,7 +25,7 @@ _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # Variables that would change how the runner, git, Python or this script behave.
 _RESERVED = {"PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "IFS", "GITHUB_TOKEN"}
 _RESERVED_PREFIXES = ("LD_", "DYLD_", "PYTHON", "GITHUB_", "RUNNER_", "ACTIONS_", "GH_", "VA_")
-_PRIVATE = {"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN", "VECTRAUDIT_DOWNLOAD_TOKEN"}
+_PRIVATE = {"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN"}
 
 
 class InputError(ValueError):

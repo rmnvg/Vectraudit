@@ -19,7 +19,7 @@ def test_me_and_workspaces(world) -> None:
     me = world.client.get("/api/v1/me", headers=world.as_("acme_engineer")).json()
     assert me["user"]["email"] == "engineer@acme.test"
     assert me["workspaces"] == [
-        {"slug": "acme", "name": "Acme", "plan": "pilot", "role": "engineer"}
+        {"slug": "acme", "name": "Acme", "plan": "standard", "role": "engineer"}
     ]
     assert world.client.get("/api/v1/me").status_code == 401
     bad = world.client.get("/api/v1/me", headers={"Authorization": "Bearer va_pat_nope"})

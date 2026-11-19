@@ -125,7 +125,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class HTTPPipeline:
     """POST the request contract to an explicitly configured endpoint.
 
-    Local/private endpoints are supported for customer deployments. Redirects and
+    Local/private endpoints are supported for user deployments. Redirects and
     ambient proxy configuration are disabled; tokens never enter run artifacts.
     """
 
@@ -177,7 +177,7 @@ class HTTPPipeline:
                 code, "pipeline endpoint returned an HTTP error", retry_after=wait
             ) from exc
         except (OSError, urllib.error.URLError) as exc:
-            # HTTP errors can contain signed URLs, headers or customer text.
+            # HTTP errors can contain signed URLs, headers or user text.
             cause = exc.reason if isinstance(exc, urllib.error.URLError) else exc
             code = (
                 "timeout"

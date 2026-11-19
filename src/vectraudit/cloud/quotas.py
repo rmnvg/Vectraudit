@@ -1,8 +1,9 @@
-"""Plans, limits, usage and retention.
+"""Limit profiles, usage and retention.
 
-Limits come from the workspace's plan, overridden per workspace for custom pilot deals.
+Limits come from the workspace's profile (stored as its ``plan``), which the operator can
+override per workspace.
 Uploads are checked against runs per calendar month (UTC), queries per run and stored
-runs. Concurrency is not limited here: evaluation runs execute on the customer's runner,
+runs. Concurrency is not limited here: evaluation runs execute on the user's runner,
 not on this service.
 """
 
@@ -28,20 +29,23 @@ class Limits:
 
 
 PLANS: dict[str, Limits] = {
-    "pilot": Limits(
+    "standard": Limits(
         runs_per_month=500, queries_per_run=2_000, stored_runs=1_000, retention_days=30
     ),
-    "team": Limits(
+    "large": Limits(
         runs_per_month=5_000, queries_per_run=10_000, stored_runs=20_000, retention_days=90
     ),
-    "enterprise": Limits(
+    "xlarge": Limits(
         runs_per_month=100_000, queries_per_run=100_000, stored_runs=500_000, retention_days=365
     ),
 }
 
+DEFAULT_PLAN = "standard"
+"""Profile for new workspaces and for any profile name not in ``PLANS``."""
+
 
 def limits_for(ws: Workspace) -> Limits:
-    base = PLANS.get(ws.plan, PLANS["pilot"])
+    base = PLANS.get(ws.plan, PLANS[DEFAULT_PLAN])
     overrides = {
         k: int(v)
         for k, v in (ws.limits or {}).items()
@@ -175,7 +179,7 @@ def purge_expired(session: Session, now: datetime | None = None) -> dict[str, in
 
 
 def usage_rows(session: Session, year: int, month: int) -> list[dict[str, Any]]:
-    """One row per workspace for a calendar month (UTC), for manual invoicing."""
+    """One row per workspace for a calendar month (UTC), for capacity reporting."""
     since = datetime(year, month, 1, tzinfo=timezone.utc)
     until = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=timezone.utc)
     rows = []

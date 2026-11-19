@@ -145,7 +145,7 @@ def test_upgrade_and_backup_restore_preserve_governance(tmp_path):
         conn.execute(
             text(
                 "INSERT INTO workspaces (id,slug,name,plan,created_at) "
-                "VALUES ('w','acme','Acme','pilot',CURRENT_TIMESTAMP)"
+                "VALUES ('w','acme','Acme','standard',CURRENT_TIMESTAMP)"
             )
         )
         conn.execute(

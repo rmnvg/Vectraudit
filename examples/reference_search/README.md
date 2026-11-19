@@ -3,7 +3,7 @@
 This example searches 18 AI-authored, fictional support passages using Vectraudit's BM25
 pipeline. Its 13 distinct questions cover 12 proposed relevance judgments and one no-answer
 case. All labels are **pending human review**; `judgments.json` supplies source evidence
-for review. This is an engineered retrieval failure, not a customer case study.
+for review. This is an engineered retrieval failure, not a user case study.
 
 Run from the repository with development dependencies installed:
 
@@ -88,15 +88,14 @@ broken candidate as an acceptable release.
 
 The browser CI job runs the same visible journey and retains a separate
 `reference-search-browser` artifact, including failure screenshots/traces when available.
-Both installed-wheel and browser journeys passed locally; a live CI run is still pending.
+Both installed-wheel and browser journeys run locally.
 
 Each generated directory also contains an exported GitHub workflow. That workflow is a
-template for an application repository; review its private wheel installation and pipeline
+template for an application repository; review its pinned wheel installation and pipeline
 dependency prerequisites before adopting it. This fixture does not create Git commits,
-push code, or dispatch workflows. A live CI run remains pending until these changes are
-committed and pushed by the maintainer.
+push code, or dispatch workflows.
 
-For a second engineer, supply the example folder/script and the reviewed private wheel.
+For a second engineer, supply the example folder/script and the release wheel.
 Have them run the command above in a fresh environment, inspect the reports, review the
 proposed labels, and record their setup effort. Do not mark human review or independent
 reproduction complete automatically. `inventory.json` must be regenerated after intentional

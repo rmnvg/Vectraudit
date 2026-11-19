@@ -1,4 +1,4 @@
-"""Synthetic demonstration of the strategy's §11 story, end to end through product code.
+"""Synthetic demonstration of a retrieved-but-never-seen failure, end to end through Vectraudit.
 
     "Our assistant answered an account-recovery question incorrectly. The required exception
     was in a retrieved source but missing from the model context. Vectraudit showed the loss.
@@ -303,7 +303,7 @@ def page(facts: dict[str, Any]) -> str:
         "<h1>The right document was retrieved. The model never saw the part that mattered.</h1>"
         '<p class="muted">Explain the failure, test a repair, protect the next release.</p>'
         f'<div class="steps">{body}</div>'
-        '<h2>What a pilot adds</h2><p class="muted">The same loop on your assistant: your '
+        '<h2>On your own assistant</h2><p class="muted">The same loop with your '
         "questions and required evidence, your reviewers' judgments, fixes your pipeline "
         "supports, and the check in your CI. Documents and prompts stay on your machines.</p>"
         "</main></body></html>"

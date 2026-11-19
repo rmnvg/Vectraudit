@@ -78,7 +78,7 @@ def test_a_canary_of_another_question_or_attack_counts_and_several_are_listed(lo
 
 def test_records_are_safety_records_with_no_answer_text_and_name_the_suite(loaded):
     _, suite = loaded
-    secret = "the customer's private answer about invoice 4411"
+    secret = "the user's private answer about invoice 4411"
     (record,), _ = canary_records({"q": f"{secret} {token(suite, 'inject')}"}, suite)
     assert record["kind"] == SAFETY_KIND
     assert set(record) == {"query_id", "evaluator", "kind", "evaluator_version", "safety"}

@@ -16,7 +16,7 @@ CORPUS = "\n".join(
         {"doc_id": "a", "text": "refund refund annual annual"},
         {
             "doc_id": "b",
-            "text": "the annual refund rule is described here at length for every customer account",
+            "text": "the annual refund rule is described here at length for every user account",
         },
         {"doc_id": "c", "text": "shipping times"},
     ]

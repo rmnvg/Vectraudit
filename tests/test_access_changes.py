@@ -121,7 +121,7 @@ def test_a_revocation_becomes_expected_access_and_flags_the_stale_label(tmp_path
 
 
 def test_a_planted_revocation_defect_is_caught_and_passes_after_correction(tmp_path):
-    """The strategy's 2.2 acceptance: a customer-built revocation scenario."""
+    """A user-built revocation scenario."""
     text, _ = apply_access_changes(dataset(), changes(tmp_path, REVOKE), as_of=LATER)
     expected = parse_dataset(text)
     options = PipelineOptions(k=2, warmup=0)

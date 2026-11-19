@@ -1,4 +1,4 @@
-"""Customer installs are pinned, source-independent and verified before pip runs."""
+"""CI installs are pinned to an exact release wheel and verified before pip runs."""
 
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ def wheel_file(tmp_path, *, name="vectraudit", version="0.1.0"):
 
 def test_offline_install_verifies_bytes_and_removes_credentials(tmp_path, monkeypatch):
     wheel, digest = wheel_file(tmp_path)
-    for key in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "VECTRAUDIT_DOWNLOAD_TOKEN"):
-        monkeypatch.setenv(key, "private-download-secret")
+    for key in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"):
+        monkeypatch.setenv(key, "runner-secret")
     calls = []
 
     def pip_run(command, **kwargs):
@@ -40,7 +40,7 @@ def test_offline_install_verifies_bytes_and_removes_credentials(tmp_path, monkey
         assert "--force-reinstall" in command  # Same version may already contain different bytes.
         assert command[-1].endswith("vectraudit-0.1.0-py3-none-any.whl[faiss-cpu]")
         assert Path(command[-1].removesuffix("[faiss-cpu]")).read_bytes() == wheel.read_bytes()
-        assert "private-download-secret" not in kwargs["env"].values()
+        assert "runner-secret" not in kwargs["env"].values()
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(installer.subprocess, "run", pip_run)
@@ -66,14 +66,12 @@ def test_missing_or_invalid_pins_never_download_or_install(version, digest, extr
         installer.subprocess, "run", lambda *a, **k: pytest.fail("must not execute")
     )
     with pytest.raises(ValueError, match=r"exact version|SHA-256|extras"):
-        installer.install(
-            repository="vendor/distribution", version=version, sha256=digest, extras=extras
-        )
+        installer.install(repository="", version=version, sha256=digest, extras=extras)
 
 
-@pytest.mark.parametrize("repository", ["", "rmnvg/Vectraudit", "RMNVG/VECTRAUDIT.git", "--repo=x"])
-def test_source_or_invalid_repository_never_downloads(repository, monkeypatch):
-    monkeypatch.setenv("GH_TOKEN", "secret")
+@pytest.mark.parametrize("repository", ["--repo=x", "owner", "a/b/c", "x/y?z"])
+def test_invalid_repository_never_downloads(repository, monkeypatch):
+    monkeypatch.setattr(installer, "download", lambda *a: pytest.fail("must not download"))
     monkeypatch.setattr(
         installer.subprocess, "run", lambda *a, **k: pytest.fail("must not execute")
     )
@@ -100,65 +98,59 @@ def test_invalid_wheel_never_reaches_pip(case, tmp_path, monkeypatch):
         installer.install(repository="", version="0.1.0", sha256=digest, wheel=wheel)
 
 
-def test_download_is_exact_and_failure_redacts_credentials(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize(
+    ("repository", "expected"),
+    [("", installer.DEFAULT_REPOSITORY), ("someone/fork.git", "someone/fork")],
+)
+def test_download_uses_the_exact_public_release_asset(tmp_path, monkeypatch, repository, expected):
     wheel, digest = wheel_file(tmp_path)
-    monkeypatch.setenv("GH_TOKEN", "private-secret")
-    monkeypatch.setenv("GH_HOST", "untrusted.example")
-    calls = []
+    urls, calls = [], []
 
-    def run(command, **kwargs):
-        calls.append(command)
-        if command[0] == "gh":
-            assert command == [
-                "gh",
-                "release",
-                "download",
-                "v0.1.0",
-                "--repo",
-                "vendor/distribution",
-                "--pattern",
-                "vectraudit-0.1.0-py3-none-any.whl",
-                "--dir",
-                command[-1],
-            ]
-            assert kwargs["env"]["GH_HOST"] == "github.com"
-            (Path(command[-1]) / command[-3]).write_bytes(wheel.read_bytes())
-        return subprocess.CompletedProcess(command, 0)
+    def download(url, target):
+        urls.append(url)
+        target.write_bytes(wheel.read_bytes())
 
-    monkeypatch.setattr(installer.subprocess, "run", run)
-    installer.install(repository="vendor/distribution", version="0.1.0", sha256=digest)
-    assert len(calls) == 2
-
-    def denied(*args, **kwargs):
-        raise subprocess.CalledProcessError(1, "gh", stderr=b"private-secret denied")
-
-    monkeypatch.setattr(installer.subprocess, "run", denied)
+    monkeypatch.setattr(installer, "download", download)
     monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "install.py",
-            "--repository",
-            "vendor/distribution",
-            "--version",
-            "0.1.0",
-            "--sha256",
-            digest,
-        ],
+        installer.subprocess,
+        "run",
+        lambda command, **k: calls.append(command) or subprocess.CompletedProcess(command, 0),
     )
+    installer.install(repository=repository, version="0.1.0", sha256=digest)
+    assert urls == [
+        f"https://github.com/{expected}/releases/download/v0.1.0/vectraudit-0.1.0-py3-none-any.whl"
+    ]
+    assert len(calls) == 1
+    assert calls[0][3] == "install"
+
+
+def test_download_failure_and_oversized_files_never_install(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        installer.subprocess, "run", lambda *a, **k: pytest.fail("must not install")
+    )
+
+    def unreachable(*args, **kwargs):
+        raise OSError("network down")
+
+    monkeypatch.setattr(installer.urllib.request, "urlopen", unreachable)
+    monkeypatch.setattr(sys, "argv", ["install.py", "--version", "0.1.0", "--sha256", "a" * 64])
     assert installer.main() == 1
-    output = capsys.readouterr().err
-    assert "download failed" in output
-    assert "private-secret" not in output
+    assert "download failed" in capsys.readouterr().err
 
+    class Huge:
+        def __enter__(self):
+            return self
 
-def test_missing_credential_never_runs_gh(monkeypatch):
-    monkeypatch.delenv("GH_TOKEN", raising=False)
-    monkeypatch.setattr(
-        installer.subprocess, "run", lambda *a, **k: pytest.fail("must not execute")
-    )
-    with pytest.raises(ValueError, match="customer-specific"):
-        installer.install(repository="vendor/distribution", version="0.1.0", sha256="a" * 64)
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, size):
+            return b"x" * size
+
+    monkeypatch.setattr(installer, "MAX_WHEEL_BYTES", 3 * 1024 * 1024)
+    monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **k: Huge())
+    with pytest.raises(ValueError, match="too large"):
+        installer.download("https://example.invalid/x.whl", tmp_path / "x.whl")
 
 
 def test_generated_installer_runs_without_vectraudit_installed(tmp_path):
@@ -185,8 +177,8 @@ def test_all_ci_surfaces_share_the_pinned_install_action():
         )
     )
     for workflow in workflows:
-        assert "rmnvg/Vectraudit" not in workflow
         assert "gh release download" not in workflow
+        assert "token: ${{ secrets." not in workflow
         job = next(iter(yaml.safe_load(workflow)["jobs"].values()))
         check = next(s for s in job["steps"] if "retrieval-check" in s.get("uses", ""))
         assert check["uses"] == "./.github/actions/retrieval-check"
@@ -198,12 +190,12 @@ def test_all_ci_surfaces_share_the_pinned_install_action():
     check = yaml.safe_load(ci_files()[".github/actions/retrieval-check/action.yml"])
     install = check["runs"]["steps"][0]
     assert install["uses"] == "./.github/actions/install-vectraudit"
-    assert set(install["with"]) == {"repository", "version", "sha256", "token", "extras"}
+    assert set(install["with"]) == {"repository", "version", "sha256", "extras"}
 
 
-def test_distribution_staging_excludes_source_archives_and_refuses_stale_assets(tmp_path):
+def test_release_staging_keeps_only_the_wheel_and_refuses_stale_assets(tmp_path):
     spec = importlib.util.spec_from_file_location(
-        "prepare_distribution", ROOT / "scripts/prepare_distribution.py"
+        "stage_release", ROOT / "scripts/stage_release.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -212,9 +204,9 @@ def test_distribution_staging_excludes_source_archives_and_refuses_stale_assets(
     wheel, digest = wheel_file(source)
     filename = "vectraudit-0.1.0-py3-none-any.whl"
     wheel.rename(source / filename)
-    (source / "vectraudit-0.1.0.tar.gz").write_bytes(b"private source archive")
-    (source / "private.txt").write_text("private notes")
-    destination = tmp_path / "customer-dist"
+    (source / "vectraudit-0.1.0.tar.gz").write_bytes(b"source archive")
+    (source / "notes.txt").write_text("notes")
+    destination = tmp_path / "release-dist"
     module.prepare(source, destination)
     assert {p.name for p in destination.iterdir()} == {filename, "SHA256SUMS"}
     assert (destination / "SHA256SUMS").read_text() == f"{digest}  {filename}\n"

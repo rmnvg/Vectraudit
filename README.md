@@ -4,9 +4,7 @@
 failures. Measure fixes. Guard every release.**
 
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
-
-> **Proprietary and confidential.** Vectraudit is a commercial product, distributed privately
-> and not published to PyPI.
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 Vectraudit tells you whether a change to your retrieval system made it better or worse,
 and why. It measures a baseline and a candidate on the same versioned, labelled questions,
@@ -29,12 +27,13 @@ runs on your infrastructure; only run files are uploaded, and only if you choose
 | **Choose a setup** | Embedding models, chunkers and indexes compared on one labelled set; recall under filters; capacity under concurrent load; migration reports | [`experiment`](docs/experiments.md), [`capacity`](docs/capacity.md), [`migration`](docs/migration-report.md) |
 | **Check safety** | Permission and tenant assertions, cache-leak probes, corpus scans for injected instructions, poisoning checks | [Permissions](docs/permission-lifecycle.md), [poisoning](docs/poisoning.md) |
 | **See inside a FAISS index** | Missed neighbours and why, quantization loss, HNSW search replay, recall against latency | [`serve INDEX`](#faiss-index-debugger) |
-| **Share results with a team** | Pinned baselines, history, reports and pull-request checks on a hosted control plane | [Vectraudit Cloud](docs/cloud-operations.md) |
+| **Share results with a team** | Pinned baselines, history, reports and pull-request checks on a control plane you host yourself | [Vectraudit Cloud](docs/cloud-operations.md) |
 
 ## Install
 
-Install a wheel from a private release (see [docs/RELEASING.md](docs/RELEASING.md)), or
-from a checkout with `uv sync --all-extras` and prefix the commands below with `uv run`:
+Download the wheel from the [latest GitHub release](https://github.com/rmnvg/Vectraudit/releases)
+(it includes the built web UI; check it against the release's `SHA256SUMS`), or work from
+a checkout with `uv sync --all-extras` and prefix the commands below with `uv run`:
 
 ```bash
 pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
@@ -43,7 +42,7 @@ pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
 Extras install only what you use: the backends `[faiss-cpu]`, `[qdrant]`, `[pgvector]` and
 `[weaviate]` (Pinecone, Elasticsearch, OpenSearch and Chroma need none), `[text]` for
 sentence-transformers text queries, `[umap]` for the cluster map, `[parquet]` for Parquet
-inputs, `[hdf5]` for ann-benchmarks datasets and `[cloud]` for the hosted control plane.
+inputs, `[hdf5]` for ann-benchmarks datasets and `[cloud]` for the self-hosted control plane.
 `[all]` includes all of these except the optional LLM labelling helper (`[label-llm]`).
 Python 3.10 to 3.13 is tested in CI.
 
@@ -314,19 +313,17 @@ The [FAISS debugger reference](docs/faiss-debugger.md) covers inputs, labelled r
 every command-line option (`serve`, `sweep`, `compare`, `evaluate`, `runs diff`, `cache`),
 saved baselines, measurement methodology, caching and limitations.
 
-## Hosted service and deployment
+## Self-hosted control plane and deployment
 
-- [Running Vectraudit Cloud](docs/cloud-operations.md): hosted baselines, history, reports
-  and the dashboard (`vectraudit record --upload`, `check cloud:main --upload`), with
-  plain-language release summaries and quality trends for the lead (`cloud summary`)
-- [Enterprise deployment](docs/enterprise-deployment.md): local, private-runner and hosted
-  profiles, SSO, roles and recovery
+- [Running Vectraudit Cloud](docs/cloud-operations.md): a control plane you run yourself for
+  shared baselines, history, reports and the dashboard (`vectraudit record --upload`,
+  `check cloud:main --upload`), with plain-language release summaries and quality trends
+  (`cloud summary`)
+- [Deployment](docs/deployment.md): local, private-runner and self-hosted profiles, SSO,
+  roles and recovery
 - [Threat model](docs/threat-model.md) and [incident response](docs/incident-response.md)
-- [Launch readiness](docs/launch-readiness.md): validation and pilot acceptance evidence
-- [Pilot offer](docs/pilot-offer.md) and [trust package](docs/trust-package.md): drafts for
-  prospective design partners and their security reviewers (owner decisions marked)
-- [Pilot release rehearsal](docs/pilot-release-validation.md): reproduce an improving-average
-  regression, inspect a critical repeat failure, and verify the fix through exported checks
+- [Release rehearsal](examples/release_demo.py): reproduce an improving-average regression,
+  inspect a critical repeat failure, and verify the fix through exported checks
 - [Reference support search](examples/reference_search/README.md): measure a real BM25/filter
   regression on fictional documents, compare independent application revisions, and inspect
   the exported reports (proposed labels await human review)
@@ -355,12 +352,13 @@ check reports in the Checks tab), `scripts/filtered_sweep_smoke.mjs` (the Tuner'
 card), `scripts/estimates_smoke.mjs` and `scripts/components_smoke.mjs` (the run view's
 judge-corrected estimates and component scoreboard) and `scripts/large_run_smoke.mjs` (a run too
 large to open). Slow tests, such as the 200 MiB run, are skipped by default: `uv run pytest -m slow`.
-Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md).
+Design decisions are logged in [docs/DECISIONS.md](docs/DECISIONS.md). Contributions are
+welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Proprietary. Copyright (c) 2026 Ramanjot Singh. All rights reserved; use requires a written
-agreement. See [LICENSE](LICENSE). The demo corpus is "RAG Dataset 12000" by Neural Bridge AI
-(Apache-2.0), with passages from Falcon RefinedWeb (ODC-By 1.0).
+Licensed under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). The demo corpus
+is "RAG Dataset 12000" by Neural Bridge AI (Apache-2.0), with passages from Falcon RefinedWeb
+(ODC-By 1.0).
 
 The methods Vectraudit reimplements, and where they come from, are credited in [docs/credits.md](docs/credits.md).

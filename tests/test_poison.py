@@ -31,7 +31,7 @@ CORPUS = [
     {
         "doc_id": "refund-policy",
         "title": "Refund policy for annual plans",
-        "text": "Refund policy for annual plans. Customers may request a refund within "
+        "text": "Refund policy for annual plans. Users may request a refund within "
         "thirty days.\nContact billing for exceptions.",
         "metadata": {"tenant": "acme", "current": True},
         "vector": [1.0, 0.0, 0.0],

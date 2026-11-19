@@ -237,7 +237,7 @@ def audit_log(
 
 @router.get("/workspaces/{workspace}/usage")
 def workspace_usage(workspace: str, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
-    """Plan limits and this month's usage."""
+    """Workspace limits and this month's usage."""
     access = repo.authorize(session, principal, workspace, "read")
     if access.role == "runner":
         raise forbidden("Runner tokens can't read usage.")

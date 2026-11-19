@@ -72,7 +72,7 @@ def test_pairs_are_the_same_question_under_another_context():
 
 
 def test_a_cache_keyed_on_text_alone_leaks_and_the_corrected_key_passes():
-    """The strategy's 2.2 acceptance: a planted cache defect caught, then corrected."""
+    """A planted cache defect caught, then corrected."""
     leaky = cache_probe(dataset(), Assistant(key=("text",)), k=2)
     assert leaky["leaks"] == [
         {

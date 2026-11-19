@@ -344,7 +344,7 @@ def _notes(
         )
     notes.append(
         "Measured and declared costs cover pipeline calls only; model, database and hosting "
-        "costs on the customer's side are not included unless the adapter reports them."
+        "costs on the user's side are not included unless the adapter reports them."
     )
     return notes
 

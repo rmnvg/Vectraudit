@@ -465,7 +465,7 @@ It provides BM25, optional cosine vector search, weighted reciprocal-rank fusion
 metadata equality filters, a transparent `phrase` baseline reranker and explicit final
 truncation. Parameters: `depth`, `vector_weight` in [0,1], `reranker` = `none` or `phrase`.
 Nonzero vector weight requires query and corpus vectors from the same embedding space.
-Its tenant filter is a reference implementation; use the customer's actual adapter to
+Its tenant filter is a reference implementation; use the user's actual adapter to
 verify their authorization system. The phrase reranker is not a semantic cross-encoder.
 
 ### Import traces (OpenInference, LangSmith, Langfuse)
@@ -959,7 +959,7 @@ pipeline records no model context, because a rule that can never be judged would
 later release. The startup policy is read-only; save a workspace copy first. The record
 notes which policy version now protects the question.
 
-`vectraudit workbench investigations <workspace>` summarises them for a pilot: diagnoses
+`vectraudit workbench investigations <workspace>` summarises them: diagnoses
 accepted, disputed and pending, fixes verified, fixes reproduced by a second engineer (an
 approved validation of the same fix by someone other than the opener), and median minutes to
 an accepted diagnosis and to a verified fix, each with its sample size.
@@ -1146,7 +1146,7 @@ credentials are.
 `scripts/workbench_smoke.mjs` and `scripts/guided_smoke.mjs` exercise adapters, stage
 evidence, safety assertions, split isolation, guided persistence and browser flows.
 The existing release-check run format is retained. See
-[enterprise deployment](enterprise-deployment.md) for governance, SSO and recovery checks.
+[enterprise deployment](deployment.md) for governance, SSO and recovery checks.
 Real-provider SSO certification, representative load tests and PostgreSQL recovery rehearsals
 are deployment acceptance work; passing local fixtures is not a claim of market readiness.
 
@@ -1249,7 +1249,7 @@ adapter-reported; the workbench also calculates a SHA-256 of each returned passa
 
 See `examples/workbench/document_source.py` for a read-only SQLite implementation that
 looks up IDs within a tenant and snapshot and rejects unsupported filters. Adapt it to your
-customer-controlled source; credentials remain in the local environment. A Python resolver
+user-controlled source; credentials remain in the local environment. A Python resolver
 can use an existing database or HTTP client, so a new backend connector is not required.
 
 Lookups run in fresh processes, one at a time, with a configured 1–120 second timeout.
@@ -1303,7 +1303,7 @@ not proof that a label is wrong or the cause of a retrieval regression.
 currently attached corpus. Review affected passages, save/freeze the revised benchmark, then
 remeasure both baseline and candidate. Existing run files and frozen versions stay unchanged.
 These files live under `.workbench/benchmarks/`; draft corpora live under `.workbench/drafts/`.
-All are customer-controlled local files and are not uploaded by these workflows.
+All are user-controlled local files and are not uploaded by these workflows.
 
 ## Release policies and exported release checks
 
@@ -1380,7 +1380,7 @@ vectraudit workbench export RELEASE_ID --workspace DIR --out path/to/repo
 | `retrieval/release/corpus.jsonl` | Only when *Include the measured corpus* is checked |
 | `.github/workflows/retrieval-release-check.yml` | Runs the check on every pull request |
 
-Before export the workbench lists what the customer must provide: the corpus (when not
+Before export the workbench lists what the user must provide: the corpus (when not
 included), an importable Python adapter and its dependencies, and repository secrets for
 HTTP deployments and tokens. Secrets and deployment URLs are referenced by environment
 variable only. Local endpoints that a CI runner cannot reach are flagged, and so are held-out
@@ -1507,7 +1507,7 @@ titles of a case's cited documents only with `--share-query-text`. An investigat
 sends its states, counts, times, outcome and protecting policy versions, never names,
 reasons, evidence requests or notes; hosted recurring problems then link to it. See [cloud operations](cloud-operations.md#shared-cases-benchmarks-and-policies).
 
-Reproduce the full browser journey with `node scripts/market_fit_smoke.mjs` after building
+Reproduce the full browser journey with `node scripts/guided_workflows_smoke.mjs` after building
 the UI. It tests grading/reload, snapshots, findings, incident review, permission creation
 and freshness at desktop/mobile sizes against a real local server.
 

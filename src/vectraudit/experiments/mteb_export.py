@@ -14,7 +14,7 @@ file per model and task::
 same shape from a finished experiment, one file per candidate: ``<out>/<candidate>/<task>.json``.
 
 **The numbers are not like for like with the leaderboard.** They are computed by Vectraudit on the
-customer's corpus and labels (a different task from any public one), averaged with equal weight
+user's corpus and labels (a different task from any public one), averaged with equal weight
 over question families, at the experiment's ``k`` (MTEB's retrieval default is 10), with
 Vectraudit's definitions, which match trec_eval and ranx. The files say so under ``vectraudit``,
 and ``mteb_version`` is ``null``: MTEB did not produce them. ``main_score`` is nDCG at the
@@ -36,7 +36,7 @@ from vectraudit import __version__
 TASK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 KEYS = {"ndcg": "ndcg", "map": "map", "mrr": "mrr", "precision": "precision", "recall": "recall"}
 NOT_LIKE_FOR_LIKE = (
-    "Measured by Vectraudit on the customer's own corpus and labelled questions, which is not a "
+    "Measured by Vectraudit on the user's own corpus and labelled questions, which is not a "
     "public MTEB task: do not rank this against leaderboard scores as if it were. Averaged with "
     "equal weight over question families, at the experiment's k."
 )

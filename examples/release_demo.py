@@ -82,13 +82,13 @@ def rehearse(root: Path) -> None:
             for i in range(40)
         ]
         draft = post(
-            "drafts", {"name": "Synthetic pilot", "dataset": "\n".join(map(json.dumps, rows))}
+            "drafts", {"name": "Synthetic release", "dataset": "\n".join(map(json.dumps, rows))}
         )
         post("snapshots", {"draft_id": draft["id"], "revision": draft["revision"]})
         policy = post(
             "policies",
             {
-                "name": "Synthetic pilot policy",
+                "name": "Synthetic release policy",
                 "policy": {
                     "metrics": {"ndcg": {"max_drop": 0}},
                     "min_queries": 30,
@@ -138,7 +138,7 @@ def rehearse(root: Path) -> None:
                 "baseline": runs["baseline"]["run_id"],
                 "candidate": runs["fixed"]["run_id"],
                 "policy": policy["id"],
-                "name": "Synthetic pilot",
+                "name": "Synthetic release",
                 "repeats": 2,
             },
         )
@@ -153,8 +153,8 @@ def rehearse(root: Path) -> None:
         )
         assert result.returncode == expected, result.stdout + result.stderr
 
-    # Each directory represents an independent customer checkout. Only exported files
-    # and the explicitly customer-owned adapter are present, with no source-tree imports.
+    # Each directory represents an independent user checkout. Only exported files
+    # and the explicitly user-owned adapter are present, with no source-tree imports.
     release = "retrieval/release/release.json"
     approved = root / "baseline" / release
     for variant in variants:

@@ -8,7 +8,7 @@ benchmark's own.
 
 This is **not relevance labelling**. The neighbours say which vectors are nearest, not which
 documents answer a question. Quality metrics such as nDCG still need labelled questions
-([customers bring labels](retrieval-workbench.md)).
+([users bring labels](retrieval-workbench.md)).
 
 ## Get the data
 

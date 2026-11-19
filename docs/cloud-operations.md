@@ -1,9 +1,10 @@
 # Running Vectraudit Cloud
 
-The hosted control plane stores uploaded runs, pinned baselines, checks and reports for
-workspaces of customers. It is one Docker image plus PostgreSQL, with no cloud-specific
-services, so it runs on any provider. Customer credentials never reach it: runners execute
-in the customer's CI and upload an allowlisted projection of each run file (see below).
+Vectraudit Cloud is an optional control plane you host yourself. It stores uploaded runs,
+pinned baselines, checks and reports for one or more workspaces. It is one Docker image
+plus PostgreSQL, with no cloud-specific services, so it runs on any provider. Backend
+credentials never reach it: runners execute in your CI and upload an allowlisted
+projection of each run file (see below).
 
 ## What an upload contains
 
@@ -57,7 +58,7 @@ the service sends HSTS and marks session cookies `Secure`.
 | `VECTRAUDIT_CLOUD_GITHUB_CLIENT_ID` / `_SECRET` | no | "Sign in with GitHub". Create a GitHub OAuth app with callback `<PUBLIC_URL>/auth/github/callback`. Without it, members sign in by pasting a personal token. |
 | `VECTRAUDIT_CLOUD_SHARE_LINKS` | no | `true` enables signed, expiring public report links (off by default). |
 | `VECTRAUDIT_CLOUD_MAX_UPLOAD_BYTES` | no | Request body limit (default 20 MB). |
-| `VECTRAUDIT_CLOUD_MAX_QUERIES_PER_RUN` | no | Hard cap across all plans (default 10,000). |
+| `VECTRAUDIT_CLOUD_MAX_QUERIES_PER_RUN` | no | Hard cap across all limit profiles (default 10,000). |
 | `VECTRAUDIT_CLOUD_SMTP_HOST`, `VECTRAUDIT_CLOUD_SMTP_FROM` | for email | The mail server and From address for email notifications. Set both or neither. Optional: `VECTRAUDIT_CLOUD_SMTP_PORT` (587, or 465 with `ssl`), `VECTRAUDIT_CLOUD_SMTP_USERNAME`, `VECTRAUDIT_CLOUD_SMTP_PASSWORD`, `VECTRAUDIT_CLOUD_SMTP_SECURITY` (`starttls` by default, `ssl` or `none`). |
 | `VECTRAUDIT_CLOUD_WEBHOOK_ALLOW_PRIVATE` | no | Development only: lets webhooks use http and private, loopback or link-local addresses. Leave unset in production. |
 
@@ -72,17 +73,18 @@ docker compose run --rm api create-workspace acme --name "Acme" --owner-email le
 dashboard, invites members (`POST /api/v1/workspaces/acme/members` or ask an operator),
 creates a project and a runner token, and stores the runner token as the CI secret
 `VECTRAUDIT_CLOUD_TOKEN`. Only invited emails can sign in. Operators (admins) can create
-workspaces but have no access to customer data.
+workspaces but have no access to user data.
 
-## Plans and billing
+## Usage limits
 
 ```bash
-docker compose run --rm api set-plan acme team --limit runs_per_month=2000
-docker compose run --rm api usage --month 2026-10 > usage-2026-10.csv   # for invoicing
+docker compose run --rm api set-plan acme large --limit runs_per_month=2000
+docker compose run --rm api usage --month 2026-10 > usage-2026-10.csv
 ```
 
-Plans set runs per month, queries per run, stored runs and retention days (pilot: 500,
-2,000, 1,000 and 30 days). Over-limit uploads get a clear 413/429 error; retries of an
+Each workspace has a limit profile (`standard`, `large` or `xlarge`) that sets runs per
+month, queries per run, stored runs and retention days (`standard`: 500, 2,000, 1,000 and
+30 days), and the operator can override any of them per workspace. Over-limit uploads get a clear 413/429 error; retries of an
 already stored run are never blocked.
 
 ## Decision ledger and release timeline
@@ -365,7 +367,7 @@ docker compose start api
 ```
 
 Test a restore regularly: a backup you have not restored is a hope, not a backup. Deleted
-data persists in backups until they expire; state your backup retention in customer terms.
+data persists in backups until they expire; tell your users how long backups are kept.
 
 ## Upgrades
 
@@ -381,7 +383,7 @@ as a release step instead of `serve --migrate`.
   Query strings and headers are never logged, so tokens and share-link signatures stay
   out of logs. Send `X-Request-ID` to correlate with your proxy.
 
-## Customer data requests and incidents
+## User data requests and incidents
 
 | Need | How |
 |---|---|

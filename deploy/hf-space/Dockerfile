@@ -1,11 +1,9 @@
 # syntax=docker/dockerfile:1
 # vectraudit demo for Hugging Face Spaces (Docker SDK).
 #
-# In a Space repo (just this Dockerfile + README.md) the source is cloned from the private
-# GitHub repository at VECTRAUDIT_REF, authenticated by the Space secret GITHUB_TOKEN (a
-# fine-grained token with read-only Contents access to rmnvg/Vectraudit). The token is
-# mounted only for the clone and never stored in an image layer.
-# From a vectraudit checkout the local source is used instead and no token is needed:
+# In a Space repo (just this Dockerfile + README.md) the source is cloned from the public
+# GitHub repository at VECTRAUDIT_REF.
+# From a vectraudit checkout the local source is used instead:
 #   docker build -f deploy/hf-space/Dockerfile -t vectraudit-space .
 #   docker run --rm -p 7860:7860 vectraudit-space
 
@@ -19,14 +17,9 @@ ARG VECTRAUDIT_REF
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY . /context
-RUN --mount=type=secret,id=GITHUB_TOKEN,mode=0444,required=false \
-    if [ -f /context/pyproject.toml ]; then cp -r /context /src; \
-    elif [ -s /run/secrets/GITHUB_TOKEN ]; then \
-        repo="${VECTRAUDIT_REPO#https://}"; \
-        git clone --depth 1 --branch "$VECTRAUDIT_REF" \
-            "https://x-access-token:$(cat /run/secrets/GITHUB_TOKEN)@$repo" /src \
-        && rm -rf /src/.git; \
-    else echo "Set the GITHUB_TOKEN Space secret to clone the private repository." >&2; exit 1; fi
+RUN if [ -f /context/pyproject.toml ]; then cp -r /context /src; \
+    else git clone --depth 1 --branch "$VECTRAUDIT_REF" "$VECTRAUDIT_REPO" /src \
+        && rm -rf /src/.git; fi
 WORKDIR /src/frontend
 RUN npm ci --no-audit --no-fund && npm run build
 

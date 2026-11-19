@@ -1,6 +1,6 @@
 """Investigate one failed question, try a declared fix, and validate it under the policy.
 
-The loop the strategy calls "explain a real failure, test a repair, protect every release":
+The loop "explain a real failure, test a repair, protect every release":
 
 1. :func:`investigate` reads one question of a run: what was lost and where, the recorded
    facts, possible causes (labelled as hypotheses), cautions, and which of the pipeline's

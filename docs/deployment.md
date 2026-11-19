@@ -6,11 +6,11 @@
   plus trusted CLI/Python adapters. No authentication surface or uploads are added.
 - **Private scheduled runner:** the same installed package and a controlled checkout;
   use `deploy/monitor/workbench-check.yml` or cron. Keep adapter credentials in runner secrets.
-- **Hosted control plane:** existing `deploy/cloud/docker-compose.yml` (PostgreSQL,
-  migration job, API) behind a TLS proxy. Evaluation stays on the customer runner. Existing
+- **Self-hosted control plane:** existing `deploy/cloud/docker-compose.yml` (PostgreSQL,
+  migration job, API) behind a TLS proxy. Evaluation stays on the user runner. Existing
   project-scoped runner tokens, workspace membership and audit logging remain authoritative.
 
-## Enterprise sign-in
+## Single sign-on (OIDC)
 
 Set `VECTRAUDIT_CLOUD_PUBLIC_URL` to the external HTTPS origin and
 `VECTRAUDIT_CLOUD_SSO_JSON` to a JSON object with these five fields:
@@ -22,7 +22,7 @@ Set `VECTRAUDIT_CLOUD_PUBLIC_URL` to the external HTTPS origin and
 Register `https://YOUR_PUBLIC_ORIGIN/auth/sso/callback` as the exact redirect URI. The
 provider must support authorization codes, S256 PKCE, form-encoded client-secret token
 exchange, bearer access tokens and userinfo with `sub`, `email`, `email_verified:true`.
-The login page shows Enterprise sign-in when configured. Only existing active users can
+The login page shows single sign-on when configured. Only existing active users can
 sign in; invitation, membership, role and tenant checks remain unchanged.
 
 This is a fixed-provider OAuth code/userinfo integration. It does not parse ID tokens or
@@ -85,6 +85,6 @@ export switch. Existing workspaces preserve their access behavior after upgrade.
 `test_upgrade_and_backup_restore_preserve_governance` automatically upgrades revision 0004,
 checks inherited access defaults, changes governance, backs up and restores a SQLite fixture,
 and verifies schema and controls. Existing tests cover tenant isolation and hosted check
-compatibility. PostgreSQL restore duration, data integrity at customer scale, TLS routing,
+compatibility. PostgreSQL restore duration, data integrity at user scale, TLS routing,
 provider SSO and disaster recovery objectives require a real deployment rehearsal; none
 was performed against production as part of this change.

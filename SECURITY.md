@@ -4,9 +4,9 @@ Vectraudit has three parts with different security models:
 
 - **The release-check runner** (`vectraudit record`, `check`, `cloud`) runs in your CI.
   It holds your vector-database credentials, which it reads from environment variables
-  (connection files reject literal secrets) and never sends to us. Run files contain ids,
+  (connection files reject literal secrets) and never sends anywhere. Run files contain ids,
   metrics and timings, not document text or vectors.
-- **Vectraudit Cloud** (`vectraudit-cloud`), the hosted service: workspaces, tokens, runs,
+- **Vectraudit Cloud** (`vectraudit-cloud`), the control plane you can host yourself: workspaces, tokens, runs,
   baselines, checks and reports. Its threats and controls are in
   [docs/threat-model.md](docs/threat-model.md); operating it is described in
   [docs/cloud-operations.md](docs/cloud-operations.md) and incidents in
@@ -18,10 +18,11 @@ Vectraudit has three parts with different security models:
 
 ## Reporting a vulnerability
 
-Email the maintainer with the details and how to reproduce; please don't open an issue.
-We acknowledge within two working days, agree on a fix timeline based on severity, and
-credit you if you wish. Fixes ship in the next release and, for the hosted service, are
-deployed as soon as they are verified.
+Please report vulnerabilities privately through GitHub's
+[private vulnerability reporting](https://github.com/rmnvg/Vectraudit/security/advisories/new)
+with the details and how to reproduce; don't open a public issue. The maintainers aim to
+acknowledge reports within a few working days, agree on a fix timeline based on severity,
+and credit you if you wish. Fixes ship in the next release.
 
 ## Dependencies
 
@@ -34,5 +35,6 @@ pull request, on every push to `main` and weekly. When an advisory affects a dep
    full test suite and release.
 3. If no fix exists and the path is used, mitigate (disable the feature, add a guard) and
    record the decision in `docs/DECISIONS.md` until a fix ships.
-4. For the hosted service, follow the incident process if the vulnerability may have been
+4. If you operate a Vectraudit Cloud deployment, follow the
+   [incident process](docs/incident-response.md) if the vulnerability may have been
    exploitable in production.

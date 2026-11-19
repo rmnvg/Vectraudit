@@ -1,13 +1,13 @@
-"""One shareable page from the synthetic pilot demo: fail, explain, fix, protect.
+"""One shareable page from the synthetic release demo: fail, explain, fix, protect.
 
 Run the demo first, then build the page from its output folder:
 
-    uv run python examples/pilot_release_demo.py --out /tmp/vectraudit-pilot-demo
-    uv run python examples/sample_evidence_report.py /tmp/vectraudit-pilot-demo \
+    uv run python examples/release_demo.py --out /tmp/vectraudit-release-demo
+    uv run python examples/sample_evidence_report.py /tmp/vectraudit-release-demo \
         --out sample-evidence-report.html
 
 The page is self-contained (no scripts, no external requests) so it can be emailed or
-attached for a prospect. It is a synthetic demonstration and says so at the top: it shows
+attached to a review. It is a synthetic demonstration and says so at the top: it shows
 how Vectraudit reasons about a release, not results on anyone's data, and its latency values
 carry no performance claim. It embeds the two release reports the demo produced.
 """
@@ -49,7 +49,7 @@ def _load(folder: Path, name: str) -> dict[str, Any]:
     try:
         result: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise SystemExit(f"{path}: run examples/pilot_release_demo.py first ({exc})") from exc
+        raise SystemExit(f"{path}: run examples/release_demo.py first ({exc})") from exc
     return result
 
 
@@ -75,7 +75,7 @@ def _embed(result: dict[str, Any], title: str) -> str:
 
 
 def build(folder: Path) -> str:
-    """The page's HTML from a ``pilot_release_demo.py`` output folder."""
+    """The page's HTML from a ``release_demo.py`` output folder."""
     candidate, fixed = _load(folder, "candidate"), _load(folder, "fixed")
     base_ndcg, cand_ndcg = _ndcg(candidate)
     _, fixed_ndcg = _ndcg(fixed)
@@ -136,7 +136,7 @@ def build(folder: Path) -> str:
         "<title>Vectraudit sample evidence report</title>"
         f"<style>{STYLE}</style></head><body><main>"
         '<p class="banner"><b>Synthetic demonstration.</b> Generated from a fixture with '
-        "deliberately simple data, not from any customer's application. It shows how "
+        "deliberately simple data, not from any user's application. It shows how "
         "Vectraudit reasons about a release; the numbers are not benchmark results and the "
         "latency values carry no performance claim.</p>"
         "<h1>A retrieval change that looked better, and why it should not ship</h1>"
@@ -147,7 +147,7 @@ def build(folder: Path) -> str:
         + _embed(candidate, "Candidate release report")
         + "<h2>The fix: full release report</h2>"
         + _embed(fixed, "Fixed release report")
-        + '<h2>What a pilot adds</h2><p class="muted">On your own application and '
+        + '<h2>On your own application</h2><p class="muted">With your own application and '
         "questions: a reviewed benchmark graded by your domain owner, an investigation of a "
         "real failure or planned change, the fix measured under a policy you agree, and the "
         "same check installed in your CI. Your data stays on your machines unless you choose "
@@ -158,7 +158,7 @@ def build(folder: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("demo", type=Path, help="Output folder of pilot_release_demo.py")
+    parser.add_argument("demo", type=Path, help="Output folder of release_demo.py")
     parser.add_argument("--out", type=Path, default=Path("sample-evidence-report.html"))
     args = parser.parse_args(argv)
     args.out.write_text(build(args.demo), encoding="utf-8")

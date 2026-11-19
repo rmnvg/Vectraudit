@@ -20,7 +20,7 @@ export default function ReleasePolicy({ token, value, onChange }: { token: strin
       const next = await guidedRequest<PolicyListing>('policies', token)
       setListing(next)
       if (select) onChange(select, selectedRef(next, select))
-      // Prefer the customer's own policy: the startup file, then the newest saved policy.
+      // Prefer the user's own policy: the startup file, then the newest saved policy.
       else if (value === undefined) {
         const fallback = next.startup ? 'startup' : next.policies.find(p => p.latest)?.id || null
         onChange(fallback, selectedRef(next, fallback))
@@ -110,7 +110,7 @@ function PolicyEditor({ token, base, onSaved }: { token: string; base: PolicyRec
       <label className="text-sm">Metric for regressed questions<select aria-label="Metric for regressed questions" className={input} value={form.primaryMetric} onChange={e => update({ primaryMetric: e.target.value })}><option value="">First measured metric</option>{METRICS.map(m => <option key={m} value={m}>{m}</option>)}</select></label>
     </div>
 
-    <div><h4 className="text-sm font-semibold">Cohorts (question tags)</h4><p className="text-xs text-muted">Protect groups such as a language or customer tier. Tags with fewer questions than the minimum are reported, not judged.</p>
+    <div><h4 className="text-sm font-semibold">Cohorts (question tags)</h4><p className="text-xs text-muted">Protect groups such as a language or user tier. Tags with fewer questions than the minimum are reported, not judged.</p>
       <div className="mt-2 flex flex-wrap items-end gap-4"><label className="flex flex-col text-xs">Minimum questions per cohort<input aria-label="Minimum questions per cohort" className={small} inputMode="numeric" value={form.cohortMinQueries} onChange={e => update({ cohortMinQueries: e.target.value })} /></label>
         {METRICS.map(m => <div key={m} className="flex flex-col text-xs"><label className="flex items-center gap-2"><input type="checkbox" aria-label={`Cohort ${m}`} checked={form.cohortMetrics[m].enabled} onChange={e => update({ cohortMetrics: { ...form.cohortMetrics, [m]: { ...form.cohortMetrics[m], enabled: e.target.checked } } })} />{m} allowed drop</label><input aria-label={`Cohort ${m} allowed drop`} className={small} inputMode="decimal" disabled={!form.cohortMetrics[m].enabled} value={form.cohortMetrics[m].maxDrop} onChange={e => update({ cohortMetrics: { ...form.cohortMetrics, [m]: { ...form.cohortMetrics[m], maxDrop: e.target.value } } })} /></div>)}</div>
       <label className="mt-2 block text-sm">Correct for many cohorts
