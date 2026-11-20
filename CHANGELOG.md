@@ -37,6 +37,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit tune --write-connection tuned.json` writes a copy of the connection with the
+  recommended value, so `record` and `check` can guard it against the untuned setting. The
+  swept connection is never changed, relative paths in the copy are rewritten to name the
+  same files, and nothing is written when no value was recommended.
 - The workbench's Checks tab reads `vectraudit tune` reports and `tune-compare --json`
   results: the recommended value, every swept value with its recall interval and latency,
   missed neighbours (never with a cause) and filtered curves. An unmet, cancelled or failed

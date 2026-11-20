@@ -374,6 +374,7 @@ function tuneSweep(r: Row): CheckSummary {
       `Latency: ${text(timing.scope)}`,
       rows(r.missed).length ? 'A backend does not expose why a neighbour was missed, so no cause is given.' : '',
       batch.measured ? `Batch: ${text(batch.scope)}` : '',
+      chosen ? 'Guard the recommended value with `vectraudit tune --write-connection` and a release check.' : '',
     ].filter(Boolean),
   }
 }

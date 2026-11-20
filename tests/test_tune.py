@@ -329,3 +329,116 @@ def test_tune_compare_command(synthetic, tmp_path):
     assert cli.invoke(app, ["tune-compare", str(a), str(b)]).exit_code == 4
     b.write_text("{}")
     assert cli.invoke(app, ["tune-compare", str(a), str(b)]).exit_code not in (0, 4)
+
+
+# --- Phase 44.2: handing the recommendation to release checks ----------------------------------
+
+
+def test_a_tuned_connection_carries_the_recommendation_and_keeps_paths_working(tmp_path):
+    from vectraudit.evaluation.tune import tuned_connection
+
+    report = {
+        "format": "vectraudit.tune",
+        "status": "complete",
+        "backend": {"backend": "faiss"},
+        "param": "nprobe",
+        "recommendation": {"value": 8},
+    }
+    raw = {
+        "backend": "faiss",
+        "index": "data/ivf.index",
+        "vectors": "/abs/vectors.npy",
+        "params": {"nprobe": 1, "k_factor": 2},
+    }
+    source, out = tmp_path / "conf", tmp_path / "conf" / "tuned"
+    tuned = tuned_connection(raw, report, source, out)
+    assert tuned["params"] == {"nprobe": 8, "k_factor": 2}
+    assert (out / tuned["index"]).resolve() == (source / "data/ivf.index").resolve()
+    assert tuned["vectors"] == "/abs/vectors.npy"  # absolute paths are kept
+    assert raw["params"] == {"nprobe": 1, "k_factor": 2}  # the input is not changed
+    for bad, message in [
+        ({**report, "status": "cancelled"}, "recommended no value"),
+        ({**report, "recommendation": {"value": None}}, "recommended no value"),
+        ({**report, "backend": {"backend": "qdrant"}}, "ran on qdrant"),
+        ({**report, "format": "vectraudit.run"}, "Not a vectraudit.tune"),
+    ]:
+        with pytest.raises(TuneRefused, match=message):
+            tuned_connection(raw, bad, source, out)
+
+
+def test_a_tuned_connection_passes_a_release_check_against_the_untuned_one(synthetic, tmp_path):
+    """Phase 44 acceptance: tune, write the tuned copy, record both, check."""
+    data = tmp_path / "queries.jsonl"
+    queries = np.load(synthetic["queries"])[:NQ]
+    data.write_text(
+        render_dataset([{"query_id": f"q{i}", "vector": v.tolist()} for i, v in enumerate(queries)])
+    )
+    # Relative paths, so the copy in another folder must rewrite them to keep working.
+    folder = tmp_path / "retrieval"
+    folder.mkdir()
+    for key in ("ivf_flat", "vectors"):
+        (folder / synthetic[key].name).symlink_to(synthetic[key])
+    conn = folder / "connection.json"
+    untuned = {
+        "backend": "faiss",
+        "index": synthetic["ivf_flat"].name,
+        "vectors": synthetic["vectors"].name,
+        "params": {"nprobe": 1},
+    }
+    conn.write_text(json.dumps(untuned))
+    tuned_path = tmp_path / "tuned" / "connection.json"
+    cli = CliRunner()
+    args = ["tune", "--connection", str(conn), "--dataset", str(data), "--param", "nprobe"]
+    args += ["--values", ",".join(map(str, VALUES)), "--out", str(tmp_path / "tune.json")]
+    args += ["--repeats", "1", "--max-rps", "1000", "--target", "1.0"]
+    args += ["--confirm-target", synthetic["ivf_flat"].name]
+    same = cli.invoke(app, [*args, "--write-connection", str(conn)])
+    assert same.exit_code == 1
+    assert "names the connection file itself" in " ".join(same.output.split())
+    done = cli.invoke(app, [*args, "--write-connection", str(tuned_path)])
+    assert done.exit_code == 0, done.output
+    recommended = json.loads((tmp_path / "tune.json").read_text())["recommendation"]["value"]
+    assert recommended > 1, done.output  # nprobe 1 misses neighbours on this data
+    assert f"with nprobe={recommended}" in " ".join(done.output.split())
+    assert json.loads(conn.read_text()) == untuned  # the original is untouched
+    assert json.loads(tuned_path.read_text())["params"] == {"nprobe": recommended}
+
+    policy = tmp_path / "policy.json"
+    policy.write_text(json.dumps({"metrics": {"ann_recall": {"min": 1.0}}, "min_queries": 10}))
+    runs = {}
+    for name, connection in (("base", conn), ("tuned", tuned_path)):
+        runs[name] = tmp_path / f"{name}.run.json"
+        record = ["record", "--connection", str(connection), "--dataset", str(data)]
+        result = cli.invoke(app, [*record, "--out", str(runs[name]), "--k", str(K)])
+        assert result.exit_code == 0, result.output
+    result_json = tmp_path / "result.json"
+    check = ["check", str(runs["base"]), str(runs["tuned"]), "--policy", str(policy)]
+    result = cli.invoke(app, [*check, "--json", str(result_json), "--no-github-summary"])
+    assert result.exit_code == 0, result.output
+    verdict = json.loads(result_json.read_text())
+    assert verdict["verdict"] == "pass"
+    assert verdict["metrics"]["ann_recall"]["candidate"] == 1.0
+    assert verdict["latency"]["compared"] is True  # the latency change is reported beside it
+    assert isinstance(verdict["latency"]["p95_change_pct"], float)
+    # The untuned setting is what the policy would have blocked.
+    swapped = ["check", str(runs["tuned"]), str(runs["base"]), "--policy", str(policy)]
+    assert cli.invoke(app, [*swapped, "--no-github-summary"]).exit_code == 3
+
+
+def test_no_tuned_connection_is_written_without_a_recommendation(synthetic, tmp_path):
+    data = tmp_path / "queries.jsonl"
+    queries = np.load(synthetic["queries"])[:NQ]
+    data.write_text(
+        render_dataset([{"query_id": f"q{i}", "vector": v.tolist()} for i, v in enumerate(queries)])
+    )
+    conn = tmp_path / "connection.json"
+    index, vectors = str(synthetic["ivf_flat"]), str(synthetic["vectors"])
+    conn.write_text(json.dumps({"backend": "faiss", "index": index, "vectors": vectors}))
+    out = tmp_path / "tuned.json"
+    args = ["tune", "--connection", str(conn), "--dataset", str(data), "--param", "nprobe"]
+    args += ["--values", "1", "--out", str(tmp_path / "tune.json"), "--repeats", "1"]
+    args += ["--max-rps", "1000", "--target", "1.0", "--write-connection", str(out)]
+    result = CliRunner().invoke(app, [*args, "--confirm-target", synthetic["ivf_flat"].name])
+    assert result.exit_code == 2
+    assert "Not written" in result.output
+    assert not out.exists()

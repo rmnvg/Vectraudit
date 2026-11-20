@@ -124,6 +124,13 @@ def require(options: Mapping[str, Any], key: str, kind: type) -> Any:
     return option(options, key, kind)
 
 
+PATH_OPTIONS: dict[str, tuple[str, ...]] = {
+    "faiss": ("index", "vectors", "ids", "metadata"),
+    "qdrant": ("path",),
+}
+"""The backend options that name files; relative ones resolve against the file's directory."""
+
+
 def resolve_path(cfg: ConnectionConfig, value: str) -> Path:
     """A path from the connection file, relative to the file's directory."""
     p = Path(value).expanduser()

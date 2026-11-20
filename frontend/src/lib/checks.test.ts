@@ -259,6 +259,7 @@ it('summarises a tuning sweep: the recommended value, every point and missed nei
   expect(s.notes).toContain('Recall is ANN recall against backend exact search.')
   expect(s.notes.some(n => n.startsWith('Latency: ') && n.includes('round trip included'))).toBe(true)
   expect(s.notes).toContain('A backend does not expose why a neighbour was missed, so no cause is given.')
+  expect(s.notes.at(-1)).toContain('--write-connection')
 })
 
 it('never reads an unfinished or unmet tuning sweep as a pass', () => {
