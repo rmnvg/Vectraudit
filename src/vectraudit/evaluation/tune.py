@@ -22,6 +22,10 @@ What it is careful about:
   a vector. The report lists the neighbours the worst queries missed and the smallest swept
   value that returns each, and nothing more.
 
+:func:`tuned_connection` hands the recommendation to release checks: a copy of the
+connection file with the recommended value as a default search parameter, which ``record``
+and ``check`` then guard against the untuned setting.
+
 A parameter must be one the connector declares (``Capabilities.tuning_params``). Backends
 whose setting is part of the collection's configuration (Weaviate ``ef``, Chroma
 ``ef_search``) or that expose none (Pinecone) declare none: changing a collection is a write,
@@ -31,9 +35,11 @@ which connectors never do.
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -45,6 +51,7 @@ from vectraudit.connectors.base import (
     FilterValue,
     SearchRequest,
 )
+from vectraudit.connectors.config import PATH_OPTIONS, parse_connection
 from vectraudit.core.sweep import (
     SweepPoint,
     choose_point,
@@ -576,6 +583,44 @@ def render(report: Mapping[str, Any]) -> str:
             lost = ", ".join(d for d in watched["exact_ids"] if d not in ids) or "none"
             lines.append(f"  {report['param']}={value}: {got} of {len(exact)} found; missed {lost}")
     return "\n".join(lines)
+
+
+# --- handing the recommendation to release checks --------------------------------------------
+
+
+def tuned_connection(
+    raw: Mapping[str, Any], report: Mapping[str, Any], source_dir: Path, out_dir: Path
+) -> dict[str, Any]:
+    """A copy of the connection file ``raw`` (read from ``source_dir``) with the sweep's
+    recommended value as a default search parameter, to be written into ``out_dir``.
+
+    Relative file paths are rewritten so they name the same files from ``out_dir``. Raises
+    :class:`TuneRefused` when the sweep did not complete with a recommendation, or was run on
+    another backend.
+    """
+    if report.get("format") != FORMAT:
+        raise TuneRefused("Not a vectraudit.tune report.")
+    rec = report.get("recommendation") or {}
+    if report.get("status") != "complete" or rec.get("value") is None:
+        raise TuneRefused("The sweep recommended no value, so no tuned connection was written.")
+    backend = raw.get("backend")
+    if backend != report["backend"]["backend"]:
+        raise TuneRefused(
+            f"The sweep ran on {report['backend']['backend']}; the connection is {backend}."
+        )
+    tuned = dict(raw)
+    for key in PATH_OPTIONS.get(str(backend), ()):
+        value = tuned.get(key)
+        if not isinstance(value, str) or Path(value).expanduser().is_absolute():
+            continue
+        target = (source_dir / value).resolve()
+        try:
+            tuned[key] = os.path.relpath(target, out_dir.resolve())
+        except ValueError:  # another drive on Windows: no relative path exists
+            tuned[key] = str(target)
+    tuned["params"] = {**(raw.get("params") or {}), report["param"]: rec["value"]}
+    parse_connection(tuned, base_dir=out_dir)  # the copy must be a valid connection file
+    return tuned
 
 
 # --- comparing two sweeps ----------------------------------------------------------------------

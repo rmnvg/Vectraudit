@@ -77,6 +77,35 @@ vectraudit tune-compare old.tune.json new.tune.json --json comparison.json
 Comparing two collections is also how to judge build-time settings (`m`, `ef_construction`,
 number of lists): build both yourself, sweep each, compare. Vectraudit never rebuilds an index.
 
+## Guard the recommendation in release checks
+
+`--write-connection` writes a copy of the connection with the recommended value as a default
+search parameter. The connection file you swept is never changed, so it stays the baseline:
+
+```bash
+vectraudit tune --connection retrieval/connection.json --dataset queries.jsonl \
+  --param hnsw_ef --values 16,32,64,128 --confirm-target docs --out tune.json \
+  --write-connection retrieval/tuned.json
+vectraudit record --connection retrieval/connection.json --dataset queries.jsonl --out base.json
+vectraudit record --connection retrieval/tuned.json --dataset queries.jsonl --out tuned.json
+vectraudit check base.json tuned.json --policy retrieval/policy.json
+```
+
+The check judges the tuned setting under your release policy (for example an `ann_recall`
+floor) and reports its latency change beside the verdict. Relative file paths in the copy
+are rewritten so they still name the same files from its new folder. Nothing is written when
+the sweep recommends no value, and the command refuses a `--write-connection` path that is
+the connection file itself.
+
+## In the workbench
+
+Open a `tune.json` report, or a `tune-compare --json` result, from the workbench's artifact
+list: the **Checks** tab shows the recommendation, every swept value with its recall interval
+and latency, the questions that missed neighbours, and each filtered curve. A sweep that
+reached no value, was cancelled or failed is never shown as a pass. A comparison is flagged
+when the second setup loses recall at a shared value. There is no web tuner for backends: run
+the sweep from the command line, where it is bounded and confirmed.
+
 ## Bounds
 
 A sweep only sends searches, and it is bounded before the first one:

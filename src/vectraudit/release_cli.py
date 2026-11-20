@@ -938,6 +938,13 @@ def tune(
             "Reported apart from latency.",
         ),
     ] = False,
+    write_connection: Annotated[
+        Path | None,
+        typer.Option(
+            help="Also write a copy of the connection with the recommended value, for "
+            "`record` and `check` to guard. The connection file itself is never changed.",
+        ),
+    ] = None,
 ) -> None:
     """Sweep one search-time setting on any backend and recommend the cheapest value.
 
@@ -945,6 +952,7 @@ def tune(
     client-side latency, and recommends the smallest value that meets --target (within
     --max-p95-ms). Read-only: it prints what it will send, needs --confirm-target, and is
     bounded by --max-searches and --max-rps. Exits 2 when no value reaches the target.
+    --write-connection hands the recommendation to release checks.
     """
     from vectraudit.evaluation import tune as T
     from vectraudit.evaluation.capacity import target_name
@@ -954,6 +962,11 @@ def tune(
         swept = tuple(int(v) for v in values.replace(" ", "").split(",") if v)
     except ValueError:
         raise _fail("--values takes comma-separated integers, e.g. 16,32,64.") from None
+    if write_connection is not None and write_connection.resolve() == connection.resolve():
+        raise _fail(
+            "--write-connection names the connection file itself.",
+            "Write the tuned copy to a new file; the original stays as the baseline.",
+        )
     try:
         filters = []
         for text in filter_ or []:
@@ -1006,12 +1019,33 @@ def tune(
     report["connection"] = cfg.public()
     save_run(report, out)
     typer.echo(T.render(report))
+    if write_connection is not None:
+        _write_tuned_connection(connection, write_connection, report)
     if report["status"] == "cancelled":
         raise typer.Exit(code=130)
     if report["status"] != "complete":
         raise typer.Exit(code=1)
     if report["recommendation"]["value"] is None:
         raise typer.Exit(code=2)
+
+
+def _write_tuned_connection(source: Path, out: Path, report: dict[str, Any]) -> None:
+    """Write the recommended value into a copy of the connection, or say why not."""
+    from vectraudit.evaluation import tune as T
+
+    try:
+        raw = json.loads(source.read_text(encoding="utf-8"))
+        tuned = T.tuned_connection(raw, report, source.parent, out.parent)
+    except (T.TuneRefused, OSError, ValueError, ConnectorError) as e:
+        err_console.print(f"[yellow]Not written:[/] {escape(str(e))}")
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(tuned, indent=2) + "\n", encoding="utf-8")
+    value = report["recommendation"]["value"]
+    console.print(
+        f"Wrote {escape(str(out))} with {escape(report['param'])}={value}. Guard it: record "
+        "the original and this copy with `vectraudit record`, then `vectraudit check`."
+    )
 
 
 def tune_compare(

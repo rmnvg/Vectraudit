@@ -199,6 +199,45 @@ def run_header(tmp_path: Path) -> dict[str, Any]:
     return run_header_report(path)
 
 
+def _tune_sweep(tmp_path: Path, factory: str) -> dict[str, Any]:
+    import faiss
+    import numpy as np
+
+    from vectraudit.connectors.config import open_connector, parse_connection
+    from vectraudit.evaluation.dataset import parse_dataset
+    from vectraudit.evaluation.tune import TunePlan
+    from vectraudit.evaluation.tune import tune as run_tune
+
+    rng = np.random.default_rng(5)
+    x = rng.standard_normal((2000, 16)).astype("float32")
+    index = faiss.index_factory(16, factory)
+    index.train(x)
+    index.add(x)
+    path = tmp_path / f"{factory.replace(',', '_')}.index"
+    faiss.write_index(index, str(path))
+    np.save(tmp_path / "vectors.npy", x)
+    rows = [{"query_id": f"q{i}", "vector": v.tolist()} for i, v in enumerate(x[:12] + 0.05)]
+    dataset = parse_dataset("\n".join(json.dumps(r) for r in rows))
+    cfg = parse_connection(
+        {"backend": "faiss", "index": str(path), "vectors": str(tmp_path / "vectors.npy")}
+    )
+    plan = TunePlan("nprobe", (1, 2, 4, 8, 16, 32), k=10, repeats=1, max_rps=1e6, target=0.8)
+    with open_connector(cfg) as c:
+        report = run_tune(dataset, c, plan, confirm_target=c.describe().target["index"])
+    report["connection"] = cfg.public()  # what `vectraudit tune --out` adds
+    return report
+
+
+def tune(tmp_path: Path) -> dict[str, Any]:
+    return _tune_sweep(tmp_path, "IVF32,Flat")
+
+
+def tune_comparison(tmp_path: Path) -> dict[str, Any]:
+    from vectraudit.evaluation.tune import compare_tunes
+
+    return compare_tunes(_tune_sweep(tmp_path, "IVF32,Flat"), _tune_sweep(tmp_path, "IVF32,PQ4"))
+
+
 @pytest.mark.parametrize(
     "build",
     [
@@ -218,6 +257,8 @@ def run_header(tmp_path: Path) -> dict[str, Any]:
         embedding_drift,
         component_scoreboard,
         run_header,
+        tune,
+        tune_comparison,
     ],
 )
 def test_fixture_has_the_shape_the_check_writes(tmp_path, build):
