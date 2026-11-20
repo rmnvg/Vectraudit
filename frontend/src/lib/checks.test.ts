@@ -17,6 +17,8 @@ import labelAudit from './fixtures/label_audit.json'
 import embeddingDrift from './fixtures/embedding_drift.json'
 import componentBoard from './fixtures/component_scoreboard.json'
 import runHeader from './fixtures/run_header.json'
+import tuneReport from './fixtures/tune.json'
+import tuneComparison from './fixtures/tune_comparison.json'
 
 // Fixtures are real reports from the Python checks on synthetic test data
 // (tests/test_check_fixtures.py keeps their shape in step with the code).
@@ -244,4 +246,45 @@ it('summarises a run too large to open from its validated header', () => {
   expect(s.items.some(i => i.startsWith('ndcg: '))).toBe(true)
   expect(s.notes[0]).toContain('vectraudit runs table')
   expect(summary({ ...runHeader, run: { ...runHeader.run, status: 'partial' } }).verdict).toBe('attention')
+})
+
+it('summarises a tuning sweep: the recommended value, every point and missed neighbours without a cause', () => {
+  const s = summary(tuneReport)
+  expect(s.title).toBe('Tuning sweep: nprobe')
+  expect(s.verdict).toBe('pass')
+  expect(s.headline).toMatch(/^nprobe 8 is the smallest swept value whose mean ANN recall@10 reaches 0\.8 on faiss target IVF32_Flat\.index \(recall 0\.842, p95 [\d.]+ ms\)\.$/)
+  expect(s.items.filter(i => i.startsWith('nprobe '))).toHaveLength(6)
+  expect(s.items.find(i => i.startsWith('nprobe 8:'))).toContain('(recommended)')
+  expect(s.items).toContain('q1 at nprobe 8: recall 0.60, missed 162 (from 16), 1273 (from 16), 97 (from 16), 1173 (from 16)')
+  expect(s.notes).toContain('Recall is ANN recall against backend exact search.')
+  expect(s.notes.some(n => n.startsWith('Latency: ') && n.includes('round trip included'))).toBe(true)
+  expect(s.notes).toContain('A backend does not expose why a neighbour was missed, so no cause is given.')
+})
+
+it('never reads an unfinished or unmet tuning sweep as a pass', () => {
+  const failed = summary({ ...tuneReport, status: 'failed', points: [], missed: [], error: { message: 'connection refused' } })
+  expect(failed.verdict).toBe('fail')
+  expect(failed.headline).toContain('connection refused')
+  expect(summary({ ...tuneReport, status: 'cancelled' }).verdict).toBe('attention')
+  const unmet = summary({ ...tuneReport, recommendation: { ...tuneReport.recommendation, status: 'recall', value: null } })
+  expect(unmet.verdict).toBe('attention')
+  expect(unmet.headline).toBe('No swept value reached recall 0.8 on faiss target IVF32_Flat.index (best 1.000 at nprobe 32).')
+  const latency = summary({ ...tuneReport, max_p95_ms: 0.001, recommendation: { ...tuneReport.recommendation, status: 'latency', value: null, recall_needs: 8 } })
+  expect(latency.headline).toBe('No swept value reached recall 0.8 within p95 0.001 ms on faiss target IVF32_Flat.index; recall needs nprobe 8.')
+  const filtered = summary({ ...tuneReport, filtered: [{ filter: { lang: 'de' }, pass_rate: 0.5, recommendation: { value: 16 }, points: [{ value: 16, recall: 0.9 }] }] })
+  expect(filtered.items).toContain('Filter {"lang":"de"} (pass rate 50.00%): recommended nprobe 16; recall 16: 0.900')
+  expect(isCheckReport({ ...tuneReport, timing: undefined })).toBe(false)
+})
+
+it('compares two tuning sweeps per shared value and flags where B loses recall', () => {
+  const s = summary(tuneComparison)
+  expect(s.title).toBe('Tuning comparison')
+  expect(s.verdict).toBe('attention')
+  expect(s.headline).toBe('Compared at 6 shared values; B loses recall at 6.')
+  expect(s.items[0]).toMatch(/^A: faiss target IVF32_Flat\.index, recommended nprobe 8 \(recall 0\.842, p95 [\d.]+ ms\)$/)
+  expect(s.items[1]).toBe('B: faiss target IVF32_PQ4.index, no value reached its target')
+  expect(s.items).toContain('Questions missing neighbours: q11, q8 only in A; q2, q5 only in B')
+  const unlike = summary({ ...tuneComparison, comparable: false, reasons: ['The sweeps used k=10 and k=5.'], matched: [] })
+  expect(unlike.headline).toBe('Not comparable: recall was not compared.')
+  expect(unlike.notes).toContain('The sweeps used k=10 and k=5.')
 })

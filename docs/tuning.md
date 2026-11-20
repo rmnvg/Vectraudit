@@ -77,6 +77,15 @@ vectraudit tune-compare old.tune.json new.tune.json --json comparison.json
 Comparing two collections is also how to judge build-time settings (`m`, `ef_construction`,
 number of lists): build both yourself, sweep each, compare. Vectraudit never rebuilds an index.
 
+## In the workbench
+
+Open a `tune.json` report, or a `tune-compare --json` result, from the workbench's artifact
+list: the **Checks** tab shows the recommendation, every swept value with its recall interval
+and latency, the questions that missed neighbours, and each filtered curve. A sweep that
+reached no value, was cancelled or failed is never shown as a pass. A comparison is flagged
+when the second setup loses recall at a shared value. There is no web tuner for backends: run
+the sweep from the command line, where it is bounded and confirmed.
+
 ## Bounds
 
 A sweep only sends searches, and it is bounded before the first one:

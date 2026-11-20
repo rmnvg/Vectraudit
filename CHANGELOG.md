@@ -37,6 +37,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- The workbench's Checks tab reads `vectraudit tune` reports and `tune-compare --json`
+  results: the recommended value, every swept value with its recall interval and latency,
+  missed neighbours (never with a cause) and filtered curves. An unmet, cancelled or failed
+  sweep is never shown as a pass. The README gains a row for tuning any backend.
 - `vectraudit tune --filter` sweeps again under each metadata filter with its measured pass
   rate, `--batch` adds batch throughput (FAISS, Qdrant) apart from latency, and
   `vectraudit tune-compare` compares two sweeps at matched values. See `docs/tuning.md`.

@@ -1,0 +1,643 @@
+{
+ "format": "vectraudit.tune",
+ "format_version": 1,
+ "status": "complete",
+ "error": null,
+ "backend": {
+  "backend": "faiss",
+  "distance": "l2",
+  "dim": 16,
+  "count": 2000,
+  "target": {
+   "index": "IVF32_Flat.index"
+  },
+  "backend_version": "1.15.1",
+  "client_version": "1.15.1",
+  "config": {
+   "kind": "IVF_FLAT",
+   "class_chain": [
+    "IndexIVFFlat"
+   ],
+   "params": {
+    "nlist": 32,
+    "nprobe": 1,
+    "by_residual": false
+   },
+   "id_map": false,
+   "refine_k_factor": null,
+   "transforms": []
+  },
+  "snapshot": "sha256:32a6735cfce2660ee1a4bf3a0db4e8773c603eb06f66da47abe0dbab6a369bf6"
+ },
+ "target": "IVF32_Flat.index",
+ "dataset": {
+  "sha256": "2b1a1a488151c10521b5c36a2fe8374289d4b679a60c7de8bac1b836b4504068",
+  "n_queries": 12
+ },
+ "param": "nprobe",
+ "values": [
+  1,
+  2,
+  4,
+  8,
+  16,
+  32
+ ],
+ "k": 10,
+ "repeats": 1,
+ "other_params": {},
+ "reference": {
+  "source": "backend exact search",
+  "note": null
+ },
+ "timing": {
+  "scope": "client-side wall clock of one search call, network round trip included; one query at a time. Comparable between values of this sweep only.",
+  "max_rps": 1000000.0
+ },
+ "target_recall": 0.8,
+ "max_p95_ms": null,
+ "searches_planned": 114,
+ "points": [
+  {
+   "value": 1,
+   "recall": 0.3166666666666667,
+   "recall_ci_low": 0.21768171729546076,
+   "recall_ci_high": 0.41565161603787265,
+   "latency_mean_ms": 0.014534916772390716,
+   "latency_p95_ms": 0.01663545081100892,
+   "recall_distribution": [
+    [
+     0.1,
+     2
+    ],
+    [
+     0.2,
+     3
+    ],
+    [
+     0.3,
+     2
+    ],
+    [
+     0.4,
+     3
+    ],
+    [
+     0.5,
+     1
+    ],
+    [
+     0.7,
+     1
+    ]
+   ],
+   "worst_queries": [
+    {
+     "query_id": "q4",
+     "recall": 0.1
+    },
+    {
+     "query_id": "q10",
+     "recall": 0.1
+    },
+    {
+     "query_id": "q1",
+     "recall": 0.2
+    },
+    {
+     "query_id": "q9",
+     "recall": 0.2
+    },
+    {
+     "query_id": "q11",
+     "recall": 0.2
+    },
+    {
+     "query_id": "q7",
+     "recall": 0.3
+    },
+    {
+     "query_id": "q8",
+     "recall": 0.3
+    },
+    {
+     "query_id": "q3",
+     "recall": 0.4
+    },
+    {
+     "query_id": "q5",
+     "recall": 0.4
+    },
+    {
+     "query_id": "q6",
+     "recall": 0.4
+    }
+   ]
+  },
+  {
+   "value": 2,
+   "recall": 0.4666666666666666,
+   "recall_ci_low": 0.3854466760936133,
+   "recall_ci_high": 0.54788665723972,
+   "latency_mean_ms": 0.013836749227872739,
+   "latency_p95_ms": 0.014499853568850085,
+   "recall_distribution": [
+    [
+     0.3,
+     3
+    ],
+    [
+     0.4,
+     3
+    ],
+    [
+     0.5,
+     3
+    ],
+    [
+     0.6,
+     1
+    ],
+    [
+     0.7,
+     2
+    ]
+   ],
+   "worst_queries": [
+    {
+     "query_id": "q1",
+     "recall": 0.3
+    },
+    {
+     "query_id": "q9",
+     "recall": 0.3
+    },
+    {
+     "query_id": "q10",
+     "recall": 0.3
+    },
+    {
+     "query_id": "q4",
+     "recall": 0.4
+    },
+    {
+     "query_id": "q8",
+     "recall": 0.4
+    },
+    {
+     "query_id": "q11",
+     "recall": 0.4
+    },
+    {
+     "query_id": "q0",
+     "recall": 0.5
+    },
+    {
+     "query_id": "q6",
+     "recall": 0.5
+    },
+    {
+     "query_id": "q7",
+     "recall": 0.5
+    },
+    {
+     "query_id": "q3",
+     "recall": 0.6
+    }
+   ]
+  },
+  {
+   "value": 4,
+   "recall": 0.6333333333333333,
+   "recall_ci_low": 0.5419940280651812,
+   "recall_ci_high": 0.7246726386014855,
+   "latency_mean_ms": 0.0133959171459234,
+   "latency_p95_ms": 0.014035347703611478,
+   "recall_distribution": [
+    [
+     0.3,
+     1
+    ],
+    [
+     0.5,
+     3
+    ],
+    [
+     0.6,
+     1
+    ],
+    [
+     0.7,
+     5
+    ],
+    [
+     0.8,
+     1
+    ],
+    [
+     0.9,
+     1
+    ]
+   ],
+   "worst_queries": [
+    {
+     "query_id": "q9",
+     "recall": 0.3
+    },
+    {
+     "query_id": "q1",
+     "recall": 0.5
+    },
+    {
+     "query_id": "q10",
+     "recall": 0.5
+    },
+    {
+     "query_id": "q11",
+     "recall": 0.5
+    },
+    {
+     "query_id": "q4",
+     "recall": 0.6
+    },
+    {
+     "query_id": "q0",
+     "recall": 0.7
+    },
+    {
+     "query_id": "q3",
+     "recall": 0.7
+    },
+    {
+     "query_id": "q6",
+     "recall": 0.7
+    },
+    {
+     "query_id": "q7",
+     "recall": 0.7
+    },
+    {
+     "query_id": "q8",
+     "recall": 0.7
+    }
+   ]
+  },
+  {
+   "value": 8,
+   "recall": 0.8416666666666668,
+   "recall_ci_low": 0.7757788679464028,
+   "recall_ci_high": 0.9075544653869307,
+   "latency_mean_ms": 0.014166749072804427,
+   "latency_p95_ms": 0.014796500545344315,
+   "recall_distribution": [
+    [
+     0.6,
+     1
+    ],
+    [
+     0.7,
+     1
+    ],
+    [
+     0.8,
+     4
+    ],
+    [
+     0.9,
+     4
+    ],
+    [
+     1.0,
+     2
+    ]
+   ],
+   "worst_queries": [
+    {
+     "query_id": "q1",
+     "recall": 0.6
+    },
+    {
+     "query_id": "q7",
+     "recall": 0.7
+    },
+    {
+     "query_id": "q6",
+     "recall": 0.8
+    },
+    {
+     "query_id": "q8",
+     "recall": 0.8
+    },
+    {
+     "query_id": "q10",
+     "recall": 0.8
+    },
+    {
+     "query_id": "q11",
+     "recall": 0.8
+    },
+    {
+     "query_id": "q0",
+     "recall": 0.9
+    },
+    {
+     "query_id": "q3",
+     "recall": 0.9
+    },
+    {
+     "query_id": "q4",
+     "recall": 0.9
+    },
+    {
+     "query_id": "q9",
+     "recall": 0.9
+    }
+   ]
+  },
+  {
+   "value": 16,
+   "recall": 0.9666666666666667,
+   "recall_ci_low": 0.9298136964452393,
+   "recall_ci_high": 1.0,
+   "latency_mean_ms": 0.01564250063286939,
+   "latency_p95_ms": 0.016816849165479653,
+   "recall_distribution": [
+    [
+     0.8,
+     1
+    ],
+    [
+     0.9,
+     2
+    ],
+    [
+     1.0,
+     9
+    ]
+   ],
+   "worst_queries": [
+    {
+     "query_id": "q7",
+     "recall": 0.8
+    },
+    {
+     "query_id": "q0",
+     "recall": 0.9
+    },
+    {
+     "query_id": "q11",
+     "recall": 0.9
+    },
+    {
+     "query_id": "q1",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q2",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q3",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q4",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q5",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q6",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q8",
+     "recall": 1.0
+    }
+   ]
+  },
+  {
+   "value": 32,
+   "recall": 1.0,
+   "recall_ci_low": 1.0,
+   "recall_ci_high": 1.0,
+   "latency_mean_ms": 0.018048416677629575,
+   "latency_p95_ms": 0.01872034881671425,
+   "recall_distribution": [
+    [
+     1.0,
+     12
+    ]
+   ],
+   "worst_queries": [
+    {
+     "query_id": "q0",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q1",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q2",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q3",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q4",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q5",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q6",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q7",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q8",
+     "recall": 1.0
+    },
+    {
+     "query_id": "q9",
+     "recall": 1.0
+    }
+   ]
+  }
+ ],
+ "recommendation": {
+  "status": "ok",
+  "value": 8,
+  "recall_needs": 8,
+  "best_in_budget": 32,
+  "pareto": [
+   4,
+   8,
+   16,
+   32
+  ],
+  "rule": "the smallest swept value whose mean recall meets the target"
+ },
+ "missed": [
+  {
+   "query_id": "q1",
+   "recall": 0.6,
+   "missed": [
+    {
+     "doc_id": "162",
+     "found_from": 16
+    },
+    {
+     "doc_id": "1273",
+     "found_from": 16
+    },
+    {
+     "doc_id": "97",
+     "found_from": 16
+    },
+    {
+     "doc_id": "1173",
+     "found_from": 16
+    }
+   ]
+  },
+  {
+   "query_id": "q7",
+   "recall": 0.7,
+   "missed": [
+    {
+     "doc_id": "1879",
+     "found_from": 16
+    },
+    {
+     "doc_id": "1650",
+     "found_from": 32
+    },
+    {
+     "doc_id": "1887",
+     "found_from": 32
+    }
+   ]
+  },
+  {
+   "query_id": "q6",
+   "recall": 0.8,
+   "missed": [
+    {
+     "doc_id": "932",
+     "found_from": 16
+    },
+    {
+     "doc_id": "1295",
+     "found_from": 16
+    }
+   ]
+  },
+  {
+   "query_id": "q8",
+   "recall": 0.8,
+   "missed": [
+    {
+     "doc_id": "1767",
+     "found_from": 16
+    },
+    {
+     "doc_id": "1015",
+     "found_from": 16
+    }
+   ]
+  },
+  {
+   "query_id": "q10",
+   "recall": 0.8,
+   "missed": [
+    {
+     "doc_id": "100",
+     "found_from": 16
+    },
+    {
+     "doc_id": "329",
+     "found_from": 16
+    }
+   ]
+  },
+  {
+   "query_id": "q11",
+   "recall": 0.8,
+   "missed": [
+    {
+     "doc_id": "431",
+     "found_from": 16
+    },
+    {
+     "doc_id": "706",
+     "found_from": 32
+    }
+   ]
+  },
+  {
+   "query_id": "q0",
+   "recall": 0.9,
+   "missed": [
+    {
+     "doc_id": "1868",
+     "found_from": 32
+    }
+   ]
+  },
+  {
+   "query_id": "q3",
+   "recall": 0.9,
+   "missed": [
+    {
+     "doc_id": "1166",
+     "found_from": 16
+    }
+   ]
+  },
+  {
+   "query_id": "q4",
+   "recall": 0.9,
+   "missed": [
+    {
+     "doc_id": "1004",
+     "found_from": 16
+    }
+   ]
+  },
+  {
+   "query_id": "q9",
+   "recall": 0.9,
+   "missed": [
+    {
+     "doc_id": "1056",
+     "found_from": 16
+    }
+   ]
+  }
+ ],
+ "filtered": [],
+ "batch": {
+  "measured": false,
+  "scope": null
+ },
+ "missed_at": 8,
+ "searches_sent": 114,
+ "connection": {
+  "backend": "faiss",
+  "name": null,
+  "index": "ivf.index",
+  "vectors": "vectors.npy",
+  "params": {}
+ }
+}

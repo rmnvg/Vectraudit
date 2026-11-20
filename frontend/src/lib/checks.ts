@@ -18,6 +18,8 @@ export const CHECK_FORMATS = [
   'vectraudit.embedding_drift',
   'vectraudit.component_scoreboard',
   'vectraudit.run_header',
+  'vectraudit.tune',
+  'vectraudit.tune_comparison',
 ] as const
 export type CheckFormat = typeof CHECK_FORMATS[number]
 export type CheckReport = { format: CheckFormat } & Record<string, unknown>
@@ -55,6 +57,8 @@ export function isCheckReport(value: unknown): value is CheckReport {
     case 'vectraudit.embedding_drift': return object(value.result) && object(value.reference) && object(value.current) && typeof value.status === 'string'
     case 'vectraudit.component_scoreboard': return arrays('components', 'declared', 'cohorts') && object(value.observed) && object(value.kept)
     case 'vectraudit.run_header': return object(value.run) && typeof value.questions === 'number' && typeof value.file === 'string'
+    case 'vectraudit.tune': return arrays('points', 'missed', 'filtered') && object(value.timing) && object(value.reference) && typeof value.param === 'string' && typeof value.status === 'string'
+    case 'vectraudit.tune_comparison': return arrays('reasons', 'matched') && object(value.a) && object(value.b) && typeof value.comparable === 'boolean'
     case 'vectraudit.poisoning': return arrays('documents', 'targets', 'failures') && object(value.summary) && object(value.attacks) && typeof value.verdict === 'string'
   }
 }
@@ -327,6 +331,80 @@ function capacity(r: Row): CheckSummary {
   }
 }
 
+const fixed = (v: unknown, digits = 3) => v == null ? 'n/a' : count(v).toFixed(digits)
+
+function tuneSweep(r: Row): CheckSummary {
+  const status = text(r.status)
+  const param = text(r.param)
+  const backend = object(r.backend) ? text(r.backend.backend) : ''
+  const target = count(r.target_recall)
+  const points = rows(r.points)
+  const rec = object(r.recommendation) ? r.recommendation : {}
+  const chosen = points.find(p => rec.value != null && p.value === rec.value)
+  const best = points.reduce<Row | null>((top, p) => top == null || count(p.recall) > count(top.recall) ? p : top, null)
+  const reference = object(r.reference) ? r.reference : {}
+  const timing = object(r.timing) ? r.timing : {}
+  const batch = object(r.batch) ? r.batch : {}
+  const error = object(r.error) ? r.error : null
+  const where = `${backend} target ${text(r.target)}`
+  const headline = status !== 'complete'
+    ? `${status === 'cancelled' ? 'Cancelled' : 'Failed'} on ${where}${error ? `: ${text(error.message)}` : '.'} A partial sweep recommends nothing.`
+    : chosen
+      ? `${param} ${text(rec.value)} is the smallest swept value whose mean ANN recall@${text(r.k)} reaches ${target} on ${where} (recall ${fixed(chosen.recall)}, p95 ${fixed(chosen.latency_p95_ms, 1)} ms).`
+      : rec.status === 'latency'
+        ? `No swept value reached recall ${target} within p95 ${text(r.max_p95_ms)} ms on ${where}; recall needs ${param} ${text(rec.recall_needs)}.`
+        : `No swept value reached recall ${target} on ${where} (best ${fixed(best?.recall)} at ${param} ${text(best?.value)}).`
+  const missedAt = text(r.missed_at)
+  return {
+    title: `Tuning sweep: ${param}`,
+    verdict: status === 'failed' ? 'fail' : status === 'complete' && chosen ? 'pass' : 'attention',
+    headline,
+    items: [
+      ...points.map(p => `${param} ${text(p.value)}: recall ${fixed(p.recall)} (95% interval ${fixed(p.recall_ci_low)} to ${fixed(p.recall_ci_high)}), mean ${fixed(p.latency_mean_ms, 1)} ms, p95 ${fixed(p.latency_p95_ms, 1)} ms${p.batch_qps != null ? `; batch ${Math.round(count(p.batch_qps)).toLocaleString()} queries/s` : ''}${chosen && p.value === chosen.value ? ' (recommended)' : ''}`),
+      ...rows(r.missed).slice(0, LIMIT).map(row => `${text(row.query_id)} at ${param} ${missedAt}: recall ${fixed(row.recall, 2)}, missed ${rows(row.missed).slice(0, 5).map(m => `${text(m.doc_id)} (${m.found_from == null ? 'at no swept value' : `from ${text(m.found_from)}`})`).join(', ')}`),
+      ...rows(r.filtered).map(curve => {
+        const curveRec = object(curve.recommendation) ? curve.recommendation : {}
+        const rate = curve.pass_rate == null ? 'pass rate unknown' : `pass rate ${(count(curve.pass_rate) * 100).toFixed(2)}%`
+        const outcome = curveRec.value != null ? `recommended ${param} ${text(curveRec.value)}` : 'no value reached the target'
+        return `Filter ${JSON.stringify(curve.filter)} (${rate}): ${outcome}; recall ${rows(curve.points).map(p => `${text(p.value)}: ${fixed(p.recall)}`).join(', ')}`
+      }),
+    ],
+    notes: [
+      `Recall is ANN recall against ${text(reference.source)}.`,
+      `Latency: ${text(timing.scope)}`,
+      rows(r.missed).length ? 'A backend does not expose why a neighbour was missed, so no cause is given.' : '',
+      batch.measured ? `Batch: ${text(batch.scope)}` : '',
+    ].filter(Boolean),
+  }
+}
+
+function tuneComparison(r: Row): CheckSummary {
+  const a = object(r.a) ? r.a : {}
+  const b = object(r.b) ? r.b : {}
+  const matched = rows(r.matched)
+  const changed = object(r.missed_changed) ? r.missed_changed : null
+  const side = (name: string, s: Row) => `${name}: ${text(s.backend)} target ${text(s.target)}, ${s.recommended == null ? 'no value reached its target' : `recommended ${text(s.param)} ${text(s.recommended)} (recall ${fixed(s.recall)}, p95 ${fixed(s.latency_p95_ms, 1)} ms)`}`
+  const losses = matched.filter(m => count(m.recall_change) < -0.005)
+  return {
+    title: 'Tuning comparison',
+    verdict: !r.comparable || losses.length ? 'attention' : 'pass',
+    headline: r.comparable
+      ? `Compared at ${plural(matched.length, 'shared value')}; B loses recall at ${losses.length}.`
+      : 'Not comparable: recall was not compared.',
+    items: [
+      side('A', a),
+      side('B', b),
+      ...matched.map(m => `${text(a.param)} ${text(m.value)}: recall ${fixed(m.recall_a)} to ${fixed(m.recall_b)} (${count(m.recall_change) >= 0 ? '+' : ''}${fixed(m.recall_change)})${m.p95_ms_change == null ? '' : `, p95 ${count(m.p95_ms_change) >= 0 ? '+' : ''}${fixed(m.p95_ms_change, 1)} ms`}`),
+      ...(changed ? [`Questions missing neighbours: ${list(changed.only_a) || 'none'} only in A; ${list(changed.only_b) || 'none'} only in B`] : []),
+    ],
+    notes: [
+      ...(Array.isArray(r.reasons) ? r.reasons.map(text) : []),
+      text(r.latency_note),
+      changed ? text(changed.note) : '',
+    ].filter(Boolean),
+  }
+}
+
 const LABEL_STATES: Record<string, string> = { relevant: 'labelled relevant', judged_not_relevant: 'judged not relevant', unjudged: 'unjudged' }
 
 function labelAudit(r: Row): CheckSummary {
@@ -444,5 +522,7 @@ export function summarizeCheck(report: CheckReport): CheckSummary {
     case 'vectraudit.embedding_drift': return embeddingDrift(report)
     case 'vectraudit.component_scoreboard': return componentScoreboard(report)
     case 'vectraudit.run_header': return runHeader(report)
+    case 'vectraudit.tune': return tuneSweep(report)
+    case 'vectraudit.tune_comparison': return tuneComparison(report)
   }
 }

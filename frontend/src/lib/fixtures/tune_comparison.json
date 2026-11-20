@@ -1,0 +1,104 @@
+{
+ "format": "vectraudit.tune_comparison",
+ "format_version": 1,
+ "comparable": true,
+ "reasons": [],
+ "a": {
+  "backend": "faiss",
+  "target": "IVF32_Flat.index",
+  "param": "nprobe",
+  "recommended": 8,
+  "recall": 0.8416666666666668,
+  "latency_p95_ms": 0.014749999172636308
+ },
+ "b": {
+  "backend": "faiss",
+  "target": "IVF32_PQ4.index",
+  "param": "nprobe",
+  "recommended": null,
+  "recall": null,
+  "latency_p95_ms": null
+ },
+ "matched": [
+  {
+   "value": 1,
+   "recall_a": 0.3166666666666667,
+   "recall_b": 0.3083333333333334,
+   "recall_change": -0.008333333333333304,
+   "p95_ms_a": 0.014774851661059074,
+   "p95_ms_b": 0.017926897635334168,
+   "p95_ms_change": 0.0031520459742750938
+  },
+  {
+   "value": 2,
+   "recall_a": 0.4666666666666666,
+   "recall_b": 0.44999999999999996,
+   "recall_change": -0.016666666666666663,
+   "p95_ms_a": 0.01556700080982409,
+   "p95_ms_b": 0.018906397599494085,
+   "p95_ms_change": 0.003339396789669994
+  },
+  {
+   "value": 4,
+   "recall_a": 0.6333333333333333,
+   "recall_b": 0.5666666666666668,
+   "recall_change": -0.06666666666666654,
+   "p95_ms_a": 0.01503314997535199,
+   "p95_ms_b": 0.018537203504820354,
+   "p95_ms_change": 0.003504053529468365
+  },
+  {
+   "value": 8,
+   "recall_a": 0.8416666666666668,
+   "recall_b": 0.6666666666666666,
+   "recall_change": -0.17500000000000016,
+   "p95_ms_a": 0.014749999172636308,
+   "p95_ms_b": 0.017966702216654085,
+   "p95_ms_change": 0.003216703044017777
+  },
+  {
+   "value": 16,
+   "recall_a": 0.9666666666666667,
+   "recall_b": 0.725,
+   "recall_change": -0.2416666666666667,
+   "p95_ms_a": 0.015885602624621242,
+   "p95_ms_b": 0.022362499657901935,
+   "p95_ms_change": 0.006476897033280693
+  },
+  {
+   "value": 32,
+   "recall_a": 1.0,
+   "recall_b": 0.7250000000000001,
+   "recall_change": -0.2749999999999999,
+   "p95_ms_a": 0.017710750398691744,
+   "p95_ms_b": 0.027268902340438217,
+   "p95_ms_change": 0.009558151941746473
+  }
+ ],
+ "missed_changed": {
+  "at": {
+   "a": 8,
+   "b": 32
+  },
+  "only_a": [
+   "q11",
+   "q8"
+  ],
+  "only_b": [
+   "q2",
+   "q5"
+  ],
+  "both": [
+   "q0",
+   "q1",
+   "q10",
+   "q3",
+   "q4",
+   "q6",
+   "q7",
+   "q9"
+  ],
+  "note": "Among each sweep's lowest-recall questions at its own recommended value."
+ },
+ "latency_note": null
+}

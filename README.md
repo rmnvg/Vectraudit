@@ -26,6 +26,7 @@ runs on your infrastructure; only run files are uploaded, and only if you choose
 | **Explain a failure** | Investigation of one question, declared fixes tried and validated on held-out data, lineage and freshness, permission lifecycle, fusion replay, claim-level evidence | [Investigate deeper](#investigate-deeper) |
 | **Choose a setup** | Embedding models, chunkers and indexes compared on one labelled set; recall under filters; capacity under concurrent load; migration reports | [`experiment`](docs/experiments.md), [`capacity`](docs/capacity.md), [`migration`](docs/migration-report.md) |
 | **Check safety** | Permission and tenant assertions, cache-leak probes, corpus scans for injected instructions, poisoning checks | [Permissions](docs/permission-lifecycle.md), [poisoning](docs/poisoning.md) |
+| **Tune a search setting on any backend** | The cheapest `hnsw_ef`, `ef_search`, `num_candidates` or `probes` that reaches your recall target against an exact reference, the neighbours each query missed, filtered and batch curves, two setups compared | [`tune`, `tune-compare`](docs/tuning.md) |
 | **See inside a FAISS index** | Missed neighbours and why, quantization loss, HNSW search replay, recall against latency | [`serve INDEX`](#faiss-index-debugger) |
 | **Share results with a team** | Pinned baselines, history, reports and pull-request checks on a control plane you host yourself | [Vectraudit Cloud](docs/cloud-operations.md) |
 
