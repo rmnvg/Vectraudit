@@ -37,6 +37,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit experiment project` projects each candidate's recall@k from nested corpus
+  samples (4 to 10% by default, always holding every labelled document, only the largest
+  embedded) to the full corpus, with a 95% interval, ranks the candidates at full size and
+  gives the chance that the sample's leader stays the leader. It refuses to project beyond
+  `--max-multiple` (default 10) times the largest measured size. Each candidate's report
+  also scales chunks (with an interval), embedding time (measured on the sample, with
+  `--no-cache`) and float32 vector storage to the full size.
 - `vectraudit workbench attribute` splits the difference between two configurations of one
   pipeline between the parameters that changed. It runs their combinations interleaved on
   exploratory questions: every combination within a budget of 16 runs, or a screen when

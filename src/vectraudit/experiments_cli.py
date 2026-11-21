@@ -89,6 +89,77 @@ def experiment_run(
     )
 
 
+@experiment_app.command("project")
+def experiment_project(
+    manifest: Annotated[Path, typer.Argument(help="Experiment manifest (JSON).")],
+    out: Annotated[Path, typer.Option(help="Report file (JSON).")] = Path("projection.json"),
+    fractions: Annotated[
+        str, typer.Option(help="Nested sample sizes as fractions of the corpus file.")
+    ] = "0.04,0.06,0.08,0.1",
+    full_size: Annotated[
+        int | None,
+        typer.Option(
+            min=1, help="Documents in the full corpus (default: the corpus file's count)."
+        ),
+    ] = None,
+    max_multiple: Annotated[
+        float,
+        typer.Option(min=1, help="Refuse to project beyond this multiple of the largest sample."),
+    ] = 10.0,
+    seed: Annotated[int, typer.Option(help="Seed for the samples and the interval.")] = 0,
+    cache: Annotated[
+        bool, typer.Option(help="Reuse cached document embeddings between runs.")
+    ] = True,
+) -> None:
+    """Project each candidate's recall@k from corpus samples to the full corpus.
+
+    Nested, seeded samples always hold every labelled document; only the largest is embedded.
+    Exit 2 when the projection is refused (too far beyond the measured sizes).
+    """
+    from vectraudit.core._faiss import FaissNotInstalledError
+    from vectraudit.core.embed import EmbedderUnavailableError
+    from vectraudit.core.projection import default_cache_root
+    from vectraudit.experiments.manifest import ExperimentError, load_manifest
+    from vectraudit.experiments.project import project_experiment
+
+    try:
+        parsed = [float(f) for f in fractions.split(",") if f.strip()]
+        spec = load_manifest(manifest)
+        with console.status("Projecting…") as status:
+            report = project_experiment(
+                spec,
+                fractions=parsed,
+                full_size=full_size,
+                max_multiple=max_multiple,
+                seed=seed,
+                cache_root=default_cache_root() / "embeddings" if cache else None,
+                progress=lambda msg: status.update(escape(msg)),
+            )
+    except (ExperimentError, ValueError) as e:
+        err_console.print(f"[bold red]Projection refused:[/] {escape(str(e))}")
+        raise typer.Exit(code=2) from e
+    except (FaissNotInstalledError, EmbedderUnavailableError) as e:
+        err_console.print(f"[bold red]Error:[/] {escape(str(e))}")
+        raise typer.Exit(code=1) from e
+    k = report["k"]
+    table = Table("Candidate", *(f"recall@{k} at {n}" for n in report["measured_sizes"]))
+    table.add_column(f"projected at {report['full_size']} [95%]")
+    table.add_column("P(best)")
+    for c in sorted(report["candidates"], key=lambda c: -c["projected"]["recall"]):
+        lo, hi = c["projected"]["interval"]
+        table.add_row(
+            c["name"],
+            *(f"{m['recall']:.3f}" for m in c["measured"]),
+            f"{c['projected']['recall']:.3f} [{lo:.3f}, {hi:.3f}]",
+            f"{c['p_best_at_full_size']:.0%}",
+        )
+    console.print(table)
+    console.print(escape(report["message"]))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    console.print(f"Wrote {escape(str(out))}")
+
+
 @experiment_app.command("export-mteb")
 def experiment_export_mteb(
     result: Annotated[

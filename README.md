@@ -239,7 +239,9 @@ def test_retrieval_release():
   (`vectraudit experiment`) compare embedding models, chunkings and indexes on one labelled
   set, from your own corpus, a BEIR folder or an MTCB benchmark. Reports show MTCB's passage
   recall beside span recall, and `experiment export-mteb` writes each candidate in MTEB's
-  result layout, marked as not like for like with leaderboard scores.
+  result layout, marked as not like for like with leaderboard scores. `experiment project`
+  projects each candidate's recall from a 10% sample to the whole corpus, with an interval
+  ([corpus projection](docs/corpus-projection.md)).
 
 - [Your first release check in 15 minutes](docs/first-check.md)
 - [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
