@@ -111,11 +111,19 @@ def test_the_projection_covers_the_full_corpus_recall_and_ranks_the_candidates(t
         assert c["inflation"] > 0
         recalls = [m["recall"] for m in c["measured"]]
         assert recalls == sorted(recalls, reverse=True)
-        assert c["cost"]["embedded_documents"] == 600
+        cost = c["cost"]
+        assert cost["sample"]["embedded_documents"] == 600
+        # One chunk per document, 24 float32 dimensions each.
+        assert cost["chunks"] == pytest.approx(DOCS)
+        assert cost["chunks_interval"] == pytest.approx([DOCS, DOCS])
+        assert cost["vector_bytes"] == pytest.approx(DOCS * DIM * 4)
+        assert cost["embed_seconds"] == pytest.approx(cost["sample"]["embed_seconds"] * DOCS / 600)
     assert report["ranking"] == ["easy", "hard"]
     assert report["sample_leader"] == "easy"
     assert report["p_leader_stays"] > 0.9
     assert "is still the leader at full size" in report["message"]
+    assert "to embed on this machine" in report["message"]
+    assert "576 kB of vectors" in report["message"]
     assert any("approximate index" in a for a in report["assumptions"])
 
 
@@ -211,3 +219,28 @@ def test_cli_refuses_and_writes_the_report(tmp_path, monkeypatch):
     )
     assert refused.exit_code == 2
     assert "Projection refused" in refused.output
+
+
+def test_costs_scale_chunks_per_document_with_an_interval():
+    from vectraudit.experiments.project import project_cost
+
+    stats = {
+        "chunks": 30,
+        "dimension": 8,
+        "embedded_documents": 15,
+        "embed_seconds": 3.0,
+        "vector_bytes": 30 * 32,
+        "labelled_chunks": 10,
+        "unlabelled_chunks_per_document": np.array([1, 1, 2, 2, 4, 1, 1, 2, 2, 4]),
+    }
+    cost = project_cost(stats, full_size=1005, labelled=5)
+    assert cost["chunks"] == pytest.approx(10 + 1000 * 2.0)
+    lo, hi = cost["chunks_interval"]
+    assert lo < cost["chunks"] < hi
+    assert cost["embed_seconds"] == pytest.approx(cost["chunks"] * 0.1)
+    assert cost["vector_bytes"] == pytest.approx(cost["chunks"] * 32)
+    assert "unlabelled_chunks_per_document" not in cost["sample"]
+
+    cached = project_cost({**stats, "embed_seconds": None}, full_size=1005, labelled=5)
+    assert cached["embed_seconds"] is None
+    assert "--no-cache" in cached["embed_note"]

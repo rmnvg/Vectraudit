@@ -55,6 +55,26 @@ embedders each. Recall measured on the sample overstated it by 0.04 to 0.21 and 
 the interval. A line fitted to recall against log corpus size was biased upwards and twice as
 wide.
 
+## Cost at full size
+
+Each candidate's report also says what the full corpus would cost to embed:
+
+- **Chunks.** The mean chunks per sampled document, scaled to the full size, with a 95%
+  interval.
+- **Embedding time.** The seconds per chunk measured while embedding the sample, on this
+  machine and at this batch size, scaled to that chunk count. It is unknown when the sample's
+  vectors came from the embedding cache, so pass `--no-cache` to measure it.
+- **Storage.** The bytes of float32 vectors. An index adds its own overhead, and a compressed
+  index stores less.
+
+```text
+bge-small: projected recall@10 0.850 to 0.883 (point 0.875; 0.930 on the sample) at 100000
+documents; about 15 minutes to embed on this machine; 153.6 MB of vectors.
+```
+
+The time and storage scale linearly from the sample. They are planning figures, not
+measurements.
+
 ## A corpus larger than the file
 
 When the corpus file is itself a sample of a larger corpus, pass the full size in documents:

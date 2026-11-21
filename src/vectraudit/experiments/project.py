@@ -174,7 +174,8 @@ def project_experiment(
             u = np.array([int(np.searchsorted(b, n_lab + take)) for b in beaters], dtype=np.int64)
             per_size.append(Thinned(a, u, take / unlabelled_full, units, weight))
         thinned.append(per_size)
-        candidates.append({"name": spec.name, "candidate": spec.describe(), "cost": stats})
+        cost = project_cost(stats, full, n_lab, seed=seed)
+        candidates.append({"name": spec.name, "candidate": spec.describe(), "cost": cost})
     if progress is not None:
         progress("projecting")
     largest = [t[-1] for t in thinned]
@@ -258,14 +259,75 @@ def _counts(
         above = np.flatnonzero(row > row[position[doc]])
         a_list.append(int((above < labelled_count).sum()))
         beaters.append(np.sort(above[above >= labelled_count]))
+    per_doc = np.bincount(doc_index, minlength=len(position))
     stats = {
         "chunks": len(chunks),
         "dimension": int(vectors.shape[1]),
         "embedded_documents": len(sample),
         "embed_seconds": seconds,
         "vector_bytes": int(vectors.shape[0] * vectors.shape[1] * 4),
+        "labelled_chunks": int(per_doc[:labelled_count].sum()),
+        "unlabelled_chunks_per_document": per_doc[labelled_count:].astype(np.int64),
     }
     return (np.array(a_list, dtype=np.int64), beaters), stats
+
+
+def project_cost(
+    stats: Mapping[str, Any], full_size: int, labelled: int, *, seed: int = 0, draws: int = 2000
+) -> dict[str, Any]:
+    """Chunks, embedding time and vector storage at the full size, scaled from the sample.
+
+    Chunks per document come from the sampled unlabelled documents, with a 95% bootstrap
+    interval over them; labelled documents are counted as they are. Embedding time scales the
+    measured seconds per chunk (this machine, this batch size); it is unknown when the sample's
+    vectors came from the cache. Storage is float32 vectors only: an index adds its own
+    overhead, and a compressed one stores less.
+    """
+    per_doc = np.asarray(stats["unlabelled_chunks_per_document"], dtype=np.float64)
+    if len(per_doc) == 0:
+        raise ExperimentError("the sample holds no unlabelled documents to scale costs from")
+    rng = np.random.default_rng(seed)
+    means = per_doc[rng.integers(0, len(per_doc), (draws, len(per_doc)))].mean(axis=1)
+    others = full_size - labelled
+
+    def chunks_at(mean: float) -> float:
+        return float(stats["labelled_chunks"] + others * mean)
+
+    chunks = chunks_at(float(per_doc.mean()))
+    chunk_range = [chunks_at(float(np.quantile(means, q))) for q in (0.025, 0.975)]
+    bytes_per_chunk = stats["dimension"] * 4
+    rate = None if stats["embed_seconds"] is None else stats["embed_seconds"] / stats["chunks"]
+    return {
+        "sample": {k: v for k, v in stats.items() if k != "unlabelled_chunks_per_document"},
+        "chunks": chunks,
+        "chunks_interval": chunk_range,
+        "embed_seconds": None if rate is None else chunks * rate,
+        "embed_seconds_interval": None if rate is None else [c * rate for c in chunk_range],
+        "vector_bytes": chunks * bytes_per_chunk,
+        "vector_bytes_interval": [c * bytes_per_chunk for c in chunk_range],
+        "embed_note": (
+            "Not measured: the sample's vectors came from the cache; run with --no-cache."
+            if rate is None
+            else "Seconds per chunk measured on this machine for the sample, scaled."
+        ),
+    }
+
+
+def _duration(seconds: float) -> str:
+    if seconds < 90:
+        return f"{seconds:.0f} seconds"
+    if seconds < 90 * 60:
+        return f"{seconds / 60:.0f} minutes"
+    if seconds < 48 * 3600:
+        return f"{seconds / 3600:.1f} hours"
+    return f"{seconds / 86400:.1f} days"
+
+
+def _bytes(n: float) -> str:
+    for unit, size in (("TB", 1e12), ("GB", 1e9), ("MB", 1e6)):
+        if n >= size:
+            return f"{n / size:.1f} {unit}"
+    return f"{n / 1e3:.0f} kB"
 
 
 def _fmt(x: float) -> str:
@@ -281,9 +343,17 @@ def summary(report: Mapping[str, Any]) -> str:
     ]
     for c in sorted(report["candidates"], key=lambda c: -c["projected"]["recall"]):
         lo, hi = c["projected"]["interval"]
+        cost = c["cost"]
+        when = (
+            f"about {_duration(cost['embed_seconds'])} to embed on this machine"
+            if cost["embed_seconds"] is not None
+            else "embedding time unknown (vectors came from the cache)"
+        )
         parts.append(
-            f"{c['name']}: projected recall@{k} {_fmt(c['projected']['recall'])} "
-            f"({_fmt(lo)} to {_fmt(hi)}) at full size; {_fmt(c['sample_recall'])} on the sample."
+            f"{c['name']}: projected recall@{k} {_fmt(lo)} to {_fmt(hi)} (point "
+            f"{_fmt(c['projected']['recall'])}; {_fmt(c['sample_recall'])} on the sample) at "
+            f"{report['full_size']} documents; {when}; "
+            f"{_bytes(cost['vector_bytes'])} of vectors."
         )
     if len(report["candidates"]) > 1:
         parts.append(
