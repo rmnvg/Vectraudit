@@ -37,6 +37,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit check --bundle evidence.zip` writes an evidence bundle: the verdict and reasons,
+  the policy, both runs' headers, the dataset version, the audited exceptions applied and by
+  whom, tool and metric-contract versions, and a manifest of SHA-256 hashes. It holds IDs and
+  numbers only (`--bundle-runs` adds both runs through the sharing projection).
+  `vectraudit verify evidence.zip` recomputes every hash, names any changed, missing or added
+  file, and re-runs the comparison when the runs are available. A bundle without runs is
+  "hashes consistent, verdict not reproduced", never "verified". Bundles are not signed.
 - `vectraudit experiment project` projects each candidate's recall@k from nested corpus
   samples (4 to 10% by default, always holding every labelled document, only the largest
   embedded) to the full corpus, with a 95% interval, ranks the candidates at full size and
