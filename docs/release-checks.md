@@ -524,6 +524,9 @@ nondeterministic results.
 
 ## Reports
 
+`check --bundle evidence.zip` also writes an evidence bundle that a reviewer outside the team
+can verify with `vectraudit verify`: see [evidence bundles](evidence-bundle.md).
+
 `--html` writes a self-contained report (no scripts or external assets): verdict and
 reasons, both runs' configuration and provenance, quality with intervals, latency,
 regressed queries with the ids they lost and gained, cohorts and the configuration diff.
