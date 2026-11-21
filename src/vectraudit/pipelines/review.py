@@ -9,6 +9,7 @@ from pydantic import Field
 
 from vectraudit.evaluation.dataset import parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
+from vectraudit.evaluation.decision_queue import DecisionQueueError, decision_queue
 from vectraudit.evaluation.runfile import load_run
 from vectraudit.pipelines.benchmark import audit_benchmark
 from vectraudit.pipelines.document_lookup import LookupRequest, LookupRunner, content_hash
@@ -24,6 +25,8 @@ class ReviewPoolIn(Contract):
     baseline: str
     candidate: str
     query_id: str = Field(min_length=1, max_length=512)
+    policy: str | None = None
+    """Saved or startup policy id for the decision order; ``None`` uses the defaults."""
 
 
 class ReviewDocumentsIn(ReviewPoolIn):
@@ -71,15 +74,25 @@ def review_router(workspace: GuidedWorkspace) -> APIRouter:
             {doc: rank for rank, doc in enumerate(q.get("ids") or [], 1)} if ok else {}
             for q, ok in zip(entries, measured, strict=True)
         ]
+        decision = _decision(workspace, body, runs, dataset, draft.get("irrelevant", {}))
+        swing = {
+            i["doc_id"]: i
+            for i in (decision or {}).pop("items", [])
+            if i["query_id"] == body.query_id
+        }
         items = [
             {
                 **item,
                 "baseline_rank": ranks[0].get(item["doc_id"]),
                 "candidate_rank": ranks[1].get(item["doc_id"]),
+                **({"swing": swing[item["doc_id"]]["swing"]} if item["doc_id"] in swing else {}),
             }
             for item in audit["judgment_queue"]
             if item["query_id"] == body.query_id
         ]
+        if decision is not None:
+            # The documents that could move the check most come first (stable otherwise).
+            items.sort(key=lambda item: -float(item.get("swing", 0.0)))
         return {
             "draft_id": draft["id"],
             "revision": draft["revision"],
@@ -90,6 +103,7 @@ def review_router(workspace: GuidedWorkspace) -> APIRouter:
             "baseline_measured": measured[0],
             "candidate_measured": measured[1],
             "items": items,
+            "decision": decision,
             "document_lookup": bool(workspace.manifest and workspace.manifest.document_lookup),
         }
 
@@ -146,3 +160,40 @@ def review_router(workspace: GuidedWorkspace) -> APIRouter:
         }
 
     return router
+
+
+def _decision(
+    workspace: GuidedWorkspace,
+    body: ReviewPoolIn,
+    runs: list[dict[str, Any]],
+    dataset: Any,
+    irrelevant: dict[str, list[str]],
+) -> dict[str, Any] | None:
+    """The pair's decision queue, without per-document items for other questions.
+
+    Ranks and sources stay hidden in the grader, so only the pool-wide stop rule and which
+    questions to review next leave here; ``None`` when the runs cannot be compared.
+    """
+    rules, _ = workspace.policies.resolve(body.policy)
+    try:
+        report = decision_queue(runs[0], runs[1], dataset, rules, irrelevant=irrelevant)
+    except DecisionQueueError:
+        return None
+    per_question: dict[str, int] = {}
+    for item in report["items"]:
+        if item["could_change"] and item["query_id"] != body.query_id:
+            per_question[item["query_id"]] = per_question.get(item["query_id"], 0) + 1
+    order = list(dict.fromkeys(i["query_id"] for i in report["items"] if i["could_change"]))
+    return {
+        "state": report["state"],
+        "verdict": report["verdict"],
+        "message": report["message"],
+        "n_could_change": report["n_could_change"],
+        "saving": report["saving"],
+        "next_questions": [
+            {"query_id": qid, "documents": per_question[qid]}
+            for qid in order
+            if qid in per_question
+        ][:5],
+        "items": report["items"],
+    }

@@ -74,6 +74,11 @@ try {
   await page.getByLabel('Review candidate').selectOption(candidate.run_id)
   await page.getByRole('button', { name: 'Build passage review queue', exact: true }).click()
   await page.getByText(/4 passages awaiting judgment/).waitFor()
+  // The pair's stop rule is shown, and the queue is in decision order.
+  const decision = page.getByRole('status', { name: 'Release check decision' })
+  assert.match(await decision.textContent(), /could still change the verdict|can change this verdict|Cannot say when judging can stop|settle that before judging/)
+  assert.match(await decision.textContent(), /about a third fewer, not half/)
+  await page.getByText(/ordered by how much they could move the release check/).waitFor()
   const grader = page.getByRole('region', { name: 'Passage grading' })
   assert.match(await grader.locator('article').first().textContent(), /base-only/)
   assert.equal(await grader.getByRole('button', { name: 'Relevant: known', exact: true }).count(), 0)

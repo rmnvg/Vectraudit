@@ -3424,6 +3424,53 @@ def label_audit_command(
         typer.echo(f"  {report['runs_ignored']} runs of another benchmark version were ignored.")
 
 
+@workbench_app.command("decision-queue")
+def decision_queue_command(
+    baseline: Annotated[Path, typer.Argument(help="Baseline run file.")],
+    candidate: Annotated[Path, typer.Argument(help="Candidate run file.")],
+    dataset: Annotated[Path, typer.Option(help="The benchmark both runs were recorded on.")],
+    out: Annotated[Path, typer.Option(help="Where to write the decision queue (JSON).")],
+    policy: Annotated[
+        Path | None, typer.Option(help="Policy file (JSON). Default: built-in policy.")
+    ] = None,
+    max_grade: Annotated[
+        float | None,
+        typer.Option(min=0.0, help="Highest grade a reviewer can give (default 3)."),
+    ] = None,
+    show: Annotated[int, typer.Option(min=0, help="Documents to print, the first in order.")] = 10,
+) -> None:
+    """Order unjudged documents by how much they could move this release check, and say
+    when no remaining judgment can change its verdict.
+
+    Documents only one run returns near the top come first; documents both return at the
+    same rank cannot move the difference. The stop rule is checked against every way the
+    remaining documents could be judged, through the check itself. Ordering this way saved
+    about a third of the judgments in a synthetic study, not half. Exploratory questions
+    only; nothing is judged for you.
+    """
+    from vectraudit.evaluation.decision_queue import decision_queue
+
+    try:
+        report = decision_queue(
+            load_run(baseline),
+            load_run(candidate),
+            load_dataset(dataset),
+            DEFAULT_POLICY if policy is None else load_policy(policy),
+            max_grade=max_grade,
+        )
+        _write(out, report)
+    except (OSError, ValueError, PolicyError) as exc:
+        typer.echo(f"Decision queue error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(f"Verdict: {report['verdict']}. {report['message']}")
+    if report["state"] != "settled":
+        for item in [i for i in report["items"] if i["could_change"]][:show]:
+            ranks = f"baseline rank {item['baseline_rank'] or '-'}, "
+            ranks += f"candidate rank {item['candidate_rank'] or '-'}"
+            typer.echo(f"  {item['query_id']} / {item['doc_id']} ({ranks})")
+    typer.echo(f"{report['saving']} → {out}")
+
+
 @workbench_app.command("review-labels")
 def review_labels_command(
     dataset: Annotated[Path, typer.Argument(help="The benchmark the audit was made for.")],

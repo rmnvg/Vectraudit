@@ -37,6 +37,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench decision-queue` orders a release check's unjudged pooled documents
+  by how much they could move its verdict and says when no remaining judgment can change it.
+  The stop rule is checked through the check itself at both extremes of every question's
+  bounds (exact for recall, precision, MRR and hit rate, safe for nDCG); rules on MAP and
+  Bonferroni or Holm cohort rules are reported as not certified. On synthetic runs the order
+  saved about a third of the judgments, not half. The Guided workflow's passage review queue
+  shows the same stop rule, names the questions to review next and orders passages this way.
 - `vectraudit tune --write-connection tuned.json` writes a copy of the connection with the
   recommended value, so `record` and `check` can guard it against the untuned setting. The
   swept connection is never changed, relative paths in the copy are rewritten to name the

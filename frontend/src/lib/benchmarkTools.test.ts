@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { documentGrade, gradeDocument, pendingReview, readDocuments, reviewRequestKey } from './benchmarkTools'
+import { decisionSummary, documentGrade, gradeDocument, pendingReview, readDocuments, reviewRequestKey } from './benchmarkTools'
 import type { ReviewPool } from './benchmarkTools'
 import type { QueryRow } from './guided'
 
@@ -63,5 +63,19 @@ describe('retrieved passage review', () => {
     ]) expect(reviewRequestKey(changed)).not.toBe(reviewRequestKey(row))
     expect(reviewRequestKey({ ...row, context: { a: 1, b: 2 } })).toBe(reviewRequestKey({ ...row, context: { b: 2, a: 1 }, split: 'explore' }))
     expect(reviewRequestKey({ ...row, vector: [0.1, 0.2] })).toBe(reviewRequestKey({ ...row, vector: [Math.fround(0.1), Math.fround(0.2)] }))
+  })
+})
+
+describe('decision order', () => {
+  const base = { verdict: 'fail', saving: 'about a third fewer, not half', n_could_change: 3 }
+  it('names the questions to review next while the verdict can still change', () => {
+    const open = decisionSummary({ ...base, state: 'open', message: 'About 3 more judgments could still change the verdict.', next_questions: [{ query_id: 'q2', documents: 2 }, { query_id: 'q7', documents: 1 }] })
+    expect(open.status).toBe('About 3 more judgments could still change the verdict.')
+    expect(open.next).toBe('Next: q2 (2), q7 (1)')
+  })
+  it('says nothing more once no judgment can change it', () => {
+    const settled = decisionSummary({ ...base, n_could_change: 0, state: 'settled', message: 'No remaining judgment of an exploratory question can change this verdict (fail).', next_questions: [{ query_id: 'q2', documents: 1 }] })
+    expect(settled.next).toBe('')
+    expect(settled.status).toMatch(/^No remaining judgment/)
   })
 })
