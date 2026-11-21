@@ -37,6 +37,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit workbench attribute` splits the difference between two configurations of one
+  pipeline between the parameters that changed. It runs their combinations interleaved on
+  exploratory questions: every combination within a budget of 16 runs, or a screen when
+  `--max-runs` allows more settings. It reports each setting's Shapley contribution with a
+  paired interval, the pairs that interact by more than a minimum effect, and the single revert
+  that recovers the most. Parameters declared with `--together` are attributed as one.
 - `vectraudit workbench decision-queue` orders a release check's unjudged pooled documents
   by how much they could move its verdict and says when no remaining judgment can change it.
   The stop rule is checked through the check itself at both extremes of every question's

@@ -1130,6 +1130,114 @@ def try_fix_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("attribute")
+def attribute_command(
+    manifest: Path,
+    baseline: Annotated[str, typer.Option(help="Manifest candidate in production now.")],
+    candidate: Annotated[str, typer.Option(help="Manifest candidate being released.")],
+    together: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Parameters that can only change together, comma-separated (repeatable); "
+            "they are attributed as one."
+        ),
+    ] = None,
+    metric: Annotated[str, typer.Option(help="Metric to attribute.")] = "ndcg",
+    max_runs: Annotated[
+        int | None,
+        typer.Option(
+            min=2, help="Runs allowed (default 16: every combination of up to four settings)."
+        ),
+    ] = None,
+    min_effect: Annotated[
+        float, typer.Option(min=0, help="Smallest interaction worth reporting.")
+    ] = 0.01,
+    seed: Annotated[int, typer.Option(help="Seed for intervals and tests.")] = 0,
+    out: Annotated[Path, typer.Option(help="Directory for the report and runs.")] = Path(
+        "attribution"
+    ),
+    max_calls: MaxCalls = None,
+) -> None:
+    """Which changed setting caused the difference between two configurations?
+
+    Runs the combinations of the parameters that differ between ``--baseline`` and
+    ``--candidate`` (every combination when the budget allows, else a screen), interleaved, on
+    exploratory questions, and reports each setting's contribution to the metric difference
+    with an interval, and pairs of settings that interact. Exploratory: validate a revert on
+    held-out questions under the release policy before acting on it.
+    """
+    from vectraudit.pipelines.attribution import AttributionError, attribute, plan_attribution
+
+    try:
+        spec = load_manifest(manifest)
+        base, cand = _candidate(spec, baseline), _candidate(spec, candidate)
+        groups = [[k.strip() for k in g.split(",") if k.strip()] for g in together or []]
+        plan = plan_attribution(base, cand, together=groups, max_runs=max_runs)
+        ds = load_dataset(manifest.parent / spec.dataset)
+        explore = sum(q.split == "explore" for q in ds.queries)
+        most = plan.max_runs if plan.design == "screen" else plan.runs
+        calls = most * explore * spec.repeats
+        typer.echo(
+            f"Plan: {len(plan.settings)} settings differ "
+            f"({', '.join(s.name for s in plan.settings)}); "
+            + (
+                f"every combination, {plan.runs} runs"
+                if plan.design == "full"
+                else f"screen design, {plan.runs} runs and at most {plan.max_runs - plan.runs} "
+                "more for pairs"
+            )
+            + f", on {explore} exploratory questions, {spec.repeats} "
+            + ("repeat" if spec.repeats == 1 else "repeats")
+            + f": up to {calls} calls."
+        )
+        if max_calls is not None and calls > max_calls:
+            raise ValueError(f"{calls} planned calls exceed --max-calls {max_calls}")
+        config = candidate_config(base, manifest.parent)
+        pipeline = open_adapter(base.adapter, manifest.parent)
+        report = attribute(
+            ds,
+            pipeline,
+            base,
+            plan,
+            k=spec.k,
+            metric=metric,
+            repeats=spec.repeats,
+            min_effect=min_effect,
+            seed=seed,
+            config=config,
+            corpus_version=spec.corpus_version or config.get("corpus_sha256"),
+        )
+        out.mkdir(parents=True, exist_ok=True)
+        runs = report.pop("run_records")
+        for name, run in runs.items():
+            slug = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in name)
+            write_run(out / f"{slug}.run.json", run)
+        _write(out / "attribution.json", report)
+    except (OSError, ValueError, ImportError, AttributeError) as exc:
+        if isinstance(exc, AttributionError):
+            typer.echo(f"Attribution refused: {exc}", err=True)
+        else:
+            typer.echo(f"Attribution error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(report["message"])
+    for row in report["contributions"]:
+        lo, hi = row["interval"]
+        typer.echo(
+            f"  {row['name']}: {row['contribution']:+.3f} ({lo:+.3f} to {hi:+.3f}); "
+            f"alone {row['alone']:+.3f}; reverting it from the candidate {-row['reverted']:+.3f}"
+        )
+    revert = report["suggested_revert"]
+    if revert is not None:
+        lo, hi = revert["interval"]
+        typer.echo(
+            f"Best single revert: {revert['setting']} to {json.dumps(revert['params'])}, "
+            f"recovering {revert['recovers']:+.3f} ({lo:+.3f} to {hi:+.3f})."
+        )
+        typer.echo(revert["note"])
+    typer.echo(report["status_label"])
+    typer.echo(f"Wrote {out}.")
+
+
 @workbench_app.command("investigations")
 def investigations_command(
     workspace: Annotated[Path, typer.Argument(help="Workbench directory (workbench serve).")],

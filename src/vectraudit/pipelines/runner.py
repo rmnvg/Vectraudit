@@ -549,31 +549,59 @@ def execute_paired(
     pairing is per question. Each record names the other in ``timing.paired_with`` and
     ``timing.order`` is ``interleaved``. Checkpoints and resume are not supported here.
     """
-    for side in (first, second):
+    a, b = execute_interleaved(dataset, [first, second], progress=progress)
+    return a, b
+
+
+def execute_interleaved(
+    dataset: Dataset,
+    sides: Sequence[PairedSide],
+    *,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[dict[str, Any]]:
+    """Run several pipelines over the same questions, interleaved, one record per side.
+
+    Each question runs on every side back to back, and the order rotates by one side per
+    question, so drift during the run falls on all sides alike. With two sides this is
+    :func:`execute_paired`, and each record names the other in ``timing.paired_with``; with
+    more, ``timing.interleaved_with`` lists the others. Serial; no checkpoints.
+    """
+    if len(sides) < 2:
+        raise ValueError("Interleaved execution needs at least two sides")
+    first = sides[0]
+    for side in sides:
         workers = side.options.concurrency if isinstance(side.options, PipelineOptions) else 1
         if workers != 1:
             raise ValueError("Paired execution runs one question at a time; use concurrency 1")
         if side.options.repeats != first.options.repeats or side.options.k != first.options.k:
             raise ValueError("Paired runs need the same k and repeats on both sides")
-    sides: list[tuple[PairedSide, dict[str, Any], _Shared, dict[int, dict[str, Any]]]] = []
-    for side in (first, second):
+    opened: list[tuple[PairedSide, dict[str, Any], _Shared, dict[int, dict[str, Any]]]] = []
+    for side in sides:
         record, shared, _ = _open_record(
             dataset, side.pipeline, side.options, side.config, side.corpus_version, None
         )
-        sides.append((side, record, shared, {}))
-    a, b = sides
-    for record, other in ((a[1], b[1]), (b[1], a[1])):
+        opened.append((side, record, shared, {}))
+    for _side, record, _shared, _results in opened:
+        others = [o[1]["run_id"] for o in opened if o[1] is not record]
         record["timing"]["order"] = "interleaved"
-        record["timing"]["paired_with"] = other["run_id"]
-        record["timing"]["scope"] += "; interleaved with a paired run, alternating which goes first"
+        if len(opened) == 2:
+            record["timing"]["paired_with"] = others[0]
+            record["timing"]["scope"] += (
+                "; interleaved with a paired run, alternating which goes first"
+            )
+        else:
+            record["timing"]["interleaved_with"] = others
+            record["timing"]["scope"] += (
+                f"; interleaved with {len(others)} other runs, rotating which goes first"
+            )
     start = time.perf_counter()
     status = "complete"
     try:
         for index, q in enumerate(dataset.queries):
             if progress is not None:
                 progress(index, len(dataset))
-            order = (a, b) if index % 2 == 0 else (b, a)
-            for side, _record, shared, results in order:
+            shift = index % len(opened)
+            for side, _record, shared, results in opened[shift:] + opened[:shift]:
 
                 def alive(index: int = index) -> None:
                     if progress is not None:
@@ -587,12 +615,12 @@ def execute_paired(
     except (KeyboardInterrupt, JobCancelledError):
         status = "cancelled"
     out = []
-    for _side, record, _shared, results in sides:
+    for _side, record, _shared, results in opened:
         side_status = status
         if status == "complete" and any(e["error"] for e in results.values()):
             side_status = "partial"
         out.append(_close_record(record, results, side_status, start, dataset, None))
-    return out[0], out[1]
+    return out
 
 
 def _reuse(journal: Checkpoint | None, query_id: str, retry_errors: bool) -> dict[str, Any] | None:
