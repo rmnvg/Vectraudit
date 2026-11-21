@@ -31,3 +31,20 @@ uv venv .venv-openlit && VIRTUAL_ENV=.venv-openlit uv pip install openlit langch
 .venv-openlit/bin/python generate/run_openlit.py openlit.json
 WITH_ID=1 .venv-openlit/bin/python generate/run_openlit.py openlit_ids.json
 ```
+
+## Agent traces (Phase 49.0)
+
+`agent_*.json` come from a LangGraph ReAct agent (`generate/agent_common.py`: a scripted fake
+model calling a `search_kb` tool over the same Chroma store, two documents per search) run
+under each library. Task `t1` searches twice; task `t3` searches three times and plants a bad
+rewrite at its second search. `agent_tasks.jsonl` holds the two tasks with their labels.
+Versions: `langgraph` 1.2.24, `langchain-core` 1.8.4, `openinference-instrumentation-langchain`
+0.1.89, `opentelemetry-instrumentation-langchain` and `-chromadb` 0.63.1, `openlit` 1.45.0.
+
+```bash
+VIRTUAL_ENV=.venv uv pip install langgraph
+VIRTUAL_ENV=.venv-openlit uv pip install langgraph
+.venv/bin/python generate/run_agent_openinference.py agent_openinference.json
+.venv/bin/python generate/run_agent_openllmetry.py agent_openllmetry.json
+.venv-openlit/bin/python generate/run_agent_openlit.py agent_openlit.json
+```
