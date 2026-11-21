@@ -1130,6 +1130,174 @@ def try_fix_command(
         raise typer.Exit(3)
 
 
+@workbench_app.command("attribute")
+def attribute_command(
+    manifest: Path,
+    baseline: Annotated[str, typer.Option(help="Manifest candidate in production now.")],
+    candidate: Annotated[str, typer.Option(help="Manifest candidate being released.")],
+    together: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Parameters that can only change together, comma-separated (repeatable); "
+            "they are attributed as one."
+        ),
+    ] = None,
+    metric: Annotated[str, typer.Option(help="Metric to attribute.")] = "ndcg",
+    max_runs: Annotated[
+        int | None,
+        typer.Option(
+            min=2, help="Runs allowed (default 16: every combination of up to four settings)."
+        ),
+    ] = None,
+    min_effect: Annotated[
+        float, typer.Option(min=0, help="Smallest interaction worth reporting.")
+    ] = 0.01,
+    seed: Annotated[int, typer.Option(help="Seed for intervals and tests.")] = 0,
+    validate: Annotated[
+        bool,
+        typer.Option(
+            "--validate",
+            help="Then judge the suggested revert on held-out questions under --policy.",
+        ),
+    ] = False,
+    policy: Annotated[Path | None, typer.Option(help="Release policy for --validate.")] = None,
+    revert: Annotated[
+        str | None, typer.Option(help="Setting to validate instead of the suggested revert.")
+    ] = None,
+    out: Annotated[Path, typer.Option(help="Directory for the report and runs.")] = Path(
+        "attribution"
+    ),
+    max_calls: MaxCalls = None,
+) -> None:
+    """Which changed setting caused the difference between two configurations?
+
+    Runs the combinations of the parameters that differ between ``--baseline`` and
+    ``--candidate`` (every combination when the budget allows, else a screen), interleaved, on
+    exploratory questions, and reports each setting's contribution to the metric difference
+    with an interval, and pairs of settings that interact. Exploratory: ``--validate`` judges
+    the best single revert (or ``--revert``) against the baseline on held-out questions under
+    the release policy. Exit 3 when that revert is not approved.
+    """
+    from vectraudit.pipelines.attribution import (
+        AttributionError,
+        attribute,
+        plan_attribution,
+        validate_revert,
+    )
+
+    try:
+        spec = load_manifest(manifest)
+        base, cand = _candidate(spec, baseline), _candidate(spec, candidate)
+        groups = [[k.strip() for k in g.split(",") if k.strip()] for g in together or []]
+        plan = plan_attribution(base, cand, together=groups, max_runs=max_runs)
+        if (validate or revert) and policy is None:
+            raise ValueError("--validate needs --policy; approval is only under a policy")
+        if revert is not None:
+            validate = True
+            if revert not in {s.name for s in plan.settings}:
+                raise AttributionError(
+                    f"no setting {revert!r} to revert; settings: "
+                    + ", ".join(s.name for s in plan.settings)
+                )
+        rules = load_policy(policy) if policy else None
+        ds = load_dataset(manifest.parent / spec.dataset)
+        explore = sum(q.split == "explore" for q in ds.queries)
+        held = sum(q.split == "heldout" for q in ds.queries) if validate else 0
+        if validate and not held:
+            raise AttributionError(
+                'the benchmark has no held-out questions to validate on; mark some "split": '
+                '"heldout" that are not used to attribute the change'
+            )
+        most = plan.max_runs if plan.design == "screen" else plan.runs
+        calls = (most * explore + 2 * held) * spec.repeats
+        typer.echo(
+            f"Plan: {len(plan.settings)} settings differ "
+            f"({', '.join(s.name for s in plan.settings)}); "
+            + (
+                f"every combination, {plan.runs} runs"
+                if plan.design == "full"
+                else f"screen design, {plan.runs} runs and at most {plan.max_runs - plan.runs} "
+                "more for pairs"
+            )
+            + f", on {explore} exploratory questions, {spec.repeats} "
+            + ("repeat" if spec.repeats == 1 else "repeats")
+            + (f"; then 2 runs on {held} held-out questions" if validate else "")
+            + f": up to {calls} calls."
+        )
+        if max_calls is not None and calls > max_calls:
+            raise ValueError(f"{calls} planned calls exceed --max-calls {max_calls}")
+        config = candidate_config(base, manifest.parent)
+        pipeline = open_adapter(base.adapter, manifest.parent)
+        report = attribute(
+            ds,
+            pipeline,
+            base,
+            plan,
+            k=spec.k,
+            metric=metric,
+            repeats=spec.repeats,
+            min_effect=min_effect,
+            seed=seed,
+            config=config,
+            corpus_version=spec.corpus_version or config.get("corpus_sha256"),
+        )
+        out.mkdir(parents=True, exist_ok=True)
+        runs = report.pop("run_records")
+        for name, run in runs.items():
+            slug = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in name)
+            write_run(out / f"{slug}.run.json", run)
+        _write(out / "attribution.json", report)
+        chosen = revert or (report["suggested_revert"] or {}).get("setting")
+        validation = None
+        if validate and chosen is not None and rules is not None:
+            validation = validate_revert(
+                ds,
+                pipeline,
+                base,
+                plan,
+                chosen,
+                rules,
+                k=spec.k,
+                repeats=spec.repeats,
+                config=config,
+                corpus_version=spec.corpus_version or config.get("corpus_sha256"),
+            )
+            for side, run in validation.pop("runs").items():
+                write_run(out / f"validation-{side}.run.json", run)
+            _write(out / "validation.json", validation)
+    except (OSError, ValueError, PolicyError, ImportError, AttributeError) as exc:
+        if isinstance(exc, AttributionError):
+            typer.echo(f"Attribution refused: {exc}", err=True)
+        else:
+            typer.echo(f"Attribution error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(report["message"])
+    for row in report["contributions"]:
+        lo, hi = row["interval"]
+        typer.echo(
+            f"  {row['name']}: {row['contribution']:+.3f} ({lo:+.3f} to {hi:+.3f}); "
+            f"alone {row['alone']:+.3f}; reverting it from the candidate {-row['reverted']:+.3f}"
+        )
+    best = report["suggested_revert"]
+    if best is not None:
+        lo, hi = best["interval"]
+        typer.echo(
+            f"Best single revert: {best['setting']} to {json.dumps(best['params'])}, "
+            f"recovering {best['recovers']:+.3f} ({lo:+.3f} to {hi:+.3f})."
+        )
+        typer.echo(best["note"])
+    typer.echo(report["status_label"])
+    if validate and validation is None:
+        typer.echo("No revert is shown to help, so nothing was validated; pass --revert to choose.")
+    if validation is not None:
+        typer.echo(validation["status_label"])
+        for reason in validation["check"]["reasons"]:
+            typer.echo(f"  - {reason}")
+    typer.echo(f"Wrote {out}.")
+    if validation is not None and not validation["approved"]:
+        raise typer.Exit(3)
+
+
 @workbench_app.command("investigations")
 def investigations_command(
     workspace: Annotated[Path, typer.Argument(help="Workbench directory (workbench serve).")],

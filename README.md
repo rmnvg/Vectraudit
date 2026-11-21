@@ -160,6 +160,7 @@ vectraudit workbench phoenix-push current.judged.run.json --send   # or langfuse
 | `fusion-replay`, `optimize` fusion grid | Would a different way of combining keyword and vector rankings have helped, measured on your questions with paired significance tests? | [Rank fusion](docs/fusion.md) |
 | `components` | Where along the pipeline (retrieval, filter, fusion, rerank, cut-off, context, answer) do questions first lose their evidence? | [Component scoreboard](docs/retrieval-workbench.md#component-scoreboard-where-questions-lose-their-evidence) |
 | `decision-queue` | Which unjudged documents could still change this release check, and when can judging stop? | [Decision queue](docs/decision-queue.md) |
+| `attribute` | A release changed several settings at once: which one caused the regression, which interact, and which single revert recovers the most? | [Attribution](docs/attribution.md) |
 | `label-audit`, `review-labels` | Which of the benchmark's relevance labels are likely wrong or missing, so reviewers check those first? | [Label audit](docs/label-audit.md) |
 | `review-sample`, `attach-answers --sample` | What is the true rate of correct answers when a model judged every question and people reviewed a random few, with an honest interval? | [Judge-corrected estimates](docs/judge-corrected-estimates.md) |
 | `ragchecker-input`, `ragchecker-judgments`, `attach-answers` | Which claims in an answer are unsupported by the context, and which retrieved documents does that point to? | [Claim-level evidence](docs/claim-evidence.md) |
