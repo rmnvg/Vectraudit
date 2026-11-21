@@ -23,6 +23,15 @@ save the labels as a new benchmark version, measure both runs again and run the 
 When it says **"No remaining judgment of an exploratory question can change this verdict"**,
 further judging of the pool cannot change this check.
 
+## In the workbench
+
+In the Guided workflow, **Build passage review queue** now shows the pair's stop rule above the
+queue ("About 4 more judgments could still change the verdict", or "No remaining judgment
+… can change this verdict"), names the questions with the most documents that could still
+change it, and lists this question's passages in decision order. Source and rank stay hidden
+until a passage is graded, as before, so the order is the only hint. The workbench uses the
+default policy here; run `workbench decision-queue --policy` for a saved release policy.
+
 ## The order
 
 A document's **swing** is how far the difference between the two runs could move, on a rule

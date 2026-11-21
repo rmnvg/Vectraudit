@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { guidedRequest, parseQueries } from '../lib/guided'
 import type { Draft, QueryRow } from '../lib/guided'
 import type { LookupResponse, ReviewPool } from '../lib/benchmarkTools'
-import { reviewRequestKey } from '../lib/benchmarkTools'
+import { decisionSummary, reviewRequestKey } from '../lib/benchmarkTools'
 import type { RunListing } from '../lib/workbench'
 import { PassageGrader } from './BenchmarkTools'
 
@@ -87,6 +87,11 @@ export default function PassageReview({ token, draft, dirty, runs, baseline, can
         {sourceMatches && dirty && <p className="text-xs text-muted">Review uses the last saved benchmark's results. You can grade multiple questions before saving; new relevance labels require new evaluation runs.</p>}
         {!!baseline && baseline === candidate && <p className="text-xs text-muted">Choose two different evaluation runs.</p>}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        {active?.decision && <div role="status" aria-label="Release check decision" className="space-y-1 rounded-lg bg-surface-2 p-3 text-sm">
+          <p>{decisionSummary(active.decision).status}</p>
+          {decisionSummary(active.decision).next && <p className="text-xs">{decisionSummary(active.decision).next}</p>}
+          <p className="text-xs text-muted">Passages are ordered by how much they could move this check. {active.decision.saving}</p>
+        </div>}
         {active && <div className="flex flex-wrap gap-2"><button className={button} aria-pressed={!browse} onClick={() => setBrowse(false)}>Review pooled passages</button><button className={button} aria-pressed={browse} onClick={() => setBrowse(true)}>Browse all passages</button></div>}
         {active?.document_lookup && !browse && <div className="space-y-2">
           <label className="block text-sm">Passage source<select aria-label="Passage source" className={input} value={lookupSource} onChange={e => { resetLookup(); setLookupSource(e.target.value) }}><option value="candidate">Registered source · candidate corpus version</option><option value="baseline">Registered source · baseline corpus version</option><option value="local">Attached local corpus</option></select></label>

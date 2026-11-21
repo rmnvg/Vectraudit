@@ -17,11 +17,20 @@ export interface PassageLookup {
 export interface ReviewItem {
   query_id: string; doc_id: string; reason: string; priority: number
   baseline_rank: number | null; candidate_rank: number | null
+  /** How far this document could move a release rule not yet settled (decision order). */
+  swing?: number
+}
+/** The pair's stop rule: whether any remaining judgment can still change the verdict. */
+export interface ReviewDecision {
+  state: 'settled' | 'open' | 'not_certifiable' | 'not_applicable'
+  verdict: string; message: string; n_could_change: number; saving: string
+  next_questions: { query_id: string; documents: number }[]
 }
 export interface ReviewPool {
   draft_id: string; revision: string; dataset_sha256: string; query_id: string
   baseline: string; candidate: string; baseline_measured: boolean; candidate_measured: boolean
   items: ReviewItem[]
+  decision?: ReviewDecision | null
   document_lookup?: boolean
 }
 
@@ -30,6 +39,14 @@ export function reviewRequestKey(row: QueryRow): string {
   const sorted = (value: Record<string, unknown> | undefined) => Object.entries(value || {}).sort(([a], [b]) => a.localeCompare(b))
   // Saved datasets canonicalize vectors to float32; match that representation after save.
   return JSON.stringify([row.query_id, row.text, row.vector?.map(Math.fround), sorted(row.context), sorted(row.filter), row.split || 'explore'])
+}
+
+/** One line for the stop rule's state, and the questions to review next. */
+export function decisionSummary(decision: ReviewDecision): { status: string; next: string } {
+  const next = decision.next_questions.length
+    ? `Next: ${decision.next_questions.map(q => `${q.query_id} (${q.documents})`).join(', ')}`
+    : ''
+  return { status: decision.message, next: decision.state === 'settled' ? '' : next }
 }
 
 export function documentGrade(row: QueryRow, doc: string, irrelevant: string[]): number | undefined {

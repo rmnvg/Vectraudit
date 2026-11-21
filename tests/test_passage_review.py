@@ -65,6 +65,26 @@ def test_pool_prioritizes_disagreements_preserves_labels_and_context(review):
     assert [i["doc_id"] for i in other["items"]] == ["other"]
 
 
+def test_pool_orders_by_decision_and_shows_when_judging_can_stop(review):
+    client, _, body, _ = review
+    pool = client.post("/api/guided/review-pool", json=body).json()
+    decision = pool["decision"]
+    # Both runs return a forbidden document: that failure holds whatever is judged.
+    assert decision["verdict"] == "fail"
+    assert decision["state"] == "settled"
+    assert "safety.forbidden:q fails whatever is judged" in decision["message"]
+    assert decision["n_could_change"] == 0
+    assert decision["next_questions"] == []
+    assert "about a third fewer, not half" in decision["saving"]
+    # Only this question's documents leave the server, each with its swing, largest first.
+    assert "items" not in decision
+    swings = [i["swing"] for i in pool["items"]]
+    assert swings == sorted(swings, reverse=True)
+    # Shared documents at the same rank move no difference; one-sided ones do.
+    by_doc = {i["doc_id"]: i["swing"] for i in pool["items"]}
+    assert by_doc["common"] <= min(by_doc["base-only"], by_doc["candidate-only"])
+
+
 @pytest.mark.parametrize("query_id", ["heldout", "unknown"])
 def test_pool_excludes_heldout_and_unknown_questions(review, query_id):
     client, _, body, _ = review

@@ -150,8 +150,9 @@ def decision_queue(
     items = _items(questions, rules, unsettled, k, grade)
     could = [i for i in items if i["could_change"]]
     if state == "open":
-        message = f"About {len(could)} more judgments could still change the verdict" + (
-            f"; {len(joining)} unlabelled exploratory questions could join the check."
+        n, m = len(could), len(joining)
+        message = f"About {n} more judgment{'s' * (n != 1)} could still change the verdict" + (
+            f"; {m} unlabelled exploratory question{'s' * (m != 1)} could join the check."
             if joining
             else "."
         )
