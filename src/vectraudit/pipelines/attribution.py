@@ -32,15 +32,18 @@ from __future__ import annotations
 import itertools
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
 
+from vectraudit.evaluation.compare import compare_runs
 from vectraudit.evaluation.dataset import Dataset, parse_dataset
 from vectraudit.evaluation.dataset_tools import dataset_rows, render_dataset
+from vectraudit.evaluation.exceptions import failing_rules
 from vectraudit.evaluation.families import family_id
 from vectraudit.evaluation.metrics import LABEL_METRICS
+from vectraudit.evaluation.policy import Policy, policy_sha256
 from vectraudit.evaluation.significance import holm_adjust, paired_randomization
 from vectraudit.pipelines.budget import combine
 from vectraudit.pipelines.manifest import Candidate
@@ -49,6 +52,7 @@ from vectraudit.pipelines.runner import (
     PipelineOptions,
     RetryPolicy,
     execute_interleaved,
+    execute_paired,
     execute_pipeline,
 )
 from vectraudit.pipelines.runtime import Pipeline
@@ -620,3 +624,92 @@ def summary(report: Mapping[str, Any]) -> str:
     if confounded:
         parts.append("Changed together and attributed as one: " + ", ".join(confounded) + ".")
     return " ".join(parts)
+
+
+def validate_revert(
+    dataset: Dataset,
+    pipeline: Pipeline,
+    baseline: Candidate,
+    plan: Plan,
+    setting: str,
+    policy: Policy,
+    *,
+    k: int,
+    repeats: int = 1,
+    retry: RetryPolicy | None = None,
+    config: dict[str, Any] | None = None,
+    corpus_version: str | None = None,
+) -> dict[str, Any]:
+    """Judge the candidate with one setting reverted against the baseline, on held-out questions.
+
+    The release policy decides, as ``try-fix --validate`` does: only a pass reads "approved
+    under policy". Without held-out questions there is nothing unconsulted to validate on,
+    so this refuses rather than reuse the questions the attribution was measured on.
+    """
+    names = [s.name for s in plan.settings]
+    if setting not in names:
+        raise AttributionError(f"no setting {setting!r} to revert; settings: {', '.join(names)}")
+    held = [q.query_id for q in dataset.queries if q.split == "heldout"]
+    if not held:
+        raise AttributionError(
+            "the benchmark has no held-out questions to validate on; mark some questions "
+            '"split": "heldout" that were not used to attribute the change'
+        )
+    rows = [r for r in dataset_rows(dataset) if r["query_id"] in set(held)]
+    suite = parse_dataset(render_dataset(rows, dataset.meta))
+    on = frozenset(names) - {setting}
+    params = combination_params(plan, baseline.params, on)
+
+    def options(p: Mapping[str, Value], name: str) -> PipelineOptions:
+        return PipelineOptions(
+            k=k,
+            params=dict(p),
+            repeats=repeats,
+            warmup=0,
+            label=name,
+            retry=retry or RetryPolicy(),
+        )
+
+    revert_label = f"candidate without {setting}"
+    base_run, revert_run = execute_paired(
+        suite,
+        PairedSide(pipeline, options(baseline.params, "baseline"), config, corpus_version),
+        PairedSide(
+            pipeline,
+            options(params, revert_label),
+            {**(config or {}), "attribution": sorted(on)},
+            corpus_version,
+        ),
+    )
+    restricted = replace(
+        policy,
+        critical_queries=tuple(r for r in policy.critical_queries if r.query_id in set(held)),
+    )
+    result = compare_runs(base_run, revert_run, restricted)
+    failing = [r for r in result["reasons"] if r["verdict"] == "fail"]
+    approved = result["verdict"] == "pass"
+    return {
+        "format": "vectraudit.revert_validation",
+        "format_version": 1,
+        "status": "approved_under_policy" if approved else "not_approved",
+        "status_label": (
+            f"Approved under the release policy on held-out questions: the candidate with "
+            f"{setting} reverted."
+            if approved
+            else f"Not approved under the release policy on held-out questions: the candidate "
+            f"with {setting} reverted."
+        ),
+        "approved": approved,
+        "setting": setting,
+        "params": params,
+        "policy_sha256": policy_sha256(policy),
+        "questions": len(held),
+        "check": {
+            "verdict": result["verdict"],
+            "failing_rules": failing_rules(result),
+            "reasons": [r["message"] for r in result["reasons"]][:10],
+            "inconclusive": bool(failing) and all(r.get("inconclusive") for r in failing),
+        },
+        "usage": combine([base_run["usage"], revert_run["usage"]]),
+        "runs": {"baseline": base_run, "reverted": revert_run},
+    }

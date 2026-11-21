@@ -51,6 +51,24 @@ the other side's value.
   interaction. A close second is named, and nothing is suggested when no revert is shown to
   help.
 
+## Confirm the revert on held-out questions
+
+```bash
+vectraudit workbench attribute retrieval/manifest.json --baseline current --candidate release \
+  --validate --policy retrieval/policy.json --out attribution/
+```
+
+`--validate` runs the baseline and the candidate with the best single revert applied,
+interleaved, on the **held-out** questions, and judges the result with the release policy,
+as `try-fix --validate` does. Only a pass reads "approved under the release policy". The
+command exits 3 when the revert is not approved. `--revert SETTING` validates a setting you
+choose, for example the close second. In the example a single revert is not enough: undoing
+the chunk size leaves the embedding model's loss, so the check fails. That is the answer to
+take back to the release: revert two settings, or fix the embedding model's weak domain. The
+plan line includes the held-out runs in its call count, and the command refuses when the
+benchmark has no held-out questions. It never validates on the questions it attributed on.
+The command writes `validation.json` (format `vectraudit.revert_validation`) and both runs.
+
 ## Budget and designs
 
 The default budget is 16 runs (decision D16), which is every combination of up to four

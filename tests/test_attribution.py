@@ -352,3 +352,71 @@ def test_cli_writes_the_report_and_runs(tmp_path):
     )
     assert refused.exit_code == 2
     assert "exceed --max-calls" in refused.output
+
+
+POLICY = {"metrics": {"recall": {"max_drop": 0.01}}, "min_queries": 1}
+
+
+def test_a_revert_is_validated_on_held_out_questions_under_the_policy(tmp_path):
+    from vectraudit.evaluation.policy import parse_policy
+    from vectraudit.pipelines.attribution import validate_revert
+
+    policy = parse_policy(POLICY)
+    # The full release: no single revert undoes both the culprit and the interaction.
+    base, cand, pipeline, data = parts(tmp_path, n=40, heldout=120)
+    plan = plan_attribution(base, cand)
+    result = validate_revert(data, pipeline, base, plan, "chunk_size", policy, k=10)
+    assert result["questions"] == 120
+    assert result["status"] == "not_approved"
+    assert result["params"]["chunk_size"] == 256
+    assert result["params"]["embedding"] == "new"
+    ids = {q["query_id"] for q in result["runs"]["reverted"]["queries"]}
+    assert ids == {f"q-{i}" for i in range(40, 160)}
+
+    # Without the embedding change, reverting the chunk size leaves the reranker's own gain.
+    (tmp_path / "s").mkdir()
+    smaller = parts(tmp_path / "s", n=40, heldout=120, cand={**CAND, "embedding": "old"})
+    base, cand, pipeline, data = smaller
+    plan = plan_attribution(base, cand)
+    result = validate_revert(data, pipeline, base, plan, "chunk_size", policy, k=10)
+    assert result["approved"] is True
+    assert result["check"]["verdict"] == "pass"
+
+    with pytest.raises(AttributionError, match="no setting"):
+        validate_revert(data, pipeline, base, plan, "nope", policy, k=10)
+
+
+def test_validation_refuses_without_held_out_questions(tmp_path):
+    from vectraudit.evaluation.policy import parse_policy
+    from vectraudit.pipelines.attribution import validate_revert
+
+    base, cand, pipeline, data = parts(tmp_path, n=20)
+    with pytest.raises(AttributionError, match="no held-out questions"):
+        validate_revert(
+            data, pipeline, base, plan_attribution(base, cand), "prompt", parse_policy(POLICY), k=10
+        )
+
+
+def test_cli_validates_the_suggested_revert_and_fails_when_not_approved(tmp_path):
+    path = setup(tmp_path, n=120, heldout=60)
+    (tmp_path / "policy.json").write_text(json.dumps(POLICY))
+    args = ["workbench", "attribute", str(path), "--baseline", "current", "--candidate"]
+    args += ["release", "--metric", "recall", "--out", str(tmp_path / "out")]
+    result = CliRunner().invoke(
+        app, [*args, "--validate", "--policy", str(tmp_path / "policy.json")]
+    )
+    assert result.exit_code == 3, result.output
+    assert "then 2 runs on 60 held-out questions" in result.output
+    assert "Not approved under the release policy on held-out questions" in result.output
+    validation = json.loads((tmp_path / "out" / "validation.json").read_text())
+    assert validation["setting"] in ("chunk_size", "reranker")
+    assert (tmp_path / "out" / "validation-reverted.run.json").exists()
+
+    missing = CliRunner().invoke(app, [*args, "--validate"])
+    assert missing.exit_code == 2
+    assert "needs --policy" in missing.output
+    unknown = CliRunner().invoke(
+        app, [*args, "--revert", "nope", "--policy", str(tmp_path / "policy.json")]
+    )
+    assert unknown.exit_code == 2
+    assert "no setting 'nope'" in unknown.output
