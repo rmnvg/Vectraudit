@@ -154,6 +154,12 @@ Document embeddings are cached in `~/.cache/vectraudit/embeddings`, keyed by mod
 settings, corpus content and chunking, so re-running after adding a candidate only embeds
 the new one.
 
+## Recall at the full corpus size
+
+Embedding a large corpus with every candidate is expensive, and recall on a sample is too
+high. `vectraudit experiment project` measures the candidates on a sample and projects their
+recall to the full corpus with an interval: see [corpus projection](corpus-projection.md).
+
 ## From winner to release checks
 
 Every candidate's results are a normal run file in `results/runs/`. Make the winner your
