@@ -183,7 +183,9 @@ vectraudit check baseline.json candidate.json --policy policy.json --html report
 `init` scaffolds a connection, policy, query sheet and GitHub workflow. `doctor` inspects
 the setup offline without loading a model or opening a database connection. `check` exits 0
 (pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job summary, and the
-HTML report lists the regressed queries with the ids they lost.
+HTML report lists the regressed queries with the ids they lost. `check --bundle` writes an
+evidence bundle (IDs, numbers and SHA-256 hashes) that a reviewer outside the team checks
+with `vectraudit verify` ([evidence bundles](docs/evidence-bundle.md)).
 
 Semantic metrics (recall, precision, MRR, nDCG, MAP and hit rate) need relevance labels;
 ANN recall needs an exact reference; neither is ever substituted for the other. Failing
