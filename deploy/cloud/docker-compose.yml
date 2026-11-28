@@ -1,6 +1,5 @@
-# Vectraudit Cloud on one host: PostgreSQL, a migration job and the API.
-#   cp .env.example .env   # then edit it
-#   docker compose up -d --build
+# Vectraudit Cloud on one host: PostgreSQL, a migration job, the API and the webhook worker.
+#   ./start.sh             # writes .env with random secrets on the first run, then starts it all
 #   docker compose run --rm api create-workspace acme --name "Acme" --owner-email you@acme.com
 # Put a TLS-terminating reverse proxy (Caddy, nginx, a cloud load balancer) in front of :8800.
 
@@ -26,6 +25,8 @@ services:
       dockerfile: deploy/cloud/Dockerfile
     image: vectraudit-cloud:local
     command: ["migrate"]
+    healthcheck:
+      disable: true  # a one-off job; the image's check polls the API
     env_file: .env
     environment:
       VECTRAUDIT_CLOUD_DATABASE_URL: postgresql://vectraudit:${POSTGRES_PASSWORD}@db:5432/vectraudit
@@ -51,6 +52,8 @@ services:
   webhooks:
     image: vectraudit-cloud:local
     command: ["deliver-webhooks", "--watch", "30"]
+    healthcheck:
+      disable: true  # the image's check polls the API's /healthz, which this worker doesn't serve
     env_file: .env
     environment:
       VECTRAUDIT_CLOUD_DATABASE_URL: postgresql://vectraudit:${POSTGRES_PASSWORD}@db:5432/vectraudit

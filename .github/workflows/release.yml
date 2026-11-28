@@ -24,8 +24,12 @@ jobs:
     name: Live backends
     uses: ./.github/workflows/backends.yml
 
+  deploy:
+    name: Deployment rehearsal
+    uses: ./.github/workflows/deploy.yml
+
   build:
-    needs: [checks, backends]
+    needs: [checks, backends, deploy]
     name: Build release wheel
     runs-on: ubuntu-latest
     steps:

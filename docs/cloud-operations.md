@@ -37,12 +37,21 @@ stored before this change keep their original content.
 
 ## Deploy with Docker Compose
 
+From a checkout of the release you want to run (Docker with Compose v2 is all it needs):
+
 ```bash
 cd deploy/cloud
-cp .env.example .env          # set POSTGRES_PASSWORD, VECTRAUDIT_CLOUD_SECRET_KEY, PUBLIC_URL
-docker compose up -d --build  # PostgreSQL, then migrations, then the API on 127.0.0.1:8800
-curl -s localhost:8800/readyz # {"status":"ready","schema":"0003"}
+VECTRAUDIT_CLOUD_PUBLIC_URL=https://vectraudit.example.com ./start.sh
 ```
+
+On the first run `start.sh` writes `.env` from `.env.example` with a random database
+password and secret key (it never overwrites an existing `.env`), then builds the image and
+starts PostgreSQL, the migrations, the API on `127.0.0.1:8800` and the webhook worker, and
+waits until `/readyz` reports the current schema. Edit `.env` for sign-in with GitHub, email
+or share links, and run `./start.sh` again to apply it. To check a fresh or staging
+deployment end to end (a workspace, an uploaded run, a backup and a restore), run
+`uv run python deploy/cloud/rehearse.py --scratch` from the checkout; CI runs the same
+rehearsal before every release.
 
 Put a TLS-terminating reverse proxy in front of port 8800 (Caddy, nginx, or your cloud's
 load balancer) and set `VECTRAUDIT_CLOUD_PUBLIC_URL` to the `https://` address. Over HTTPS
@@ -361,20 +370,44 @@ decision ledger are.
 behind on failure. To restore:
 
 ```bash
-docker compose stop api
+docker compose stop api webhooks
 ./restore.sh backups/vectraudit-YYYYmmdd-HHMMSS.dump
-docker compose start api
+docker compose start api webhooks
 ```
+
+`restore.sh` replaces the whole database: it decodes the dump first (a damaged file stops
+it before anything changes), then drops the schema and replays the dump in one transaction,
+so a failed restore leaves the data as it was. It refuses to run while the API or the
+webhook worker is running.
 
 Test a restore regularly: a backup you have not restored is a hope, not a backup. Deleted
 data persists in backups until they expire; tell your users how long backups are kept.
 
 ## Upgrades
 
-Pull or build the new image and `docker compose up -d`: the `migrate` service applies
-migrations before the API starts. `/readyz` returns 503 `migrations_pending` while the
-schema is behind the code. With several API instances, run `vectraudit-cloud migrate` once
-as a release step instead of `serve --migrate`.
+Migrations only move forward, so the backup taken just before an upgrade is how you roll
+back. With the Compose deployment:
+
+```bash
+./backup.sh                       # keep this file until the new version has run for a while
+git fetch --tags && git checkout vX.Y.Z
+./start.sh                        # rebuilds, runs migrations, restarts the API and worker
+curl -s localhost:8800/readyz     # "ready" with the new schema revision
+```
+
+Read the changelog for the versions in between first. `/readyz` returns 503
+`migrations_pending` while the schema is behind the code. With several API instances, run
+`vectraudit-cloud migrate` once as a release step instead of `serve --migrate`.
+
+To roll back, restore the pre-upgrade backup and start the previous version:
+
+```bash
+docker compose stop api webhooks
+./restore.sh backups/<pre-upgrade>.dump   # also removes tables the newer version added
+git checkout vPREVIOUS && ./start.sh
+```
+
+Data written after the upgrade is lost in a rollback; export what you need first.
 
 ## Monitoring
 
