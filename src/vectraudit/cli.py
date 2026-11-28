@@ -1151,6 +1151,7 @@ from vectraudit.release_cli import (  # noqa: E402
     record,
     tune,
     tune_compare,
+    verify,
 )
 
 app.add_typer(dataset_app, name="dataset")
@@ -1166,6 +1167,7 @@ app.command("tune-compare")(tune_compare)
 app.command()(check)
 app.command()(init)
 app.command()(calibrate)
+app.command()(verify)
 
 runs_app = typer.Typer(
     help="Compare saved sweep runs (vectraudit sweep --save); summarise, tabulate and move "

@@ -1,14 +1,17 @@
 # Your first release check in 15 minutes
 
-You need: Python 3.10+, the Vectraudit wheel, read-only access to your vector backend, and
-30 or more real questions with the ids of the documents that answer them.
+You need: Python 3.10+, read-only access to your vector backend, and 30 or more real
+questions with the ids of the documents that answer them.
 
 ## 1. Install and scaffold (2 minutes)
 
 ```bash
-pip install "./vectraudit-0.1.0-py3-none-any.whl[qdrant]"   # or [pgvector] / [faiss-cpu]
+pip install "vectraudit[qdrant]"   # or [pgvector] / [faiss-cpu]
 vectraudit init --backend qdrant
 ```
+
+The wheel is also attached to each
+[GitHub release](https://github.com/rmnvg/Vectraudit/releases) with its `SHA256SUMS`.
 
 This creates `retrieval/connection.json`, `retrieval/policy.json`, `retrieval/queries.csv`,
 `retrieval/README.md`, `.github/workflows/retrieval-check.yml` and the two actions it uses

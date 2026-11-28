@@ -1,7 +1,12 @@
 name: Release
 
 # A version tag builds and tests the wheel, then publishes it with its SHA256SUMS as a
-# GitHub release. Generated CI workflows install that wheel, pinned by version and SHA-256.
+# GitHub release and uploads the same wheel to PyPI. Generated CI workflows install the
+# GitHub release wheel, pinned by version and SHA-256.
+#
+# PyPI uses trusted publishing (OpenID Connect, no stored token). Before the first tag, add a
+# trusted publisher on pypi.org for this repository, workflow `release.yml` and environment
+# `pypi`. The PyPI job runs after the GitHub release, so a PyPI failure never blocks it.
 
 on:
   push:
@@ -80,3 +85,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --title "vectraudit $GITHUB_REF_NAME" --notes-file notes.md
+
+  pypi:
+    name: Publish to PyPI
+    needs: github-release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/vectraudit/
+    permissions:
+      id-token: write   # trusted publishing; no other permission is needed
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: release-dist/
+      - name: Upload only the wheel the GitHub release carries
+        run: |
+          mkdir dist
+          mv release-dist/vectraudit-*-py3-none-any.whl dist/
+          ls dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

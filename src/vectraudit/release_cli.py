@@ -22,6 +22,7 @@ from rich.table import Table
 
 from vectraudit.connectors.base import ConnectorError, ParamValue
 from vectraudit.connectors.config import load_connection, open_connector
+from vectraudit.evaluation.bundle import file_sha256
 from vectraudit.evaluation.compare import Verdict, compare_runs
 from vectraudit.evaluation.dataset import DatasetError, load_dataset
 from vectraudit.evaluation.policy import DEFAULT_POLICY, PolicyError, load_policy
@@ -1180,12 +1181,27 @@ def check(
         bool,
         typer.Option(help="Upload the candidate and record the check on the hosted service."),
     ] = False,
+    bundle: Annotated[
+        Path | None,
+        typer.Option(
+            help="Write an evidence bundle (zip) a reviewer can verify with `vectraudit verify`."
+        ),
+    ] = None,
+    bundle_runs: Annotated[
+        bool,
+        typer.Option(
+            help="Include both runs in the bundle (IDs and numbers, no text) so the verdict can "
+            "be re-run."
+        ),
+    ] = False,
 ) -> None:
     """Compare a candidate run with a baseline and decide.
 
     Exit codes: 0 pass, 1 error (a run is incomplete or a file is invalid), 3 fail
     (a policy rule is broken), 4 not comparable (different data or missing metrics).
     """
+    if bundle_runs and bundle is None:
+        raise _fail("--bundle-runs needs --bundle.")
     cloud_baseline = str(baseline).startswith("cloud:")
     client = _cloud_client(project) if cloud_baseline or upload else None
     if upload and not cloud_baseline:
@@ -1222,7 +1238,92 @@ def check(
         github_comment=github_comment,
         check_name=check_name,
     )
+    if bundle is not None:
+        _write_bundle(
+            result,
+            base,
+            cand,
+            pol,
+            bundle,
+            include_runs=bundle_runs,
+            inputs={
+                "baseline_file": None if cloud_baseline else file_sha256(baseline),
+                "baseline_source": str(baseline) if cloud_baseline else None,
+                "candidate_file": file_sha256(candidate),
+                "policy_file": None if policy is None else file_sha256(policy),
+            },
+        )
     raise typer.Exit(code=EXIT_CODES[verdict])
+
+
+def _write_bundle(
+    result: dict[str, Any],
+    base: dict[str, Any],
+    cand: dict[str, Any],
+    pol: Any,
+    out: Path,
+    *,
+    include_runs: bool,
+    inputs: dict[str, str | None],
+) -> None:
+    """Write the evidence bundle; a failure to write it is an error, not a verdict."""
+    from vectraudit.evaluation.bundle import BundleError, build_bundle
+
+    try:
+        written = build_bundle(
+            result, base, cand, pol, out, include_runs=include_runs, inputs=inputs
+        )
+    except (BundleError, OSError, ValueError) as e:
+        raise _fail(f"Evidence bundle not written: {e}") from e
+    console.print(
+        f"Evidence bundle: {escape(str(out))} (manifest SHA-256 {written['manifest_sha256']})"
+    )
+
+
+def verify(
+    bundle: Annotated[Path, typer.Argument(help="Evidence bundle (zip) from check --bundle.")],
+    baseline: Annotated[
+        Path | None, typer.Option(help="The baseline run file, to re-run the comparison.")
+    ] = None,
+    candidate: Annotated[
+        Path | None, typer.Option(help="The candidate run file, to re-run the comparison.")
+    ] = None,
+    dataset: Annotated[
+        Path | None, typer.Option(help="The dataset file, to check its version.")
+    ] = None,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Write the verification as JSON.")
+    ] = None,
+) -> None:
+    """Verify an evidence bundle: every hash, and the verdict when the runs are available.
+
+    Exit codes: 0 verified (hashes hold and the comparison reproduces the verdict), 2 hashes
+    consistent but the verdict not re-run (no runs), 1 failed or not a bundle.
+    """
+    from vectraudit.evaluation.bundle import BundleError, verify_bundle
+
+    if (baseline is None) != (candidate is None):
+        raise _fail("Pass both --baseline and --candidate, or neither.")
+    try:
+        report = verify_bundle(bundle, baseline=baseline, candidate=candidate, dataset=dataset)
+    except (BundleError, RunFileError, OSError, ValueError) as e:
+        raise _fail(f"Not verified: {e}") from e
+    marks = {"ok": "[green]ok[/]", "failed": "[bold red]failed[/]", "not checked": "not checked"}
+    for row in report["checks"]:
+        console.print(f"{marks[row['status']]:<20} {row['check']}: {escape(row['detail'])}")
+    console.print(
+        f"Manifest SHA-256 {report['manifest_sha256']}; recorded verdict {report['verdict']}"
+    )
+    label = {
+        "verified": "[green]Verified[/]: hashes hold and the comparison reproduces the verdict.",
+        "hashes_consistent": "Hashes consistent, verdict not reproduced (no runs to re-run).",
+        "failed": "[bold red]Verification failed.[/]",
+    }[report["status"]]
+    console.print(label)
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    raise typer.Exit(code={"verified": 0, "hashes_consistent": 2, "failed": 1}[report["status"]])
 
 
 def emit_check(

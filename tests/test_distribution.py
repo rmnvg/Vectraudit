@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -215,3 +216,28 @@ def test_release_staging_keeps_only_the_wheel_and_refuses_stale_assets(tmp_path)
     (source / "vectraudit-0.2.0-py3-none-any.whl").write_bytes(b"stale release")
     with pytest.raises(ValueError, match="exactly one"):
         module.prepare(source, tmp_path / "another")
+
+
+RELEASE_VERSION_SURFACES = {
+    "README.md": r"vectraudit-(\d+\.\d+\.\d+)-py3-none-any\.whl|download/v(\d+\.\d+\.\d+)/",
+    "docs/first-check.md": r"vectraudit-(\d+\.\d+\.\d+)-py3-none-any\.whl",
+    "examples/github/retrieval-check.yml": r'VECTRAUDIT_VERSION: "(\d+\.\d+\.\d+)"',
+    ".github/ISSUE_TEMPLATE/bug_report.yml": r"vectraudit (\d+\.\d+\.\d+),",
+}
+
+
+def test_documented_install_commands_name_the_package_version():
+    """A version bump must update every install command and example pin that names a release."""
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    version = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE).group(1)
+    for path, pattern in RELEASE_VERSION_SURFACES.items():
+        named = {
+            v
+            for match in re.finditer(pattern, (ROOT / path).read_text())
+            for v in match.groups()
+            if v
+        }
+        assert named <= {version}, f"{path} names {sorted(named)}; the package is {version}"
+    changelog = (ROOT / "CHANGELOG.md").read_text()
+    heading = rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+    assert re.search(heading, changelog, re.MULTILINE), f"CHANGELOG.md has no dated {version}"

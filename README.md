@@ -32,13 +32,20 @@ runs on your infrastructure; only run files are uploaded, and only if you choose
 
 ## Install
 
-Download the wheel from the [latest GitHub release](https://github.com/rmnvg/Vectraudit/releases)
-(it includes the built web UI; check it against the release's `SHA256SUMS`), or work from
-a checkout with `uv sync --all-extras` and prefix the commands below with `uv run`:
+```bash
+pip install "vectraudit[all]"
+```
+
+The same wheel, with the built web UI, is attached to each
+[GitHub release](https://github.com/rmnvg/Vectraudit/releases) with its `SHA256SUMS`, which
+is what the CI workflow written by `vectraudit init` installs, pinned by version and hash:
 
 ```bash
-pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
+pip install "vectraudit[all] @ https://github.com/rmnvg/Vectraudit/releases/download/v0.2.0/vectraudit-0.2.0-py3-none-any.whl"
 ```
+
+To work from a checkout instead, run `uv sync --all-extras` and prefix the commands below
+with `uv run`.
 
 Extras install only what you use: the backends `[faiss-cpu]`, `[qdrant]`, `[pgvector]` and
 `[weaviate]` (Pinecone, Elasticsearch, OpenSearch and Chroma need none), `[text]` for
@@ -183,7 +190,9 @@ vectraudit check baseline.json candidate.json --policy policy.json --html report
 `init` scaffolds a connection, policy, query sheet and GitHub workflow. `doctor` inspects
 the setup offline without loading a model or opening a database connection. `check` exits 0
 (pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job summary, and the
-HTML report lists the regressed queries with the ids they lost.
+HTML report lists the regressed queries with the ids they lost. `check --bundle` writes an
+evidence bundle (IDs, numbers and SHA-256 hashes) that a reviewer outside the team checks
+with `vectraudit verify` ([evidence bundles](docs/evidence-bundle.md)).
 
 Semantic metrics (recall, precision, MRR, nDCG, MAP and hit rate) need relevance labels;
 ANN recall needs an exact reference; neither is ever substituted for the other. Failing

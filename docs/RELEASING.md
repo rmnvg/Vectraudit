@@ -1,9 +1,19 @@
 # Releasing Vectraudit
 
 Releases are wheels attached to GitHub releases of this repository, together with a
-`SHA256SUMS` file. The wheel includes the built web UI. The CI workflows that
-`vectraudit init` and workbench release exports generate install the wheel from those
-releases, pinned to an exact version and SHA-256.
+`SHA256SUMS` file, and the same wheel on [PyPI](https://pypi.org/project/vectraudit/). The
+wheel includes the built web UI. The CI workflows that `vectraudit init` and workbench
+release exports generate install the wheel from the GitHub releases, pinned to an exact
+version and SHA-256.
+
+## One-time PyPI setup
+
+PyPI uses trusted publishing: no API token is stored in the repository. Before the first
+release, add a trusted publisher on pypi.org (a "pending publisher" while the project does
+not exist yet) with owner `rmnvg`, repository `Vectraudit`, workflow `release.yml` and
+environment `pypi`, and create a `pypi` environment in the repository settings
+(optionally with required reviewers, so each upload waits for approval). Without this,
+the PyPI job fails but the GitHub release is still published.
 
 ## Branches and review
 
@@ -20,8 +30,10 @@ Review the change before merging it.
 
 ## Each release
 
-1. Update `version` in `pyproject.toml` and add a `## [x.y.z] - date` section to
-   `CHANGELOG.md`.
+1. Update `version` in `pyproject.toml` (then `uv lock`), turn `[Unreleased]` in
+   `CHANGELOG.md` into a `## [x.y.z] - date` section above a new empty `[Unreleased]`, and
+   update the install commands that name a version (`README.md`, the example workflow
+   under `examples/github/`). `tests/test_distribution.py` fails until they all match.
 2. Commit, then tag and push:
 
    ```bash
@@ -34,8 +46,9 @@ Review the change before merging it.
    and release wheel, checks the tag matches the version, and installs the release wheel
    in a fresh environment to verify its UI, API and CLI. `scripts/stage_release.py` stages
    exactly one wheel plus `SHA256SUMS` in a new directory, and the workflow attaches both to
-   a GitHub release whose notes come from `CHANGELOG.md`. Existing release tags are not
-   overwritten; corrections require a new version.
+   a GitHub release whose notes come from `CHANGELOG.md`. Finally it uploads the same
+   wheel (not `SHA256SUMS`) to PyPI. Existing release tags are not overwritten, and PyPI
+   never accepts the same version twice; corrections require a new version.
 
 ## Install and upgrade in CI
 
