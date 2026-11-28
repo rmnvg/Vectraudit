@@ -327,10 +327,11 @@ the index missed, and why.
 | Index | Support |
 |---|---|
 | `IndexFlat` (L2 / IP) | search, map, ground truth |
-| `IndexIVFFlat`, `IndexIVFPQ`, `IndexIVFScalarQuantizer` | everything: list balance, probe trace, miss reasons, tuner, quantization |
+| `IndexIVFFlat`, `IndexIVFPQ`, `IndexIVFPQFastScan`, `IndexIVFScalarQuantizer` | everything: list balance, probe trace, miss reasons, tuner, quantization |
+| IVF with an HNSW coarse quantizer (`IVF65536_HNSW32,...`) | the same; probing is replayed with the quantizer's own approximate search at each nprobe |
 | `IndexHNSWFlat`, `IndexHNSWSQ`/`PQ` | graph view, search trace, tuner (efSearch), quantization for SQ/PQ storage |
 | Wrappers: `IndexIDMap`/`IDMap2`, `IndexPreTransform` (PCA, OPQ), `IndexRefine` | unwrapped transparently; ids stay yours |
-| Binary, GPU, IVF FastScan, others | basic stats only (convert GPU indexes with `faiss.index_gpu_to_cpu`) |
+| Binary, GPU, additive-quantizer FastScan, RaBitQ, others | basic stats only (convert GPU indexes with `faiss.index_gpu_to_cpu`) |
 
 </details>
 

@@ -82,6 +82,9 @@ _PARAM_LABELS = {
     "ef_construction": "efConstruction",
     "max_level": "max level",
     "entry_point": "entry point (internal)",
+    "fast_scan": "FastScan (4-bit SIMD)",
+    "coarse_quantizer": "coarse quantizer",
+    "quantizer_ef_search": "quantizer efSearch",
 }
 
 console = Console()

@@ -58,6 +58,12 @@ class IndexParams:
     ef_construction: int | None = None
     max_level: int | None = None
     entry_point: int | None = None
+    fast_scan: bool | None = None
+    """IVF PQ FastScan: 4-bit codes packed in blocks, scanned with SIMD lookup tables."""
+    coarse_quantizer: str | None = None
+    """IVF only, when the coarse quantizer is not flat (e.g. ``IndexHNSWFlat``)."""
+    quantizer_ef_search: int | None = None
+    """An HNSW coarse quantizer's efSearch: how widely it looks for the lists to probe."""
 
     def as_dict(self) -> dict[str, Any]:
         """Only the parameters that apply to this index."""

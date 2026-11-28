@@ -166,7 +166,7 @@ def _ivf_trace_response(session: Session, report: QueryReport) -> S.IvfTraceResp
             probe_rank=rank,
             list_no=int(list_no),
             centroid_distance=float(dist),
-            probed=rank < trace.nprobe,
+            probed=rank < trace.probed_count,
             size=int(sizes[list_no]),
             n_true_neighbours=per_list.get(int(list_no), 0),
         )

@@ -21,7 +21,7 @@ from vectraudit.connectors.base import (
 )
 from vectraudit.core._faiss import FaissNotInstalledError, import_faiss
 from vectraudit.core.filtering import AllowedSet, allowed_from_metadata, filter_fingerprint
-from vectraudit.core.ivf import Assignments, assignments
+from vectraudit.core.ivf import Assignments, assignments, list_probe_ranks
 from vectraudit.core.loader import IndexLoadError, load_index
 from vectraudit.core.metadata import Metadata, MetadataError, load_metadata
 from vectraudit.core.search import (
@@ -235,19 +235,16 @@ class FaissConnector(Connector):
         nprobe = _int_param(request.params, "nprobe") or int(li.ivf.nprobe)
         nlist = int(li.ivf.nlist)
         q = li.to_core_space(np.asarray(request.vector, dtype=np.float32).reshape(1, -1))
-        _, order = li.ivf.quantizer.search(q, nlist)
-        probe_rank = np.full(nlist, nlist, dtype=np.int64)
-        valid = order[0] >= 0
-        probe_rank[order[0][valid]] = np.arange(nlist)[valid]
         exact_ids = np.array([int(i) for i in exact], dtype=np.int64)
         lists = self._assignments().lookup(exact_ids)
+        # The quantizer's own probe sets, so an HNSW coarse quantizer is replayed faithfully.
+        list_ranks = list_probe_ranks(li, q, lists, nprobe)
         found_set = set(found)
         probed_miss = probed_miss_reason(li).value
         missed: dict[str, str] = {}
         ranks: dict[str, int] = {}
         worst = 0
-        for nid, list_no in zip(exact, lists, strict=True):
-            rank = int(probe_rank[list_no]) if list_no >= 0 else nlist
+        for nid, rank in zip(exact, list_ranks.tolist(), strict=True):
             worst = max(worst, rank)
             if nid not in found_set:
                 ranks[nid] = rank

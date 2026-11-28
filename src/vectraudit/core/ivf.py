@@ -215,3 +215,114 @@ def query_probe_coverage(ranks: npt.ArrayLike, nprobe: int) -> npt.NDArray[np.fl
     covered = ((r >= 0) & (r < nprobe)).sum(axis=1)
     out: npt.NDArray[np.float64] = np.where(n_valid > 0, covered / np.maximum(n_valid, 1), 1.0)
     return out
+
+
+# Coarse quantizers that are not flat --------------------------------------------------
+#
+# With a flat coarse quantizer, one search over all nlist centroids ranks every list, and a
+# search at nprobe visits exactly the first nprobe of that ranking. An HNSW quantizer (as in
+# ``IVF65536_HNSW32,Flat``) answers ``search(q, nprobe)`` approximately, with a beam of
+# ``max(efSearch, nprobe)``: a request for all nlist lists returns only the lists its beam
+# reached, and probe sets at different nprobe are not prefixes of one ranking. For those
+# indexes every "was this list probed" question is answered by the quantizer's own call at
+# that nprobe, exactly as ``IndexIVF::search`` makes it.
+
+
+def probe_order_is_exact(li: LoadedIndex) -> bool:
+    """Whether one full coarse search gives the lists any nprobe probes (a flat quantizer)."""
+    faiss = import_faiss()
+    return isinstance(faiss.downcast_index(_ivf(li).quantizer), faiss.IndexFlat)
+
+
+def probed_lists(li: LoadedIndex, queries_core: npt.ArrayLike, nprobe: int) -> IntArray:
+    """The lists a search at ``nprobe`` probes, in probe order, shape ``(n, nprobe)``.
+
+    ``queries_core`` are already in the core space (after any PreTransform). ``-1`` pads a
+    row when the quantizer returns fewer lists, as an HNSW quantizer can.
+    """
+    ivf = _ivf(li)
+    nprobe = max(1, min(int(nprobe), int(ivf.nlist)))
+    q = np.ascontiguousarray(queries_core, dtype=np.float32)
+    _, order = ivf.quantizer.search(q, nprobe)
+    out: IntArray = order.astype(np.int64, copy=False)
+    return out
+
+
+def list_probe_ranks(
+    li: LoadedIndex, query_core: npt.ArrayLike, lists: npt.ArrayLike, nprobe: int
+) -> IntArray:
+    """For one query, the smallest ``nprobe - 1`` at which each of ``lists`` is probed.
+
+    So a list is probed at ``nprobe`` iff its rank is below ``nprobe``, for any quantizer.
+    With a flat quantizer this is the list's position in the full probe order. Otherwise
+    lists probed at ``nprobe`` get their position there, and the others the smallest
+    larger nprobe at which FAISS probes them (found by doubling, then bisection, which
+    assumes larger probe sets contain smaller ones, as they nearly always do). A list the
+    quantizer never returns, even at nprobe = nlist, gets ``nlist``; so does list ``-1``.
+    """
+    ivf = _ivf(li)
+    nlist = int(ivf.nlist)
+    q = np.ascontiguousarray(query_core, dtype=np.float32).reshape(1, -1)
+    wanted = np.asarray(lists, dtype=np.int64)
+    ranks = np.full(wanted.shape, nlist, dtype=np.int64)
+    if probe_order_is_exact(li):
+        order = probed_lists(li, q, nlist)[0]
+        pos = np.full(nlist + 1, nlist, dtype=np.int64)
+        valid = order >= 0
+        pos[order[valid]] = np.nonzero(valid)[0]
+        return np.where(wanted >= 0, pos[np.where(wanted >= 0, wanted, nlist)], nlist)
+
+    nprobe = max(1, min(int(nprobe), nlist))
+    probed = probed_lists(li, q, nprobe)[0]
+    at = {int(list_no): i for i, list_no in enumerate(probed) if list_no >= 0}
+
+    def probed_at(depth: int) -> set[int]:
+        return {int(x) for x in probed_lists(li, q, depth)[0] if x >= 0}
+
+    for j, list_no in enumerate(wanted.tolist()):
+        if list_no < 0:
+            continue
+        if list_no in at:
+            ranks[j] = at[list_no]
+            continue
+        low, high = nprobe, nprobe
+        while high < nlist:
+            high = min(nlist, high * 2)
+            if list_no in probed_at(high):
+                break
+            low = high
+        else:
+            if list_no not in probed_at(nlist):
+                continue  # never probed: keep nlist
+        while high - low > 1:  # smallest depth in (low, high] that probes it
+            mid = (low + high) // 2
+            low, high = (low, mid) if list_no in probed_at(mid) else (mid, high)
+        ranks[j] = high - 1
+    return ranks
+
+
+def probe_coverage_at(
+    li: LoadedIndex,
+    queries: npt.ArrayLike,
+    truth: npt.ArrayLike,
+    assign: Assignments,
+    nprobe: int,
+) -> npt.NDArray[np.float64]:
+    """Per query, the share of its true neighbours in the lists FAISS probes at ``nprobe``.
+
+    Asks the coarse quantizer directly, so it is exact for any quantizer (1.0 for a query
+    with no true neighbours, as recall scores it). ``queries`` are input-space vectors.
+    """
+    q = li.to_core_space(np.ascontiguousarray(queries, dtype=np.float32))
+    t = np.asarray(truth, dtype=np.int64)
+    lists = assign.lookup(t)
+    out = np.ones(len(q), dtype=np.float64)
+    chunk = max(1, _PROBE_ORDER_CELLS // max(int(nprobe), 1))
+    for start in range(0, len(q), chunk):
+        probed = probed_lists(li, q[start : start + chunk], nprobe)
+        for i, row in enumerate(probed):
+            valid = t[start + i] >= 0
+            if valid.any():
+                hit = np.isin(lists[start + i][valid], row[row >= 0])
+                out[start + i] = float(hit.mean())
+    return out

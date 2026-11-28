@@ -8,6 +8,10 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- The FAISS debugger and FAISS release checks support IVF PQ FastScan indexes
+  (`IVF...,PQ...x4fs`), which loaded with basic stats only before: list balance, probe
+  traces, miss reasons, the tuner and quantization error. The info view names a coarse
+  quantizer that is not flat, and an HNSW quantizer's efSearch.
 - `vectraudit serve FOLDER` and `info FOLDER` open a FAISS vector store saved by LangChain
   (`save_local`) or LlamaIndex (`persist` with a `FaissVectorStore`), and show each
   neighbour's chunk text and source from the framework's document store. LangChain's pickle
@@ -19,6 +23,14 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
   runs the same steps offline.
 - Issue templates for feature requests and for backend or tool support; the bug report now
   covers every area and backend, not only the FAISS debugger.
+
+### Fixed
+
+- IVF indexes with an HNSW coarse quantizer (`IVF..._HNSW...`): probe traces, the smallest
+  nprobe reaching every neighbour, sweep probe coverage and release-check miss reasons came
+  from one full coarse search, which an HNSW quantizer answers only partly, so lists it
+  does probe at a given nprobe could be reported as never probed. They now ask the
+  quantizer at that nprobe, as FAISS does.
 
 ### Changed
 
