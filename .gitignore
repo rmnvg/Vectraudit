@@ -33,3 +33,4 @@ examples/rag_data/
 
 # Reference repositories cloned for reading only (PLAN-oss-learnings.md)
 .refs/
+site/

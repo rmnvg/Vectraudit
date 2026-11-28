@@ -71,3 +71,24 @@ def test_relative_links_resolve(doc):
         target = (doc.parent / path).resolve() if path else doc
         problems.append(check(doc, target, anchor or None))
     assert [p for p in problems if p] == []
+
+
+def test_every_guide_is_in_the_site_navigation():
+    """A page left out of mkdocs.yml's nav is built but unreachable from the site's menu."""
+    import yaml
+
+    def pages(node):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, list):
+            for item in node:
+                yield from pages(item)
+        elif isinstance(node, dict):
+            for value in node.values():
+                yield from pages(value)
+
+    config = yaml.safe_load((ROOT / "mkdocs.yml").read_text())
+    listed = set(pages(config["nav"]))
+    on_disk = {p.name for p in (ROOT / "docs").glob("*.md")}
+    assert on_disk - listed == set(), "add these pages to mkdocs.yml's nav"
+    assert listed - on_disk == set(), "mkdocs.yml's nav names pages that do not exist"

@@ -1,0 +1,108 @@
+# The documentation site: docs/ built with MkDocs Material.
+#   uv sync --group docs && uv run --group docs mkdocs serve      # http://127.0.0.1:8000
+#   uv run --group docs mkdocs build --strict                     # what CI checks
+site_name: Vectraudit
+site_description: Catch retrieval regressions before they merge.
+site_url: https://rmnvg.github.io/Vectraudit/
+repo_url: https://github.com/rmnvg/Vectraudit
+repo_name: rmnvg/Vectraudit
+edit_uri: edit/main/docs/
+copyright: Apache License 2.0
+
+docs_dir: docs
+site_dir: site
+strict: true
+hooks:
+  - mkdocs/hooks.py
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: info
+    unrecognized_links: warn
+
+nav:
+  - Home: README.md
+  - Start here:
+      - Quickstart: quickstart.md
+      - Your first release check: first-check.md
+      - "Case study: a latency fix that broke retrieval": case-study-nprobe.md
+  - Release checks:
+      - Release checks: release-checks.md
+      - Diagnose a setup: doctor.md
+      - Evidence bundles: evidence-bundle.md
+      - Tuning a search setting: tuning.md
+      - Releasing and CI installs: RELEASING.md
+  - Labels and data:
+      - Build a labelled dataset: labelling.md
+      - Label audit: label-audit.md
+      - Bring what you have: integrations.md
+      - VectorDBBench and ann-benchmarks: vectordbbench.md
+      - Production intake: production-intake.md
+  - Whole pipelines:
+      - Retrieval workbench: retrieval-workbench.md
+      - Source-to-context lineage: lineage.md
+      - Permission lifecycle: permission-lifecycle.md
+      - Poisoning checks: poisoning.md
+      - Rank fusion: fusion.md
+      - Attribution: attribution.md
+      - Decision queue: decision-queue.md
+      - Claim-level evidence: claim-evidence.md
+      - Judge-corrected estimates: judge-corrected-estimates.md
+      - Migration report: migration-report.md
+  - Choosing a setup:
+      - Experiments: experiments.md
+      - "Case study: embedding model and chunk size": case-study-experiment.md
+      - Corpus projection: corpus-projection.md
+      - Filtered search: filtered-search.md
+      - Corpus atlas: corpus-atlas.md
+      - Capacity: capacity.md
+  - FAISS:
+      - FAISS index debugger: faiss-debugger.md
+      - Python and notebooks: jupyter.md
+      - Performance and memory: performance.md
+  - Self-hosting and security:
+      - Security and data handling: security.md
+      - Running the control plane: cloud-operations.md
+      - Deployment: deployment.md
+      - Threat model: threat-model.md
+      - Incident response: incident-response.md
+  - Project:
+      - Decisions log: DECISIONS.md
+      - Credits: credits.md

@@ -8,6 +8,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- A documentation site built from `docs/` with MkDocs Material (`mkdocs.yml`), with search,
+  a navigation that follows the docs index and light and dark themes. CI builds it in strict
+  mode on documentation changes and publishes it to GitHub Pages from `main`.
 - Evidence bundles reach reviewers without a local `check`: every hosted check has one
   (the **Evidence bundle** link on its page, `GET .../checks/{id}/bundle`, or
   `vectraudit cloud bundle CHECK_ID`), built from the run projections the service holds and

@@ -132,3 +132,8 @@ markers = ["slow: needs heavy optional deps (e.g. UMAP/numba); CI runs them with
 [tool.coverage.run]
 source = ["vectraudit"]
 branch = true
+
+[dependency-groups]
+docs = [
+    "mkdocs-material>=9.6",
+]
