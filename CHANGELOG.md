@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- One-command self-hosting: `deploy/cloud/start.sh` writes `.env` with random secrets on the
+  first run, builds and starts the control plane with Docker Compose and waits until it is
+  ready; re-running it upgrades. `deploy/cloud/rehearse.py --scratch` checks a deployment end
+  to end (workspace, uploaded run, backup, deletion, restore), and CI runs it on deployment
+  changes and before each release. The upgrade guide now covers rolling back.
 - The FAISS debugger and FAISS release checks support IVF PQ FastScan indexes
   (`IVF...,PQ...x4fs`), which loaded with basic stats only before: list balance, probe
   traces, miss reasons, the tuner and quantization error. The info view names a coarse
@@ -26,6 +31,12 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Fixed
 
+- Rolling back an upgrade of the control plane failed: `restore.sh` could not restore a
+  pre-upgrade backup over a database a newer migration had changed. It now drops the schema
+  and replays the dump in one transaction, refuses a damaged dump before changing anything,
+  and refuses to run while the API or webhook worker is running.
+- The Compose deployment's webhook worker was always reported unhealthy (the image's health
+  check polls the API, which the worker does not serve).
 - IVF indexes with an HNSW coarse quantizer (`IVF..._HNSW...`): probe traces, the smallest
   nprobe reaching every neighbour, sweep probe coverage and release-check miss reasons came
   from one full coarse search, which an HNSW quantizer answers only partly, so lists it

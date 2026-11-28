@@ -85,6 +85,16 @@ export switch. Existing workspaces preserve their access behavior after upgrade.
 `test_upgrade_and_backup_restore_preserve_governance` automatically upgrades revision 0004,
 checks inherited access defaults, changes governance, backs up and restores a SQLite fixture,
 and verifies schema and controls. Existing tests cover tenant isolation and hosted check
-compatibility. PostgreSQL restore duration, data integrity at user scale, TLS routing,
-provider SSO and disaster recovery objectives require a real deployment rehearsal; none
-was performed against production as part of this change.
+compatibility.
+
+**PostgreSQL rehearsal (2026-11-28, Docker Compose, PostgreSQL 17).** `rehearse.py` brought
+up a fresh deployment, created a workspace, uploaded a recorded run, backed up, deleted the
+project and restored it: the run came back, and the restore took 5 to 13 seconds on a laptop
+with almost no data. An upgrade from schema `0010` to `0011` with `start.sh` kept existing
+workspaces and projects. Rolling that upgrade back by restoring the pre-upgrade backup failed
+with the original `restore.sh` (`pg_restore --clean` cannot drop a table a newer migration
+references), which is why `restore.sh` now drops the schema and replays the dump in one
+transaction; the rollback, the old version starting on the restored data and a second upgrade
+then succeeded, and a truncated dump was refused with the data unchanged. CI repeats the
+rehearsal before each release. Not rehearsed: restore duration at user scale, TLS routing,
+a real identity provider's sign-in and disaster-recovery objectives.
