@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/rmnvg/Vectraudit/security/policy
+    about: Please report vulnerabilities privately, not in a public issue.
+  - name: Quickstart
+    url: https://github.com/rmnvg/Vectraudit/blob/main/docs/quickstart.md
+    about: A red and a green pull-request check on a public benchmark in 10 minutes.

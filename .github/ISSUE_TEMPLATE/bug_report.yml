@@ -1,31 +1,63 @@
 name: Bug report
-description: Something in vectraudit is wrong or crashes
+description: Something in Vectraudit is wrong or crashes
 labels: [bug]
 body:
   - type: textarea
     id: what
     attributes:
       label: What happened
-      description: What you did, what you expected, and what you saw instead (the full traceback or API error, if any).
+      description: What you ran, what you expected, and what you saw instead (the full traceback or error message, if any).
     validations:
       required: true
-  - type: textarea
-    id: index
+  - type: dropdown
+    id: area
     attributes:
-      label: Index
-      description: Output of `vectraudit info YOUR.index` (kind, wrappers, parameters).
-      render: text
+      label: Area
+      options:
+        - Release checks (init, record, check, verify)
+        - Datasets and labelling (dataset, label)
+        - Retrieval workbench
+        - Experiments, tuning or capacity
+        - FAISS index debugger (serve, sweep)
+        - Self-hosted control plane
+        - Installation or CI action
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - Not backend-specific
+        - FAISS
+        - Qdrant
+        - pgvector
+        - Pinecone
+        - Weaviate
+        - Elasticsearch
+        - OpenSearch
+        - Chroma
+        - A Python or HTTP pipeline
   - type: input
     id: versions
     attributes:
       label: Versions
-      description: "`vectraudit --version`, FAISS version, Python version and OS"
-      placeholder: vectraudit 0.2.0, faiss-cpu 1.15.1, Python 3.12, macOS 15
+      description: "`vectraudit --version`, Python version, OS, and the backend's server or library version"
+      placeholder: vectraudit 0.2.0, Python 3.12, macOS 15, Qdrant 1.15
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
       label: How to reproduce
-      description: Ideally a short script that builds a small index showing the problem.
-      render: python
+      description: >-
+        The commands you ran, and ideally small inputs that show the problem. Please do not
+        paste credentials, private documents or production queries; ids and numbers are enough.
+      render: text
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Setup diagnostics
+      description: For release checks, the output of `vectraudit doctor --connection ... --dataset ... --policy ...` (offline; it prints no secrets).
+      render: text
