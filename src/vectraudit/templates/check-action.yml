@@ -54,6 +54,12 @@ inputs:
   publish:
     description: Publish the verdict as a check and one pull request comment (best effort).
     default: "true"
+  bundle:
+    description: >-
+      Connection mode: also write an evidence bundle (IDs and numbers only, with both runs) to
+      the output directory, and name it with its manifest SHA-256 in the summary and comment,
+      so a reviewer can check the verdict offline with `vectraudit verify`.
+    default: "true"
   paired:
     description: >-
       Release mode: record both sides interleaved per question in one paired run, so drift
@@ -104,6 +110,8 @@ runs:
         VA_PR_NUMBER: ${{ github.event.pull_request.number }}
         VA_PUBLISH: ${{ inputs.publish }}
         VA_PAIRED: ${{ inputs.paired }}
+        VA_BUNDLE: ${{ inputs.bundle }}
+        VA_ARTIFACT_NAME: ${{ inputs.artifact-name }}
         VA_GITHUB_TOKEN: ${{ inputs.github-token }}
         VA_OUT: ${{ inputs.out }}
         VA_ACTION_PATH: ${{ github.action_path }}

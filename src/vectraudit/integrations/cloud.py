@@ -110,19 +110,33 @@ class CloudClient:
         body: bytes | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> Any:
+        raw = self._request(method, path, body, headers)
+        try:
+            return json.loads(raw) if raw else None
+        except ValueError:
+            return None
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: bytes | None = None,
+        headers: Mapping[str, str] | None = None,
+        accept: str = "application/json",
+    ) -> bytes:
         all_headers = {
             "Authorization": f"Bearer {self.target.token}",
-            "Accept": "application/json",
+            "Accept": accept,
             "User-Agent": f"vectraudit/{__version__}",
             **({"Content-Type": "application/json"} if body is not None else {}),
             **(headers or {}),
         }
         status, raw = self._send(method, f"{self.target.url}{path}", all_headers, body)
-        try:
-            data = json.loads(raw) if raw else None
-        except ValueError:
-            data = None
         if status >= 400:
+            try:
+                data = json.loads(raw) if raw else None
+            except ValueError:
+                data = None
             err = data if isinstance(data, dict) else {}
             raise CloudClientError(
                 str(err.get("message") or f"HTTP {status} from the Vectraudit service."),
@@ -130,7 +144,7 @@ class CloudClient:
                 code=err.get("error_code"),
                 hint=err.get("hint"),
             )
-        return data
+        return raw
 
     def upload_record(self, record: Mapping[str, Any]) -> dict[str, Any]:
         """Upload an explicitly projected workbench revision, with transfer integrity."""
@@ -198,6 +212,12 @@ class CloudClient:
         body = json.dumps(payload).encode()
         result: dict[str, Any] = self._call("POST", f"{self.project_path}/checks", body)
         return result
+
+    def check_bundle(self, check_id: str) -> bytes:
+        """A hosted check's evidence bundle (zip bytes), for ``vectraudit verify``."""
+        return self._request(
+            "GET", f"{self.project_path}/checks/{quote(check_id)}/bundle", accept="application/zip"
+        )
 
     def decision_summary(self, check_id: str) -> dict[str, Any]:
         """A release decision in plain language (``headline``, ``markdown``, …)."""

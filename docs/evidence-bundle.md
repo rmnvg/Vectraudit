@@ -76,6 +76,42 @@ vectraudit verify release-42.zip --baseline baseline.json --candidate candidate.
 When the comparison does not reproduce and the bundle was made by another Vectraudit
 version, `verify` says so, because the metrics or rules may have changed between versions.
 
+## In pull requests
+
+The `retrieval-check` action that `vectraudit init` writes produces a bundle on every pull
+request (input `bundle`, on by default; connection mode). It is written with both runs as
+`evidence.zip` next to the report, kept in the workflow's `retrieval-check` artifact, and
+named with its manifest SHA-256 in the job summary and the pull-request comment, linked to
+the workflow run where it can be downloaded:
+
+```text
+Evidence bundle evidence.zip: IDs and numbers only, with both runs, so the verdict can be
+re-run. Manifest SHA-256 2cbda1cd…. A reviewer checks it offline with `vectraudit verify evidence.zip`.
+```
+
+Outside the action, `check --bundle FILE --bundle-url https://…` adds the same line to the
+summary and comment it writes. The comment keeps the manifest hash where reviewers can see
+it after the artifact expires; compare it with the one `verify` prints.
+
+## From a hosted check
+
+Every check stored on a [control plane you host](cloud-operations.md) has a bundle too,
+built on demand from the run projections the service already holds: the **Evidence bundle**
+link on the check's page, `GET .../checks/{check_id}/bundle`, or
+
+```bash
+vectraudit cloud bundle CHECK_ID --out release-42.zip   # prints the manifest SHA-256
+vectraudit verify release-42.zip
+```
+
+Anyone who can read the project can download it. It includes both runs, so `verify` re-runs
+the verdict, unless a run was uploaded with its query text (`--share-query-text`): a bundle
+never carries question text, so those runs are left out and the bundle verifies as
+"hashes consistent, verdict not reproduced". The policy is the one the check was decided
+under, even after the project's policy changes; a check stored by version 0.2.0 or earlier whose
+project policy has changed since cannot be reproduced, and the service says so (HTTP 409)
+rather than bundling it under another policy.
+
 ## Signing
 
 Vectraudit does not sign bundles (decision D18: it adds no cryptography dependency). Each

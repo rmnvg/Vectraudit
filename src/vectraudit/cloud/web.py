@@ -1214,7 +1214,10 @@ def check_page(
         + f'<p class="muted">Commit {e((cand.commit_sha or "unknown")[:12])} · '
         f"{e(check.created_at.strftime('%Y-%m-%d %H:%M'))} UTC · by "
         f"{e(_actor(session, check.created_by))}</p>"
-        + f'<p><a href="{base}/decisions/{quote(check.id)}">Plain-language summary</a></p>'
+        + f'<p><a href="{base}/decisions/{quote(check.id)}">Plain-language summary</a> · '
+        f'<a href="/api/v1/workspaces/{quote(workspace)}/projects/{quote(project)}/checks/'
+        f'{quote(check.id)}/bundle" download>Evidence bundle</a> <span class="muted">(zip of IDs '
+        "and numbers; a reviewer checks it offline with <code>vectraudit verify</code>)</span></p>"
         + (f"<h2>Diagnosis</h2>{findings}" if findings else "")
         + accept
         + "<h2>Full report</h2>"

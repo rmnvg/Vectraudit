@@ -291,6 +291,13 @@ Deliveries are sent by `vectraudit-cloud deliver-webhooks`, which the compose fi
 `webhooks` service (see [scheduled jobs](#scheduled-jobs)). An exception granted after a check
 does not send a second event for that check.
 
+## Evidence bundles
+
+Each stored check's page links its **evidence bundle**, a zip of IDs, numbers and hashes
+that a reviewer outside the team verifies offline with `vectraudit verify`; runners and
+scripts use `vectraudit cloud bundle CHECK_ID`. See
+[evidence bundles](evidence-bundle.md#from-a-hosted-check).
+
 ## Audited exceptions
 
 An approver can accept one failing rule of a hosted check when the project policy opens that

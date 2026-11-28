@@ -1194,6 +1194,13 @@ def check(
             "be re-run."
         ),
     ] = False,
+    bundle_url: Annotated[
+        str | None,
+        typer.Option(
+            help="https:// address where reviewers download the bundle (e.g. the CI run's "
+            "artifacts), linked from the summary and pull-request comment."
+        ),
+    ] = None,
 ) -> None:
     """Compare a candidate run with a baseline and decide.
 
@@ -1202,6 +1209,8 @@ def check(
     """
     if bundle_runs and bundle is None:
         raise _fail("--bundle-runs needs --bundle.")
+    if bundle_url is not None and (bundle is None or not bundle_url.startswith("https://")):
+        raise _fail("--bundle-url needs --bundle and an https:// address.")
     cloud_baseline = str(baseline).startswith("cloud:")
     client = _cloud_client(project) if cloud_baseline or upload else None
     if upload and not cloud_baseline:
@@ -1227,6 +1236,28 @@ def check(
     if upload:
         hosted = _record_cloud_check(client, cand, str(baseline)[6:], verdict)
         report_url = report_url or hosted
+    # The bundle is written first so the summary and the pull-request comment can name it;
+    # a bundle that cannot be written is reported after the check is published.
+    evidence, bundle_error = None, None
+    if bundle is not None:
+        try:
+            evidence = _write_bundle(
+                result,
+                base,
+                cand,
+                pol,
+                bundle,
+                include_runs=bundle_runs,
+                inputs={
+                    "baseline_file": None if cloud_baseline else file_sha256(baseline),
+                    "baseline_source": str(baseline) if cloud_baseline else None,
+                    "candidate_file": file_sha256(candidate),
+                    "policy_file": None if policy is None else file_sha256(policy),
+                },
+            )
+            evidence["url"] = bundle_url
+        except typer.Exit as e:
+            bundle_error = e
     emit_check(
         result,
         json_out=json_out,
@@ -1237,22 +1268,10 @@ def check(
         github_check=github_check,
         github_comment=github_comment,
         check_name=check_name,
+        evidence=evidence,
     )
-    if bundle is not None:
-        _write_bundle(
-            result,
-            base,
-            cand,
-            pol,
-            bundle,
-            include_runs=bundle_runs,
-            inputs={
-                "baseline_file": None if cloud_baseline else file_sha256(baseline),
-                "baseline_source": str(baseline) if cloud_baseline else None,
-                "candidate_file": file_sha256(candidate),
-                "policy_file": None if policy is None else file_sha256(policy),
-            },
-        )
+    if bundle_error is not None:
+        raise bundle_error
     raise typer.Exit(code=EXIT_CODES[verdict])
 
 
@@ -1265,7 +1284,7 @@ def _write_bundle(
     *,
     include_runs: bool,
     inputs: dict[str, str | None],
-) -> None:
+) -> dict[str, Any]:
     """Write the evidence bundle; a failure to write it is an error, not a verdict."""
     from vectraudit.evaluation.bundle import BundleError, build_bundle
 
@@ -1278,6 +1297,11 @@ def _write_bundle(
     console.print(
         f"Evidence bundle: {escape(str(out))} (manifest SHA-256 {written['manifest_sha256']})"
     )
+    return {
+        "file": out.name,
+        "manifest_sha256": written["manifest_sha256"],
+        "includes_runs": include_runs,
+    }
 
 
 def verify(
@@ -1337,6 +1361,7 @@ def emit_check(
     github_check: bool,
     github_comment: bool,
     check_name: str,
+    evidence: dict[str, Any] | None = None,
 ) -> None:
     """Write the reports, print the verdict and publish to GitHub (best effort)."""
     verdict = Verdict(result["verdict"])
@@ -1346,7 +1371,7 @@ def emit_check(
     if html is not None:
         html.parent.mkdir(parents=True, exist_ok=True)
         html.write_text(render_html(result), encoding="utf-8")
-    md = render_markdown(result, report_url=report_url)
+    md = render_markdown(result, report_url=report_url, evidence=evidence)
     if markdown is not None:
         markdown.parent.mkdir(parents=True, exist_ok=True)
         markdown.write_text(md, encoding="utf-8")
@@ -1626,6 +1651,41 @@ def cloud_summary(
     typer.echo(json.dumps(summary, indent=2) if as_json else summary["markdown"], nl=False)
     if as_json:
         typer.echo()
+
+
+@cloud_app.command("bundle")
+def cloud_bundle(
+    check_id: Annotated[str, typer.Argument(help="Check id, as `check --upload` prints it.")],
+    out: Annotated[
+        Path | None, typer.Option(help="Where to write the zip (default vectraudit-check-ID.zip).")
+    ] = None,
+    project: Annotated[str | None, typer.Option(help="workspace/project.")] = None,
+) -> None:
+    """Download a hosted check's evidence bundle, for `vectraudit verify` (IDs and numbers only)."""
+    import hashlib
+    import io
+    import zipfile
+
+    from vectraudit.integrations.cloud import CloudClientError
+
+    target = out or Path(f"vectraudit-check-{check_id}.zip")
+    if target.exists():
+        raise _fail(f"{target} already exists.", "Choose another --out; nothing is overwritten.")
+    try:
+        data = _cloud_client(project).check_bundle(check_id)
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            manifest = archive.read("manifest.json")
+    except CloudClientError as e:
+        raise _fail(e.message, e.hint) from e
+    except (zipfile.BadZipFile, KeyError) as e:
+        raise _fail("The service did not return an evidence bundle.") from e
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    console.print(
+        f"Evidence bundle: {escape(str(target))} "
+        f"(manifest SHA-256 {hashlib.sha256(manifest).hexdigest()})"
+    )
+    console.print(f"Verify it with: vectraudit verify {escape(str(target))}")
 
 
 def _minutes(text: str, option: str) -> int:

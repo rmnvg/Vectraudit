@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -34,7 +35,7 @@ from vectraudit.cloud.models import (
     utcnow,
 )
 from vectraudit.evaluation.compare import compare_runs
-from vectraudit.evaluation.policy import DEFAULT_POLICY, Policy, parse_policy
+from vectraudit.evaluation.policy import DEFAULT_POLICY, Policy, PolicyError, parse_policy
 
 BASELINE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
@@ -179,6 +180,9 @@ def run_check(
         exceptions.apply_to_check(session, access.project, found)
         return found, base, cand, False
     result = compare_runs(base.data, cand.data, policy)
+    # The policy as the project set it (None: the built-in default), so the check can be
+    # reproduced, for an evidence bundle, after the project's policy changes.
+    result["policy_source"] = access.project.policy
     if trigger == "monitor":
         from vectraudit.pipelines.monitor import drift
 
@@ -226,6 +230,69 @@ def load_check(session: Session, access: repo.Access, check_id: str) -> tuple[Ch
     assert base is not None
     assert cand is not None
     return check, base, cand
+
+
+def check_policy(check: Check, project: Project) -> Policy:
+    """The exact policy a stored check was decided under.
+
+    Checks keep the policy's digest, and checks made since evidence bundles were added keep
+    the policy as the project set it. That copy is used when it gives the digest; otherwise
+    the project's current policy, when it still has that digest. A check from before, whose
+    project policy has changed since, cannot be reproduced.
+    """
+    candidates: list[Policy] = []
+    if "policy_source" in check.result:
+        source = check.result["policy_source"]
+        with contextlib.suppress(PolicyError):  # a stored policy no longer valid is skipped
+            candidates.append(DEFAULT_POLICY if source is None else parse_policy(source))
+    candidates.append(project_policy(project))
+    for policy in candidates:
+        if digest(policy.as_dict()) == check.policy_digest:
+            return policy
+    raise CloudError(
+        409,
+        "POLICY_CHANGED",
+        "The project policy changed after this check, and the policy it was decided under "
+        "cannot be recovered exactly, so no bundle can reproduce its verdict.",
+        "Run the check again under the current policy, or use the bundle written by "
+        "`vectraudit check --bundle` at the time.",
+    )
+
+
+def check_bundle(
+    session: Session, access: repo.Access, check_id: str
+) -> tuple[bytes, dict[str, Any]]:
+    """An evidence bundle for a stored check, which ``vectraudit verify`` checks offline.
+
+    Built from the hosted projections of both runs, so IDs and numbers only. The runs are
+    included (so the verdict can be re-run) unless one was uploaded with its query text,
+    which a bundle never carries.
+    """
+    from vectraudit.evaluation.bundle import BundleError, bundle_bytes
+
+    assert access.project is not None
+    check, base, cand = load_check(session, access, check_id)
+    policy = check_policy(check, access.project)
+    shares_text = any(
+        bool((run.data.get("sharing") or {}).get("share_query_text")) for run in (base, cand)
+    )
+    try:
+        data, written = bundle_bytes(
+            check.result,
+            base.data,
+            cand.data,
+            policy,
+            include_runs=not shares_text,
+            inputs={"hosted_check_id": check.id, "baseline_file": None, "candidate_file": None},
+        )
+    except (BundleError, ValueError) as e:
+        raise CloudError(
+            409,
+            "BUNDLE_NOT_REPRODUCIBLE",
+            f"No evidence bundle for this check: {e}",
+            "Run the check again; if it persists, report it with the check ID.",
+        ) from e
+    return data, {**written, "includes_runs": not shares_text, "check_id": check.id}
 
 
 def recent_checks(session: Session, access: repo.Access, limit: int = 20) -> list[Check]:

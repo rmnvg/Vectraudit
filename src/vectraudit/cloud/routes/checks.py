@@ -234,6 +234,29 @@ def get_check(
     )
 
 
+@router.get(
+    "/checks/{check_id}/bundle",
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+def get_check_bundle(
+    workspace: str, project: str, check_id: str, session: SessionDep, principal: PrincipalDep
+) -> Response:
+    """The check's evidence bundle (zip), for `vectraudit verify`. IDs and numbers only."""
+    access = repo.authorize(session, principal, workspace, "read", project)
+    data, info = service.check_bundle(session, access, check_id)
+    filename = f"vectraudit-check-{info['check_id']}.zip"
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Vectraudit-Manifest-SHA256": info["manifest_sha256"],
+            "X-Vectraudit-Bundle-Runs": "true" if info["includes_runs"] else "false",
+        },
+    )
+
+
 # --- audited exceptions --------------------------------------------------------------------
 
 

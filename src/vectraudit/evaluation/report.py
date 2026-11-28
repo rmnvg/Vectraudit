@@ -236,8 +236,17 @@ def cohort_line(result: Mapping[str, Any]) -> str | None:
     )
 
 
-def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None) -> str:
-    """A compact summary for ``$GITHUB_STEP_SUMMARY`` or a pull-request comment."""
+def render_markdown(
+    result: Mapping[str, Any],
+    *,
+    report_url: str | None = None,
+    evidence: Mapping[str, Any] | None = None,
+) -> str:
+    """A compact summary for ``$GITHUB_STEP_SUMMARY`` or a pull-request comment.
+
+    ``evidence`` describes an evidence bundle written for this check: ``file`` (its name),
+    ``manifest_sha256``, ``includes_runs`` and optionally ``url`` (where reviewers download it).
+    """
     verdict = result["verdict"]
     b, c = result["baseline"], result["candidate"]
     out = [
@@ -320,8 +329,27 @@ def render_markdown(result: Mapping[str, Any], *, report_url: str | None = None)
         out += [f"- {_md(w)}" for w in result["warnings"]] + ["", "</details>", ""]
     if report_url:
         out += [f"[Full report]({report_url})", ""]
+    if evidence:
+        out += _evidence_markdown(evidence)
     out.append(f"<sub>vectraudit {__version__}</sub>")
     return "\n".join(out) + "\n"
+
+
+def _evidence_markdown(evidence: Mapping[str, Any]) -> list[str]:
+    name = _md(evidence["file"])
+    url = evidence.get("url")
+    where = f"[`{name}`]({url})" if url else f"`{name}`"
+    runs = (
+        "with both runs, so the verdict can be re-run"
+        if evidence.get("includes_runs")
+        else "without the runs (pass them to `verify` to re-run the verdict)"
+    )
+    return [
+        f"**Evidence bundle** {where}: IDs and numbers only, {runs}. "
+        f"Manifest SHA-256 `{_md(evidence['manifest_sha256'])}`. "
+        f"A reviewer checks it offline with `vectraudit verify {name}`.",
+        "",
+    ]
 
 
 # --- HTML --------------------------------------------------------------------------------

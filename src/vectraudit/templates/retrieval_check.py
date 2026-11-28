@@ -22,6 +22,7 @@ from pathlib import Path, PurePosixPath
 
 MODES = ("connection", "release")
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 # Variables that would change how the runner, git, Python or this script behave.
 _RESERVED = {"PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "IFS", "GITHUB_TOKEN"}
 _RESERVED_PREFIXES = ("LD_", "DYLD_", "PYTHON", "GITHUB_", "RUNNER_", "ACTIONS_", "GH_", "VA_")
@@ -42,6 +43,8 @@ class Inputs:
     out: str
     publish: bool
     paired: bool
+    bundle: bool
+    bundle_url: str
     repeats: int
     dataset: str
     connection: str
@@ -82,6 +85,16 @@ def _relative(value: str, field: str) -> str:
     return value
 
 
+def _run_url(environ: Mapping[str, str]) -> str:
+    """This workflow run's page, where its artifacts (and the bundle) are downloaded."""
+    server = environ.get("GITHUB_SERVER_URL", "").rstrip("/")
+    repository = environ.get("GITHUB_REPOSITORY", "")
+    run_id = environ.get("GITHUB_RUN_ID", "")
+    if not (server.startswith("https://") and _REPO.fullmatch(repository) and run_id.isdigit()):
+        return ""
+    return f"{server}/{repository}/actions/runs/{run_id}"
+
+
 def read_inputs(environ: Mapping[str, str]) -> Inputs:
     """Validate the ``VA_*`` variables the action sets."""
     mode = environ.get("VA_MODE", "connection").strip() or "connection"
@@ -107,6 +120,9 @@ def read_inputs(environ: Mapping[str, str]) -> Inputs:
     paired = environ.get("VA_PAIRED", "false").strip().lower() or "false"
     if paired not in {"true", "false"}:
         raise InputError("paired must be true or false.")
+    bundle = environ.get("VA_BUNDLE", "true").strip().lower() or "true"
+    if bundle not in {"true", "false"}:
+        raise InputError("bundle must be true or false.")
     release = environ.get("VA_RELEASE", "").strip()
     if mode == "release":
         release = _relative(release, "release")
@@ -117,6 +133,8 @@ def read_inputs(environ: Mapping[str, str]) -> Inputs:
         out=_relative(environ.get("VA_OUT", "runs").strip() or "runs", "out"),
         publish=publish == "true",
         paired=paired == "true",
+        bundle=bundle == "true",
+        bundle_url=_run_url(environ) if environ.get("VA_ARTIFACT_NAME", "").strip() else "",
         repeats=int(repeats_text),
         dataset=_relative(environ.get("VA_DATASET", "retrieval/dataset.jsonl").strip(), "dataset"),
         connection=_relative(
@@ -199,6 +217,13 @@ def _publish_flags(inputs: Inputs) -> list[str]:
     return ["--github-check", "--github-comment"] if inputs.publish else []
 
 
+def _bundle_flags(inputs: Inputs, out: Path) -> list[str]:
+    if not inputs.bundle:
+        return []
+    flags = ["--bundle", str(out / "evidence.zip"), "--bundle-runs"]
+    return [*flags, "--bundle-url", inputs.bundle_url] if inputs.bundle_url else flags
+
+
 def _check_env(inputs: Inputs, plain: Mapping[str, str]) -> dict[str, str]:
     token = {"GITHUB_TOKEN": inputs.github_token} if inputs.publish and inputs.github_token else {}
     return {**plain, **token}
@@ -255,6 +280,7 @@ def _check_connection(
             str(out / "report.html"),
             "--json",
             str(result),
+            *_bundle_flags(inputs, out),
             *_publish_flags(inputs),
         ),
         _check_env(inputs, plain),
