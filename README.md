@@ -95,15 +95,19 @@ def test_retrieval_release():
     assert_release("baseline.json", "candidate.json", policy="retrieval/policy.json")
 ```
 
-| Backend | Connector | Extra |
-|---|---|---|
-| FAISS | index file | `[faiss-cpu]` |
-| Qdrant | collection | `[qdrant]` |
-| pgvector | table and columns in PostgreSQL | `[pgvector]` |
-| Pinecone | index over HTTPS | none |
-| Weaviate | collection | `[weaviate]` |
-| Elasticsearch 8 / OpenSearch 2 | index with a `dense_vector` / `knn_vector` field | none |
-| Chroma 1.x | collection over the v2 REST API | none |
+| Backend | Connector | Extra | Tested in CI against |
+|---|---|---|---|
+| FAISS | index file | `[faiss-cpu]` | faiss-cpu from the lockfile |
+| Qdrant | collection | `[qdrant]` | the client's local mode (no server) |
+| pgvector | table and columns in PostgreSQL | `[pgvector]` | pgvector 0.8.7 on PostgreSQL 17 and 18 |
+| Pinecone | index over HTTPS | none | Pinecone Local v1.0.0.rc0 |
+| Weaviate | collection | `[weaviate]` | 1.32.4 and 1.41.0 |
+| Elasticsearch / OpenSearch | index with a `dense_vector` / `knn_vector` field | none | Elasticsearch 8.15.3 and 9.5.7, OpenSearch 2.17.1 and 3.10.1 |
+| Chroma 1.x | collection over the v2 REST API | none | 1.5.9 |
+
+Each pull request that touches a connector runs its live tests against the oldest and newest
+server versions above, and a nightly run follows each project's newest release
+([`scripts/live_backends.py`](scripts/live_backends.py) starts the same servers locally).
 
 ### Bring what you have, take results where you need them
 

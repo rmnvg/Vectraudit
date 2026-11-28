@@ -17,6 +17,9 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Changed
 
+- Connectors are tested against Elasticsearch 9 and OpenSearch 3 as well as 8 and 2, Weaviate
+  1.41 as well as 1.32, and PostgreSQL 18 as well as 17. The README lists the tested server
+  versions for each backend.
 - The README leads with the release check (catch retrieval regressions before they merge),
   with the quickstart and a report screenshot; the other jobs follow under "What else it
   does".

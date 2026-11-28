@@ -14,7 +14,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
   },
   // Unit tests only; e2e/*.spec.ts belong to Playwright.
-  test: { include: ['src/**/*.test.ts'] },
+  test: { include: ['src/**/*.test.{ts,tsx}'] },
   server: {
     // `npm run dev` talks to a running `vectraudit serve` on the default port.
     proxy: { '/api': 'http://127.0.0.1:8765' },

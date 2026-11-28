@@ -178,3 +178,23 @@ def world(cloud_app) -> World:
             proj = repo.authorize(s, owner_p, slug, "manage_runner_tokens", "search")
             tokens[f"{slug}_runner"] = repo.create_runner_token(s, proj, "ci")[1].token
     return World(TestClient(cloud_app), tokens)
+
+
+LIVE_SKIP = "Set VECTRAUDIT_TEST_"
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """With VECTRAUDIT_REQUIRE_LIVE=1, a live test skipped for a missing server fails.
+
+    The live-backends workflow sets it, so a server that never started (or a renamed
+    variable) cannot turn the whole job green by skipping every test that needed it.
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if not (report.skipped and os.environ.get("VECTRAUDIT_REQUIRE_LIVE") == "1"):
+        return
+    reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+    if LIVE_SKIP in reason:
+        report.outcome = "failed"
+        report.longrepr = f"Live backend test skipped under VECTRAUDIT_REQUIRE_LIVE=1: {reason}"
