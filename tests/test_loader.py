@@ -138,7 +138,7 @@ def test_core_outlives_temporaries() -> None:
     [
         lambda: faiss.IndexLSH(16, 32),
         lambda: faiss.IndexPQ(16, 4, 8),
-        lambda: faiss.IndexIVFPQFastScan(faiss.IndexFlatL2(16), 16, 4, 4, 4),
+        lambda: faiss.index_factory(16, "IVF4,RQ2x4fs_Nrq2x4"),  # additive-quantizer FastScan
         lambda: faiss.IndexFlat(16, faiss.METRIC_L1),
     ],
 )

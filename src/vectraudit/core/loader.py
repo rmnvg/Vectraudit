@@ -123,8 +123,13 @@ def _detect_kind(core: Any) -> tuple[IndexKind, str | None]:
     name = class_name(core)
     if isinstance(core, faiss.IndexIVF):
         # FastScan variants are not subclasses of IndexIVFPQ, so check them first anyway.
+        if isinstance(core, faiss.IndexIVFPQFastScan):
+            return IndexKind.IVF_PQ, None
         if isinstance(core, faiss.IndexIVFFastScan):
-            return IndexKind.UNSUPPORTED, f"{name}: IVF FastScan internals are not supported yet."
+            return (
+                IndexKind.UNSUPPORTED,
+                f"{name}: only PQ FastScan is supported, not additive-quantizer FastScan.",
+            )
         if isinstance(core, faiss.IndexIVFFlat):
             return IndexKind.IVF_FLAT, None
         if isinstance(core, faiss.IndexIVFPQ):
@@ -169,9 +174,16 @@ def _read_params(core: Any, ivf: Any) -> IndexParams:
         p["nprobe"] = int(ivf.nprobe)
         if hasattr(ivf, "by_residual"):
             p["by_residual"] = bool(ivf.by_residual)
-        if isinstance(ivf, faiss.IndexIVFPQ):
+        if isinstance(ivf, (faiss.IndexIVFPQ, faiss.IndexIVFPQFastScan)):
             p["pq_m"] = int(ivf.pq.M)
             p["pq_nbits"] = int(ivf.pq.nbits)
+        if isinstance(ivf, faiss.IndexIVFPQFastScan):
+            p["fast_scan"] = True
+        quantizer = faiss.downcast_index(ivf.quantizer)
+        if not isinstance(quantizer, faiss.IndexFlat):
+            p["coarse_quantizer"] = class_name(quantizer)
+        if isinstance(quantizer, faiss.IndexHNSW):
+            p["quantizer_ef_search"] = int(quantizer.hnsw.efSearch)
         if isinstance(ivf, faiss.IndexIVFScalarQuantizer):
             p["sq_type"] = _sq_type_name(int(ivf.sq.qtype))
     if isinstance(core, faiss.IndexHNSW):

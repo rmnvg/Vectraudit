@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from vectraudit.core import ivf as ivf_mod
 from vectraudit.core._faiss import import_faiss
 from vectraudit.core.embed import Embedder
 from vectraudit.core.filtering import AllowedSet
@@ -393,7 +394,9 @@ class IvfTrace:
 
     nprobe: int
     probe_order: IntArray
-    """All list numbers, closest centroid first."""
+    """All list numbers in probe order: the ``nprobe`` lists searched come first. With a
+    flat coarse quantizer this is every list by centroid distance; with an approximate one
+    (HNSW), the probed lists in FAISS's order, then the rest by exact centroid distance."""
     centroid_distances: FloatArray
     """Query-to-centroid distance (similarity for IP), aligned with ``probe_order``."""
     neighbours: list[NeighbourTrace]
@@ -406,10 +409,17 @@ class IvfTrace:
     ``k`` means the probed cells cannot fill the result, however good the ranking."""
     allowed_total: int | None = None
     """Filtered search only: how many vectors the filter allows in the whole index."""
+    n_probed: int | None = None
+    """How many lists were actually probed, when fewer than ``nprobe``: an HNSW coarse
+    quantizer can return fewer lists than asked for. ``None`` means ``nprobe``."""
+
+    @property
+    def probed_count(self) -> int:
+        return self.nprobe if self.n_probed is None else self.n_probed
 
     @property
     def probed_lists(self) -> IntArray:
-        return self.probe_order[: self.nprobe]
+        return self.probe_order[: self.probed_count]
 
     def reason_counts(self) -> dict[MissReason, int]:
         counts = dict.fromkeys(MissReason, 0)
@@ -431,6 +441,37 @@ def probed_miss_reason(li: LoadedIndex) -> MissReason:
     return MissReason.RANKED_OUT
 
 
+def _approximate_probe_order(
+    li: LoadedIndex, q_core: npt.NDArray[np.float32], nprobe: int
+) -> tuple[IntArray, FloatArray, int]:
+    """Probe order for a quantizer that is not flat: what FAISS probes, then the rest.
+
+    The first entries are the quantizer's own answer at ``nprobe`` (the lists
+    ``IndexIVF::search`` visits, possibly fewer than ``nprobe``); the remaining lists follow
+    by exact centroid distance. Also returns how many lists were probed.
+    """
+    assert li.ivf is not None
+    nlist = int(li.ivf.nlist)
+    probed = ivf_mod.probed_lists(li, q_core, nprobe)[0]
+    probed = probed[probed >= 0]
+    try:
+        cents = ivf_mod.centroids(li)
+    except RuntimeError:  # a quantizer that cannot reconstruct its centroids
+        rest = np.setdiff1d(np.arange(nlist, dtype=np.int64), probed)
+        dist = np.full(nlist, np.nan, dtype=np.float32)
+        return np.concatenate([probed, rest]), dist, len(probed)
+    q = q_core.reshape(-1)
+    if li.metric is Metric.IP:
+        all_d = cents @ q
+        by_closeness = np.argsort(-all_d, kind="stable")
+    else:
+        all_d = ((cents - q) ** 2).sum(axis=1)
+        by_closeness = np.argsort(all_d, kind="stable")
+    rest = by_closeness[~np.isin(by_closeness, probed)]
+    order = np.concatenate([probed, rest]).astype(np.int64)
+    return order, all_d[order].astype(np.float32), len(probed)
+
+
 def trace_ivf(
     li: LoadedIndex,
     query: npt.ArrayLike,
@@ -449,22 +490,29 @@ def trace_ivf(
     nprobe = int(result.params.get("nprobe", li.ivf.nprobe))
     q_core = li.to_core_space(_as_query(query, li.d))
     nlist = int(li.ivf.nlist)
-    centroid_dist, order = li.ivf.quantizer.search(q_core, nlist)
-    order = order[0].astype(np.int64)
-    probe_rank = np.full(nlist, nlist, dtype=np.int64)
-    probe_rank[order[order >= 0]] = np.arange(nlist)[order >= 0]
+    truth_ids = truth.ids
+    truth_lists = assignments.lookup(truth_ids)
+    if ivf_mod.probe_order_is_exact(li):
+        centroid_dist, order = li.ivf.quantizer.search(q_core, nlist)
+        order = order[0].astype(np.int64)
+        distances = centroid_dist[0].astype(np.float32)
+        probe_rank = np.full(nlist + 1, nlist, dtype=np.int64)
+        probe_rank[order[order >= 0]] = np.arange(nlist)[order >= 0]
+        truth_ranks = probe_rank[np.where(truth_lists >= 0, truth_lists, nlist)]
+        n_probed = None
+    else:
+        order, distances, probed_n = _approximate_probe_order(li, q_core, nprobe)
+        n_probed = probed_n if probed_n < nprobe else None
+        truth_ranks = ivf_mod.list_probe_ranks(li, q_core, truth_lists, nprobe)
 
     found_rank = {int(i): r for r, i in enumerate(result.ids) if i >= 0}
     probed_miss = probed_miss_reason(li)
-    truth_ids = truth.ids
-    truth_lists = assignments.lookup(truth_ids)
     neighbours: list[NeighbourTrace] = []
-    for rank, (nid, dist, list_no) in enumerate(
-        zip(truth_ids, truth.distances, truth_lists, strict=True)
+    for rank, (nid, dist, list_no, pr) in enumerate(
+        zip(truth_ids, truth.distances, truth_lists, truth_ranks.tolist(), strict=True)
     ):
         if nid < 0:
             continue
-        pr = int(probe_rank[list_no]) if list_no >= 0 else nlist
         if int(nid) in found_rank:
             reason = MissReason.FOUND
         elif pr >= nprobe:
@@ -480,17 +528,19 @@ def trace_ivf(
     allowed_in_probed = None
     if allowed is not None:
         lists = assignments.lookup(allowed.ids)
-        allowed_in_probed = int(np.isin(lists, order[:nprobe]).sum())
+        probed_upto = nprobe if n_probed is None else n_probed
+        allowed_in_probed = int(np.isin(lists, order[:probed_upto]).sum())
 
     return IvfTrace(
         nprobe=nprobe,
         probe_order=order,
-        centroid_distances=centroid_dist[0].astype(np.float32),
+        centroid_distances=distances,
         neighbours=neighbours,
         min_nprobe_for_all=min(nlist, max((n.probe_rank for n in neighbours), default=0) + 1),
         result_list_nos=assignments.lookup(result.ids),
         allowed_in_probed=allowed_in_probed,
         allowed_total=None if allowed is None else len(allowed),
+        n_probed=n_probed,
     )
 
 

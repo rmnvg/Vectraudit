@@ -433,7 +433,12 @@ def sweep(
     n = len(queries)
     points: list[SweepPoint] = []
     ranks, curve = None, None
-    if param is SweepParam.NPROBE and assignments is not None:
+    # A flat coarse quantizer ranks every list once, giving coverage at every nprobe. Any
+    # other (HNSW) is asked directly at each swept value, and there is no full curve.
+    direct_coverage = (
+        param is SweepParam.NPROBE and assignments is not None and not ivf.probe_order_is_exact(li)
+    )
+    if param is SweepParam.NPROBE and assignments is not None and not direct_coverage:
         parts = []
         for start in range(0, n, QUERY_BATCH):
             report(0.0, f"Locating true neighbours' lists: {start}/{n} queries")
@@ -491,7 +496,13 @@ def sweep(
                     batch_threads = int(faiss.omp_get_max_threads())
                     batch_measure = _batch(li, queries, truth, k, k_search, sp, repeats)
                     faiss.omp_set_num_threads(1)
-                coverage = ivf.query_probe_coverage(ranks, v) if ranks is not None else None
+                if direct_coverage:
+                    assert assignments is not None
+                    coverage = ivf.probe_coverage_at(li, queries.vectors, truth, assignments, v)
+                elif ranks is not None:
+                    coverage = ivf.query_probe_coverage(ranks, v)
+                else:
+                    coverage = None
                 low, high, distribution, worst = summarize_recalls(recalls, excl, coverage)
                 points.append(
                     SweepPoint(

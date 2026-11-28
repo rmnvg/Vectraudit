@@ -148,6 +148,51 @@ def reconstruct_all(li: LoadedIndex) -> VectorSource:
     return VectorSource(np.ascontiguousarray(x, dtype=np.float32), user[order], True)
 
 
+def _decode_fastscan(ivf: Any) -> tuple[IntArray, FloatArray]:
+    """Decode an IVF PQ FastScan index list by list.
+
+    FAISS 1.16 crashes (segfault) in ``reconstruct_batch`` and ``reconstruct_from_offset``
+    on these indexes, so each list's block-interleaved codes are unpacked with the index's
+    own ``CodePacker`` and decoded by its PQ, adding the list's centroid when the codes
+    are residuals: the same decoding a regular ``IndexIVFPQ`` performs.
+    """
+    faiss = import_faiss()
+    from vectraudit.core.ivf import stored_ids  # local: ivf imports nothing from here
+
+    packer = ivf.get_CodePacker()
+    nvec, block_size, code_size = int(packer.nvec), int(packer.block_size), int(packer.code_size)
+    invlists = faiss.downcast_InvertedLists(ivf.invlists)
+    cents = None
+    if ivf.by_residual:
+        cents = faiss.downcast_index(ivf.quantizer).reconstruct_n(0, ivf.nlist)
+    ids: list[IntArray] = []
+    vecs: list[FloatArray] = []
+    for list_no in range(int(ivf.nlist)):
+        n = int(invlists.list_size(list_no))
+        if n == 0:
+            continue
+        n_blocks = -(-n // nvec)
+        ptr = invlists.get_codes(list_no)
+        try:
+            blocks = np.array(faiss.rev_swig_ptr(ptr, n_blocks * block_size), dtype=np.uint8)
+        finally:
+            invlists.release_codes(list_no, ptr)
+        codes = np.empty((n_blocks * nvec, code_size), dtype=np.uint8)
+        for b in range(n_blocks):
+            packer.unpack_all(
+                faiss.swig_ptr(blocks[b * block_size : (b + 1) * block_size]),
+                faiss.swig_ptr(codes[b * nvec : (b + 1) * nvec]),
+            )
+        decoded = np.asarray(ivf.pq.decode(codes[:n]), dtype=np.float32)
+        if cents is not None:
+            decoded = decoded + cents[list_no]
+        ids.append(stored_ids(ivf, list_no))
+        vecs.append(decoded)
+    if not ids:
+        return np.empty(0, dtype=np.int64), np.empty((0, int(ivf.d)), dtype=np.float32)
+    return np.concatenate(ids), np.concatenate(vecs).astype(np.float32, copy=False)
+
+
 def _batched(fn: Any, n: int, d: int) -> FloatArray:
     out = np.empty((n, d), dtype=np.float32)
     for i0 in range(0, n, _BATCH):
@@ -159,6 +204,9 @@ def _batched(fn: Any, n: int, d: int) -> FloatArray:
 def _reconstruct_ivf(ivf: Any) -> tuple[IntArray, FloatArray]:
     faiss = import_faiss()
     from vectraudit.core.ivf import stored_ids  # local: ivf imports nothing from here
+
+    if isinstance(ivf, faiss.IndexIVFPQFastScan):
+        return _decode_fastscan(ivf)
 
     stored = np.concatenate(
         [stored_ids(ivf, i) for i in range(ivf.nlist)] or [np.empty(0, dtype=np.int64)]
