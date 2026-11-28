@@ -32,13 +32,20 @@ runs on your infrastructure; only run files are uploaded, and only if you choose
 
 ## Install
 
-Download the wheel from the [latest GitHub release](https://github.com/rmnvg/Vectraudit/releases)
-(it includes the built web UI; check it against the release's `SHA256SUMS`), or work from
-a checkout with `uv sync --all-extras` and prefix the commands below with `uv run`:
+```bash
+pip install "vectraudit[all]"
+```
+
+The same wheel, with the built web UI, is attached to each
+[GitHub release](https://github.com/rmnvg/Vectraudit/releases) with its `SHA256SUMS`, which
+is what the CI workflow written by `vectraudit init` installs, pinned by version and hash:
 
 ```bash
-pip install "./vectraudit-0.1.0-py3-none-any.whl[all]"
+pip install "vectraudit[all] @ https://github.com/rmnvg/Vectraudit/releases/download/v0.2.0/vectraudit-0.2.0-py3-none-any.whl"
 ```
+
+To work from a checkout instead, run `uv sync --all-extras` and prefix the commands below
+with `uv run`.
 
 Extras install only what you use: the backends `[faiss-cpu]`, `[qdrant]`, `[pgvector]` and
 `[weaviate]` (Pinecone, Elasticsearch, OpenSearch and Chroma need none), `[text]` for

@@ -6,6 +6,35 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-28
+
+The first release published outside the maintainer's machine: 0.1.0 (the FAISS debugger,
+then named faissight) was tagged in the changelog but never released.
+
+### Highlights
+
+- **Release checks for retrieval.** `vectraudit init`, `record` and `check` give a pass,
+  fail, error or not-comparable verdict for a candidate against a baseline on the same
+  labelled questions, under a versioned release policy with paired significance tests,
+  cohort rules and critical questions. Results go to a GitHub check, a pull request comment
+  and an HTML report, and `check --bundle` / `vectraudit verify` keep evidence an auditor
+  can re-check offline.
+- **Eight backends**, read-only: FAISS, Qdrant, pgvector, Pinecone, Weaviate,
+  Elasticsearch, OpenSearch and Chroma. `vectraudit tune` finds the cheapest search setting
+  that reaches a recall target on any of them.
+- **Retrieval workbench** (`vectraudit workbench serve`): tests the whole pipeline (query
+  rewriting, hybrid retrieval, fusion, filters, rerankers and permissions), explains where a
+  question's documents were lost, and validates fixes on held-out questions.
+- **Imports, not lock-in:** traces from OpenInference, OpenLLMetry and OpenLIT spans, or
+  pulled from Langfuse, LangSmith, Phoenix and OpenObserve; labels and runs from TREC, BEIR,
+  MTEB, RAGAS and RAGChecker.
+- **Safety checks:** permission and tenant assertions, cache-leak probes, poisoning and
+  prompt-injection scans of the corpus.
+- **Self-hosted control plane** (`vectraudit[cloud]`) for pinned baselines, history and
+  hosted pull request checks.
+- **Open source** under the Apache License 2.0. Install with `pip install vectraudit`, or
+  download the wheel and its `SHA256SUMS` from the GitHub release.
+
 ### Changed
 
 - Vectraudit is open source under the Apache License 2.0 (`LICENSE`, `NOTICE`). Releases

@@ -20,7 +20,7 @@ body:
     attributes:
       label: Versions
       description: "`vectraudit --version`, FAISS version, Python version and OS"
-      placeholder: vectraudit 0.1.0, faiss-cpu 1.15.1, Python 3.12, macOS 15
+      placeholder: vectraudit 0.2.0, faiss-cpu 1.15.1, Python 3.12, macOS 15
     validations:
       required: true
   - type: textarea
