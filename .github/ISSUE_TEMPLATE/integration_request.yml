@@ -1,0 +1,24 @@
+name: Backend or tool support
+description: Ask for a vector store, framework, tracing tool or label format Vectraudit does not support yet
+labels: [enhancement]
+body:
+  - type: input
+    id: tool
+    attributes:
+      label: Tool
+      description: The backend, framework, tracing tool or format, and the version you run.
+      placeholder: Milvus 2.5, LlamaIndex 0.12, Arize Phoenix 11, ...
+    validations:
+      required: true
+  - type: textarea
+    id: job
+    attributes:
+      label: What you want to check
+      description: For example, block pull requests that lower recall, compare two embedding models, or import production traces as a benchmark.
+    validations:
+      required: true
+  - type: textarea
+    id: stack
+    attributes:
+      label: The rest of your retrieval stack
+      description: Optional. Other parts that touch retrieval (reranker, query rewriting, permissions, tracing) help us test the integration the way you would use it.

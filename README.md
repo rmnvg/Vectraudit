@@ -1,34 +1,32 @@
 # Vectraudit
 
-**Retrieval evaluation and release checks for RAG and search. Test your pipeline. Explain
-failures. Measure fixes. Guard every release.**
+**Catch retrieval regressions before they merge.**
 
 [![CI](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml/badge.svg)](https://github.com/rmnvg/Vectraudit/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Vectraudit tells you whether a change to your retrieval system made it better or worse,
-and why. It measures a baseline and a candidate on the same versioned, labelled questions,
-across the whole pipeline: query handling, keyword and vector retrieval, filters, fusion,
-reranking, context packing and the answer. It traces where each relevant document was lost,
-checks permission and no-answer behaviour, and backs every decision with query-level
-evidence. It works with eight vector backends, LangChain and LlamaIndex retrievers, any
-Python or HTTP pipeline, and traces from the observability tools you already run. Evaluation
-runs on your infrastructure; only run files are uploaded, and only if you choose to.
+A changed embedding model, chunk size, index setting or reranker can make your RAG or search
+system worse without breaking a single test. Vectraudit runs your labelled questions against
+the current and the proposed retrieval setup on every pull request, and fails the check when
+results get worse beyond your policy. The report says why: which questions regressed, which
+documents they lost, and where along the way they were lost.
 
-## What it does
+```bash
+vectraudit init --backend qdrant     # or faiss, pgvector, pinecone, weaviate, elasticsearch, opensearch, chroma
+vectraudit record --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --out baseline.json
+# change the index, model, chunking or a search setting, then record the candidate
+vectraudit record --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --out candidate.json
+vectraudit check baseline.json candidate.json --policy retrieval/policy.json --html report.html
+```
 
-| You want to | Vectraudit gives you | Start with |
-|---|---|---|
-| **Build and maintain a benchmark** | Guided labelling with grades, no-answer and permission cases, held-out splits and frozen versions; imports from BEIR, TREC, MTCB, Ragas, DeepEval, LangSmith and Langfuse; a label audit that finds labels likely to be wrong | [`workbench serve`](#retrieval-workbench), [`label`](docs/labelling.md), [`dataset import`](docs/release-checks.md#bringing-labels-you-already-have) |
-| **Evaluate a whole pipeline** | Stage-by-stage traces, the stage where each document was lost, a per-component scoreboard, side-by-side comparison of a fix | [`workbench run`](#retrieval-workbench) |
-| **Measure what is in production** | Runs built from OpenInference, OpenTelemetry, Phoenix, Langfuse, LangSmith, Opik and OpenObserve traces; answer judgments from your evaluation tools; a review queue of new questions; question, embedding and score drift | [`import-traces`, `intake`, `drift`](#from-production-traces-and-the-tools-you-already-use) |
-| **Block regressions in CI** | A pass, fail, error or not-comparable verdict under a release policy, with paired significance tests, cohort rules, critical questions, and HTML and GitHub reports | [`init`, `record`, `check`](#release-checks) |
-| **Explain a failure** | Investigation of one question, declared fixes tried and validated on held-out data, lineage and freshness, permission lifecycle, fusion replay, claim-level evidence | [Investigate deeper](#investigate-deeper) |
-| **Choose a setup** | Embedding models, chunkers and indexes compared on one labelled set; recall under filters; capacity under concurrent load; migration reports | [`experiment`](docs/experiments.md), [`capacity`](docs/capacity.md), [`migration`](docs/migration-report.md) |
-| **Check safety** | Permission and tenant assertions, cache-leak probes, corpus scans for injected instructions, poisoning checks | [Permissions](docs/permission-lifecycle.md), [poisoning](docs/poisoning.md) |
-| **Tune a search setting on any backend** | The cheapest `hnsw_ef`, `ef_search`, `num_candidates` or `probes` that reaches your recall target against an exact reference, the neighbours each query missed, filtered and batch curves, two setups compared | [`tune`, `tune-compare`](docs/tuning.md) |
-| **See inside a FAISS index** | Missed neighbours and why, quantization loss, HNSW search replay, recall against latency | [`serve INDEX`](#faiss-index-debugger) |
-| **Share results with a team** | Pinned baselines, history, reports and pull-request checks on a control plane you host yourself | [Vectraudit Cloud](docs/cloud-operations.md) |
+**Try it in 10 minutes:** the [quickstart](docs/quickstart.md) builds an index from a public
+benchmark, catches a search setting that quietly drops nDCG@10 from 0.63 to 0.56, and puts
+the same check on your pull requests.
+
+![A failing release check: the verdict, the rules it broke and a verified diagnosis](docs/screenshots/release-check-report.png)
+
+It runs on your infrastructure and needs only read access to your vector store;
+nothing is uploaded unless you host the optional control plane.
 
 ## Install
 
@@ -57,6 +55,109 @@ Python 3.10 to 3.13 is tested in CI.
 Nothing runs from the open-source projects Vectraudit learns from (ranx, trec_eval, MTEB,
 RAGChecker and others): the methods are reimplemented and credited in
 [docs/credits.md](docs/credits.md), and no dataset is ever downloaded for you.
+
+## Release checks
+
+Measure a baseline and a candidate retrieval setup on the same labelled queries, and let CI
+decide: pass, fail, error or not comparable.
+
+```bash
+vectraudit init --backend qdrant          # or faiss, pgvector, pinecone, weaviate, elasticsearch, opensearch, chroma
+vectraudit doctor --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --policy retrieval/policy.json
+vectraudit record --connection main.json --dataset dataset.jsonl --out baseline.json --label main
+vectraudit record --connection pr.json   --dataset dataset.jsonl --out candidate.json --label pr-42
+vectraudit check baseline.json candidate.json --policy policy.json --html report.html
+```
+
+`init` scaffolds a connection, policy, query sheet and GitHub workflow. `doctor` inspects
+the setup offline without loading a model or opening a database connection. `check` exits 0
+(pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job summary, and the
+HTML report lists the regressed queries with the ids they lost. `check --bundle` writes an
+evidence bundle (IDs, numbers and SHA-256 hashes) that a reviewer outside the team checks
+with `vectraudit verify` ([evidence bundles](docs/evidence-bundle.md)).
+
+Semantic metrics (recall, precision, MRR, nDCG, MAP and hit rate) need relevance labels;
+ANN recall needs an exact reference; neither is ever substituted for the other. Failing
+checks explain themselves: each finding is marked verified, supported or hypothesis, with
+the facts behind it. A policy can also fail on a changed prompt version, and
+`vectraudit workbench hubs` reports documents returned for many unrelated questions
+([metrics](docs/release-checks.md#metrics), [hubs](docs/release-checks.md#hubs)).
+Credentials are referenced by environment variable and never written into config files.
+
+Teams that gate merges on pytest can make the check one more test
+([details](docs/release-checks.md#from-a-pytest-suite)):
+
+```python
+from vectraudit.testing import assert_release
+
+
+def test_retrieval_release():
+    assert_release("baseline.json", "candidate.json", policy="retrieval/policy.json")
+```
+
+| Backend | Connector | Extra |
+|---|---|---|
+| FAISS | index file | `[faiss-cpu]` |
+| Qdrant | collection | `[qdrant]` |
+| pgvector | table and columns in PostgreSQL | `[pgvector]` |
+| Pinecone | index over HTTPS | none |
+| Weaviate | collection | `[weaviate]` |
+| Elasticsearch 8 / OpenSearch 2 | index with a `dense_vector` / `knn_vector` field | none |
+| Chroma 1.x | collection over the v2 REST API | none |
+
+### Bring what you have, take results where you need them
+
+- **Labels you already have:** `vectraudit dataset import` reads BEIR folders, TREC qrels,
+  MTCB chunking benchmarks, Ragas test sets, DeepEval goldens and LangSmith/Langfuse exports
+  ([formats](docs/release-checks.md#bringing-labels-you-already-have)).
+- **No labels yet:** the [local labelling assistant](docs/labelling.md) (`vectraudit label`)
+  pools candidate documents from your questions and corpus, then supports blind second
+  passes, agreement and reviewer resolution before export. The
+  [label audit](docs/label-audit.md) later points reviewers at labels that look wrong.
+- **Other IR tooling:** runs and labels move in and out in the TREC formats that `trec_eval`,
+  pytrec_eval, ir-measures and ranx read (`runs export-trec`, `runs import-trec`,
+  `dataset export-qrels`). An imported run says it is external and is never judged on latency
+  it did not measure. Every quality metric is tested to equal trec_eval's, and reports show
+  each metric's ir-measures name (`nDCG@10`, `RR@10`)
+  ([details](docs/release-checks.md#moving-runs-and-labels-to-and-from-other-ir-tools-trec)).
+- **Your own notebooks:** `vectraudit runs table` writes one row per question and repeat
+  (CSV or Parquet, no text), and `runs summary` validates a run of any size in a few MiB of
+  memory ([large runs](docs/release-checks.md#large-runs-summaries-and-tables)).
+- **Public ANN benchmarks:** `dataset import-vdbbench` and `dataset import-annb` turn a
+  VectorDBBench or ann-benchmarks dataset's published neighbours into the reference for ANN
+  recall ([details](docs/vectordbbench.md)).
+- **Choosing a setup before you guard it:** [experiments](docs/experiments.md)
+  (`vectraudit experiment`) compare embedding models, chunkings and indexes on one labelled
+  set, from your own corpus, a BEIR folder or an MTCB benchmark. Reports show MTCB's passage
+  recall beside span recall, and `experiment export-mteb` writes each candidate in MTEB's
+  result layout, marked as not like for like with leaderboard scores. `experiment project`
+  projects each candidate's recall from a 10% sample to the whole corpus, with an interval
+  ([corpus projection](docs/corpus-projection.md)).
+
+- [Quickstart](docs/quickstart.md): a red and a green pull-request check on a public benchmark in 10 minutes
+- [Your first release check in 15 minutes](docs/first-check.md) on your own backend
+- [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
+- [Setup diagnostics](docs/doctor.md): `vectraudit doctor` for text-only queries and CI
+- [Pull-request workflow](examples/github/retrieval-check.yml) with check runs and comments
+- [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
+- [Case study: choosing an embedding model and chunk size](docs/case-study-experiment.md)
+
+## What else it does
+
+The release check is the part most teams start with. The same labelled questions power the
+rest:
+
+| You want to | Vectraudit gives you | Start with |
+|---|---|---|
+| **Build and maintain a benchmark** | Guided labelling with grades, no-answer and permission cases, held-out splits and frozen versions; imports from BEIR, TREC, MTCB, Ragas, DeepEval, LangSmith and Langfuse; a label audit that finds labels likely to be wrong | [`workbench serve`](#retrieval-workbench), [`label`](docs/labelling.md), [`dataset import`](docs/release-checks.md#bringing-labels-you-already-have) |
+| **Evaluate a whole pipeline** | Stage-by-stage traces, the stage where each document was lost, a per-component scoreboard, side-by-side comparison of a fix | [`workbench run`](#retrieval-workbench) |
+| **Measure what is in production** | Runs built from OpenInference, OpenTelemetry, Phoenix, Langfuse, LangSmith, Opik and OpenObserve traces; answer judgments from your evaluation tools; a review queue of new questions; question, embedding and score drift | [`import-traces`, `intake`, `drift`](#from-production-traces-and-the-tools-you-already-use) |
+| **Explain a failure** | Investigation of one question, declared fixes tried and validated on held-out data, lineage and freshness, permission lifecycle, fusion replay, claim-level evidence | [Investigate deeper](#investigate-deeper) |
+| **Choose a setup** | Embedding models, chunkers and indexes compared on one labelled set; recall under filters; capacity under concurrent load; migration reports | [`experiment`](docs/experiments.md), [`capacity`](docs/capacity.md), [`migration`](docs/migration-report.md) |
+| **Check safety** | Permission and tenant assertions, cache-leak probes, corpus scans for injected instructions, poisoning checks | [Permissions](docs/permission-lifecycle.md), [poisoning](docs/poisoning.md) |
+| **Tune a search setting on any backend** | The cheapest `hnsw_ef`, `ef_search`, `num_candidates` or `probes` that reaches your recall target against an exact reference, the neighbours each query missed, filtered and batch curves, two setups compared | [`tune`, `tune-compare`](docs/tuning.md) |
+| **See inside a FAISS index** | Missed neighbours and why, quantization loss, HNSW search replay, recall against latency | [`serve INDEX`](#faiss-index-debugger) |
+| **Share results with a team** | Pinned baselines, history, reports and pull-request checks on a control plane you host yourself | [Vectraudit Cloud](docs/cloud-operations.md) |
 
 ## Retrieval workbench
 
@@ -173,91 +274,6 @@ vectraudit workbench phoenix-push current.judged.run.json --send   # or langfuse
 | `ragchecker-input`, `ragchecker-judgments`, `attach-answers` | Which claims in an answer are unsupported by the context, and which retrieved documents does that point to? | [Claim-level evidence](docs/claim-evidence.md) |
 | `workbench atlas`, `workbench benchmark --corpus`, `dataset import-vdbbench`, `dataset import-annb`, `sweep --filter`, `sweep --pass-rates`, `capacity` | How does recall fall as a metadata filter keeps fewer documents? How do throughput, latency and errors change as concurrent load grows on a staging target? | [Corpus atlas](docs/corpus-atlas.md), [VectorDBBench and ann-benchmarks datasets](docs/vectordbbench.md), [Filtered search](docs/filtered-search.md), [Capacity](docs/capacity.md) |
 | `corpus-scan`, `poison generate`, `poison run`, `canary-judgments`, `promptfoo-redteam` | Does the corpus hold text that tries to instruct a model? When poisoned documents are present, are they retrieved, do they reach the model, do they push out the right answer, and did the answer follow them? | [Poisoning checks](docs/poisoning.md) |
-
-## Release checks
-
-Measure a baseline and a candidate retrieval setup on the same labelled queries, and let CI
-decide: pass, fail, error or not comparable.
-
-```bash
-vectraudit init --backend qdrant          # or faiss, pgvector, pinecone, weaviate, elasticsearch, opensearch, chroma
-vectraudit doctor --connection retrieval/connection.json --dataset retrieval/dataset.jsonl --policy retrieval/policy.json
-vectraudit record --connection main.json --dataset dataset.jsonl --out baseline.json --label main
-vectraudit record --connection pr.json   --dataset dataset.jsonl --out candidate.json --label pr-42
-vectraudit check baseline.json candidate.json --policy policy.json --html report.html
-```
-
-`init` scaffolds a connection, policy, query sheet and GitHub workflow. `doctor` inspects
-the setup offline without loading a model or opening a database connection. `check` exits 0
-(pass), 1 (error), 3 (fail) or 4 (not comparable), writes the GitHub job summary, and the
-HTML report lists the regressed queries with the ids they lost. `check --bundle` writes an
-evidence bundle (IDs, numbers and SHA-256 hashes) that a reviewer outside the team checks
-with `vectraudit verify` ([evidence bundles](docs/evidence-bundle.md)).
-
-Semantic metrics (recall, precision, MRR, nDCG, MAP and hit rate) need relevance labels;
-ANN recall needs an exact reference; neither is ever substituted for the other. Failing
-checks explain themselves: each finding is marked verified, supported or hypothesis, with
-the facts behind it. A policy can also fail on a changed prompt version, and
-`vectraudit workbench hubs` reports documents returned for many unrelated questions
-([metrics](docs/release-checks.md#metrics), [hubs](docs/release-checks.md#hubs)).
-Credentials are referenced by environment variable and never written into config files.
-
-Teams that gate merges on pytest can make the check one more test
-([details](docs/release-checks.md#from-a-pytest-suite)):
-
-```python
-from vectraudit.testing import assert_release
-
-
-def test_retrieval_release():
-    assert_release("baseline.json", "candidate.json", policy="retrieval/policy.json")
-```
-
-| Backend | Connector | Extra |
-|---|---|---|
-| FAISS | index file | `[faiss-cpu]` |
-| Qdrant | collection | `[qdrant]` |
-| pgvector | table and columns in PostgreSQL | `[pgvector]` |
-| Pinecone | index over HTTPS | none |
-| Weaviate | collection | `[weaviate]` |
-| Elasticsearch 8 / OpenSearch 2 | index with a `dense_vector` / `knn_vector` field | none |
-| Chroma 1.x | collection over the v2 REST API | none |
-
-### Bring what you have, take results where you need them
-
-- **Labels you already have:** `vectraudit dataset import` reads BEIR folders, TREC qrels,
-  MTCB chunking benchmarks, Ragas test sets, DeepEval goldens and LangSmith/Langfuse exports
-  ([formats](docs/release-checks.md#bringing-labels-you-already-have)).
-- **No labels yet:** the [local labelling assistant](docs/labelling.md) (`vectraudit label`)
-  pools candidate documents from your questions and corpus, then supports blind second
-  passes, agreement and reviewer resolution before export. The
-  [label audit](docs/label-audit.md) later points reviewers at labels that look wrong.
-- **Other IR tooling:** runs and labels move in and out in the TREC formats that `trec_eval`,
-  pytrec_eval, ir-measures and ranx read (`runs export-trec`, `runs import-trec`,
-  `dataset export-qrels`). An imported run says it is external and is never judged on latency
-  it did not measure. Every quality metric is tested to equal trec_eval's, and reports show
-  each metric's ir-measures name (`nDCG@10`, `RR@10`)
-  ([details](docs/release-checks.md#moving-runs-and-labels-to-and-from-other-ir-tools-trec)).
-- **Your own notebooks:** `vectraudit runs table` writes one row per question and repeat
-  (CSV or Parquet, no text), and `runs summary` validates a run of any size in a few MiB of
-  memory ([large runs](docs/release-checks.md#large-runs-summaries-and-tables)).
-- **Public ANN benchmarks:** `dataset import-vdbbench` and `dataset import-annb` turn a
-  VectorDBBench or ann-benchmarks dataset's published neighbours into the reference for ANN
-  recall ([details](docs/vectordbbench.md)).
-- **Choosing a setup before you guard it:** [experiments](docs/experiments.md)
-  (`vectraudit experiment`) compare embedding models, chunkings and indexes on one labelled
-  set, from your own corpus, a BEIR folder or an MTCB benchmark. Reports show MTCB's passage
-  recall beside span recall, and `experiment export-mteb` writes each candidate in MTEB's
-  result layout, marked as not like for like with leaderboard scores. `experiment project`
-  projects each candidate's recall from a 10% sample to the whole corpus, with an interval
-  ([corpus projection](docs/corpus-projection.md)).
-
-- [Your first release check in 15 minutes](docs/first-check.md)
-- [Release-check guide](docs/release-checks.md): dataset, connection and policy formats
-- [Setup diagnostics](docs/doctor.md): `vectraudit doctor` for text-only queries and CI
-- [Pull-request workflow](examples/github/retrieval-check.yml) with check runs and comments
-- [Case study: a latency fix that quietly broke retrieval](docs/case-study-nprobe.md)
-- [Case study: choosing an embedding model and chunk size](docs/case-study-experiment.md)
 
 ## FAISS index debugger
 

@@ -6,6 +6,21 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ## [Unreleased]
 
+### Added
+
+- A 10-minute [quickstart](docs/quickstart.md): build a FAISS index from the public SciFact
+  benchmark (`examples/quickstart/build_index.py`), catch a lower `nprobe` that drops
+  nDCG@10 from 0.63 to 0.56, and put the same check on pull requests, red then green. A test
+  runs the same steps offline.
+- Issue templates for feature requests and for backend or tool support; the bug report now
+  covers every area and backend, not only the FAISS debugger.
+
+### Changed
+
+- The README leads with the release check (catch retrieval regressions before they merge),
+  with the quickstart and a report screenshot; the other jobs follow under "What else it
+  does".
+
 ## [0.2.0] - 2026-11-28
 
 The first release published outside the maintainer's machine: 0.1.0 (the FAISS debugger,
