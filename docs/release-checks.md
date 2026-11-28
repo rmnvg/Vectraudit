@@ -234,7 +234,7 @@ pgvector sessions are read-only (`default_transaction_read_only`) with a `statem
 
 Pinecone is reached over its REST API with a pinned API version and portable filters become `$eq` conditions; Weaviate filters become property equality. Both send API keys only over HTTPS.
 
-Elasticsearch 8 and OpenSearch 2 are reached over their REST APIs, so there's no client
+Elasticsearch (8 and 9) and OpenSearch (2 and 3) are reached over their REST APIs, so there's no client
 library to install. Which engine you have is detected from the cluster (`GET /`), whichever
 name the connection uses, and recorded in the run.
 

@@ -12,9 +12,9 @@ Credentials are sent only over HTTPS, or to a local server.
 
 Which engine it is comes from ``GET /``: OpenSearch reports ``distribution: opensearch``.
 
-- **Elasticsearch 8** (``dense_vector``): approximate search with the ``knn`` option;
+- **Elasticsearch 8 and 9** (``dense_vector``): approximate search with the ``knn`` option;
   tuning parameter ``num_candidates``.
-- **OpenSearch 2** (``knn_vector``): the ``knn`` query; tuning parameter ``ef_search``
+- **OpenSearch 2 and 3** (``knn_vector``): the ``knn`` query; tuning parameter ``ef_search``
   (``method_parameters``, OpenSearch 2.16 and later).
 
 Both offer an **exact reference**: a brute-force ``script_score`` over the same documents and
