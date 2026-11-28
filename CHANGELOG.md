@@ -34,6 +34,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Changed
 
+- The README is a short landing page (pitch, install, how a release check works, the
+  tested backends, what else it does) with absolute links, so it also reads correctly on
+  PyPI. The workbench, FAISS debugger and integrations overviews moved into their guides,
+  [docs/README.md](docs/README.md) indexes every guide, and a test checks that every link
+  and heading anchor in the documentation resolves.
+- New [security and data handling](docs/security.md) page: what Vectraudit reads and
+  writes, every network call it can make and when, uploads, local servers and CI.
 - Connectors are tested against Elasticsearch 9 and OpenSearch 3 as well as 8 and 2, Weaviate
   1.41 as well as 1.32, and PostgreSQL 18 as well as 17. The README lists the tested server
   versions for each backend.

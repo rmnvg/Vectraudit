@@ -141,4 +141,4 @@ Replace the three inputs with yours, and nothing else changes:
   exports ([formats](release-checks.md#bringing-labels-you-already-have)); without labels,
   the [labelling assistant](labelling.md) gets you a first set in about 30 minutes.
 - **Policy:** start from the scaffolded one, then measure your system's run-to-run noise
-  with `vectraudit calibrate` before tightening it ([calibration](release-checks.md#calibrate-the-policy-a-a)).
+  with `vectraudit calibrate` before tightening it ([calibration](release-checks.md#calibrate-the-policy-aa)).

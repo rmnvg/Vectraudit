@@ -152,7 +152,7 @@ class EmbeddingCache:
         """Vectors and whether they came from the cache."""
         path = self._path(spec, corpus_sha, chunking)
         if path is not None and path.exists():
-            vectors = np.load(path)
+            vectors = np.load(path, allow_pickle=False)
             if vectors.shape[0] == n:
                 return np.ascontiguousarray(vectors, dtype=np.float32), True
         vectors = np.ascontiguousarray(compute(), dtype=np.float32)

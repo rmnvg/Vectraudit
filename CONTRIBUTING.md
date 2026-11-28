@@ -44,6 +44,19 @@ CI also type-checks on Python 3.10 with an older numpy; see [CLAUDE.md](CLAUDE.m
 side-environment commands. After changing frontend runtime dependencies, run
 `node scripts/third-party-notices.mjs` in `frontend/` (CI fails on drift).
 
+## Frontend and browser tests
+
+- Run `npm run dev` in `frontend/` next to a running `vectraudit serve`; Vite proxies `/api`.
+- The frontend's API types are generated from the server's OpenAPI schema: after changing
+  `server/schemas.py`, run `uv run python scripts/generate_api_types.py` (CI fails on drift).
+- Browser tests run on Chromium, Firefox and WebKit: `npx playwright install chromium firefox
+  webkit`, build the UI, then `npm run e2e` in `frontend/`. The workbench journeys run with
+  `node scripts/workbench_smoke.mjs` and `node scripts/guided_smoke.mjs`; newer flows have
+  their own `scripts/*_smoke.mjs` (`atlas_smoke.mjs` needs a GPU-capable Chrome).
+- Slow tests, such as the 200 MiB run, are skipped by default: `uv run pytest -m slow`.
+- To try the FAISS debugger on synthetic data:
+  `uv run python examples/make_synthetic.py && uv run vectraudit serve examples/data/ivf_pq.index --vectors examples/data/vectors.npy`
+
 ## Conventions
 
 - `vectraudit.core` is a plain library and must not import FastAPI or anything web-related.

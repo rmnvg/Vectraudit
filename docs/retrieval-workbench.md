@@ -4,6 +4,122 @@ Test the deployed pipeline, inspect recorded stage losses, compare measured cand
 and guard the next release. Everything runs locally unless you explicitly configure an
 HTTP endpoint or invoke the existing cloud upload commands.
 
+## At a glance
+
+Test the whole pipeline, not just the index: query rewriting, hybrid retrieval, filters,
+rerankers and permissions. The workbench runs locally and opens on a guided workflow:
+
+```bash
+vectraudit workbench serve workbench-runs   # opens http://127.0.0.1:8766
+```
+
+1. **Connect a pipeline:** the built-in BM25/hybrid baseline over a JSONL corpus, your
+   existing [LangChain or LlamaIndex retriever](#langchain-and-llamaindex-retrievers),
+   or Python and HTTP adapters registered at startup with `--manifest pipelines.json`.
+2. **Build a benchmark:** questions, relevance grades, explicit no-answer judgments, tenant
+   context, filters, forbidden documents, cohort tags and an exploratory/held-out split.
+   Read local passages and click grades, preview CSV/JSON imports, or build permission
+   scenarios. Freeze versions and review labels when documents change.
+3. **Evaluate and inspect:** a cancellable local run records each stage's results.
+   Follow any document through every stage to the one where it was lost.
+4. **Compare a fix:** run a candidate configuration, get a release verdict, and step
+   through both runs' traces side by side. Track a finding, record investigation notes,
+   and verify a later fix against the same comparison suite.
+
+Use **Use starter example** for a first run in under a minute. Held-out queries stay out of
+exploratory runs and need explicit confirmation, so tuning doesn't contaminate them.
+
+![Guided workflow comparing a baseline and a reranked candidate with side-by-side stage traces](screenshots/guided-workflow.png)
+
+The same engine runs from the command line for automation: bounded optimization with one
+held-out validation, benchmark audits (duplicates, missing categories, judgment queues)
+and scheduled monitoring against a frozen baseline.
+
+```bash
+vectraudit workbench run examples/workbench/manifest.json --out workbench-runs
+vectraudit workbench optimize examples/workbench/manifest.json --out workbench-runs/optimization.json
+vectraudit workbench benchmark examples/workbench/queries.jsonl --runs workbench-runs
+vectraudit workbench monitor manifest.json baseline.run.json
+```
+
+Evaluations save query progress locally. Resume from **Saved progress** in the browser
+or use `workbench run --resume CHECKPOINT_DIRECTORY`; failed-query retries are explicit.
+See [recovery details](#resume-an-evaluation).
+
+![Workbench run view: summary, the component scoreboard and stage evidence for one question](screenshots/workbench.png)
+
+<table>
+<tr>
+<td><img alt="Checks tab: a label audit listing two labels to review, an embedding drift report naming a new topic, and a failed poisoning check" src="screenshots/checks.png"></td>
+<td><img alt="Corpus atlas: a map of 20,000 documents with a coverage hypothesis that 12% of documents form a group no benchmark question is close to" src="screenshots/atlas.png"></td>
+</tr>
+</table>
+
+![Component scoreboard: 71.4% of question families first lost their evidence at the reranker, two questions not observed](screenshots/component-scoreboard.png)
+
+See the [workbench guide](retrieval-workbench.md) for adapter manifests, stage
+evidence, no-answer and permission assertions, and data-handling boundaries.
+
+### From production traces and the tools you already use
+
+An application that is already traced can be measured without writing an adapter, and
+answer grades from your existing evaluation tools can be attached to the same questions.
+
+```bash
+vectraudit workbench phoenix-pull --since 2026-10-19T00:00:00Z --until 2026-10-20T00:00:00Z \
+  --traces spans.jsonl --judgments judgments.jsonl          # or langfuse-, langsmith-, opik-pull
+vectraudit workbench import-traces benchmark.jsonl spans.jsonl --id-field doc_id --out current.run.json
+vectraudit workbench attach-answers current.run.json judgments.jsonl --out current.judged.run.json
+vectraudit workbench phoenix-push current.judged.run.json --send   # or langfuse-push
+```
+
+- **Trace formats** ([import guide](#import-traces-openinference-langsmith-langfuse)):
+  OpenInference, OpenLLMetry and OpenTelemetry GenAI spans as OTLP JSON, Phoenix span
+  records, LangSmith runs, Langfuse observations and Opik pulls. Each trace import reports
+  what the traces can and cannot show (document IDs, stages, model context, prompt
+  versions), and a missing fact is a gap, never a guess. The importers are tested on
+  exports written by the real instrumentation libraries and servers.
+- **Direct pulls** ([production intake](production-intake.md)): `langfuse-pull`,
+  `langsmith-pull`, `opik-pull`, `phoenix-pull` and `openobserve-pull` read a time window
+  over each tool's API, with its scores, feedback or annotations as answer judgments.
+  Read-only; reasons and explanations are never written out.
+- **Answer judgments** from human review or tools: `deepeval-judgments`,
+  `promptfoo-judgments` and `ragas-judgments` convert those tools' results. You choose
+  which metrics judge answers, retrieval metrics are refused (Vectraudit measures retrieval
+  itself), and scores without a verdict need a declared `--threshold`.
+- **Diagnosis** ([answer judgments](#required-evidence-and-answer-judgments)):
+  each judged question gets the first observable loss between retrieval and answer
+  (`lost_downstream`, `lost_in_context`, `answered_wrong_despite_evidence`, ...). Cited
+  documents are placed against what reached the model, and disagreeing judges show as
+  disputed. `langfuse-push` and `phoenix-push` write the diagnosis back onto each trace,
+  previewing by default.
+- **Prompt versions** recorded in traces (OpenInference, Langfuse, LangChain hub, Opik) are
+  compared between runs, and a release policy can fail on a changed prompt.
+- **Keeping the benchmark current:** `intake` turns each new trace export into a
+  de-duplicated review queue and flags likely recurrences. `drift` checks whether
+  production questions still look like the benchmark's, in their descriptors and, with
+  `--embeddings`, in embedding space; `embedding-drift` compares two windows or two corpus
+  exports; and `score-drift` whether the retriever's scores moved between two windows
+  ([drift reports](production-intake.md#is-the-benchmark-still-representative)).
+
+### Investigate deeper
+
+| Command | Answers | Guide |
+|---|---|---|
+| `investigate`, `try-fix` | What did one question lose and where, and does a declared fix recover it? | [Investigate a failure](#investigate-a-failure-and-try-a-fix) |
+| `lineage`, `freshness` | Where was each required passage first lost between source and model context? Did a content change reach the index, results and context? | [Lineage](lineage.md) |
+| `access`, `cache-probe` | Do permission changes hold in a later run? Does one context's question warm another's cached answer? | [Permission lifecycle](permission-lifecycle.md) |
+| `migration` | Is a new system as good as the old one on the same benchmark, under the release policy? | [Migration report](migration-report.md) |
+| `fusion-replay`, `optimize` fusion grid | Would a different way of combining keyword and vector rankings have helped, measured on your questions with paired significance tests? | [Rank fusion](fusion.md) |
+| `components` | Where along the pipeline (retrieval, filter, fusion, rerank, cut-off, context, answer) do questions first lose their evidence? | [Component scoreboard](#component-scoreboard-where-questions-lose-their-evidence) |
+| `decision-queue` | Which unjudged documents could still change this release check, and when can judging stop? | [Decision queue](decision-queue.md) |
+| `attribute` | A release changed several settings at once: which one caused the regression, which interact, and which single revert recovers the most? | [Attribution](attribution.md) |
+| `label-audit`, `review-labels` | Which of the benchmark's relevance labels are likely wrong or missing, so reviewers check those first? | [Label audit](label-audit.md) |
+| `review-sample`, `attach-answers --sample` | What is the true rate of correct answers when a model judged every question and people reviewed a random few, with an honest interval? | [Judge-corrected estimates](judge-corrected-estimates.md) |
+| `ragchecker-input`, `ragchecker-judgments`, `attach-answers` | Which claims in an answer are unsupported by the context, and which retrieved documents does that point to? | [Claim-level evidence](claim-evidence.md) |
+| `workbench atlas`, `workbench benchmark --corpus`, `dataset import-vdbbench`, `dataset import-annb`, `sweep --filter`, `sweep --pass-rates`, `capacity` | How does recall fall as a metadata filter keeps fewer documents? How do throughput, latency and errors change as concurrent load grows on a staging target? | [Corpus atlas](corpus-atlas.md), [VectorDBBench and ann-benchmarks datasets](vectordbbench.md), [Filtered search](filtered-search.md), [Capacity](capacity.md) |
+| `corpus-scan`, `poison generate`, `poison run`, `canary-judgments`, `promptfoo-redteam` | Does the corpus hold text that tries to instruct a model? When poisoned documents are present, are they retrieved, do they reach the model, do they push out the right answer, and did the answer follow them? | [Poisoning checks](poisoning.md) |
+
 ## Try the complete local workflow
 
 From a source checkout with the frontend built:

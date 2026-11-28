@@ -1,9 +1,74 @@
-# FAISS index debugger reference
+# FAISS index debugger
 
 The FAISS debugger (`vectraudit serve`, `vectraudit.launch`) inspects one index in depth:
 missed neighbours against exact ground truth, quantization loss, list balance, HNSW search
-traces and recall-versus-latency tuning. The [README](../README.md#faiss-index-debugger)
-gives the overview; this page holds the inputs, command-line options and measurement details.
+traces and recall-versus-latency tuning. The overview comes first; then the inputs,
+command-line options and measurement details.
+
+## Overview
+
+One of the eight backends gets a deeper tool. For FAISS users, a local UI explains what
+happens inside one index: which true neighbours the search missed and why, how much
+quantization costs, how balanced the lists are, and the cheapest setting that reaches your
+recall target.
+
+```bash
+vectraudit demo                       # builds a real RAG demo once (~1 min), opens the UI
+vectraudit serve my.index --vectors vectors.npy --meta chunks.jsonl
+vectraudit serve ./faiss_index                     # a LangChain or LlamaIndex FAISS folder
+```
+
+`vectraudit demo` downloads 12,000 public passages, embeds them with `all-MiniLM-L6-v2` and
+builds IVF-Flat, IVF-PQ and HNSW indexes. Type a question and see which true neighbours
+the index missed, and why.
+
+![Query explorer: recall 0.40 at nprobe 4, five neighbours missed because their cells weren't probed, one lost to quantization; nprobe 25 would find them all](screenshots/query-explorer.png)
+
+| View | What it shows |
+|---|---|
+| **Query explorer** | Search by text, stored id or vector. Compares with exact ground truth and gives a reason for every missed neighbour: *cell not probed*, *quantization*, *transform* (PCA/OPQ), or *ranked out*, plus the smallest nprobe that finds them all. |
+| **Tuner** | Recall@k and latency across nprobe or efSearch, the cheapest value for your target recall, the worst queries, and suggested next steps backed by the measurements. On the command line, `sweep --batch` adds batch throughput, kept apart from single-query latency. |
+| **Compare** | Two indexes over the same vectors on identical queries: recall with intervals, mean/p95 latency, serialized size, and which queries' neighbours changed. |
+| **HNSW graph** | The layers of an HNSW graph and an animated, step-by-step replay of the search. |
+| **Quantization** | How far PQ/SQ codes are from your raw vectors and how much they distort near-neighbour distances. |
+| **Overview** | Inverted-list sizes and imbalance, with a **Diagnose my index** guide. |
+| **Cluster map** | Stored vectors projected with PCA or UMAP (2D/3D), with IVF centroids. |
+| **Relevance** | Recall, MRR and nDCG@k from labelled judgements, before and after exact reranking. |
+| **Run history** | Saved sweeps, comparisons and evaluations kept across restarts. |
+
+<details>
+<summary>More screenshots and supported index types</summary>
+
+<table>
+<tr>
+<td><img alt="Tuner: no nprobe reaches 0.95 recall on IVF-PQ; the suggested next step explains that compression caps recall near 0.62 and to re-rank with exact distances" src="screenshots/tuner.png"></td>
+<td><img alt="Animated HNSW search: greedy descent through the upper layers, then candidate expansion on level 0" src="screenshots/hnsw-search.png"></td>
+</tr>
+<tr>
+<td><img alt="Quantization: PQ error, compression and distance fidelity" src="screenshots/quantization.png"></td>
+<td><img alt="Cluster map with one inverted list selected" src="screenshots/cluster-map.png"></td>
+</tr>
+</table>
+
+| Index | Support |
+|---|---|
+| `IndexFlat` (L2 / IP) | search, map, ground truth |
+| `IndexIVFFlat`, `IndexIVFPQ`, `IndexIVFPQFastScan`, `IndexIVFScalarQuantizer` | everything: list balance, probe trace, miss reasons, tuner, quantization |
+| IVF with an HNSW coarse quantizer (`IVF65536_HNSW32,...`) | the same; probing is replayed with the quantizer's own approximate search at each nprobe |
+| `IndexHNSWFlat`, `IndexHNSWSQ`/`PQ` | graph view, search trace, tuner (efSearch), quantization for SQ/PQ storage |
+| Wrappers: `IndexIDMap`/`IDMap2`, `IndexPreTransform` (PCA, OPQ), `IndexRefine` | unwrapped transparently; ids stay yours |
+| Binary, GPU, additive-quantizer FastScan, RaBitQ, others | basic stats only (convert GPU indexes with `faiss.index_gpu_to_cpu`) |
+
+</details>
+
+From Python or Jupyter (JupyterLab, VS Code notebooks and Colab; see [Jupyter notes](jupyter.md)):
+
+```python
+import vectraudit
+
+viewer = vectraudit.launch(index, vectors=xb, metadata=chunks)  # any faiss.Index
+report = viewer.session.query(id=42, k=10, nprobe=4)
+report.recall, report.ivf_trace.min_nprobe_for_all
 
 ## Inputs
 
