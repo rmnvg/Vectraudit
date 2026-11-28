@@ -25,6 +25,7 @@ from vectraudit.core import runs
 from vectraudit.core._faiss import FaissNotInstalledError
 from vectraudit.core.advice import Suggestion, advise_selectivity
 from vectraudit.core.filtering import FilterError
+from vectraudit.core.frameworks import SavedStoreError, open_saved_store
 from vectraudit.core.loader import IndexLoadError, load_index
 from vectraudit.core.projection import (
     DEFAULT_MAX_POINTS,
@@ -184,11 +185,22 @@ def evaluate(
 
 @app.command()
 def info(
-    index_path: Annotated[Path, typer.Argument(help="Path to a FAISS index file.")],
+    index_path: Annotated[
+        Path, typer.Argument(help="A FAISS index file, or a LangChain or LlamaIndex folder.")
+    ],
 ) -> None:
     """Print a summary of a FAISS index: kind, wrappers, dimensions and parameters."""
+    store = None
+    if index_path.is_dir():
+        try:
+            store = open_saved_store(index_path)
+        except SavedStoreError as e:
+            raise _fail(str(e), e.hint) from e
+        index_path = store.index_path
     li = _load_or_exit(index_path)
-    console.print(f"[bold]{index_path}[/]")
+    console.print(f"[bold]{escape(str(index_path))}[/]")
+    if store is not None:
+        console.print(f"{escape(store.describe())}, columns: {', '.join(store.metadata.columns)}")
     console.print(_info_table(li))
     if li.unsupported_reason:
         console.print(
@@ -256,6 +268,12 @@ def _serve_summary(session: Session, url: str) -> None:
         f"[bold]vectraudit[/] {__version__}  ·  {li.kind.value}  ·  {li.ntotal:,} vectors  ·  "
         f"d={li.d}  ·  {li.metric.value}"
     )
+    store = session.saved_store
+    if store is not None:
+        source = "its docstore" if session.metadata is store.metadata else "--meta"
+        console.print(f"Opened a {escape(store.describe())}; chunk text from {source}.")
+        for note in store.notes:
+            console.print(f"[yellow]{escape(note)}[/]")
     if not li.is_supported:
         console.print(f"[yellow]Unsupported:[/] {li.unsupported_reason} Showing basic stats only.")
     elif not session.has_raw_vectors:
@@ -286,7 +304,13 @@ def _serve_summary(session: Session, url: str) -> None:
 
 @app.command()
 def serve(
-    index_path: Annotated[Path, typer.Argument(help="Path to a FAISS index file.")],
+    index_path: Annotated[
+        Path,
+        typer.Argument(
+            help="A FAISS index file, or a folder saved by LangChain (save_local) or "
+            "LlamaIndex (persist) with a FAISS vector store."
+        ),
+    ],
     vectors: Annotated[
         Path | None,
         typer.Option(help="Raw vectors .npy (float32, n x d). Enables exact ground truth."),

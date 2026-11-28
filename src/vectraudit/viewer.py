@@ -137,12 +137,14 @@ def launch(
 ) -> Viewer:
     """Inspect a FAISS index in the browser.
 
-    ``index`` is a ``faiss.Index`` or a path. ``vectors``/``ids``/``queries`` take numpy
-    arrays or ``.npy`` paths; ``metadata`` takes a path, a list of dicts or a DataFrame with
-    an ``id`` column; ``embedder`` is a ``str -> vector`` callable or a sentence-transformers
-    model name. ``compare`` takes other indexes (``faiss.Index`` or paths) over the same
-    vectors to compare in the Compare view; it needs ``vectors``. ``mmap`` memory-maps a
-    ``vectors`` .npy path instead of loading it into RAM.
+    ``index`` is a ``faiss.Index``, a path to an index file, or a folder saved by LangChain
+    or LlamaIndex (its document store becomes the metadata unless ``metadata`` is given).
+    ``vectors``/``ids``/``queries`` take numpy arrays or ``.npy`` paths; ``metadata`` takes
+    a path, a list of dicts or a DataFrame with an ``id`` column; ``embedder`` is a
+    ``str -> vector`` callable or a sentence-transformers model name. ``compare`` takes
+    other indexes (``faiss.Index`` or paths) over the same vectors to compare in the Compare
+    view; it needs ``vectors``. ``mmap`` memory-maps a ``vectors`` .npy path instead of
+    loading it into RAM.
 
     Returns a :class:`Viewer`. In a notebook, display it (make it the cell's last
     expression) to embed the UI. Elsewhere the browser opens unless ``open_browser=False``

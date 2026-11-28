@@ -1,0 +1,4 @@
+# Saved by LangChain and LlamaIndex exactly as they write them; one is binary despite .json.
+tests/fixtures/frameworks/langchain/** -text -diff
+tests/fixtures/frameworks/llamaindex/** -text
+tests/fixtures/frameworks/llamaindex/default__vector_store.json -diff
