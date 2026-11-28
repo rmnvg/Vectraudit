@@ -12,7 +12,7 @@ from typing import Any
 
 PARQUET_HINT = 'Reading .parquet needs pyarrow: `pip install "vectraudit[parquet]"`.'
 TEXT_COLUMNS = ("text", "content", "chunk", "page_content", "passage", "body")
-TITLE_COLUMNS = ("title", "source", "name", "doc_id")
+TITLE_COLUMNS = ("title", "source", "name", "doc_id", "file_name")
 
 
 class MetadataError(ValueError):

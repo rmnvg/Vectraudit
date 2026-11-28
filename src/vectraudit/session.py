@@ -28,6 +28,7 @@ from vectraudit.core.embed import (
     looks_normalized,
     sentence_transformer_embedder,
 )
+from vectraudit.core.frameworks import SavedStore, SavedStoreError, open_saved_store
 from vectraudit.core.history import RunHistory
 from vectraudit.core.jobs import Job, JobRunner
 from vectraudit.core.loader import load_index
@@ -217,6 +218,17 @@ class Session:
         mmap: bool = False,
         reference: ExternalReference | None = None,
     ) -> None:
+        # A folder saved by LangChain or LlamaIndex: open its FAISS file, and use its
+        # document store as the metadata unless metadata was given.
+        self.saved_store: SavedStore | None = None
+        if isinstance(index, (str, os.PathLike)) and Path(index).is_dir():
+            try:
+                self.saved_store = open_saved_store(Path(index))
+            except SavedStoreError as e:
+                raise InputError("BAD_SAVED_STORE", str(e), e.hint) from e
+            index = self.saved_store.index_path
+            if metadata is None:
+                metadata = self.saved_store.metadata
         self.li: LoadedIndex = load_index(index)
         self.jobs = JobRunner()
         # Interactive searches get their own small pool: they must not queue behind sweeps,

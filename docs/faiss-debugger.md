@@ -9,7 +9,7 @@ gives the overview; this page holds the inputs, command-line options and measure
 
 | Input | Required | Formats | Used for |
 |---|---|---|---|
-| FAISS index | yes | index file or in-memory `faiss.Index` | everything |
+| FAISS index | yes | index file, in-memory `faiss.Index`, or a LangChain / LlamaIndex folder (below) | everything |
 | Raw vectors | recommended | `.npy` float32, n × d (row *i* = id *i*, or use `--ids`) | exact ground truth, quantization error |
 | Ids | optional | `.npy` int64 | when row order isn't the id |
 | Metadata | optional | `.jsonl` / `.csv` / `.parquet` with an `id` column (plus e.g. `text`, `title`) | reading results as text |
@@ -18,6 +18,30 @@ gives the overview; this page holds the inputs, command-line options and measure
 
 Without raw vectors, vectraudit reconstructs them from the index; the UI then warns that
 ground truth is computed on reconstructed vectors, so PQ/SQ error isn't measured.
+
+### LangChain and LlamaIndex folders
+
+Pass the folder a framework saved, and its document store becomes the metadata: each
+result shows its chunk's text and source.
+
+```bash
+vectraudit serve ./faiss_index      # LangChain: FAISS.save_local("faiss_index")
+vectraudit serve ./storage          # LlamaIndex: storage_context.persist("storage") with a FaissVectorStore
+vectraudit info ./faiss_index       # the index, plus the framework and its metadata columns
+```
+
+| Framework | Files read | Metadata columns |
+|---|---|---|
+| LangChain | `index.faiss` and `index.pkl` (another name if `save_local` was given one) | `text` (the page content), `docstore_id`, and each key of the document's `metadata` |
+| LlamaIndex | `default__vector_store.json` (a FAISS file despite its name), `docstore.json`, `index_store.json` | `text`, `docstore_id` (the node id), `ref_doc_id` (its source document), and each key of the node's `metadata` |
+
+LangChain stores its documents as a Python pickle, and loading a pickle can run any code
+it names. Vectraudit reads it with an unpickler that rebuilds only LangChain's
+`InMemoryDocstore` and `Document`, as plain data, without importing LangChain, and refuses
+any other class, so a tampered `index.pkl` fails with an error instead of running. A
+metadata key named like a built-in column (`text`, `id`) is kept as `metadata_text`. Pass
+`--meta` to use your own metadata instead of the store's. The ids the debugger shows are
+FAISS row numbers; `docstore_id` links each one back to the framework's document.
 
 ## Labelled relevance and reranking
 

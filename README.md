@@ -289,6 +289,7 @@ recall target.
 ```bash
 vectraudit demo                       # builds a real RAG demo once (~1 min), opens the UI
 vectraudit serve my.index --vectors vectors.npy --meta chunks.jsonl
+vectraudit serve ./faiss_index                     # a LangChain or LlamaIndex FAISS folder
 ```
 
 `vectraudit demo` downloads 12,000 public passages, embeds them with `all-MiniLM-L6-v2` and

@@ -8,6 +8,11 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- `vectraudit serve FOLDER` and `info FOLDER` open a FAISS vector store saved by LangChain
+  (`save_local`) or LlamaIndex (`persist` with a `FaissVectorStore`), and show each
+  neighbour's chunk text and source from the framework's document store. LangChain's pickle
+  is read without importing LangChain, by an unpickler that refuses every class except its
+  docstore and documents.
 - A 10-minute [quickstart](docs/quickstart.md): build a FAISS index from the public SciFact
   benchmark (`examples/quickstart/build_index.py`), catch a lower `nprobe` that drops
   nDCG@10 from 0.63 to 0.56, and put the same check on pull requests, red then green. A test

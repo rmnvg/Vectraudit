@@ -2,8 +2,12 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # Files written byte for byte by other libraries stay as they wrote them (LlamaIndex
+      # saves a binary FAISS index as default__vector_store.json).
       - id: trailing-whitespace
+        exclude: ^tests/fixtures/frameworks/(langchain|llamaindex)/
       - id: end-of-file-fixer
+        exclude: ^tests/fixtures/frameworks/(langchain|llamaindex)/
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
