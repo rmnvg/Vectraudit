@@ -7,9 +7,11 @@ the stack running::
     uv run python deploy/cloud/rehearse.py --scratch
 
 It creates a workspace, a project and a runner token, records a small FAISS release run
-and uploads it with `vectraudit cloud push`, takes a backup with ``backup.sh``, deletes the
-project (so the run is gone), restores the backup with ``restore.sh`` while the API is
-stopped, and checks that the run is back. It prints how long the restore took.
+and uploads it with `vectraudit cloud push`, pins it, makes a hosted check and verifies its
+evidence bundle offline with `vectraudit verify`, takes a backup with ``backup.sh``,
+deletes the project (so the run is gone), restores the backup with ``restore.sh`` while the
+API is stopped, and checks that the run is back and the check's bundle still verifies. It
+prints how long the restore took.
 """
 
 from __future__ import annotations
@@ -50,6 +52,27 @@ def api(method: str, path: str, token: str, body: dict[str, object] | None = Non
     with urllib.request.urlopen(request, timeout=30) as response:
         raw = response.read()
     return json.loads(raw) if raw else None
+
+
+def verify_hosted_bundle(workspace: str, project: str, check_id: str, token: str) -> str:
+    """Download the check's evidence bundle and verify it offline; returns the verdict."""
+    request = urllib.request.Request(
+        f"{URL}/api/v1/workspaces/{workspace}/projects/{project}/checks/{check_id}/bundle",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = response.read()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "evidence.zip"
+        path.write_bytes(data)
+        done = subprocess.run(
+            [sys.executable, "-m", "vectraudit", "verify", str(path)],
+            capture_output=True,
+            text=True,
+        )
+    if done.returncode != 0:
+        raise SystemExit(f"The hosted check's bundle did not verify:\n{done.stdout}{done.stderr}")
+    return done.stdout.strip().splitlines()[-1]
 
 
 def run_exists(workspace: str, project: str, run_id: str, token: str) -> bool:
@@ -184,6 +207,14 @@ def main() -> int:
         raise SystemExit("The uploaded run is not visible through the API.")
     step(f"Recorded and uploaded run {run_id}")
 
+    base = f"/api/v1/workspaces/{workspace}/projects/{project}"
+    api("PUT", f"{base}/baselines/main", owner, {"run_id": run_id, "note": "rehearsal"})
+    check = api("POST", f"{base}/checks", owner, {"baseline": "main", "candidate_run_id": run_id})
+    assert isinstance(check, dict)
+    check_id = str(check["id"])
+    step(f"Checked the run against baseline main: {check['verdict']}")
+    step(f"Evidence bundle: {verify_hosted_bundle(workspace, project, check_id, owner)}")
+
     backup = subprocess.run(
         ["./backup.sh"], cwd=HERE, check=True, text=True, capture_output=True
     ).stdout.strip()
@@ -203,6 +234,7 @@ def main() -> int:
     if not run_exists(workspace, project, run_id, owner):
         raise SystemExit("The run is missing after the restore.")
     step(f"Restored {backup} in {took:.0f} s: the project and its run are back")
+    step(f"After the restore: {verify_hosted_bundle(workspace, project, check_id, owner)}")
     print("Rehearsal passed.")
     return 0
 

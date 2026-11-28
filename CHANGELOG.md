@@ -8,6 +8,13 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ### Added
 
+- Evidence bundles reach reviewers without a local `check`: every hosted check has one
+  (the **Evidence bundle** link on its page, `GET .../checks/{id}/bundle`, or
+  `vectraudit cloud bundle CHECK_ID`), built from the run projections the service holds and
+  decided under the policy of the time, and the generated `retrieval-check` action writes
+  one on every pull request and names it with its manifest SHA-256 in the summary and
+  comment (`check --bundle-url` links it). The deployment rehearsal verifies a hosted
+  check's bundle before and after a restore.
 - One-command self-hosting: `deploy/cloud/start.sh` writes `.env` with random secrets on the
   first run, builds and starts the control plane with Docker Compose and waits until it is
   ready; re-running it upgrades. `deploy/cloud/rehearse.py --scratch` checks a deployment end

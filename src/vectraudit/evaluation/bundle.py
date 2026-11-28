@@ -159,6 +159,28 @@ def build_bundle(
     ``result`` is the check as reported (exceptions applied). ``inputs`` maps names such as
     ``baseline_file`` to the SHA-256 of the files given to the check.
     """
+    data, written = bundle_bytes(
+        result, baseline, candidate, policy, include_runs=include_runs, inputs=inputs
+    )
+    target = Path(out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return written
+
+
+def bundle_bytes(
+    result: Mapping[str, Any],
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    policy: Policy,
+    *,
+    include_runs: bool = False,
+    inputs: Mapping[str, str | None] | None = None,
+) -> tuple[bytes, dict[str, Any]]:
+    """The evidence bundle as zip bytes, with its manifest and the manifest's SHA-256.
+
+    Runs that are already hosted sharing projections are used as they are.
+    """
     from vectraudit.integrations.sharing import project_run
 
     exceptions = _exceptions(result)
@@ -222,16 +244,13 @@ def build_bundle(
         ],
     }
     manifest_bytes = _dump(manifest)
-    target = Path(out)
-    target.parent.mkdir(parents=True, exist_ok=True)
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, data in [*sorted(files.items()), (MANIFEST, manifest_bytes)]:
             info = zipfile.ZipInfo(name, date_time=_DATE)
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, data)
-    target.write_bytes(buffer.getvalue())
-    return {"manifest": manifest, "manifest_sha256": _sha(manifest_bytes)}
+    return buffer.getvalue(), {"manifest": manifest, "manifest_sha256": _sha(manifest_bytes)}
 
 
 def _read(path: str | Path) -> dict[str, bytes]:
