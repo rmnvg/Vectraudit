@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      VECTRAUDIT_VERSION: "0.2.0"
+      VECTRAUDIT_VERSION: "0.3.0"
       # Copy the wheel's SHA-256 from the release's SHA256SUMS, then commit this pin.
       VECTRAUDIT_SHA256: "REPLACE_WITH_64_HEX_SHA256"
     steps:

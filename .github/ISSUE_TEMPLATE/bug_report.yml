@@ -44,7 +44,7 @@ body:
     attributes:
       label: Versions
       description: "`vectraudit --version`, Python version, OS, and the backend's server or library version"
-      placeholder: vectraudit 0.2.0, Python 3.12, macOS 15, Qdrant 1.15
+      placeholder: vectraudit 0.3.0, Python 3.12, macOS 15, Qdrant 1.15
     validations:
       required: true
   - type: textarea
