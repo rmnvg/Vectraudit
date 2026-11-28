@@ -6,8 +6,48 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-28
+
+The first public release, on GitHub releases and PyPI. 0.1.0 and 0.2.0 were changelog
+milestones that were never published, so everything in their sections ships for the first
+time here; the lists below are the changes since 0.2.0.
+
+### Highlights
+
+- **Release checks for retrieval.** `vectraudit init`, `record` and `check` give a pass,
+  fail, error or not-comparable verdict for a candidate against a baseline on the same
+  labelled questions, under a versioned release policy with paired significance tests,
+  cohort rules and critical questions. Results go to a GitHub check, a pull request comment
+  and an HTML report, and `check --bundle` / `vectraudit verify` keep evidence an auditor
+  can re-check offline.
+- **Eight backends**, read-only: FAISS, Qdrant, pgvector, Pinecone, Weaviate,
+  Elasticsearch, OpenSearch and Chroma. `vectraudit tune` finds the cheapest search setting
+  that reaches a recall target on any of them.
+- **Retrieval workbench** (`vectraudit workbench serve`): tests the whole pipeline (query
+  rewriting, hybrid retrieval, fusion, filters, rerankers and permissions), explains where a
+  question's documents were lost, and validates fixes on held-out questions.
+- **Imports, not lock-in:** traces from OpenInference, OpenLLMetry and OpenLIT spans, or
+  pulled from Langfuse, LangSmith, Phoenix and OpenObserve; labels and runs from TREC, BEIR,
+  MTEB, RAGAS and RAGChecker.
+- **Safety checks:** permission and tenant assertions, cache-leak probes, poisoning and
+  prompt-injection scans of the corpus.
+- **Self-hosted control plane** (`vectraudit[cloud]`) for pinned baselines, history and
+  hosted pull request checks.
+- **Start in 10 minutes:** the [quickstart](docs/quickstart.md) turns a pull request red
+  then green on a public benchmark, and `deploy/cloud/start.sh` brings up the self-hosted
+  control plane in one command, with a rehearsed backup, restore and rollback.
+- **FAISS in depth:** the index debugger reads LangChain and LlamaIndex FAISS folders and IVF
+  PQ FastScan indexes, and explains every missed neighbour.
+- **Documentation** as a [site](https://rmnvg.github.io/Vectraudit/) and in `docs/`, including
+  [security and data handling](docs/security.md).
+- **Open source** under the Apache License 2.0. Install with `pip install vectraudit`, or
+  download the wheel and its `SHA256SUMS` from the GitHub release.
+
 ### Added
 
+- A documentation site built from `docs/` with MkDocs Material (`mkdocs.yml`), with search,
+  a navigation that follows the docs index and light and dark themes. CI builds it in strict
+  mode on documentation changes and publishes it to GitHub Pages from `main`.
 - Evidence bundles reach reviewers without a local `check`: every hosted check has one
   (the **Evidence bundle** link on its page, `GET .../checks/{id}/bundle`, or
   `vectraudit cloud bundle CHECK_ID`), built from the run projections the service holds and
@@ -68,32 +108,8 @@ All notable changes to Vectraudit (formerly faissight) are documented here. The 
 
 ## [0.2.0] - 2026-11-28
 
-The first release published outside the maintainer's machine: 0.1.0 (the FAISS debugger,
-then named faissight) was tagged in the changelog but never released.
-
-### Highlights
-
-- **Release checks for retrieval.** `vectraudit init`, `record` and `check` give a pass,
-  fail, error or not-comparable verdict for a candidate against a baseline on the same
-  labelled questions, under a versioned release policy with paired significance tests,
-  cohort rules and critical questions. Results go to a GitHub check, a pull request comment
-  and an HTML report, and `check --bundle` / `vectraudit verify` keep evidence an auditor
-  can re-check offline.
-- **Eight backends**, read-only: FAISS, Qdrant, pgvector, Pinecone, Weaviate,
-  Elasticsearch, OpenSearch and Chroma. `vectraudit tune` finds the cheapest search setting
-  that reaches a recall target on any of them.
-- **Retrieval workbench** (`vectraudit workbench serve`): tests the whole pipeline (query
-  rewriting, hybrid retrieval, fusion, filters, rerankers and permissions), explains where a
-  question's documents were lost, and validates fixes on held-out questions.
-- **Imports, not lock-in:** traces from OpenInference, OpenLLMetry and OpenLIT spans, or
-  pulled from Langfuse, LangSmith, Phoenix and OpenObserve; labels and runs from TREC, BEIR,
-  MTEB, RAGAS and RAGChecker.
-- **Safety checks:** permission and tenant assertions, cache-leak probes, poisoning and
-  prompt-injection scans of the corpus.
-- **Self-hosted control plane** (`vectraudit[cloud]`) for pinned baselines, history and
-  hosted pull request checks.
-- **Open source** under the Apache License 2.0. Install with `pip install vectraudit`, or
-  download the wheel and its `SHA256SUMS` from the GitHub release.
+A milestone prepared as the first public release but never tagged; its changes first
+shipped in 0.3.0.
 
 ### Changed
 

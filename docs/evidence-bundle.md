@@ -108,7 +108,7 @@ Anyone who can read the project can download it. It includes both runs, so `veri
 the verdict, unless a run was uploaded with its query text (`--share-query-text`): a bundle
 never carries question text, so those runs are left out and the bundle verifies as
 "hashes consistent, verdict not reproduced". The policy is the one the check was decided
-under, even after the project's policy changes; a check stored by version 0.2.0 or earlier whose
+under, even after the project's policy changes; a check stored before version 0.3.0 whose
 project policy has changed since cannot be reproduced, and the service says so (HTTP 409)
 rather than bundling it under another policy.
 

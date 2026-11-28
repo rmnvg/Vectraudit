@@ -1,6 +1,6 @@
 [project]
 name = "vectraudit"
-version = "0.2.0"
+version = "0.3.0"
 description = "Retrieval evaluation and release checks for RAG and search, with a FAISS index debugger."
 readme = "README.md"
 license = "Apache-2.0"
@@ -132,3 +132,8 @@ markers = ["slow: needs heavy optional deps (e.g. UMAP/numba); CI runs them with
 [tool.coverage.run]
 source = ["vectraudit"]
 branch = true
+
+[dependency-groups]
+docs = [
+    "mkdocs-material>=9.6",
+]

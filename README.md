@@ -40,7 +40,7 @@ The same wheel, with the built web UI, is attached to each
 workflow written by `vectraudit init` installs it from there, pinned by version and hash:
 
 ```bash
-pip install "vectraudit[all] @ https://github.com/rmnvg/Vectraudit/releases/download/v0.2.0/vectraudit-0.2.0-py3-none-any.whl"
+pip install "vectraudit[all] @ https://github.com/rmnvg/Vectraudit/releases/download/v0.3.0/vectraudit-0.3.0-py3-none-any.whl"
 ```
 
 Extras install only what you use: the backends `[faiss-cpu]`, `[qdrant]`, `[pgvector]` and

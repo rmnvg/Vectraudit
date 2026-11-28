@@ -57,6 +57,13 @@ side-environment commands. After changing frontend runtime dependencies, run
 - To try the FAISS debugger on synthetic data:
   `uv run python examples/make_synthetic.py && uv run vectraudit serve examples/data/ivf_pq.index --vectors examples/data/vectors.npy`
 
+## Documentation
+
+The guides in `docs/` are also a site built with MkDocs Material. Preview it with
+`uv run --group docs mkdocs serve`; CI builds it with `mkdocs build --strict`, so a broken link
+or anchor fails the pull request. Add a new page to the `nav` in `mkdocs.yml` and to
+`docs/README.md`; a test checks every page is in the navigation.
+
 ## Conventions
 
 - `vectraudit.core` is a plain library and must not import FastAPI or anything web-related.
